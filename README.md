@@ -1,4 +1,9 @@
-Galaxy tool wrappers for msconvert.
+# msconvert
+
+This repository contains Galaxy tool wrappers for msconvert, part of
+the ProteoWizard (http://proteowizard.sourceforge.net/) package.
+
+# Installing
 
 Due to potential difficulties installing ProteoWizard with vendor
 library support, tools for interacting with vendor types are seperated
@@ -18,22 +23,22 @@ Wrappers for both msconvert version 2 and version 3+ are provided
 because version 3+ of msconvert with vendor library support requires
 .NET 4.0 and this may difficult or impossible under Wine in Linux with
 all but the most recent versions of Wine (1.4+).
-
+# Obtaining Tools
 
 Repositories for all Galaxy-P tools can be found at
 https:/bitbucket.org/galaxyp/.
 
-Contact:
+# Contact
 
 Please send suggestions for improvements and bug reports to
 jmchilton@gmail.com.
 
-License:
+# License
 
 All Galaxy-P tools are licensed under the Apache License Version 2.0
-unless otherwise noted.
+unless otherwise documented.
 
-Tool Versions:
+# Tool Versioning
 
 Galaxy-P tools will have versions of the form X.Y.Z. Versions
 differing only after the second decimal should be completely

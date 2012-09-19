@@ -10,7 +10,7 @@ fi
 # Run repository specific update actions.
 if [ -f update_repo.sh ];
 then
-    update_repo.sh
+    ./update_repo.sh
 fi
 
 # Create repository README

@@ -1,4 +1,9 @@
-Galaxy tool wrappers for msconvert.
+# msconvert
+
+This repository contains Galaxy tool wrappers for msconvert, part of
+the ProteoWizard (http://proteowizard.sourceforge.net/) package.
+
+# Installing
 
 Due to potential difficulties installing ProteoWizard with vendor
 library support, tools for interacting with vendor types are seperated
@@ -18,5 +23,3 @@ Wrappers for both msconvert version 2 and version 3+ are provided
 because version 3+ of msconvert with vendor library support requires
 .NET 4.0 and this may difficult or impossible under Wine in Linux with
 all but the most recent versions of Wine (1.4+).
-
-

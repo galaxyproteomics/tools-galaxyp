@@ -1,17 +1,19 @@
+# Obtaining Tools
+
 Repositories for all Galaxy-P tools can be found at
 https:/bitbucket.org/galaxyp/.
 
-Contact:
+# Contact
 
 Please send suggestions for improvements and bug reports to
 jmchilton@gmail.com.
 
-License:
+# License
 
 All Galaxy-P tools are licensed under the Apache License Version 2.0
-unless otherwise noted.
+unless otherwise documented.
 
-Tool Versions:
+# Tool Versioning
 
 Galaxy-P tools will have versions of the form X.Y.Z. Versions
 differing only after the second decimal should be completely
