@@ -13,6 +13,8 @@ then
     ./update_repo.sh
 fi
 
+wget https://raw.github.com/gist/3749747/README_GALAXYP.md -O README_GALAXYP.md
+
 # Create repository README
 if [ ! -e README_REPO.md ];
 then
