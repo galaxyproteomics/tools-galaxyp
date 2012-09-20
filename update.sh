@@ -4,7 +4,7 @@ LICENSE_FILE=LICENSE
 # Ensure repository contains license file.
 if [ ! -e "$LICENSE_FILE" ];
 then
-    wget http://www.apache.org/licenses/LICENSE-2.0.txt -o "$LICENSE_FILE"
+    wget http://www.apache.org/licenses/LICENSE-2.0.txt -O "$LICENSE_FILE"
 fi
 
 # Run repository specific update actions.
@@ -25,7 +25,7 @@ cat README_REPO.md README_GALAXYP.md > README.md
 
 # If version file exists, update all tools to this version
 VERSION_FILE=version
-if [ ! -e "$VERSION_FILE" ];
+if [ -e "$VERSION_FILE" ];
 then
     VERSION=`cat $VERSION_FILE`
     
