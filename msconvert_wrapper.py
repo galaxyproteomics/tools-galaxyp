@@ -61,18 +61,22 @@ def delete_directory(directory):
         except:
             pass
 
+
 def symlink(source, link_name):
     import platform
     if platform.system() == 'Windows':
-        import win32file
-        win32file.CreateSymbolicLink(source, link_name, 1)
+        try:
+            import win32file
+            win32file.CreateSymbolicLink(source, link_name, 1)
+        except:
+            shutil.copy(source, link_name)
     else:
         os.symlink(source, link_name)
 
 
 def copy_to_working_directory(data_file, relative_path):
     if os.path.abspath(data_file) != os.path.abspath(relative_path):
-        shutil.copy(data_file, relative_path)
+        symlink(data_file, relative_path)
     return relative_path
 
 def __main__():
