@@ -114,6 +114,10 @@ def _read_table_numbers(path):
     return unique_numbers
 
 
+def shellquote(s):
+    return "'" + s.replace("'", "'\\''") + "'"
+
+
 def _add_filter_line_from_file(file, filter_file, filter_prefix):
     if not file:
         return
@@ -140,6 +144,7 @@ def _create_filters_file(options):
 def run_script():
     parser = optparse.OptionParser()
     parser.add_option('--input', dest='input')
+    parser.add_option('--input_name', dest='input_name', default=None)
     parser.add_option('--output', dest='output')
     parser.add_option('--fromextension', dest='fromextension')
     parser.add_option('--toextension', dest='toextension', default='mzML', choices=to_extensions)
@@ -154,7 +159,13 @@ def run_script():
 
     (options, args) = parser.parse_args()
 
-    input_file = 'input.%s' % options.fromextension
+    input_base = options.input_name
+    if not input_base:
+        input_base = 'input'
+    if not input_base.lower().endswith(options.fromextension.lower()):
+        input_file = shellquote('%s.%s' % (input_base, options.fromextension))
+    else:
+        input_file = input_base
     copy_to_working_directory(options.input, input_file)
     os.mkdir('output')
     to_extension = options.toextension
@@ -172,7 +183,7 @@ def run_script():
         cmd = "%s --mz%s" % (cmd, options.mzencoding)
     if options.intensityencoding:
         cmd = "%s --inten%s" % (cmd, options.intensityencoding)
-    cmd = "%s %s" % (cmd, input_file)
+    cmd = "%s \"%s\"" % (cmd, input_file)
     filters_file_path = _create_filters_file(options)
     cmd = "%s -c %s" % (cmd, filters_file_path)
     print cmd
