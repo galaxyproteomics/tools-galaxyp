@@ -118,33 +118,69 @@ def shellquote(s):
     return "'" + s.replace("'", "'\\''") + "'"
 
 
-def _add_filter_line_from_file(file, filter_file, filter_prefix):
+def _add_filter_line_from_file(file, filter_file, filter_type):
     if not file:
         return
     numbers = _read_table_numbers(file)
     msconvert_int_set = " ".join([str(number) for number in numbers])
+    if type == 'number':
+        filter_prefix = 'scanNumber'
+    else:
+        filter_prefix = 'index'
     _add_filter(filter_file, "%s %s" % (filter_prefix, msconvert_int_set))
 
 
-def _create_filters_file(options):
+def _create_filters_file(options, debug=False):
     filters_file_path = "filters"
     filters_file = open(filters_file_path, "w")
     if options.filters_file:
         filters_file.write(open(options.filters_file, "r").read())
     for filter in options.filter:
         _add_filter(filters_file, filter)
-    _add_filter_line_from_file(options.filter_indices_table, filters_file, "index")
-    _add_filter_line_from_file(options.filter_numbers_table, filters_file, "scanNumber")
+    _add_filter_line_from_file(options.filter_table, filters_file, options.filter_table_type)
 
     filters_file.close()
-    print open(filters_file_path, "r").read()
+    if debug:
+        print open(filters_file_path, "r").read()
     return filters_file_path
+
+
+def _build_base_cmd(options):
+    to_extension = options.toextension
+    if to_extension.startswith("unindexed_"):
+        to_extension = to_extension[len("unindexed_"):]
+        to_params = "--noindex"
+    else:
+        to_params = ""
+    cmd = "msconvert --%s %s" % (to_extension, to_params)
+    if str_to_bool(options.zlib):
+        cmd = "%s %s" % (cmd, "--zlib")
+    if options.binaryencoding:
+        cmd = "%s --%s" % (cmd, options.binaryencoding)
+    if options.mzencoding:
+        cmd = "%s --mz%s" % (cmd, options.mzencoding)
+    if options.intensityencoding:
+        cmd = "%s --inten%s" % (cmd, options.intensityencoding)
+    return cmd
+
+
+def _run(base_cmd, output_dir='output', inputs=[], debug=False):
+    inputs_as_str = " ".join(['"%s"' % input for input in inputs])
+    os.mkdir(output_dir)
+    cmd = "%s -o \"%s\" %s" % (base_cmd, output_dir, inputs_as_str)
+    if debug:
+        print cmd
+    execute(cmd)
+    output_files = os.listdir('output')
+    assert len(output_files) == 1
+    output_file = output_files[0]
+    return output_file
 
 
 def run_script():
     parser = optparse.OptionParser()
-    parser.add_option('--input', dest='input')
-    parser.add_option('--input_name', dest='input_name', default=None)
+    parser.add_option('--input', dest='inputs', action='append', default=[])
+    parser.add_option('--input_name', dest='input_names', action='append', default=[])
     parser.add_option('--output', dest='output')
     parser.add_option('--fromextension', dest='fromextension')
     parser.add_option('--toextension', dest='toextension', default='mzML', choices=to_extensions)
@@ -154,44 +190,38 @@ def run_script():
     parser.add_option('--zlib', dest='zlib', default="false")
     parser.add_option('--filter', dest='filter', action='append', default=[])
     parser.add_option('--filters_file', dest='filters_file', default=None)
-    parser.add_option('--filter_indices_table', default=None)
-    parser.add_option('--filter_numbers_table', default=None)
+    parser.add_option('--filter_table', default=None)
+    parser.add_option('--filter_table_type', default='index', choices=['index', 'number'])
+    #parser.add_option('--filter_table_column', default=None)
+    #parser.add_option('--filter_table_file_column', default=None)
+    parser.add_option('--debug', dest='debug', action='store_true', default=False)
 
     (options, args) = parser.parse_args()
+    if len(options.inputs) < 1:
+        stop_err("No input files to msconvert specified")
+    if len(options.input_names) > 0 and len(options.input_names) != len(options.inputs):
+        stop_err("Number(s) of supplied input names and input files do not match")
 
-    input_base = options.input_name
-    if not input_base:
-        input_base = 'input'
-    if not input_base.lower().endswith(options.fromextension.lower()):
-        input_file = shellquote('%s.%s' % (input_base, options.fromextension))
-    else:
-        input_file = input_base
-    copy_to_working_directory(options.input, input_file)
-    os.mkdir('output')
-    to_extension = options.toextension
-    if to_extension.startswith("unindexed_"):
-        to_extension = to_extension[len("unindexed_"):]
-        to_params = "--noindex"
-    else:
-        to_params = ""
-    cmd = "msconvert --%s %s -o output" % (to_extension, to_params)
-    if str_to_bool(options.zlib):
-        cmd = "%s %s" % (cmd, "--zlib")
-    if options.binaryencoding:
-        cmd = "%s --%s" % (cmd, options.binaryencoding)
-    if options.mzencoding:
-        cmd = "%s --mz%s" % (cmd, options.mzencoding)
-    if options.intensityencoding:
-        cmd = "%s --inten%s" % (cmd, options.intensityencoding)
-    cmd = "%s \"%s\"" % (cmd, input_file)
-    filters_file_path = _create_filters_file(options)
+    input_files = []
+    for i, input in enumerate(options.inputs):
+        input_base = None
+        if len(options.input_names) > i:
+            input_base = options.input_names[i]
+        if not input_base:
+            input_base = 'input%s' % i
+        if not input_base.lower().endswith(options.fromextension.lower()):
+            input_file = shellquote('%s.%s' % (input_base, options.fromextension))
+        else:
+            input_file = input_base
+        copy_to_working_directory(input, input_file)
+        input_files.append(input_file)
+
+    cmd = _build_base_cmd(options)
+    filters_file_path = _create_filters_file(options, debug=options.debug)
     cmd = "%s -c %s" % (cmd, filters_file_path)
-    print cmd
-    execute(cmd)
-    output_files = os.listdir('output')
-    assert len(output_files) == 1
-    output_file = output_files[0]
+    output_file = _run(cmd, output_dir='output', inputs=input_files, debug=options.debug)
     shutil.copy(os.path.join('output', output_file), options.output)
 
 
-if __name__ == '__main__': __main__()
+if __name__ == '__main__':
+    __main__()
