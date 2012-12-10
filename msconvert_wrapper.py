@@ -96,7 +96,7 @@ def _add_filter(filters_file, contents):
     filters_file.write("filter=\"%s\"\n" % contents)
 
 
-def _read_table_numbers(path):
+def _read_table_numbers(path, column_num=None):
     unique_numbers = set([])
     input = open(path, "r")
     first_line = True
@@ -107,7 +107,12 @@ def _read_table_numbers(path):
         if line.startswith("#"):
             first_line = False
             continue
-        match = re.match("\d+", line)
+        if column_num == None:
+            column = line
+        else:
+            line_parts = line.split("\t")
+            column = line_parts[int(column_num) - 1]
+        match = re.match("\d+", column)
         if match:
             unique_numbers.add(int(match.group()))
         first_line = False
@@ -118,10 +123,10 @@ def shellquote(s):
     return "'" + s.replace("'", "'\\''") + "'"
 
 
-def _add_filter_line_from_file(file, filter_file, filter_type):
+def _add_filter_line_from_file(file, filter_file, filter_type, column_num=None):
     if not file:
         return
-    numbers = _read_table_numbers(file)
+    numbers = _read_table_numbers(file, column_num)
     msconvert_int_set = " ".join([str(number) for number in numbers])
     if type == 'number':
         filter_prefix = 'scanNumber'
@@ -137,7 +142,7 @@ def _create_filters_file(options, debug=False):
         filters_file.write(open(options.filters_file, "r").read())
     for filter in options.filter:
         _add_filter(filters_file, filter)
-    _add_filter_line_from_file(options.filter_table, filters_file, options.filter_table_type)
+    _add_filter_line_from_file(options.filter_table, filters_file, options.filter_table_type, options.filter_table_column)
 
     filters_file.close()
     if debug:
@@ -192,7 +197,7 @@ def run_script():
     parser.add_option('--filters_file', dest='filters_file', default=None)
     parser.add_option('--filter_table', default=None)
     parser.add_option('--filter_table_type', default='index', choices=['index', 'number'])
-    #parser.add_option('--filter_table_column', default=None)
+    parser.add_option('--filter_table_column', default=None)
     #parser.add_option('--filter_table_file_column', default=None)
     parser.add_option('--debug', dest='debug', action='store_true', default=False)
 
