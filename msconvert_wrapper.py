@@ -3,22 +3,23 @@ import optparse
 import os
 import sys
 import tempfile
-import shutil 
+import shutil
 import subprocess
 import re
-from os.path import basename
 import logging
 
-assert sys.version_info[:2] >= ( 2, 6 )
+assert sys.version_info[:2] >= (2, 6)
 
 log = logging.getLogger(__name__)
 working_directory = os.getcwd()
-tmp_stderr_name = tempfile.NamedTemporaryFile(dir = working_directory, suffix = '.stderr').name
-tmp_stdout_name = tempfile.NamedTemporaryFile(dir = working_directory, suffix = '.stdout').name
+tmp_stderr_name = tempfile.NamedTemporaryFile(dir=working_directory, suffix='.stderr').name
+tmp_stdout_name = tempfile.NamedTemporaryFile(dir=working_directory, suffix='.stdout').name
 
-def stop_err( msg ):
-    sys.stderr.write( "%s\n" % msg )
+
+def stop_err(msg):
+    sys.stderr.write("%s\n" % msg)
     sys.exit()
+
 
 def read_stderr():
     stderr = ''
@@ -33,7 +34,8 @@ def read_stderr():
             except OverflowError:
                 pass
     return stderr
-    
+
+
 def execute(command, stdin=None):
     try:
         with open(tmp_stderr_name, 'wb') as tmp_stderr:
@@ -41,7 +43,7 @@ def execute(command, stdin=None):
                 proc = subprocess.Popen(args=command, shell=True, stderr=tmp_stderr.fileno(), stdout=tmp_stdout.fileno(), stdin=stdin, env=os.environ)
                 returncode = proc.wait()
                 if returncode != 0:
-                    raise Exception, "Program returned with non-zero exit code %d. stderr: %s" % (returncode, read_stderr())
+                    raise Exception("Program returned with non-zero exit code %d. stderr: %s" % (returncode, read_stderr()))
     finally:
         print open(tmp_stderr_name, "r").read()
         print open(tmp_stdout_name, "r").read()
@@ -53,6 +55,7 @@ def delete_file(path):
             os.remove(path)
         except:
             pass
+
 
 def delete_directory(directory):
     if os.path.exists(directory):
@@ -79,6 +82,7 @@ def copy_to_working_directory(data_file, relative_path):
         symlink(data_file, relative_path)
     return relative_path
 
+
 def __main__():
     run_script()
 
@@ -93,11 +97,23 @@ def str_to_bool(v):
 
 
 def _add_filter(filters_file, contents):
-    filters_file.write("filter=\"%s\"\n" % contents)
+    filters_file.write("filter=%s\n" % contents)
 
 
-def _read_table_numbers(path, column_num=None):
+def _skip_line(options, file_num, line_parts):
+    file_num_column = options.filter_table_file_column
+    if not file_num_column:
+        return False
+    else:
+        target_file_num_val = str(file_num).strip()
+        query_file_num_val = line_parts[int(file_num_column) - 1].strip()
+        #print "target %s, query %s" % (target_file_num_val, query_file_num_val)
+        return target_file_num_val != query_file_num_val
+
+
+def _read_table_numbers(path, options, file_num=None):
     unique_numbers = set([])
+    column_num = options.filter_table_column
     input = open(path, "r")
     first_line = True
     for line in input:
@@ -111,6 +127,8 @@ def _read_table_numbers(path, column_num=None):
             column = line
         else:
             line_parts = line.split("\t")
+            if _skip_line(options, file_num, line_parts):
+                continue
             column = line_parts[int(column_num) - 1]
         match = re.match("\d+", column)
         if match:
@@ -119,30 +137,34 @@ def _read_table_numbers(path, column_num=None):
     return unique_numbers
 
 
+# TODO: Test on windows
 def shellquote(s):
     return "'" + s.replace("'", "'\\''") + "'"
 
 
-def _add_filter_line_from_file(file, filter_file, filter_type, column_num=None):
+def _add_filter_line_from_file(filter_file, options, file_num=None):
+    file = options.filter_table
     if not file:
         return
-    numbers = _read_table_numbers(file, column_num)
+    numbers = _read_table_numbers(file, options, file_num)
     msconvert_int_set = " ".join([str(number) for number in numbers])
-    if type == 'number':
+    filter_type = options.filter_table_type
+    if filter_type == 'number':
         filter_prefix = 'scanNumber'
     else:
         filter_prefix = 'index'
     _add_filter(filter_file, "%s %s" % (filter_prefix, msconvert_int_set))
 
 
-def _create_filters_file(options, debug=False):
-    filters_file_path = "filters"
+def _create_filters_file(options, file_num=None, debug=False):
+    suffix = "" if not file_num else str(file_num)
+    filters_file_path = "filters%s" % suffix
     filters_file = open(filters_file_path, "w")
     if options.filters_file:
         filters_file.write(open(options.filters_file, "r").read())
     for filter in options.filter:
         _add_filter(filters_file, filter)
-    _add_filter_line_from_file(options.filter_table, filters_file, options.filter_table_type, options.filter_table_column)
+    _add_filter_line_from_file(filters_file, options, file_num=file_num)
 
     filters_file.close()
     if debug:
@@ -170,16 +192,16 @@ def _build_base_cmd(options):
 
 
 def _run(base_cmd, output_dir='output', inputs=[], debug=False):
-    inputs_as_str = " ".join(['"%s"' % input for input in inputs])
+    inputs_as_str = " ".join(['%s' % shellquote(input) for input in inputs])
     os.mkdir(output_dir)
-    cmd = "%s -o \"%s\" %s" % (base_cmd, output_dir, inputs_as_str)
+    cmd = "%s -o %s %s" % (base_cmd, shellquote(output_dir), inputs_as_str)
     if debug:
         print cmd
     execute(cmd)
-    output_files = os.listdir('output')
+    output_files = os.listdir(output_dir)
     assert len(output_files) == 1
     output_file = output_files[0]
-    return output_file
+    return os.path.join(output_dir, output_file)
 
 
 def run_script():
@@ -198,7 +220,7 @@ def run_script():
     parser.add_option('--filter_table', default=None)
     parser.add_option('--filter_table_type', default='index', choices=['index', 'number'])
     parser.add_option('--filter_table_column', default=None)
-    #parser.add_option('--filter_table_file_column', default=None)
+    parser.add_option('--filter_table_file_column', default=None)
     parser.add_option('--debug', dest='debug', action='store_true', default=False)
 
     (options, args) = parser.parse_args()
@@ -206,7 +228,8 @@ def run_script():
         stop_err("No input files to msconvert specified")
     if len(options.input_names) > 0 and len(options.input_names) != len(options.inputs):
         stop_err("Number(s) of supplied input names and input files do not match")
-
+    if not options.output:
+        stop_err("Must specify output location")
     input_files = []
     for i, input in enumerate(options.inputs):
         input_base = None
@@ -215,17 +238,34 @@ def run_script():
         if not input_base:
             input_base = 'input%s' % i
         if not input_base.lower().endswith(options.fromextension.lower()):
-            input_file = shellquote('%s.%s' % (input_base, options.fromextension))
+            input_file = '%s.%s' % (input_base, options.fromextension)
         else:
             input_file = input_base
+        input_file = input_file
         copy_to_working_directory(input, input_file)
         input_files.append(input_file)
 
     cmd = _build_base_cmd(options)
-    filters_file_path = _create_filters_file(options, debug=options.debug)
-    cmd = "%s -c %s" % (cmd, filters_file_path)
+    file_column = options.filter_table_file_column
+    if not file_column:
+        # Apply same filters to all files, just create a unviersal filter files
+        # and run msconvert once.
+        filters_file_path = _create_filters_file(options, debug=options.debug)
+        cmd = "%s -c %s" % (cmd, filters_file_path)
+    else:
+        # Dispatching on a column to filter different files differently, need to filter
+        # each input once with msconvert and then merge once.
+        filtered_files = []
+        for index, input_file in enumerate(input_files):
+            filters_file_path = _create_filters_file(options, index + 1, debug=options.debug)
+            filter_cmd = "%s -c %s" % (cmd, filters_file_path)
+            filtered_output_file = _run(filter_cmd, output_dir='output%d' % index, inputs=[input_file], debug=options.debug)
+            filtered_files.append(filtered_output_file)
+        input_files = filtered_files
+    if len(input_files) > 0:
+        cmd = "%s --merge" % cmd
     output_file = _run(cmd, output_dir='output', inputs=input_files, debug=options.debug)
-    shutil.copy(os.path.join('output', output_file), options.output)
+    shutil.copy(output_file, options.output)
 
 
 if __name__ == '__main__':
