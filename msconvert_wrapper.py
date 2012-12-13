@@ -262,7 +262,7 @@ def run_script():
             filtered_output_file = _run(filter_cmd, output_dir='output%d' % index, inputs=[input_file], debug=options.debug)
             filtered_files.append(filtered_output_file)
         input_files = filtered_files
-    if len(input_files) > 0:
+    if len(input_files) > 1:
         cmd = "%s --merge" % cmd
     output_file = _run(cmd, output_dir='output', inputs=input_files, debug=options.debug)
     shutil.copy(output_file, options.output)
