@@ -1,4 +1,4 @@
-TODO: Document this tool repository.
+Galaxy tool wrapper for the transproteomic pipeline decoyFASTA tool.
 # Obtaining Tools
 
 Repositories for all Galaxy-P tools can be found at
