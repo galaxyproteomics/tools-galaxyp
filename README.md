@@ -1,4 +1,5 @@
-TODO: Document this tool repository.
+Galaxy tool to concatenate the unique sequences from different FASTA files
+together into a new FASTA file.
 # Obtaining Tools
 
 Repositories for all Galaxy-P tools can be found at
