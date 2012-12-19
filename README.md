@@ -1,4 +1,4 @@
-TODO: Document this tool repository.
+Tool wrapper for transproteomic pipeline application digestdb. 
 # Obtaining Tools
 
 Repositories for all Galaxy-P tools can be found at

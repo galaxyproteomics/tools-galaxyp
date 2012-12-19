@@ -1,1 +1,1 @@
-TODO: Document this tool repository.
+Tool wrapper for transproteomic pipeline application digestdb. 
