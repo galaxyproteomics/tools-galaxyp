@@ -137,9 +137,8 @@ def _read_table_numbers(path, options, file_num=None):
     return unique_numbers
 
 
-# TODO: Test on windows
 def shellquote(s):
-    return "'" + s.replace("'", "'\\''") + "'"
+    return '"' + s.replace('"', '\\"') + '"'
 
 
 def _add_filter_line_from_file(filter_file, options, file_num=None):
