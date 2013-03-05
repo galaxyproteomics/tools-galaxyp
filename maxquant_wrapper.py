@@ -287,7 +287,7 @@ def to_fragment_settings(name, values):
     return Template(fragment_settings_template).substitute(safe_values)
 
 
-def get_files_paths(files):
+def get_file_paths(files):
     return "<filePaths>%s</filePaths>" % "".join([xml_string(path) for path in files])
 
 
@@ -299,7 +299,7 @@ def xml_string(str):
     return "<string>%s</string>" % escape(str)
 
 
-def get_properties(options):
+def get_properties(options, inputs):
     props = {
       "slice_peaks": "true",
       "num_cores": str(options.num_cores),
@@ -311,6 +311,11 @@ def get_properties(options):
       "include_contamiants": "true",
       "equal_il": "false",
     }
+    file_paths = get_file_paths(inputs)
+    file_names = get_file_names([os.path.basename(input) for input in inputs])
+    props["file_paths"] = file_paths
+    props["file_names"] = file_names
+
     for name, fragment_options in fragment_settings.iteritems():
         key = "%s_fragment_settings" % name.lower()
         props[key] = to_fragment_settings(name, fragment_options)
@@ -318,16 +323,32 @@ def get_properties(options):
     return props
 
 
+def setup_inputs(inputs, input_names):
+    links = []
+    for input, input_name in zip(inputs, input_names):
+        if DEBUG:
+            print "Processing input %s with name %s and size %d" % (input, input_name, os.stat(input).st_size)
+        if not input_name.upper().endswith(".RAW"):
+            input_name = "%s.RAW" % input_name
+        link_path = os.path.abspath(input_name)
+        symlink(input, link_path)
+        links.append(link_path)
+    return links
+        
 def run_script():
     parser = optparse.OptionParser()
+    parser.add_option("--input", dest="input", action="append", default=[])
+    parser.add_option("--input_name", dest="input_name", action="append", default=[])
     parser.add_option("--database")
+    parser.add_option("--database_name")
     parser.add_option("--num_cores", type="int", default=4)
     add_fragment_options(parser)
 
     (options, args) = parser.parse_args()
     update_fragment_settings(options)
 
-    properties = get_properties(options)
+    inputs = setup_inputs(options.input, options.input_name)
+    properties = get_properties(options, inputs)
     driver_contents = Template(TEMPLATE).substitute(properties)
     open("mqpar.xml", "w").write(driver_contents)
     execute("MaxQuantCmd.exe mqpar.xml %d" % options.num_cores)
