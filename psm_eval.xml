@@ -1,0 +1,148 @@
+<?xml version="1.0"?>
+<tool name="Peptide-Spectrum-Matches (PSMs) Evaluation" id="psm_eval" version="0.1.0">
+    <description>Re-evalute potential PSMs using the psm-eval application.</description>
+    <command>cp $driver $output</command>
+    <configfiles>
+        <configfile name="driver"># YAML driver for PSM Eval
+peak_list: $peak_list
+psms: $psms_cond.psms
+psms_type: $psms_cond.type
+columns:
+#for $column in $columns
+#set $column_options = $column.column
+#set $type = str(column_options['type'])
+  - type: ${type}
+#if $type in ['ions_matched', 'num_peaks', 'peaks_matched']
+#if $type == 'ions_matched'
+#set $ions = $column_options
+#else
+#set $ions = $column_options.specify_ions
+#end if
+    ions:
+      series: $ions.ion_series
+#if $ions.losses
+      losses: $ions.losses
+#end if
+#end if
+#if $type == "source_statistic"
+    statistic_name: ${str(column_options['source_statistic'])}
+#end if
+#end for
+        </configfile>
+    </configfiles>
+    <inputs>
+        <conditional name="psms_cond">
+            <param name="type" type="select" label="PSMs Type" help="">
+                <option value="mzid">MzIdentML (mzid)</option>
+                <option value="tabular">ProteinPilot Peptide Report</option>
+            </param>
+            <when value="mzid">
+                <param format="mzid" name="psms" type="data" label="MzIdentML containing PSMs" help="" />
+            </when>
+            <when value="tabular">
+                <param format="tabular" name="psms" type="data" label="ProteinPilot Peptide Report" help="" />
+            </when>
+        </conditional>
+        <param format="mzml" name="peak_list" type="data" label="Peak list (mzML)" help="" />
+        <repeat name="columns" title="Column">
+            <conditional name="column">
+                <param type="select" name="type" label="Column Type">
+                    <option value="peptide">Peptide Sequence</option>
+                    <option value="scan_id">Scan ID</option>
+                    <option value="num_peaks">Number of Peaks</option>
+                    <option value="peaks_matched">Peaks Matched</option>
+                    <option value="ions_matched">Ions Matched</option>
+                    <option value="total_ion_current">Total Ion Current</option>
+                    <option value="source_statistic">Statistic from PSM Source</option>
+                </param>
+                <when value="num_peaks">
+                    <expand macro="peak_filters" />
+                </when>
+                <when value="peaks_matched">
+                    <expand macro="conditional_ions" />
+                    <expand macro="peak_filters" />
+                </when>
+                <when value="ions_matched">
+                    <expand macro="ions" />
+                    <expand macro="peak_filters" />
+                </when>
+                <when value="source_statistic">
+                    <param name="source_statistic" label="PSM Source Statistic" type="select">
+                        <option value="xcorr">xcorr</option>
+                        <option value="MyriMatch:MVH">MyriMatch: MVH</option>
+                        <option value="MyriMatch:mzFidelity">MyriMatch: mzFidelity</option>
+                        <option value="Conf">Conf</option>
+                    </param>
+                </when>
+            </conditional>
+        </repeat>
+    </inputs>
+    <outputs>
+        <data format="tabular" name="output" label="PSM Evaluation of ${on_string}" />
+    </outputs>
+    <macros>
+        <macro name="ions">
+            <param name="ion_series" type="select" multiple="true" label="Ion Series">
+                <option value="a1">a1</option>
+                <option value="a2">a2</option>
+                <option value="a3">a3</option>
+                <option value="b1">b1</option>
+                <option value="b2">b2</option>
+                <option value="b3">b3</option>
+                <option value="c1">c1</option>
+                <option value="c2">c2</option>
+                <option value="c3">c3</option>
+                <option value="x1">x1</option>
+                <option value="x2">x2</option>
+                <option value="x3">x3</option>
+                <option value="y1">y1</option>
+                <option value="y2">y2</option>
+                <option value="y3">y3</option>
+                <option value="z1">z1</option>
+                <option value="z2">z2</option>
+                <option value="z3">z3</option>
+                <option value="m1">M1</option>
+                <option value="m2">M2</option>
+                <option value="internal">Internal Ions</option>
+            </param>
+            <param name="losses" type="select" multiple="true" label="Losses" value="">
+                <option value="H2O">H2O</option>
+                <option value="NH3">NH3</option>
+                <option value="CO">CO (-28) on internal ions</option>
+            </param>
+        </macro>
+        <macro name="conditional_ions">
+            <conditional name="specify_ions">
+                <param type="boolean" truevalue="true" falsevalue="false" name="specify" label="Specify Ions?" />
+                <when value="true">
+                    <expand macro="ions" />
+                </when>
+                <when value="false" />
+            </conditional>
+        </macro>
+        <macro name="peak_filters">
+            <repeat name="peak_filters" title="Peak Filter">
+                <expand macro="peak_filter" />
+            </repeat>
+        </macro>
+        <macro name="peak_filter">
+            <conditional name="peak_filter">
+                <param type="select" label="Filter Peaks on" name="filter">
+                    <option value="tic">Intensity as a Percent of Total Ion Current</option>
+                    <option value="quantile">Intensity Quantile</option>
+                </param>
+                <when value="tic">
+                    <expand macro="percent_param" />
+                </when>
+                <when value="quantile">
+                    <param name="q" label="q" type="integer" help="q is the number of partitions to break intensity into, k is the position to pull from. For instance if q=2 and k=1, the peaks above the median intensity will be used and if q=3 and k=2, the middle third of peaks by intensity will be used." value="2" />
+                    <param name="k" label="k" type="integer" value="1"/>
+                    <expand macro="percent_param" />
+                </when>
+            </conditional>
+        </macro>
+        <macro name="percent_param">
+            <param name="percent" label="Percent TIC Threshold" type="float" help="Filter all peaks whose intensity does not exceed this percent of total ion current." value="0.02" />
+        </macro>
+    </macros>
+</tool>
