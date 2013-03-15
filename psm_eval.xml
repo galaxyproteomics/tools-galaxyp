@@ -1,18 +1,47 @@
 <?xml version="1.0"?>
 <tool name="Peptide-Spectrum-Matches (PSMs) Evaluation" id="psm_eval" version="0.1.0">
+    <requirements>
+        <requirement type="package">psm_eval</requirement>
+    </requirements>
     <description>Re-evalute potential PSMs using the psm-eval application.</description>
-    <command>cp $driver $output</command>
+    <command>psm_eval --settings $driver</command>
     <configfiles>
         <configfile name="driver"># YAML driver for PSM Eval
-peak_list: $peak_list
+## TODO: Support multiple peak lists.
+peak_lists:
+  - path: $peak_list
+    name: "$peak_list.display_name"
+    encoded_id: "${$__app__.security.encode_id( $peak_list.id )}"
 psms: $psms_cond.psms
 psms_type: $psms_cond.type
+output: $output
+output_format: $output_type
 columns:
 #for $column in $columns
 #set $column_options = $column.column
 #set $type = str(column_options['type'])
   - type: ${type}
-#if $type in ['ions_matched', 'num_peaks', 'peaks_matched']
+#if $type in ['ions_matched', 'peaks_matched']
+    aggregate_by: $column_options.aggregate_by
+#end if
+#if $type in ['ions_matched', 'peaks_matched']
+## Handle peak filters
+    peak_filters:
+#for $peak_filter in $column_options.peak_filters
+#set $peak_filter_options = $peak_filter.peak_filter
+#set $peak_filter_type = str(peak_filter_options['peak_filter_type'])
+    - type: $peak_filter_type
+#if $peak_filter_type in ['percent', 'quantile']
+      percent: $peak_filter_options.percent
+#end if
+#if $peak_filter_type == 'quantile'
+      q: $peak_filter_options.q
+      k: $peak_filter_options.k
+#end if
+#end for
+#end if
+#if $type in ['ions_matched', 'peaks_matched']
+## Handle ions series
 #if $type == 'ions_matched'
 #set $ions = $column_options
 #else
@@ -27,6 +56,9 @@ columns:
 #if $type == "source_statistic"
     statistic_name: ${str(column_options['source_statistic'])}
 #end if
+#if $type == "link"
+    link_type: galaxy
+#end if
 #end for
         </configfile>
     </configfiles>
@@ -34,7 +66,7 @@ columns:
         <conditional name="psms_cond">
             <param name="type" type="select" label="PSMs Type" help="">
                 <option value="mzid">MzIdentML (mzid)</option>
-                <option value="tabular">ProteinPilot Peptide Report</option>
+                <option value="proteinpilot_peptide_report">ProteinPilot Peptide Report</option>
             </param>
             <when value="mzid">
                 <param format="mzid" name="psms" type="data" label="MzIdentML containing PSMs" help="" />
@@ -44,25 +76,46 @@ columns:
             </when>
         </conditional>
         <param format="mzml" name="peak_list" type="data" label="Peak list (mzML)" help="" />
+        <param name="output_type" type="select" label="Output Type" help="">
+            <option value="tsv">Tabular (tsv)</option>
+            <option value="html">HTML</option>
+        </param>
         <repeat name="columns" title="Column">
             <conditional name="column">
                 <param type="select" name="type" label="Column Type">
                     <option value="peptide">Peptide Sequence</option>
+                    <option value="scan_index">Scan Index</option>
+                    <option value="scan_number">Scan Number</option>
                     <option value="scan_id">Scan ID</option>
+                    <option value="scan_source">Peak List</option>
                     <option value="num_peaks">Number of Peaks</option>
-                    <option value="peaks_matched">Peaks Matched</option>
-                    <option value="ions_matched">Ions Matched</option>
+                    <option value="peaks_matched">Peaks Matched Statistic</option>
+                    <option value="ions_matched">Ions Matched Statistic</option>
                     <option value="total_ion_current">Total Ion Current</option>
                     <option value="source_statistic">Statistic from PSM Source</option>
+                    <option value="link">ProtVis Link</option>
                 </param>
                 <when value="num_peaks">
                     <expand macro="peak_filters" />
                 </when>
                 <when value="peaks_matched">
+                    <param name="aggregate_by" label="Peak Matching Statistic" type="select">
+                        <option value="count">Number of Matched Peaks</option>
+                        <option value="count_missed">Number of Unmatched Peaks</option>
+                        <option value="percent">Percent of Matched Peaks</option>
+                        <option value="percent_missed">Percent of Unmatched Peaks</option>
+                    </param>
                     <expand macro="conditional_ions" />
                     <expand macro="peak_filters" />
                 </when>
                 <when value="ions_matched">
+                    <param name="aggregate_by" label="Ion Matching Statistic" type="select">
+                        <option value="count">Number of Matched Ions</option>
+                        <option value="count_missed">Number of Unmatched Ions</option>
+                        <option value="count_longest_stretch">Longest Stretch of Matched Ions</option>
+                        <option value="percent">Percent of Matched Ions</option>
+                        <option value="percent_missed">Percent of Unmatched Ions</option>
+                    </param>
                     <expand macro="ions" />
                     <expand macro="peak_filters" />
                 </when>
@@ -74,11 +127,17 @@ columns:
                         <option value="Conf">Conf</option>
                     </param>
                 </when>
+                <when value="link">
+                </when>
             </conditional>
         </repeat>
     </inputs>
     <outputs>
-        <data format="tabular" name="output" label="PSM Evaluation of ${on_string}" />
+        <data format="tabular" name="output" label="PSM Evaluation of ${on_string}">
+            <change_format>
+                <when input="output_type" value="html" format="html" />
+            </change_format>
+        </data>
     </outputs>
     <macros>
         <macro name="ions">
@@ -127,7 +186,7 @@ columns:
         </macro>
         <macro name="peak_filter">
             <conditional name="peak_filter">
-                <param type="select" label="Filter Peaks on" name="filter">
+                <param type="select" label="Filter Peaks on" name="peak_filter_type">
                     <option value="tic">Intensity as a Percent of Total Ion Current</option>
                     <option value="quantile">Intensity Quantile</option>
                 </param>
@@ -140,6 +199,7 @@ columns:
                     <expand macro="percent_param" />
                 </when>
             </conditional>
+            <!-- TODO: Add m/z, intensity thresholds. -->
         </macro>
         <macro name="percent_param">
             <param name="percent" label="Percent TIC Threshold" type="float" help="Filter all peaks whose intensity does not exceed this percent of total ion current." value="0.02" />
