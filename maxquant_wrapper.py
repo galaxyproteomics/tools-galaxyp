@@ -183,47 +183,10 @@ TEMPLATE = """<MaxQuantParams runOnCluster="false" processFolder="$process_folde
     <qcSetting xsi:nil="true" />
   </qcSettings>
   <msmsParams>
-    <FragmentSpectrumSettings Name="FTMS"
-                              InPpm="true"
-                              Deisotope="true"
-                              Topx="10"
-                              HigherCharges="true"
-                              IncludeWater="true"
-                              IncludeAmmonia="true"
-                              DependentLosses="true">
-      <Tolerance>
-        <Value>20</Value>
-        <Unit>Ppm</Unit>
-      </Tolerance>
-    </FragmentSpectrumSettings>
-    <FragmentSpectrumSettings Name="ITMS"
-                              InPpm="false"
-                              Deisotope="false"
-                              Topx="6"
-                              HigherCharges="true"
-                              IncludeWater="true"
-                              IncludeAmmonia="true"
-                              DependentLosses="true">
-      <Tolerance>
-        <Value>0.5</Value>
-        <Unit>Dalton</Unit>
-      </Tolerance>
-    </FragmentSpectrumSettings>
-    <FragmentSpectrumSettings Name="TOF"
-                              InPpm="false" Deisotope="true" Topx="10" HigherCharges="true" IncludeWater="tru
-e" IncludeAmmonia="true" DependentLosses="true">
-      <Tolerance>
-        <Value>0.1</Value>
-        <Unit>Dalton</Unit>
-      </Tolerance>
-    </FragmentSpectrumSettings>
-    <FragmentSpectrumSettings Name="Unknown" InPpm="false" Deisotope="false" Topx="6" HigherCharges="true" IncludeWater=
-"true" IncludeAmmonia="true" DependentLosses="true">
-      <Tolerance>
-       <Value>0.5</Value>
-        <Unit>Dalton</Unit>
-      </Tolerance>
-    </FragmentSpectrumSettings>
+    $ftms_fragment_settings
+    $itms_fragment_settings
+    $tof_fragment_settings
+    $unknown_fragment_settings
   </msmsParams>
   <keepLowScoresMode>0</keepLowScoresMode>
   <msmsCentroidMode>1</msmsCentroidMode>
@@ -240,16 +203,16 @@ e" IncludeAmmonia="true" DependentLosses="true">
 fragment_settings = {
   "FTMS":    {"InPpm": "true", "Deisotope": "true", "Topx": "10", "HigherCharges": "true",
               "IncludeWater": "true", "IncludeAmmonoia": "true", "DependentLosses": "true",
-              "tolerance_value": "20", "tolerance_unit": "Ppm"},
+              "tolerance_value": "20", "tolerance_unit": "Ppm", "name": "FTMS"},
   "ITMS":    {"InPpm": "false", "Deisotope": "false", "Topx": "6", "HigherCharges": "true",
               "IncludeWater": "true", "IncludeAmmonoia": "true", "DependentLosses": "true",
-              "tolerance_value": "0.5", "tolerance_unit": "Dalton"},
+              "tolerance_value": "0.5", "tolerance_unit": "Dalton", "name": "ITMS"},
   "TOF":     {"InPpm": "false", "Deisotope": "true", "Topx": "10", "HigherCharges": "true",
               "IncludeWater": "true", "IncludeAmmonoia": "true", "DependentLosses": "true",
-              "tolerance_value": "0.1", "tolerance_unit": "Dalton"},
+              "tolerance_value": "0.1", "tolerance_unit": "Dalton", "name": "TOF"},
   "Unknown": {"InPpm": "false", "Deisotope": "false", "Topx": "6", "HigherCharges": "true",
               "IncludeWater": "true", "IncludeAmmonoia": "true", "DependentLosses": "true",
-              "tolerance_value": "0.5", "tolerance_unit": "Dalton"},
+              "tolerance_value": "0.5", "tolerance_unit": "Dalton", "name": "Unknown"},
 }
 
 
@@ -334,7 +297,8 @@ def setup_inputs(inputs, input_names):
         symlink(input, link_path)
         links.append(link_path)
     return links
-        
+
+
 def run_script():
     parser = optparse.OptionParser()
     parser.add_option("--input", dest="input", action="append", default=[])
