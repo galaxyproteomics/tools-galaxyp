@@ -101,7 +101,7 @@ RUN_TEMPLATE = """<Scaffold>
                decoyProteinRegEx="$database_decoy_regex"
                />
 $samples
-<DisplayThresholds id="thresh" />
+$display_thresholds
 <Export type="sf3" path="$output_path" thresholds="thresh" />
 </Experiment>
 </Scaffold>
@@ -109,12 +109,11 @@ $samples
 
 EXPORT_TEMPLATE = """<Scaffold>
 <Experiment load="$sf3_path">
-<DisplayThresholds id="thresh" />
+$display_thresholds
 <Export $export_options path="$output_path" thresholds="thresh" />
 </Experiment>
 </Scaffold>
 """
-
 
 def parse_groups(inputs_file, group_parts=["group"], input_parts=["name", "path"]):
     inputs_lines = [line.strip() for line in open(inputs_file, "r").readlines()]
@@ -189,13 +188,63 @@ def scaffold_export():
 
     template_parameters["sf3_path"] = options.sf3
     template_parameters["export_options"] = """ type="%s" """ % options.export_type
+    template_parameters["display_thresholds"] = build_display_thresholds(options)
 
     execute_scaffold(options, EXPORT_TEMPLATE, template_parameters)
 
 
+def build_display_thresholds(options):
+    attributes = ['id="thresh"']
+    if options.protein_probability is not None:
+        attributes.append('proteinProbability="%s"' % options.protein_probability)
+    if options.peptide_probability is not None:
+        attributes.append('peptideProbability="%s"' % options.peptide_probability)
+    if options.minimum_peptide_count is not None:
+        attributes.append('minimumPeptideCount="%s"' % options.minimum_peptide_count)
+    if options.minimum_peptide_length is not None:
+        attributes.append('minimumPeptideLength="%s"' % options.minimum_peptide_length)
+    if options.minimum_ntt is not None:
+        attributes.append('minimumNTT="%s"' % options.minimum_ntt)
+    attributes.append('useCharge="%s"' % build_use_charge_option(options))
+    tag_open = "<DisplayThresholds " + " ".join(attributes) + ">"
+    tag_body = "".join([f(options) for f in [tandem_opts, omssa_opts]])
+    tag_close = "</DisplayThresholds>"
+    return tag_open + tag_body + tag_close
+
+
+def tandem_opts(options):
+    element = ""
+    tandem_score = options.tandem_score
+    if tandem_score:
+        element = '<TandemThresholds logExpectScores="%s,%s,%s,%s" />' % ((tandem_score,) * 4)
+    return element
+
+
+def omssa_opts(options):
+    return ""
+
+
+def build_use_charge_option(options):
+    use_charge_array = []
+    for i in ["1", "2", "3", "4"]:
+        use_charge_i = getattr(options, "use_charge_%s" % i, True)
+        use_charge_array.append("true" if use_charge_i else "false")
+    return ",".join(use_charge_array)
+
+
 def populate_threshold_options(option_parser):
-    option_parser.add_option("--protein_probability")
-    option_parser.add_option("--peptide_probability")
+    option_parser.add_option("--protein_probability", default=None)
+    option_parser.add_option("--peptide_probability", default=None)
+    option_parser.add_option("--minimum_peptide_count", default=None)
+    option_parser.add_option("--ignore_charge_1", action="store_false", dest="use_charge_1", default=True)
+    option_parser.add_option("--ignore_charge_2", action="store_false", dest="use_charge_2", default=True)
+    option_parser.add_option("--ignore_charge_3", action="store_false", dest="use_charge_3", default=True)
+    option_parser.add_option("--ignore_charge_4", action="store_false", dest="use_charge_4", default=True)
+    option_parser.add_option("--minimum_peptide_length", default=None)
+    option_parser.add_option("--minimum_ntt", default=None)
+    option_parser.add_option("--tandem_score", default=None)
+    option_parser.add_option("--omssa_peptide_probability", default=None)
+    option_parser.add_option("--omssa_log_expect_score", default=None)
 
 
 def database_rules(database_type):
@@ -229,6 +278,7 @@ def scaffold_run():
 
     # Read samples from config file and convert to XML
     template_parameters["samples"] = build_samples(options.samples)
+    template_parameters["display_thresholds"] = build_display_thresholds(options)
 
     # Setup database parameters
     database_path = options.database
@@ -257,6 +307,7 @@ def execute_scaffold(options, template, template_parameters):
 
     # Prepare and create driver file
     driver_contents = Template(template).substitute(template_parameters)
+    print driver_contents
     driver_path = os.path.abspath("driver.xml")
     open(driver_path, "w").write(driver_contents)
 
