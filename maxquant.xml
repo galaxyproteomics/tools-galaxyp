@@ -1,17 +1,155 @@
 <tool id="maxquant" version="0.1.0" name="MaxQuant">
   <description>
   </description>
+  <requirements>
+    <requirement>maxquant</requirement>
+  </requirements>
+  <configfiles>
+    <configfile name="inputs_config">##Describe inputs
+#set $type = str($analysis_type.type)
+#if $type == "single"
+#set $groups = [$analysis_type]
+#elif $type == "multi_same"
+#set $groups = $analysis_type.groups
+#end if
+#for $i, $group in enumerate($groups)
+num: ${str(i + 1)}
+#for $input in $group.inputs
+name: ${input.display_name}
+path: ${input}
+#end for
+#end for
+</configfile>
+  </configfiles>
   <command interpreter="python">maxquant_wrapper.py 
-    #for $input in $inputs:
-    --input="${input}"
-    --input_name="${input.name}"
-    #end for
+    --input_groups=$inputs_config
     --database="${database}"
     --database_name="${database.name}"
+    --max_missed_cleavages=$analysis_type.max_missed_cleavages
+    #if $analysis_type.labels_conditional.labeled
+    #for $label_group in $analysis_type.labels_conditional.label_groups
+    --labels="${label_group.labels or ''}"
+    #end for
+    --max_labeled_aa=$analysis_type.labels_conditional.max_labeled_aa
+    #end if
+    #set $identification_type = str($identification.options_type)
+    #if $identification_type != "none"
+    --protein_fdr=$identification.protein_fdr
+    --peptide_fdr=$identification.peptide_fdr
+    --site_fdr=$identification.site_fdr
+    #if $identification_type != "simple"
+    --peptide_pep=$identification.peptide_pep
+    #end if
+    #end if
+    #if $misc.specify
+    --re_quantify="$misc.re_quantify"
+    #end if
+    --fixed_mods="$fixed_modifications"
   </command>
+  <macros>
+    <macro name="input_param">
+      <param format="raw" multiple="true" name="inputs" type="data" label="RAW Inputs" help="" />
+    </macro>
+    <macro name="mod_opts">
+      <options from_file="maxquant_mods.loc">
+        <column name="name" index="0"/>
+        <column name="value" index="0" />
+      </options>
+    </macro>
+    <macro name="group_params">
+      <param name="max_missed_cleavages" type="integer" label="Maximum Number of Missed Cleavages" value="2" />
+      <conditional name="labels_conditional">
+        <param name="labeled" type="boolean" label="Specify Labels" checked="false" />
+        <when value="false">
+        </when>
+        <when value="true">
+          <repeat name="label_groups" title="Label Groups">
+            <param name="labels" type="select" title="Labels" multiple="true" help="Select none to describe unlabelled 'light labels'.">
+              <option value="Arg6">Arg6</option>
+              <option value="Arg10">Arg10</option>
+              <option value="Lys4">Lys4</option>
+              <option value="Lys6">Lys6</option>
+              <option value="Lys8">Lys8</option>
+            </param>
+          </repeat>
+          <param name="max_labeled_aa" type="integer" title="Max Labeled Amino Acids" value="3" />
+        </when>
+      </conditional>
+    </macro>
+    <macro name="identification_conditional">
+      <conditional name="identification">
+        <param name="options_type" type="select" label="Specify Identification Parameters">
+          <option value="none">None, use all defaults.</option>
+          <option value="simple">Simple, specify a few high level parameters.</option>
+          <option value="advanced">Advanced, specify many identification parameters.</option>
+        </param>
+        <when value="none">
+        </when>
+        <when value="simple">
+          <expand macro="simple_identification_params" />
+        </when>
+        <when value="advanced">
+          <expand macro="simple_identification_params" />
+          <expand macro="advanced_identification_params" />
+        </when>
+      </conditional>
+    </macro>
+    <macro name="simple_identification_params">
+      <param name="protein_fdr" label="Protein FDR" value="0.01" type="float" />
+      <param name="peptide_fdr" label="Peptide FDR" value="0.01" type="float" />
+      <param name="site_fdr" label="Protein FDR" value="0.01" type="float" />
+    </macro>
+    <macro name="advanced_identification_params">
+      <param name="peptide_pep" label="Max Peptide PEP" value="1" type="float" />
+      <!-- TODO: Apply site FDR seperately (boolean), Min peptides, Min Score,  
+           min peptide length, min razor + unique peptides, filter labeled aa,
+           min unique peptides, second peptides (boolean true) -->
+    </macro>
+    <macro name="misc_conditional">
+      <conditional name="misc">
+        <param name="specify" type="boolean" label="Specify Misc Parameters" checked="false" />
+        <when value="false">
+        </when>
+        <when value="true">
+          <param name="re_quantify" type="boolean" label="Re-quantify" checked="true" truevalue="true" falsevalue="false" />
+          <!--
+            requantify
+            "Keep low-scoring versions of identified peptides" 0 = No, 1 only within parameters groups, 2 = Also between parameter groups.
+            Match Between Runs: bool
+               Time window (minutes): 2
+            Label-free quantification:
+               LFO min ratio count 2
+               Fast LFQ
+            iBAQ
+               Log fit
+          -->
+        </when>
+      </conditional>
+    </macro>
+  </macros>
   <inputs>
-    <param format="raw" multiple="true" name="inputs" type="data" label="RAW Inputs" help="" />
+    <conditional name="analysis_type">
+      <param name="type" type="select" value="single" help="The wrapper has not yet implemented multiple groups with different parameters">
+        <option value="single">Single Group</option>
+        <option value="multi_same">Multi-Group Identical Parameters</option>
+      </param>
+      <when value="multi_same">
+        <repeat name="groups">
+          <expand macro="input_param" />
+        </repeat>
+	      <expand macro="group_params" />
+      </when>
+      <when value="single">
+        <expand macro="input_param" />
+        <expand macro="group_params" />
+      </when>
+    </conditional>
     <param format="fasta" name="database" type="data" label="FASTA Database" help="" />
+    <param name="fixed_modifications" label="Fixed Modifications" type="select" value="Carbamidomethyl (C)" multiple="true">
+      <expand macro="mod_opts" />
+    </param>
+    <expand macro="identification_conditional" />
+    <expand macro="misc_conditional" />
   </inputs>
   <outputs>
     <data format="tabular" name="output_proteins" label="MaxQuant Protein Groups for ${on_string}"/>
