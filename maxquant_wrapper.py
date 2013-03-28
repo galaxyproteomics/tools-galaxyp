@@ -215,16 +215,7 @@ GROUP_TEMPLATE = """
             <string>Oxidation (M)</string>
             <string>Acetyl (Protein N-term)</string>
          </variableModifications>
-         <isobaricLabels>
-            <string>iTRAQ4plex-Nter114</string>
-            <string>iTRAQ4plex-Nter115</string>
-            <string>iTRAQ4plex-Nter116</string>
-            <string>iTRAQ4plex-Nter117</string>
-            <string>iTRAQ4plex-Lys114</string>
-            <string>iTRAQ4plex-Lys115</string>
-            <string>iTRAQ4plex-Lys116</string>
-            <string>iTRAQ4plex-Lys117</string>
-         </isobaricLabels>
+         $isobaric_labels
          <variableModificationsFirstSearch>
             <string>Oxidation (M)</string>
             <string>Acetyl (Protein N-term)</string>
@@ -261,6 +252,27 @@ fragment_settings = {
               "IncludeWater": "true", "IncludeAmmonia": "true", "DependentLosses": "true",
               "tolerance_value": "0.5", "tolerance_unit": "Dalton", "name": "Unknown"},
 }
+
+
+def build_isobaric_labels(reporter_type):
+    if not reporter_type:
+        return "<isobaricLabels />"
+    if reporter_type == "itraq_4plex":
+        prefix = "iTRAQ4plex"
+        mzs = [114, 115, 116, 117]
+    elif reporter_type == "itraq_8plex":
+        prefix = "iTRAQ8plex"
+        mzs = [113, 114, 115, 116, 117, 118, 119, 121]
+    elif reporter_type == "tmt_2plex":
+        prefix = "TMT2plex"
+        mzs = [126, 127]
+    elif reporter_type == "tmt_6plex":
+        prefix = "TMT6plex"
+        mzs = [126, 127, 128, 129, 130, 131]
+    else:
+        raise Exception("Unknown reporter type - %s" % reporter_type)
+    labels = ["%s-%s%d" % (prefix, term, mz) for term in ["Nter", "Lys"] for mz in mzs]
+    return wrap(map(xml_string, labels), "isobaricLabels")
 
 
 def parse_groups(inputs_file, group_parts=["num"], input_parts=["name", "path"]):
@@ -359,7 +371,8 @@ def xml_int(value):
 
 
 def get_properties(options):
-    direct_properties = ["max_missed_cleavages",
+    direct_properties = ["lcms_run_type",
+                         "max_missed_cleavages",
                          "max_labeled_aa",
                          "calc_peak_properties",
                          "use_original_precursor_mz",
@@ -481,7 +494,6 @@ def set_group_params(properties, options):
     group_properties["labels"] = labels_string
     group_properties["multiplicity"] = len(labels)
     group_properties["group_index"] = "1"
-    group_properties["lcms_run_type"] = "0"
     group_properties["ms_instrument"] = "0"
     group_params = Template(GROUP_TEMPLATE).substitute(group_properties)
     properties["group_params"] = group_params
@@ -566,6 +578,8 @@ def run_script():
     parser.add_option("--calc_peak_properties", default="false")
     parser.add_option("--use_original_precursor_mz", default="false")
     parser.add_option("--multi_modification_search", default="false")
+    parser.add_option("--lcms_run_type", default="0")
+    parser.add_option("--reporter_type", default=None)
 
     parser.add_option("--restrict_mods", default="Oxidation (M),Acetyl (Protein N-term)")
     parser.add_option("--fixed_mods", default="Carbamidomethyl (C)")
@@ -581,6 +595,7 @@ def run_script():
     raw_file_info = setup_inputs(options.input_groups)
     properties = get_properties(options)
     properties["raw_file_info"] = raw_file_info
+    properties["isobaric_labels"] = build_isobaric_labels(options.reporter_type)
     set_group_params(properties, options)
     driver_contents = Template(TEMPLATE).substitute(properties)
     open("mqpar.xml", "w").write(driver_contents)

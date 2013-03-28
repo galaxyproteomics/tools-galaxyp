@@ -26,11 +26,39 @@ path: ${input}
     --database="${database}"
     --database_name="${database.name}"
     --max_missed_cleavages=$analysis_type.max_missed_cleavages
-    #if $analysis_type.labels_conditional.labeled
-    #for $label_group in $analysis_type.labels_conditional.label_groups
+    #set $run = $analysis_type.run
+    #set $lcms_run_type = $run.lcms_run_type
+    --lcms_run_type=$lcms_run_type
+    #if str($lcms_run_type) != "3"
+    ## i.e. is not reporter ion type
+    #if $run.labels_conditional.labeled
+    #for $label_group in $run.labels_conditional.label_groups
     --labels="${label_group.labels or ''}"
     #end for
-    --max_labeled_aa=$analysis_type.labels_conditional.max_labeled_aa
+    --max_labeled_aa=$run.labels_conditional.max_labeled_aa
+    #end if
+    #else
+    --reporter_type=$run.reporter_type
+    #end if 
+    #set $sp = $advanced_sequence_parameters
+    #if $sp.specify
+    --include_contamiants=${str(sp['include_contamiants']).lower()}
+    --equal_il=${str(sp['equal_il']).lower()}
+    --randomize=${str(sp['randomize'])}
+    #end if
+    #if $quantification.specify
+    #set $restrict = $quantification.restrict.restrict_protein_quantification
+    --restrict_protein_quantification=${str(restrict).lower()}
+    #if $quantification.restrict.restrict_protein_quantification
+    --restrict_mods="$quantification.restrict.restrict_modifications"
+    #end if
+    --quant_mode=$quantification.quant_mode
+    --use_counterparts=$quantification.use_counterparts
+    --min_ratio_count=$quantification.min_ratio_count
+    #end if
+    #if $site_quantification.specify
+    --site_quant_mode=$site_quantification.site_quant_mode
+    --use_norm_ratios_for_occupancy=$site_quantification.use_norm_ratios_for_occupancy
     #end if
     #set $identification_type = str($identification.options_type)
     #if $identification_type != "none"
@@ -58,6 +86,24 @@ path: ${input}
     </macro>
     <macro name="group_params">
       <param name="max_missed_cleavages" type="integer" label="Maximum Number of Missed Cleavages" value="2" />
+      <conditional name="run">
+        <param name="lcms_run_type" type="select" label="Run Type">
+          <option value="0">Standard</option>
+          <option value="2">All ion fragmentation</option>
+          <option value="3">Reporter ion</option>
+        </param>
+        <when value="0">
+          <expand macro="labels" />
+        </when>
+        <when value="2"> 
+          <expand macro="labels" />
+        </when>
+        <when value="3">
+          <expand macro="reporter" />
+        </when>
+      </conditional>
+    </macro>
+    <macro name="labels">
       <conditional name="labels_conditional">
         <param name="labeled" type="boolean" label="Specify Labels" checked="false" />
         <when value="false">
@@ -73,6 +119,30 @@ path: ${input}
             </param>
           </repeat>
           <param name="max_labeled_aa" type="integer" title="Max Labeled Amino Acids" value="3" />
+        </when>
+      </conditional>      
+    </macro>
+    <macro name="reporter">
+      <param name="reporter_type" type="select" label="Reporter Ions Type">
+        <option value="itraq_4plex">4-plex iTRAQ</option>
+        <option value="itraq_8plex">8-plex iTRAQ</option>
+        <option value="tmt_2plex">2-plex TMT</option>
+        <option value="tmt_6plex">6-plex TMT</option>
+      </param>
+    </macro>
+    <macro name="advanced_sequences_conditional">
+      <conditional name="advanced_sequence_parameters">
+        <param name="specify" type="boolean" label="Specify Advanced Sequence Parameters" checked="false" />
+        <when value="false">
+        </when>
+        <when value="true">
+          <param name="include_contamiants" type="boolean" label="Include Contamiant Sequences" checked="true" />
+          <param name="equal_il" type="boolean" label="I = L" checked="false" />
+          <param name="randomize" type="select" label="Decoy Type">
+            <option value="false" selected="true">Reverse</option>
+            <option value="true">Randomize</option>
+          </param>
+          <!-- TODO: special_aas, KR -->
         </when>
       </conditional>
     </macro>
@@ -91,6 +161,47 @@ path: ${input}
         <when value="advanced">
           <expand macro="simple_identification_params" />
           <expand macro="advanced_identification_params" />
+        </when>
+      </conditional>
+    </macro>
+    <macro name="site_quantification_conditional">
+      <conditional name="site_quantification">
+        <param name="specify" type="boolean" label="Specify Advanced Site Quantification Parameters" checked="false" />
+        <when value="false">
+        </when>
+        <when value="true">
+          <param name="site_quant_mode" type="select" label="Site Quantification Mode">
+            <!-- TODO verify values -->
+            <option value="0" selected="true">Use least modified peptides</option>
+            <option value="1">Use largest change</option>
+          </param>
+          <param name="use_norm_ratios_for_occupancy" type="boolean" label="Use normalized Ratios for  Occupancy" truevalue="true" falsevalue="false" checked="true"/>
+        </when>
+      </conditional>
+    </macro>
+    <macro name="protein_quantification_conditional">
+      <conditional name="quantification">
+        <param name="specify" type="boolean" label="Specify Advanced Protein Quantification Parameters" checked="false" />
+        <when value="false">
+        </when>
+        <when value="true">
+          <conditional name="restrict">
+            <param name="restrict_protein_quantification" type="boolean" label="Restrict Protein Quantification" checked="true" help="to unmodified peptides and those with certain modifications."/>
+            <when value="false">
+            </when>
+            <when value="true">
+              <param name="restrict_modifications" label="Modifications for Quantification" type="select" help="If advanced protein quantification parameters is not selected these default to Oxidation (M) and Actetyl (Protein N-term), but they must be selected (if desired) in this mode." multiple="true">
+                <expand macro="mod_opts" />
+              </param>
+            </when>
+          </conditional>
+          <param name="quant_mode" type="select" label="Protein Quantification Mode">
+            <option value="0">Use all peptides</option>
+            <option value="1" selected="true">Use razor and unique peptides</option>
+            <option value="2">Use unique peptides</option>
+          </param>
+          <param name="use_counterparts" type="boolean" label="Discard Unmodified Counterpart Peptides." checked="true" truevalue="false" falsevalue="true" />
+          <param name="min_ratio_count" label="Minimum Ratio Count" value="2" type="integer" />
         </when>
       </conditional>
     </macro>
@@ -113,7 +224,6 @@ path: ${input}
         <when value="true">
           <param name="re_quantify" type="boolean" label="Re-quantify" checked="true" truevalue="true" falsevalue="false" />
           <!--
-            requantify
             "Keep low-scoring versions of identified peptides" 0 = No, 1 only within parameters groups, 2 = Also between parameter groups.
             Match Between Runs: bool
                Time window (minutes): 2
@@ -145,10 +255,13 @@ path: ${input}
       </when>
     </conditional>
     <param format="fasta" name="database" type="data" label="FASTA Database" help="" />
-    <param name="fixed_modifications" label="Fixed Modifications" type="select" value="Carbamidomethyl (C)" multiple="true">
+    <expand macro="advanced_sequences_conditional" />
+    <param name="fixed_modifications" label="Fixed Modifications" type="select" multiple="true">
       <expand macro="mod_opts" />
     </param>
     <expand macro="identification_conditional" />
+    <expand macro="protein_quantification_conditional" />
+    <expand macro="site_quantification_conditional" />
     <expand macro="misc_conditional" />
   </inputs>
   <outputs>
