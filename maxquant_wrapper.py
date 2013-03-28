@@ -8,6 +8,7 @@ import subprocess
 import logging
 from string import Template
 from xml.sax.saxutils import escape
+import xml.etree.ElementTree as ET
 
 log = logging.getLogger(__name__)
 
@@ -88,6 +89,83 @@ def copy_to_working_directory(data_file, relative_path):
 def __main__():
     run_script()
 
+
+## Lock File Stuff
+## http://www.evanfosmark.com/2009/01/cross-platform-file-locking-support-in-python/
+import os
+import time
+import errno
+
+
+class FileLockException(Exception):
+    pass
+
+
+class FileLock(object):
+    """ A file locking mechanism that has context-manager support so
+        you can use it in a with statement. This should be relatively cross
+        compatible as it doesn't rely on msvcrt or fcntl for the locking.
+    """
+
+    def __init__(self, file_name, timeout=10, delay=.05):
+        """ Prepare the file locker. Specify the file to lock and optionally
+            the maximum timeout and the delay between each attempt to lock.
+        """
+        self.is_locked = False
+        self.lockfile = os.path.join(os.getcwd(), "%s.lock" % file_name)
+        self.file_name = file_name
+        self.timeout = timeout
+        self.delay = delay
+
+    def acquire(self):
+        """ Acquire the lock, if possible. If the lock is in use, it check again
+            every `wait` seconds. It does this until it either gets the lock or
+            exceeds `timeout` number of seconds, in which case it throws
+            an exception.
+        """
+        start_time = time.time()
+        while True:
+            try:
+                self.fd = os.open(self.lockfile, os.O_CREAT | os.O_EXCL | os.O_RDWR)
+                break
+            except OSError as e:
+                if e.errno != errno.EEXIST:
+                    raise
+                if (time.time() - start_time) >= self.timeout:
+                    raise FileLockException("Timeout occured.")
+                time.sleep(self.delay)
+        self.is_locked = True
+
+    def release(self):
+        """ Get rid of the lock by deleting the lockfile.
+            When working in a `with` statement, this gets automatically
+            called at the end.
+        """
+        if self.is_locked:
+            os.close(self.fd)
+            os.unlink(self.lockfile)
+            self.is_locked = False
+
+    def __enter__(self):
+        """ Activated when used in the with statement.
+            Should automatically acquire a lock to be used in the with block.
+        """
+        if not self.is_locked:
+            self.acquire()
+        return self
+
+    def __exit__(self, type, value, traceback):
+        """ Activated at the end of the with statement.
+            It automatically releases the lock if it isn't locked.
+        """
+        if self.is_locked:
+            self.release()
+
+    def __del__(self):
+        """ Make sure that the FileLock instance doesn't leave a lockfile
+            lying around.
+        """
+        self.release()
 
 TEMPLATE = """<?xml version="1.0" encoding="utf-8"?>
 <MaxQuantParams xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" runOnCluster="false" processFolder="$process_folder">
@@ -448,7 +526,7 @@ def get_properties(options):
     props = {
       "slice_peaks": "true",
       "num_cores": str(options.num_cores),
-      "database": xml_string(options.database),
+      "database": xml_string(setup_database(options)),
       "process_folder": os.path.join(os.getcwd(), "process"),
     }
     for prop in direct_properties:
@@ -463,6 +541,65 @@ def get_properties(options):
     fixed_mods_string = wrap(map(xml_string, options.fixed_mods), "fixedModifications")
     props["fixed_mods"] = fixed_mods_string
     return props
+
+
+# http://stackoverflow.com/questions/377017/test-if-executable-exists-in-python
+def which(program):
+    import os
+
+    def is_exe(fpath):
+        return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
+
+    fpath, fname = os.path.split(program)
+    if fpath:
+        if is_exe(program):
+            return program
+    else:
+        for path in os.environ["PATH"].split(os.pathsep):
+            path = path.strip('"')
+            exe_file = os.path.join(path, program)
+            if is_exe(exe_file):
+                return exe_file
+
+    return None
+
+
+def get_unique_path(base, extension):
+    """
+    """
+    return "%s_%d%s" % (base, int(time.time() * 1000), extension)
+
+
+def get_env_property(name, default):
+    if name in os.environ:
+        return os.environ[name]
+    else:
+        return default
+
+
+def setup_database(options):
+    database_path = options.database
+    database_name = options.database_name
+    database_name = database_name.replace(" ", "_")
+    (database_basename, extension) = os.path.splitext(database_name)
+    database_destination = get_unique_path(database_basename, ".fasta")
+    assert database_destination == os.path.basename(database_destination)
+    symlink(database_path, database_destination)
+
+    database_conf = get_env_property("MAXQUANT_DATABASE_CONF", None)
+    if not database_conf:
+        exe_path = which("MaxQuantCmd.exe")
+        database_conf = os.path.join(os.path.dirname(exe_path), "conf", "databases.xml")
+    with FileLock(database_conf + ".galaxy_lock"):
+        tree = ET.parse(database_conf)
+        root = tree.getroot()
+        databases_node = root.find("Databases")
+        database_node = ET.SubElement(databases_node, 'databases')
+        database_node.attrib["search_expression"] = ">([^ ]*)"
+        database_node.attrib["replacement_expression"] = "%1"
+        database_node.attrib["filename"] = database_destination
+        tree.write(database_conf)
+    return os.path.abspath(database_destination)
 
 
 def setup_inputs(input_groups_path):
