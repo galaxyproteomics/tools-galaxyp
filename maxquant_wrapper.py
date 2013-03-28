@@ -721,6 +721,24 @@ def run_script():
     parser.add_option("--multi_modification_search", default="false")
     parser.add_option("--lcms_run_type", default="0")
     parser.add_option("--reporter_type", default=None)
+    parser.add_option("--output_mqpar", default=None)
+    text_outputs = {
+                    "aif_msms": "aifMsms",
+                    "all_peptides": "allPeptides",
+                    "evidence": "evidence",
+                    "modification_specific_peptides": "modificationSpecificPeptides",
+                    "msms": "msms",
+                    "msms_scans": "msmsScans",
+                    "mz_range": "mzRange",
+                    "parameters": "parameters",
+                    "peptides": "peptides",
+                    "protein_groups": "proteinGroups",
+                    "sim_peptides": "simPeptides",
+                    "sim_scans": "simScans",
+                    "summary": "summary"
+                   }
+    for output in text_outputs.keys():
+        parser.add_option("--output_%s" % output, default=None)
 
     parser.add_option("--restrict_mods", default="Oxidation (M),Acetyl (Protein N-term)")
     parser.add_option("--fixed_mods", default="Carbamidomethyl (C)")
@@ -740,8 +758,16 @@ def run_script():
     set_group_params(properties, options)
     driver_contents = Template(TEMPLATE).substitute(properties)
     open("mqpar.xml", "w").write(driver_contents)
-    print driver_contents
     execute("MaxQuantCmd.exe mqpar.xml %d" % options.num_cores)
+    for key, basename in text_outputs.iteritems():
+        attribute = "output_%s" % key
+        destination = getattr(options, attribute, None)
+        if destination:
+            source = os.path.join("combined", "txt", "%s.txt" % basename)
+            shutil.copy(source, destination)
+    output_mqpar = options.output_mqpar
+    if output_mqpar:
+        shutil.copy("mqpar.xml", output_mqpar)
 
 if __name__ == '__main__':
     __main__()
