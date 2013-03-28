@@ -616,7 +616,7 @@ def setup_inputs(input_groups_path):
                 name = "%s.%s" % (name, ".RAW")
             symlink(path, name)
             paths.append(os.path.abspath(name))
-            names.append(name)
+            names.append(os.path.splitext(name)[0])
             group_nums.append(group_num)
     file_data = (get_file_paths(paths), get_file_names(names), get_file_groups(group_nums))
     return "<rawFileInfo>%s%s%s<Fractions/><Values/></rawFileInfo> " % file_data
@@ -634,6 +634,10 @@ def set_group_params(properties, options):
     group_properties["ms_instrument"] = "0"
     group_params = Template(GROUP_TEMPLATE).substitute(group_properties)
     properties["group_params"] = group_params
+
+
+def split_mods(mods_string):
+    return [mod for mod in mods_string.split(",") if mod] if mods_string else []
 
 
 def run_script():
@@ -724,8 +728,8 @@ def run_script():
     add_fragment_options(parser)
 
     (options, args) = parser.parse_args()
-    options.restrict_mods = options.restrict_mods.split(",")
-    options.fixed_mods = options.fixed_mods.split(",")
+    options.restrict_mods = split_mods(options.restrict_mods)
+    options.fixed_mods = split_mods(options.fixed_mods)
 
     update_fragment_settings(options)
 
