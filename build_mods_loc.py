@@ -13,4 +13,5 @@ modifications_el = tree.getroot()
 
 with open("maxquant_mods.loc", "w") as output:
     for mod in modifications_el.getchildren():
-        output.write("%s\n" % mod.attrib["title"])
+        if mod.find("type").text.strip() == "standard":
+            output.write("%s\n" % mod.attrib["title"])
