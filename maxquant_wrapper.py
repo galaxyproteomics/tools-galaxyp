@@ -277,22 +277,19 @@ TEMPLATE = """<?xml version="1.0" encoding="utf-8"?>
 """
 
 GROUP_TEMPLATE = """
-         <maxCharge>7</maxCharge>
+         <maxCharge>$max_charge</maxCharge>
          <lcmsRunType>$lcms_run_type</lcmsRunType>
          <msInstrument>$ms_instrument</msInstrument>
          <groupIndex>$group_index</groupIndex>
          <maxLabeledAa>$max_labeled_aa</maxLabeledAa>
-         <maxNmods>5</maxNmods>
+         <maxNmods>$max_n_mods</maxNmods>
          <maxMissedCleavages>$max_missed_cleavages</maxMissedCleavages>
          <multiplicity>$multiplicity</multiplicity>
-         <protease>Trypsin/P</protease>
-         <proteaseFirstSearch>Trypsin/P</proteaseFirstSearch>
+         <protease>$protease</protease>
+         <proteaseFirstSearch>$protease</proteaseFirstSearch>
          <useProteaseFirstSearch>false</useProteaseFirstSearch>
          <useVariableModificationsFirstSearch>false</useVariableModificationsFirstSearch>
-         <variableModifications>
-            <string>Oxidation (M)</string>
-            <string>Acetyl (Protein N-term)</string>
-         </variableModifications>
+         $variable_mods
          $isobaric_labels
          <variableModificationsFirstSearch>
             <string>Oxidation (M)</string>
@@ -305,9 +302,9 @@ GROUP_TEMPLATE = """
          <additionalVariableModificationProteins>
             <ArrayOfString />
          </additionalVariableModificationProteins>
-         <doMassFiltering>true</doMassFiltering>
-         <firstSearchTol>20</firstSearchTol>
-         <mainSearchTol>6</mainSearchTol>
+         <doMassFiltering>$do_mass_filtering</doMassFiltering>
+         <firstSearchTol>$first_search_tol</firstSearchTol>
+         <mainSearchTol>$main_search_tol</mainSearchTol>
          $labels
 """
 
@@ -451,7 +448,13 @@ def xml_int(value):
 def get_properties(options):
     direct_properties = ["lcms_run_type",
                          "max_missed_cleavages",
+                         "protease",
+                         "first_search_tol",
+                         "main_search_tol",
+                         "max_n_mods",
+                         "max_charge",
                          "max_labeled_aa",
+                         "do_mass_filtering",
                          "calc_peak_properties",
                          "use_original_precursor_mz",
                          "multi_modification_search",
@@ -540,6 +543,8 @@ def get_properties(options):
     props["restrict_mods"] = restrict_mods_string
     fixed_mods_string = wrap(map(xml_string, options.fixed_mods), "fixedModifications")
     props["fixed_mods"] = fixed_mods_string
+    variable_mods_string = wrap(map(xml_string, options.variable_mods), "variableModifications")
+    props["variable_mods"] = variable_mods_string
     return props
 
 
@@ -647,6 +652,12 @@ def run_script():
     parser.add_option("--database_name")
     parser.add_option("--num_cores", type="int", default=4)
     parser.add_option("--max_missed_cleavages", type="int", default=2)
+    parser.add_option("--protease", default="Trypsin/P")
+    parser.add_option("--first_search_tol", default="20")
+    parser.add_option("--main_search_tol", default="6")
+    parser.add_option("--max_n_mods", type="int", default=5)
+    parser.add_option("--max_charge", type="int", default=7)
+    parser.add_option("--do_mass_filtering", default="true")
     parser.add_option("--labels", action="append", default=[])
     parser.add_option("--max_labeled_aa", type="int", default=3)
     parser.add_option("--keep_low_scores_mode", type="int", default=0)
@@ -740,6 +751,7 @@ def run_script():
     for output in text_outputs.keys():
         parser.add_option("--output_%s" % output, default=None)
 
+    parser.add_option("--variable_mods", default="Oxidation (M),Acetyl (Protein N-term)")
     parser.add_option("--restrict_mods", default="Oxidation (M),Acetyl (Protein N-term)")
     parser.add_option("--fixed_mods", default="Carbamidomethyl (C)")
 
@@ -748,6 +760,7 @@ def run_script():
     (options, args) = parser.parse_args()
     options.restrict_mods = split_mods(options.restrict_mods)
     options.fixed_mods = split_mods(options.fixed_mods)
+    options.variable_mods = split_mods(options.variable_mods)
 
     update_fragment_settings(options)
 
@@ -758,6 +771,7 @@ def run_script():
     set_group_params(properties, options)
     driver_contents = Template(TEMPLATE).substitute(properties)
     open("mqpar.xml", "w").write(driver_contents)
+    print driver_contents
     execute("MaxQuantCmd.exe mqpar.xml %d" % options.num_cores)
     for key, basename in text_outputs.iteritems():
         attribute = "output_%s" % key
