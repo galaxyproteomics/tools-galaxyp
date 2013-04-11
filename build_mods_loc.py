@@ -9,4 +9,4 @@ with open("searchgui_mods.loc", "w") as output:
         modifications_el = tree.getroot()
         for mod in modifications_el.findall("{http://www.ncbi.nlm.nih.gov}MSModSpec"):
             name_el = mod.find("{http://www.ncbi.nlm.nih.gov}MSModSpec_name")
-            output.write("%s\n" % name_el.text)
+            output.write("%s\n" % name_el.text.lower())
