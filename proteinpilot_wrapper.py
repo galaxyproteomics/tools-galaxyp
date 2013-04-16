@@ -3,25 +3,23 @@ import optparse
 import os
 import sys
 import tempfile
-import shutil 
 import subprocess
-import re
 import time
-from os.path import basename
+import shutil
 import logging
-
-assert sys.version_info[:2] >= ( 2, 6 )
+from xml.sax.saxutils import escape
 
 log = logging.getLogger(__name__)
 
 DEBUG = True
 
 working_directory = os.getcwd()
-tmp_stderr_name = tempfile.NamedTemporaryFile(dir = working_directory, suffix = '.stderr').name
-tmp_stdout_name = tempfile.NamedTemporaryFile(dir = working_directory, suffix = '.stdout').name
+tmp_stderr_name = tempfile.NamedTemporaryFile(dir=working_directory, suffix='.stderr').name
+tmp_stdout_name = tempfile.NamedTemporaryFile(dir=working_directory, suffix='.stdout').name
 
-def stop_err( msg ):
-    sys.stderr.write( "%s\n" % msg )
+
+def stop_err(msg):
+    sys.stderr.write("%s\n" % msg)
     sys.exit()
 
 
@@ -131,6 +129,40 @@ quant_special_cases = {
 }
 
 
+def parse_groups(inputs_file, group_parts=["group"], input_parts=["name", "path"]):
+    inputs_lines = [line.strip() for line in open(inputs_file, "r").readlines()]
+    inputs_lines = [line for line in inputs_lines if line and not line.startswith("#")]
+    cur_group = None
+    i = 0
+    group_prefixes = ["%s:" % group_part  for group_part in group_parts]
+    input_prefixes = ["%s:" % input_part for input_part in input_parts]
+    groups = {}
+    while i < len(inputs_lines):
+        line = inputs_lines[i]
+        if line.startswith(group_prefixes[0]):
+            # Start new group
+            cur_group = line[len(group_prefixes[0]):]
+            group_data = {}
+            for j, group_prefix in enumerate(group_prefixes):
+                group_line = inputs_lines[i + j]
+                group_data[group_parts[j]] = group_line[len(group_prefix):]
+            i += len(group_prefixes)
+        elif line.startswith(input_prefixes[0]):
+            input = []
+            for j, input_prefix in enumerate(input_prefixes):
+                part_line = inputs_lines[i + j]
+                part = part_line[len(input_prefixes[j]):]
+                input.append(part)
+            if cur_group not in groups:
+                groups[cur_group] = {"group_data": group_data, "inputs": []}
+            groups[cur_group]["inputs"].append(input)
+            i += len(input_prefixes)
+        else:
+            # Skip empty line
+            i += 1
+    return groups
+
+
 def get_env_property(name, default):
     if name in os.environ:
         return os.environ[name]
@@ -238,9 +270,11 @@ def setup_methods(options):
     return (methods_name, methods_path, database_path)
 
 
-def setup_inputs(inputs, input_names):
+def setup_inputs(inputs):
     links = []
-    for input, input_name in zip(inputs, input_names):
+    for input_data in inputs:
+        input_name = input_data[0]
+        input = input_data[1]
         if DEBUG:
             print "Processing input %s with name %s and size %d" % (input, input_name, os.stat(input).st_size)
         if not input_name.upper().endswith(".MGF"):
@@ -248,7 +282,7 @@ def setup_inputs(inputs, input_names):
         link_path = os.path.abspath(input_name)
         symlink(input, link_path)
         links.append(link_path)
-    return ",".join(["<DATA type=\"MGF\" filename=\"%s\" />" % link for link in links])
+    return ",".join(["<DATA type=\"MGF\" filename=\"%s\" />" % escape(link) for link in links])
 
 
 def get_unique_path(base, extension):
@@ -265,8 +299,7 @@ def move_pspep_output(options, destination, suffix):
 
 def run_script():
     parser = optparse.OptionParser()
-    parser.add_option("--input", dest="input", action="append", default=[])
-    parser.add_option("--input_name", dest="input_name", action="append", default=[])
+    parser.add_option("--input_config")
     parser.add_option("--database")
     parser.add_option("--database_name")
     parser.add_option("--instrument")
@@ -297,8 +330,14 @@ def run_script():
     $inputs
     <RESULT filename="$output" />
 </PROTEINPILOTPARAMETERS>"""
+        input_config = options.input_config
+        group_data = parse_groups(input_config)
+        group_values = group_data.values()
+        # Not using groups right now.
+        assert len(group_values) == 1, len(group_values)
+        inputs = group_data.values()[0]["inputs"]
         input_parameters = {
-            "inputs": setup_inputs(options.input, options.input_name),
+            "inputs": setup_inputs(inputs),
             "output": group_file,
             "methods_name": methods_name
         }
