@@ -1,7 +1,5 @@
-This repository contains a Galaxy wrapper for the application
-iQuant. More information about iQuant can be found in its paper
-http://www.ncbi.nlm.nih.gov/pubmed/20821806.
-
+This repository contains a Galaxy tool for computing the false
+discovery rate of tabular data using entries marked as decoys.
 # Obtaining Tools
 
 Repositories for all Galaxy-P tools can be found at
