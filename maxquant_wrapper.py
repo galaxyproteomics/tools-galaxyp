@@ -170,7 +170,7 @@ class FileLock(object):
 TEMPLATE = """<?xml version="1.0" encoding="utf-8"?>
 <MaxQuantParams xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" runOnCluster="false" processFolder="$process_folder">
   $raw_file_info
-  <experimentalDesignFilename/>
+  <experimentalDesignFilename>$experimental_design_file</experimentalDesignFilename>
   <slicePeaks>$slice_peaks</slicePeaks>
   <tempFolder/>
   <ncores>$num_cores</ncores>
@@ -350,7 +350,7 @@ def build_isobaric_labels(reporter_type):
     return wrap(map(xml_string, labels), "isobaricLabels")
 
 
-def parse_groups(inputs_file, group_parts=["num"], input_parts=["name", "path"]):
+def parse_groups(inputs_file, group_parts=["num"], input_parts=["name", "path", "sample"]):
     inputs_lines = [line.strip() for line in open(inputs_file, "r").readlines()]
     inputs_lines = [line for line in inputs_lines if line and not line.startswith("#")]
     cur_group = None
@@ -531,6 +531,7 @@ def get_properties(options):
       "num_cores": str(options.num_cores),
       "database": xml_string(setup_database(options)),
       "process_folder": os.path.join(os.getcwd(), "process"),
+      "experimental_design_file": os.path.join(os.getcwd(), "design.txt"),
     }
     for prop in direct_properties:
         props[prop] = str(getattr(options, prop))
@@ -607,6 +608,20 @@ def setup_database(options):
     return os.path.abspath(database_destination)
 
 
+def setup_design(groups):
+    fraction = 0
+    with open(os.path.join(os.getcwd(), "design.txt"), "w") as f:
+        f.write("Name\tFraction\tExperiment\n")
+        for group, group_info in groups.iteritems():
+            files = group_info["inputs"]
+            group_num = group_info["group_data"]["num"]
+            for (name, path, sample) in files:
+                fraction += 1
+                name = os.path.splitext(normalize_name(name))[0]
+                experiment = "G%sS%s" % (group_num, sample)
+                f.write("%s\t%s\t%s\n" % (name, fraction, experiment))
+
+
 def setup_inputs(input_groups_path):
     parsed_groups = parse_groups(input_groups_path)
     paths = []
@@ -615,16 +630,22 @@ def setup_inputs(input_groups_path):
     for group, group_info in parsed_groups.iteritems():
         files = group_info["inputs"]
         group_num = group_info["group_data"]["num"]
-        for (name, path) in files:
-            name = os.path.basename(name)
-            if not name.lower().endswith(".raw"):
-                name = "%s.%s" % (name, ".RAW")
+        for (name, path, sample) in files:
+            name = normalize_name(name)
             symlink(path, name)
             paths.append(os.path.abspath(name))
             names.append(os.path.splitext(name)[0])
             group_nums.append(group_num)
+    setup_design(parsed_groups)
     file_data = (get_file_paths(paths), get_file_names(names), get_file_groups(group_nums))
     return "<rawFileInfo>%s%s%s<Fractions/><Values/></rawFileInfo> " % file_data
+
+
+def normalize_name(name):
+    name = os.path.basename(name)
+    if not name.lower().endswith(".raw"):
+        name = "%s%s" % (name, ".RAW")
+    return name
 
 
 def set_group_params(properties, options):
