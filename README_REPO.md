@@ -1,1 +1,0 @@
-Galaxy tool wrapper for the transproteomic pipeline decoyFASTA tool.
