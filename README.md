@@ -1,5 +1,5 @@
 GalaxyP - MGF Formatter
-==============================
+=======================
 
 * Home: <https://bitbucket.org/galaxyp/galaxyp-toolshed-mgf-formatter>
 * Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/mgf_formatter>
