@@ -1,7 +1,7 @@
 GalaxyP - TPP digestdb
 ======================
 
-* Home: <https://bitbucket.org/galaxyp/galaxyp-toolshed-digestdb>
+* Home: <https://bitbucket.org/galaxyp/digestdb>
 * Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/digestdb>
 * Tool ID: `digestdb`
 * Tool Type: `default`
