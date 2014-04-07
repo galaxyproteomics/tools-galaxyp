@@ -1,7 +1,7 @@
 GalaxyP - ProteoWizard msconvert
 ================================
 
-* Home: <https://bitbucket.org/galaxyp/galaxyp-toolshed-msconvert>
+* Home: <https://bitbucket.org/galaxyp/msconvert>
 * Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/msconvert>
 * Tool ID: `msconvert`
 * Tool Type: `default`
