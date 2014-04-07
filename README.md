@@ -1,7 +1,7 @@
 GalaxyP - MaxQuant
 ==================
 
-* Home: <https://bitbucket.org/galaxyp/galaxyp-toolshed-maxquant>
+* Home: <https://bitbucket.org/galaxyp/maxquant>
 * Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/maxquant>
 * Tool ID: `maxquant`
 * Tool Type: `default`
