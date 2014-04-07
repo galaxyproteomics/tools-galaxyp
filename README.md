@@ -1,7 +1,7 @@
 GalaxyP - Append False Discovery Rate
 =====================================
 
-* Home: <https://bitbucket.org/galaxyp/galaxyp-toolshed-appendfdr>
+* Home: <https://bitbucket.org/galaxyp/appendfdr>
 * Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/appendfdr>
 * Tool ID: `append_fdr`
 * Tool Type: `default`
