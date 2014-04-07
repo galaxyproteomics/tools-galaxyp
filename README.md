@@ -1,7 +1,7 @@
 GalaxyP - Bumbershoot Dependency idpQonvert
 ===========================================
 
-* Home: <https://bitbucket.org/galaxyp/galaxyp-toolshed-idpqonvert-app>
+* Home: <https://bitbucket.org/galaxyp/idpqonvert-app>
 * Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/idpqonvert_app>
 * Tool ID: `idpqonvert`
 * Tool Type: `dependency`
