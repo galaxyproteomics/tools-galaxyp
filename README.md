@@ -1,7 +1,7 @@
 GalaxyP - Scaffold
 ==================
 
-* Home: <https://bitbucket.org/galaxyp/galaxyp-toolshed-scaffold>
+* Home: <https://bitbucket.org/galaxyp/scaffold>
 * Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/scaffold>
 * Tool ID: `scaffold`
 * Tool Type: `default`
