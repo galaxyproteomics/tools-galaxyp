@@ -1,7 +1,7 @@
 GalaxyP - TPP decoyFASTA
 ========================
 
-* Home: <https://bitbucket.org/galaxyp/galaxyp-toolshed-decoyfasta>
+* Home: <https://bitbucket.org/galaxyp/decoyfasta>
 * Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/decoyfasta>
 * Tool ID: `decoy_fasta`
 * Tool Type: `default`
