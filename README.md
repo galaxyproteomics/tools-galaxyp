@@ -1,7 +1,7 @@
 GalaxyP - Bumbershoot Dependency DirecTag
 =========================================
 
-* Home: <https://bitbucket.org/galaxyp/galaxyp-toolshed-directag-app>
+* Home: <https://bitbucket.org/galaxyp/directag-app>
 * Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/directag_app>
 * Tool ID: `directag`
 * Tool Type: `dependency`
