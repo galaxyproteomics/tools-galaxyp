@@ -1,7 +1,7 @@
 GalaxyP - PeptideShaker
 =======================
 
-* Home: <https://bitbucket.org/galaxyp/galaxyp-toolshed-peptideshaker>
+* Home: <https://bitbucket.org/galaxyp/peptideshaker>
 * Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/peptideshaker>
 * Tool ID: `peptideshaker`
 * Tool Type: `default`
