@@ -1,7 +1,7 @@
 GalaxyP - Bumbershoot Dependency TagRecon
 =========================================
 
-* Home: <https://bitbucket.org/galaxyp/galaxyp-toolshed-tagrecon-app>
+* Home: <https://bitbucket.org/galaxyp/tagrecon-app>
 * Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/tagrecon_app>
 * Tool ID: `tagrecon`
 * Tool Type: `dependency`
