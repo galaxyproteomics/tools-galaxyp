@@ -1,7 +1,7 @@
 GalaxyP - Protein Database Downloader
 =====================================
 
-* Home: <https://bitbucket.org/galaxyp/galaxyp-toolshed-dbbuilder>
+* Home: <https://bitbucket.org/galaxyp/dbbuilder>
 * Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/dbbuilder>
 * Tool ID: `dbbuilder`
 * Tool Type: `default`
