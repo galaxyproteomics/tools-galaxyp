@@ -1,7 +1,7 @@
 GalaxyP - Bumbershoot Dependency MyriMatch
 ==========================================
 
-* Home: <https://bitbucket.org/galaxyp/galaxyp-toolshed-myrimatch-app>
+* Home: <https://bitbucket.org/galaxyp/myrimatch-app>
 * Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/myrimatch_app>
 * Tool ID: `myrimatch`
 * Tool Type: `dependency`
