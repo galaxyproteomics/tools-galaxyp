@@ -1,7 +1,7 @@
 GalaxyP - Peptide-Spectrum Match Evaluator
 ==========================================
 
-* Home: <https://bitbucket.org/galaxyp/galaxyp-toolshed-psm-eval>
+* Home: <https://bitbucket.org/galaxyp/psm-eval>
 * Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/psm_eval>
 * Tool ID: `psm_eval`
 * Tool Type: `default`
