@@ -9,10 +9,8 @@ DEBUG = False
 
 def main():
     (options, args) = _parse_args()
-    format_args = (options.input, options.output)
-    _run_shell("cat '%s' > '%s'" % format_args)
-    _run_dbtoolkit("com.compomics.dbtoolkit.toolkit.ReverseFASTADB", "'%s' | head --lines -4 >> '%s'" % \
-                       format_args)
+    _run_shell("cat '%s' > '%s'" % (options.input, options.output))
+    _run_dbtoolkit("com.compomics.dbtoolkit.toolkit.ReverseFASTADB", "'%s' | head --lines -4 >> '%s'" % (options.input, options.output), options)
 
 
 def _run_shell(command):
@@ -21,9 +19,9 @@ def _run_shell(command):
     _exec(command)
 
 
-def _run_dbtoolkit(java_class, args):
+def _run_dbtoolkit(java_class, command, args):
     command_prefix = "java -cp %s" % _dbtoolkit_jar_path( args.script_path )
-    _exec("%s %s %s" % (command_prefix, java_class, args))
+    _exec("%s %s %s" % (command_prefix, java_class, command))
 
 
 def _dbtoolkit_jar_path( script_path ):
