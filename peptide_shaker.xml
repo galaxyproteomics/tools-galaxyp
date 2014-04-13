@@ -3,6 +3,7 @@
     <requirements>
         <requirement type="package" version="0.28.0">peptide_shaker</requirement>
         <requirement type="package" version="1.18.0">searchgui</requirement>
+        <!--<requirement type="package" version="2.2.29">blast+</requirement>-->
     </requirements>
     <description>
         Peform protein identification combining X! Tandem and OMSSA (using SearchGUI) and PeptideShaker pipeline.
@@ -19,12 +20,12 @@
             #set $input_name = $mgf.display_name.replace(".mgf", "") + ".mgf"
             ln -s '$mgf' 'spectra/$input_name';
         #end for
+        ln -s $input_database input_database.fasta;
 
-        java -cp \$SEARCHGUI_JAR_PATH eu.isas.searchgui.cmd.SearchCLI
-        ##SearchCLI
-            -spectrum_files \$cwd/spectra
-            -output_folder \$cwd/output
-            -ppm $precursor_ion_tol_units
+        ## generate IdentificationParameters with a special programm
+        java -cp \$SEARCHGUI_JAR_PATH eu.isas.searchgui.cmd.IdentificationParametersCLI
+            -out SEARCHGUI_IdentificationParameters.parameters
+            -prec_ppm $precursor_ion_tol_units
             -prec_tol $precursor_ion_tol
             -frag_tol $fragment_tol
             -enzyme '$enzyme'
@@ -36,50 +37,134 @@
             #if $variable_mods_str
                 -variable_mods "$variable_mods_str"
             #end if
+            -min_charge $min_charge
+            -max_charge $max_charge
             -mc $missed_cleavages
-            #if $advanced.specify:
-                -xtandem $advanced.xtandem
-                #if $advanced.omssa.run_omssa
-                    #set $omssa = 1
-                #else
-                    #set $omssa = 0
-                #end if
-                -omssa $omssa
+            -fi $forward_ion
+            -ri $reverse_ion
+            -db input_database.fasta
 
-                #if $omssa == 1
-                    -hitlist_length ${advanced.omssa.hitlist_length}
-                    -remove_prec ${advanced.omssa.remove_precursor}
-                    -scale_prec ${advanced.omssa.scale_precursor}
-                    -estimate_charge ${advanced.omssa.estimate_charge}
+            #if $advanced.advanced_type_selector == "advanced":
+
+                ##if $advanced.xtandem.xtandem_selector == "yes"
+                ##end if
+
+                #if $advanced.omssa.omssa_selector == "yes"
+                    -omssa_hitlist_length ${advanced.omssa.hitlist_length}
+                    -omssa_remove_prec ${advanced.omssa.remove_precursor}
+                    -omssa_scale_prec ${advanced.omssa.scale_precursor}
+                    -omssa_estimate_charge ${advanced.omssa.estimate_charge}
                 #end if
+
+                ##if $advanced.msgf.msgf_selector == "yes"
+                ##end if
+
+                ##if $advanced.ms_amanda.ms_amanda_selector == "yes"
+                ##end if
+
             #end if
-            -db $input_database;
 
+
+        ;
+
+        java -cp \$SEARCHGUI_JAR_PATH eu.isas.searchgui.cmd.SearchCLI
+        ##SearchCLI
+            -spectrum_files \$cwd/spectra
+            -output_folder \$cwd/output
+            -id_params SEARCHGUI_IdentificationParameters.parameters
+
+            -threads "\${GALAXY_SLOTS:-12}"
+            -correct_titles $correct_titles
+            -mgf_splitting $mgf_splitting
+            -mgf_spectrum_count $mgf_spectrum_count
+
+            #if $advanced.advanced_type_selector == "advanced":
+
+                #if $advanced.xtandem.xtandem_selector == "yes"
+                    -xtandem 1
+                #else
+                    -xtandem 0
+                #end if
+
+                #if $advanced.omssa.omssa_selector == "yes"
+                    -omssa 1
+                #else
+                    -omssa 0
+                #end if
+
+                #if $advanced.msgf.msgf_selector == "yes"
+                    -msgf 1
+                #else
+                    -msgf 0
+                #end if
+
+                #if $advanced.ms_amanda.ms_amanda_selector == "yes"
+                    -ms_amanda 1
+                #else
+                    -ms_amanda 0
+                #end if
+
+            #end if
+        ;
+
+        java -cp \$PEPTIDESHAKER_JAR_PATH eu.isas.peptideshaker.cmd.IdentificationParametersCLI
+            -out PEPTIDESHAKER_IdentificationParameters.parameters
+            -prec_ppm $precursor_ion_tol_units
+            -prec_tol $precursor_ion_tol
+            -frag_tol $fragment_tol
+            -enzyme '$enzyme'
+            #set $fixed_mods_str = $fixed_modifications or ''
+            #set $variable_mods_str = $variable_modifications or ''
+            #if $fixed_mods_str
+                -fixed_mods "$fixed_mods_str" 
+            #end if
+            #if $variable_mods_str
+                -variable_mods "$variable_mods_str"
+            #end if
+            -min_charge $min_charge
+            -max_charge $max_charge
+            -mc $missed_cleavages
+            -fi $forward_ion
+            -ri $reverse_ion
+            -db input_database.fasta
+
+        ;
 
         java -cp \$PEPTIDESHAKER_JAR_PATH eu.isas.peptideshaker.cmd.PeptideShakerCLI
         ##PeptideShakerCLI
+
+            ##Mandatory parameters:
             -experiment '$exp_str'
             -sample '$samp_str'
             -replicate 1
             -spectrum_files \$cwd/spectra
             -identification_files \$cwd/output
-            -search_params \$cwd/output/SearchGUI.parameters
-            -out_txt_1 \$cwd/output_reports
-            #if $processing_options.specify
+            -out \$cwd/output.cps
+            -id_params PEPTIDESHAKER_IdentificationParameters.parameters
+
+            ##Optional gene annotation parameter
+            #if $species_type.species_type_selector != 'no_species_type':
+                -species_type $species_type.species_type_selector
+                -species $species_type.species
+            #end if
+
+            ##Optional processing parameters:
+            #if $processing_options.processing_options_selector == "yes"
                 -protein_FDR ${processing_options.protein_fdr}
                 -peptide_FDR ${processing_options.peptide_fdr}
                 -psm_FDR ${processing_options.psm_fdr}
-                -psm_FLR ${processing_options.psm_flr}
-                #if str($processing_options.a_score.use) == "1"
-                    #set $a_score = 1
-                #else
-                    #set $a_score = 0
+                -ptm_score $processing_options.ptm_score.ptm_score_selector
+                #if $processing_options.ptm_score.ptm_score_selector == 1
+                    -score_neutral_losses $processing_options.ptm_score.neutral_losses
+                    #if str($processing_options.ptm_score.ptm_threshold) != ''
+                        -ptm_threshold $processing_options.ptm_score.ptm_threshold
+                    #end if
                 #end if
-                -a_score $a_score
-                #if str($a_score) == "1"
-                    -a_score_neutral_losses ${processing_options.a_score.neutral_losses}
-                #end if
+                -protein_fraction_mw_confidence $processing_options.protein_fraction_mw_confidence
             #end if
+
+
+           ##Optional filtering parameters:
             #if $filtering_options.specify
                 -min_peptide_length ${filtering_options.min_peptide_length}
                 -max_peptide_length ${filtering_options.max_peptide_length}
@@ -87,10 +172,17 @@
                 -max_precursor_error_type ${filtering_options.max_precursor_error_type}
                 -max_xtandem_e ${filtering_options.max_xtandem_e}
                 -max_omssa_e ${filtering_options.max_omssa_e}
+                -max_mascot_e ${filtering_options.max_mascot_e}
                 -exclude_unknown_ptms ${filtering_options.exclude_unknown_ptms}
             #end if
-            -out \$cwd/output.cps ;
 
+
+            ##Optional output parameters:
+            ##Output folder for text summary - format 1 (three files: proteins, peptides and psms, soon deprecated).
+            -out_txt_1 \$cwd/output_reports
+
+        ;
+        ##cp -R ./* /home/bag/test/foo;
         mv output_reports/*peptides.txt peptides.txt ;
         mv output_reports/*psms.txt psms.txt ;
         mv output_reports/*proteins.txt proteins.txt
@@ -138,8 +230,47 @@
             <option value="Lys-N (K)">Lys-N (K)</option>
             <option value="Thermolysin, no P rule">Thermolysin, no P rule</option>
             <option value="Semi-Chymotrypsin (FYWL)">Semi-Chymotrypsin (FYWL)</option>
-            <option value="Semi-Glu-C">Semi-Glu-C</option>      
+            <option value="Semi-Glu-C">Semi-Glu-C</option>
         </param>
+
+        <param name="correct_titles" type="select" label="Correct for duplicate spectrum titles"
+            help="(-correct_titles)">
+            <option value="0">no correction</option>
+            <option value="1" selected="True">rename spectra</option>
+            <option value="2">delete spectra</option>
+        </param>
+
+        <param name="mgf_splitting" type="integer" value="1000" label="The maximum mgf file size in MB before splitting the mgf"
+            help="(-mgf_splitting)"/>
+        <param name="mgf_spectrum_count" type="integer" value="25000" label="The maximum number of spectra per mgf file when splitting"
+            help="(-mgf_spectrum_count)"/>
+
+        <conditional name="species_type">
+            <param name="species_type_selector" type="select" optional="true" label="The species type to use for the gene annotation"
+                help="(-species_type)">
+                <option value="Fungi">Fungi</option>
+                <option value="Planta">Plants</option>
+                <option value="Metazoa">Metazoa</option>
+                <option value="Vertebrates">Vertebrates</option>
+                <option value="no_species_type" selected="true">No species restriction</option>
+            </param>
+            <when value="Fungi">
+                <param name="species" type="select" label="The species to use for the gene annotation"
+                    help="(-species)">
+                    <option value="0">no correction</option>
+                    <option value="1" selected="True">rename spectra</option>
+                    <option value="2">delete spectra</option>
+                </param>
+            </when>
+            <when value="Vertebrates">
+                <param name="species" type="select" label="The species to use for the gene annotation"
+                    help="(-species)">
+                    <option value="Human">Human</option>
+                </param>
+            </when>
+        </conditional>
+
+
         <param name="missed_cleavages" type="integer" value="2" label="Maximum Missed Cleavages"
             help="Allow peptides to contain up to this many missed enzyme cleavage sites. 2 is the recommended value"/>
         <param name="fixed_modifications" type="select" label="Fixed Modifications" multiple="true"
@@ -169,40 +300,81 @@
             <option value="z">z</option>
         </param>
         <conditional name="advanced">
-            <param name="specify" label="Specify Advanced Search Options" type="boolean" truevalue="true" falsevalue="false" 
-                help=" Run X! Tandem, OMSSA, or both and provide options for OMSSA search"/>
-            <when value="false" />
-            <when value="true">
+            <param name="advanced_type_selector" type="select" label="Basic or Advanced Search options">
+                <option value="basic" selected="True">Basic</option>
+                <option value="advanced">Advanced</option>
+            </param>
+            <when value="basic" />
+            <when value="advanced">
                 <param name="xtandem" label="Run X! Tandem" type="boolean" truevalue="1" falsevalue="0" checked="true" />
+
+                <conditional name="xtandem">
+                    <param name="xtandem_selector" type="select" label="Run X!Tandem search">
+                        <option value="yes" selected="True">Search with X!Tandem</option>
+                        <option value="no">No X!Tandem search</option>
+                    </param>
+                    <when value="no" />
+                    <when value="yes">
+                    </when>
+                </conditional>
+
                 <conditional name="omssa">
-                    <param name="run_omssa" label="Run OMSSA" type="boolean" truevalue="1" falsevalue="0" checked="true" />
-                    <when value="0" />
-                    <when value="1">
+                    <param name="omssa_selector" type="select" label="Run OMSSA search">
+                        <option value="yes" selected="True">Search with OMSSA</option>
+                        <option value="no">No OMSSA search</option>
+                    </param>
+                    <when value="no" />
+                    <when value="yes">
                         <param name="hitlist_length" label="OMSSA: Hit List Length" type="integer" value="25" />
                         <param name="remove_precursor" label="OMSSA: Remove Precurosr" type="boolean" truevalue="1" falsevalue="0" checked="true"/>
                         <param name="scale_precursor" label="OMSSA: Scale Precursor Mass" type="boolean" truevalue="1" falsevalue="0" checked="false"/>
                         <param name="estimate_charge" label="OMSSA: Estimate Charge" type="boolean" truevalue="1" falsevalue="0" checked="true" />
                     </when>
                 </conditional>
+
+                <conditional name="msgf">
+                    <param name="msgf_selector" type="select" label="Run MSGF search">
+                        <option value="yes" selected="True">Search with MSGF</option>
+                        <option value="no">No MSGF search</option>
+                    </param>
+                    <when value="no" />
+                    <when value="yes">
+                    </when>
+                </conditional>
+
+                <conditional name="ms_amanda">
+                    <param name="ms_amanda_selector" type="select" label="Run MS Amanda search">
+                        <option value="yes" selected="True">Search with MSGF</option>
+                        <option value="no">No MS Amanda search</option>
+                    </param>
+                    <when value="no" />
+                    <when value="yes">
+                    </when>
+                </conditional>
             </when>
         </conditional>
         <conditional name="processing_options">
-            <param name="specify" label="Specify Advanced PeptideShaker Processing Options" type="boolean" truevalue="true" falsevalue="false"
-                help="Select and provide False Discovery Rate (FDR) levels at the peptide, protein, 
-                        and peptide-spectral match (PSM) levels, as well as False Loss Rate (FLR) for PSM’s and A score options for post-translational modifications (PTM’s). See this link_ for more details
- .. _link: http://peptide-shaker.googlecode.com/svn-history/r1267/wiki/tutorial/6_ptm_analysis.docx" />
-            <when value="false" />
-            <when value="true">
+            <param name="processing_options_selector" type="select" label="Specify Advanced PeptideShaker Processing Options">
+                <option value="no" selected="True">Default Processing Options</option>
+                <option value="yes">Advanced Processing Options</option>
+            </param>
+            <when value="no" />
+            <when value="yes">
                 <param name="protein_fdr" label="FDR at the protein level" help="In percent (default 1% FDR: '1')" value="1" type="float" />
                 <param name="peptide_fdr" label="FDR at the peptide level" help="In percent (default 1% FDR: '1')" value="1" type="float" />
                 <param name="psm_fdr" label="FDR at the PSM level" help="In percent (default 1% FDR: '1')" value="1" type="float" />
-                <param name="psm_flr" label="FLR at the PSM level" value="1" type="float"
-                    help="In percent (default 1% FLR: '1'). Percent for peptides with different potential modification sites and one variable modification." />
-                <conditional name="a_score">
-                    <param name="use" label="Calculate A Score" type="boolean" truevalue="1" falsevalue="0" checked="true" />
+                <param name="protein_fraction_mw_confidence" label="Minimum confidence required for a protein in the fraction MW plot" value="" type="float"
+                    help="default 95%: '95.0' (-protein_fraction_mw_confidence)" />
+                <conditional name="ptm_score">
+                    <param name="ptm_score_selector" type="select" label="The PTM probabilistic score to use for PTM localization">
+                        <option value="0" selected="True">A-score</option>
+                        <option value="1">PhosphoRS</option>
+                    </param>
                     <when value="0" />
                     <when value="1">
-                        <param name="neutral_losses" label="Include Neutral Losses in A Score" type="boolean" truevalue="1" falsevalue="0" />
+                        <param name="score_neutral_losses" label="Include Neutral Losses in A Score" type="boolean" truevalue="1" falsevalue="0" />
+                        <param name="ptm_threshold" label="The threshold to use for the PTM scores" value="" type="float"
+                            help="Automatic mode will be used if not set." />
                     </when>
                 </conditional>
                 <!-- SKIPPING -protein_fraction_mw_confidence ${processing_options.protein_fraction_mw_confidence} -->
@@ -220,8 +392,9 @@
                     <option value="0">ppm</option>
                     <option value="1">Daltons</option>
                 </param>
-                <param name="max_xtandem_e" label="Maximum X! Tandem E Value" value="100" type="float" help="" />
-                <param name="max_omssa_e" label="Maximum OMSSA E Value" value="100" type="float" help="" />
+                <param name="max_xtandem_e" label="Maximum X! Tandem e-value" value="100" type="float" help="" />
+                <param name="max_omssa_e" label="Maximum OMSSA e-value" value="100" type="float" help="" />
+                <param name="max_mascot_e" label="Maximum Mascot e-value filter" value="100" type="float" help="(-max_mascot_e)" />
                 <param name="exclude_unknown_ptms" label="Exclude Unknown PTMs" type="boolean" truevalue="1" falsevalue="0" checked="true" />
             </when>
         </conditional>
