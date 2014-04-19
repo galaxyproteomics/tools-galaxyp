@@ -15,6 +15,7 @@ msconvert from ProteoWizard.
 See:
 
 * <http://proteowizard.sourceforge.net/>
+* <http://proteowizard.sourceforge.net/tools/msconvert.html>
 
 
 Warning Notice
@@ -25,23 +26,11 @@ This repository requires a custom modification to Galaxy. It should be considere
 ```
 MULTIFILE_EXTENSION_PREFIX = "m:"
 
-msconvert.xml.template
-11:    #if $ext.startswith("m:")
-12:    #set $ext = $ext[len("m:"):]
-
-msconvert2.xml
+msconvert.xml
 10:    #if $ext.startswith("m:")
 11:    #set $ext = $ext[len("m:"):]
 
-msconvert2_raw.xml
-13:    #if $ext.startswith("m:")
-14:    #set $ext = $ext[len("m:"):]
-
-msconvert3.xml
-10:    #if $ext.startswith("m:")
-11:    #set $ext = $ext[len("m:"):]
-
-msconvert3_raw.xml
+msconvert_raw.xml
 13:    #if $ext.startswith("m:")
 14:    #set $ext = $ext[len("m:"):]
 ```
@@ -55,8 +44,6 @@ Due to potential difficulties installing ProteoWizard with vendor library suppor
 * Galaxy jobs may be configured to submit to a Windows host with ProteoWizard installed using the [LWR](https://wiki.g2.bx.psu.edu/Admin/Config/LWR).
 
 * ProteoWizard can be installed under Wine. Guidance on how to set this up and package such environments for cloud deployments can be found here: <https://github.com/jmchilton/proteomics-wine-env>
-
-Wrappers for both msconvert version 2 and version 3+ are provided because version 3+ of msconvert with vendor library support requires .NET 4.0 and this may difficult or impossible under Wine in Linux with all but the most recent versions of Wine (1.4+).
 
 
 GalaxyP Community
