@@ -1,26 +1,28 @@
 <tool id="peptide_shaker" name="Peptide Shaker" version="0.1.0">
-     <!-- TODO: Set defaults for weights correctly -->
-    <requirements>
-        <requirement type="package" version="0.28.0">peptide_shaker</requirement>
-        <requirement type="package" version="1.18.0">searchgui</requirement>
-        <!--<requirement type="package" version="2.2.29">blast+</requirement>-->
-    </requirements>
     <description>
         Peform protein identification combining X! Tandem and OMSSA (using SearchGUI) and PeptideShaker pipeline.
     </description>
+    <requirements>
+        <requirement type="package" version="0.28.0">peptide_shaker</requirement>
+        <requirement type="package" version="1.18.0">searchgui</requirement>
+        <requirement type="package" version="2.2.29">blast+</requirement>
+    </requirements>
+    <stdio>
+        <exit_code range="1:" level="fatal" description="Job Failed" />
+    </stdio>
     <command>
         #from datetime import datetime
         #set $exp_str = "Galaxy_Experiment_%s" % datetime.now().strftime("%Y%m%d%H%M%s")
         #set $samp_str = "Sample_%s" % datetime.now().strftime("%Y%m%d%H%M%s")
-        mkdir spectra;
         mkdir output;
         mkdir output_reports;
         cwd=`pwd`;
         #for $mgf in $peak_lists:
             #set $input_name = $mgf.display_name.replace(".mgf", "") + ".mgf"
-            ln -s '${mgf}' 'spectra/${input_name}';
+            ln -s '${mgf}' '${input_name}';
         #end for
-        ln -s ${input_database} input_database.fasta;
+        #ln -s "${input_database}" input_database.fasta;
+        cp "${input_database}" input_database.fasta;
 
         ###########################################
         ####       Creating decoy database     ####
@@ -28,7 +30,9 @@
         #if $create_decoy:
             echo "Creating decoy database.";
             java -cp \$SEARCHGUI_JAR_PATH eu.isas.searchgui.cmd.FastaCLI -in input_database.fasta -decoy;
-            ln -sf input_database_concatenated_target_decoy.fasta input_database.fasta;
+            rm input_database.fasta;
+            cp input_database_concatenated_target_decoy.fasta input_database.fasta;
+            #ln -sf input_database_concatenated_target_decoy.fasta input_database.fasta;
         #end if
 
         #####################################################
@@ -41,8 +45,8 @@
             -prec_tol "${precursor_ion_tol}"
             -frag_tol "${fragment_tol}"
             -enzyme "${enzyme}"
-            #set $fixed_mods_str = ${fixed_modifications} or ''
-            #set $variable_mods_str = ${variable_modifications} or ''
+            #set $fixed_mods_str = $fixed_modifications or ''
+            #set $variable_mods_str = $variable_modifications or ''
             #if $fixed_mods_str
                 -fixed_mods "${fixed_mods_str}" 
             #end if
@@ -82,12 +86,12 @@
         ################
         java -cp \$SEARCHGUI_JAR_PATH eu.isas.searchgui.cmd.SearchCLI
             -temp_folder `pwd`
-            -spectrum_files \$cwd/spectra
+            -spectrum_files \$cwd
             -output_folder \$cwd/output
             -id_params SEARCHGUI_IdentificationParameters.parameters
 
             -threads "\${GALAXY_SLOTS:-12}"
-            -correct_titles $correct_titles
+            -correct_titles "${correct_titles}"
             -mgf_splitting "${mgf_splitting}"
             -mgf_spectrum_count "${mgf_spectrum_count}"
 
@@ -101,6 +105,7 @@
 
                 #if $advanced.omssa.omssa_selector == "yes"
                     -omssa 1
+                    -makeblastdb_folder \$BLAST_ROOT_DIR
                 #else
                     -omssa 0
                 #end if
@@ -125,10 +130,10 @@
         #########################################################
         java -cp \$PEPTIDESHAKER_JAR_PATH eu.isas.peptideshaker.cmd.IdentificationParametersCLI
             -out PEPTIDESHAKER_IdentificationParameters.parameters
-            -prec_ppm $precursor_ion_tol_units
-            -prec_tol $precursor_ion_tol
-            -frag_tol $fragment_tol
-            -enzyme '$enzyme'
+            -prec_ppm "${precursor_ion_tol_units}"
+            -prec_tol "${precursor_ion_tol}"
+            -frag_tol "${fragment_tol}"
+            -enzyme "${enzyme}"
             #set $fixed_mods_str = $fixed_modifications or ''
             #set $variable_mods_str = $variable_modifications or ''
             #if $fixed_mods_str
@@ -153,15 +158,15 @@
             -experiment '${exp_str}'
             -sample '${samp_str}'
             -replicate 1
-            -spectrum_files \$cwd/spectra
+            -spectrum_files \$cwd
             -identification_files \$cwd/output
             -out \$cwd/peptide_shaker_output.cps
             -id_params PEPTIDESHAKER_IdentificationParameters.parameters
 
             ##Optional gene annotation parameter
-            #if "${species_type.species_type_selector}" != 'no_species_type':
+            #if $species_type.species_type_selector != 'no_species_type':
                 -species_type "${species_type.species_type_selector}"
-                -species "{$species_type.species}"
+                -species "${species_type.species}"
             #end if
 
             ##Optional processing parameters:
@@ -179,7 +184,6 @@
                 -protein_fraction_mw_confidence "${processing_options.protein_fraction_mw_confidence}"
             #end if
 
-
            ##Optional filtering parameters:
             #if $filtering_options.filtering_options_selector == "yes":
                 -min_peptide_length "${filtering_options.min_peptide_length}"
@@ -191,7 +195,6 @@
                 -max_mascot_e "${filtering_options.max_mascot_e}"
                 -exclude_unknown_ptms "${filtering_options.exclude_unknown_ptms}"
             #end if
-
         ;
 
         ##################################
@@ -201,16 +204,25 @@
             -temp_folder `pwd`
             -in \$cwd/peptide_shaker_output.cps
             -out_reports \$cwd/output_reports
-
+            -reports str($outputs).split(',').remove('cps')
         ;
 
-        ##mv output_reports/*peptides.txt peptides.txt ;
-        ##mv output_reports/*psms.txt psms.txt ;
-        ##mv output_reports/*proteins.txt proteins.txt
+        #if '0' in str($outputs).split(','):
+            find . -name '\$cwd/output_reports/*Certificate*' -exec bash -c 'mv "$0" "certificate.txt"' {} \;
+        #end if
+        #if '1' in str($outputs).split(','):
+            find . -name '\$cwd/output_reports/*PSM*' -exec bash -c 'mv "$0" "psm.txt"' {} \;
+        #end if
+        #if '2' in str($outputs).split(','):
+            find . -name '\$cwd/output_reports/*Peptide*' -exec bash -c 'mv "$0" "peptides.txt"' {} \;
+        #end if
+        #if '3' in str($outputs).split(','):
+            find . -name '\$cwd/output_reports/*Protein*' -exec bash -c 'mv "$0" "proteins.txt"' {} \;
+        #end if
+        #if '4' in str($outputs).split(','):
+            find . -name '\$cwd/output_reports/*Top*' -exec bash -c 'mv "$0" ".txt"' {} \;
+        #end if
     </command>
-    <stdio>
-        <exit_code range="1:" level="fatal" description="Job Failed" />
-    </stdio>
     <inputs>
         <param format="fasta" name="input_database" type="data" label="Protein Database"
             help="Select FASTA database from history. Typically, a target-decoy database is incorporated into the Scaffold engine for FDR analysis"/>
@@ -622,12 +634,36 @@
                 <param name="exclude_unknown_ptms" label="Exclude Unknown PTMs" type="boolean" truevalue="1" falsevalue="0" checked="true" />
             </when>
         </conditional>
+
+        <param name="outputs" type="select" display="checkboxes" multiple="True" label="Output options">
+            <option value="2" selected="True">Peptide Report</option>
+            <option value="3" selected="True">Protein Report</option>
+            <option value="1">PSM Report</option>
+            <option value="0">Certificate of Analysis</option>
+            <option value="4">Top Down Report</option>
+            <option value="cps">CPS file</option>
+            <validator type="no_options" message="Please select at least one output file." />
+        </param>
     </inputs>
     <outputs>
-        <data format="cps" name="output" from_work_dir="peptide_shaker_output.cps" label="PeptideShaker CPS results for ${on_string}" />
-        <data format="tabular" name="output_peptides" from_work_dir="peptides.txt" label="PeptideShaker Peptide Report for ${on_string}" />
-        <data format="tabular" name="output_proteins" from_work_dir="proteins.txt" label="PeptideShaker Protein Report for ${on_string}" />
-        <data format="tabular" name="output_psms" from_work_dir="psms.txt" label="PeptideShaker PSM Report for ${on_string}" />
+        <data format="cps" name="output" from_work_dir="peptide_shaker_output.cps" label="${tool.name} on ${on_string}: CPS file">
+            <filter>'cps' in outputs</filter>
+        </data>
+        <data format="text" name="output_certificate" from_work_dir="certificate.txt" label="${tool.name} on ${on_string}: Parameters">
+            <filter>'0' in outputs</filter>
+        </data>
+        <data format="text" name="output_psm" from_work_dir="psm.txt" label="${tool.name} on ${on_string}: PSM Report">
+            <filter>'1' in outputs</filter>
+        </data>
+        <data format="tabular" name="output_peptides" from_work_dir="peptides.txt" label="${tool.name} on ${on_string}: Peptide Report">
+            <filter>'2' in outputs</filter>
+        </data>
+        <data format="tabular" name="output_proteins" from_work_dir="proteins.txt" label="${tool.name} on ${on_string}: Protein Report">
+            <filter>'3' in outputs</filter>
+        </data>
+        <data format="tabular" name="output_top_down" from_work_dir="top_down.txt" label="${tool.name} on ${on_string}: Top Down Report">
+            <filter>'4' in outputs</filter>
+        </data>
     </outputs>
     <help>
 **What it does**
