@@ -10,44 +10,50 @@
     </description>
     <command>
         #from datetime import datetime
-        #set $exp_str = "Galaxy Experiment %s" % datetime.now().strftime("%Y%m%d%H%M%s")
-        #set $samp_str = "Sample %s" % datetime.now().strftime("%Y%m%d%H%M%s")
+        #set $exp_str = "Galaxy_Experiment_%s" % datetime.now().strftime("%Y%m%d%H%M%s")
+        #set $samp_str = "Sample_%s" % datetime.now().strftime("%Y%m%d%H%M%s")
         mkdir spectra;
         mkdir output;
         mkdir output_reports;
         cwd=`pwd`;
         #for $mgf in $peak_lists:
             #set $input_name = $mgf.display_name.replace(".mgf", "") + ".mgf"
-            ln -s '$mgf' 'spectra/$input_name';
+            ln -s '${mgf}' 'spectra/${input_name}';
         #end for
-        ln -s $input_database input_database.fasta;
+        ln -s ${input_database} input_database.fasta;
 
+        ###########################################
+        ####       Creating decoy database     ####
+        ###########################################
         #if $create_decoy:
             echo "Creating decoy database.";
-            java -cp \$SEARCHGUI_JAR_PATH eu.isas.searchgui.cmd.FastaCLI -in input_database.fasta -decoy input_database_decoy.fasta;
-            ln -sf input_database_decoy.fasta input_database.fasta;
+            java -cp \$SEARCHGUI_JAR_PATH eu.isas.searchgui.cmd.FastaCLI -in input_database.fasta -decoy;
+            ln -sf input_database_concatenated_target_decoy.fasta input_database.fasta;
         #end if
 
-        ## generate IdentificationParameters with a special programm
+        #####################################################
+        ## generate IdentificationParameters for SearchGUI ##
+        #####################################################
+
         java -cp \$SEARCHGUI_JAR_PATH eu.isas.searchgui.cmd.IdentificationParametersCLI
             -out SEARCHGUI_IdentificationParameters.parameters
-            -prec_ppm $precursor_ion_tol_units
-            -prec_tol $precursor_ion_tol
-            -frag_tol $fragment_tol
-            -enzyme '$enzyme'
-            #set $fixed_mods_str = $fixed_modifications or ''
-            #set $variable_mods_str = $variable_modifications or ''
+            -prec_ppm "${precursor_ion_tol_units}"
+            -prec_tol "${precursor_ion_tol}"
+            -frag_tol "${fragment_tol}"
+            -enzyme "${enzyme}"
+            #set $fixed_mods_str = ${fixed_modifications} or ''
+            #set $variable_mods_str = ${variable_modifications} or ''
             #if $fixed_mods_str
-                -fixed_mods "$fixed_mods_str" 
+                -fixed_mods "${fixed_mods_str}" 
             #end if
             #if $variable_mods_str
-                -variable_mods "$variable_mods_str"
+                -variable_mods "${variable_mods_str}"
             #end if
-            -min_charge $min_charge
-            -max_charge $max_charge
-            -mc $missed_cleavages
-            -fi $forward_ion
-            -ri $reverse_ion
+            -min_charge "${min_charge}"
+            -max_charge "${max_charge}"
+            -mc "${missed_cleavages}"
+            -fi "${forward_ion}"
+            -ri "${reverse_ion}"
             -db input_database.fasta
 
             #if $advanced.advanced_type_selector == "advanced":
@@ -69,19 +75,21 @@
                 ##end if
 
             #end if
-
         ;
 
+        ################
+        ## Search CLI ##
+        ################
         java -cp \$SEARCHGUI_JAR_PATH eu.isas.searchgui.cmd.SearchCLI
-        ##SearchCLI
+            -temp_folder `pwd`
             -spectrum_files \$cwd/spectra
             -output_folder \$cwd/output
             -id_params SEARCHGUI_IdentificationParameters.parameters
 
             -threads "\${GALAXY_SLOTS:-12}"
             -correct_titles $correct_titles
-            -mgf_splitting $mgf_splitting
-            -mgf_spectrum_count $mgf_spectrum_count
+            -mgf_splitting "${mgf_splitting}"
+            -mgf_spectrum_count "${mgf_spectrum_count}"
 
             #if $advanced.advanced_type_selector == "advanced":
 
@@ -112,6 +120,9 @@
             #end if
         ;
 
+        #########################################################
+        ## generate IdentificationParameters for PeptideShaker ##
+        #########################################################
         java -cp \$PEPTIDESHAKER_JAR_PATH eu.isas.peptideshaker.cmd.IdentificationParametersCLI
             -out PEPTIDESHAKER_IdentificationParameters.parameters
             -prec_ppm $precursor_ion_tol_units
@@ -132,65 +143,70 @@
             -fi $forward_ion
             -ri $reverse_ion
             -db input_database.fasta
-
         ;
 
+        ######################
+        ## PeptideShakerCLI ##
+        ######################
         java -cp \$PEPTIDESHAKER_JAR_PATH eu.isas.peptideshaker.cmd.PeptideShakerCLI
-        ##PeptideShakerCLI
-
-            ##Mandatory parameters:
-            -experiment '$exp_str'
-            -sample '$samp_str'
+            -temp_folder `pwd`
+            -experiment '${exp_str}'
+            -sample '${samp_str}'
             -replicate 1
             -spectrum_files \$cwd/spectra
             -identification_files \$cwd/output
-            -out \$cwd/output.cps
+            -out \$cwd/peptide_shaker_output.cps
             -id_params PEPTIDESHAKER_IdentificationParameters.parameters
 
             ##Optional gene annotation parameter
-            #if $species_type.species_type_selector != 'no_species_type':
-                -species_type $species_type.species_type_selector
-                -species $species_type.species
+            #if "${species_type.species_type_selector}" != 'no_species_type':
+                -species_type "${species_type.species_type_selector}"
+                -species "{$species_type.species}"
             #end if
 
             ##Optional processing parameters:
             #if $processing_options.processing_options_selector == "yes"
-                -protein_FDR ${processing_options.protein_fdr}
-                -peptide_FDR ${processing_options.peptide_fdr}
-                -psm_FDR ${processing_options.psm_fdr}
-                -ptm_score $processing_options.ptm_score.ptm_score_selector
+                -protein_FDR "${processing_options.protein_fdr}"
+                -peptide_FDR "${processing_options.peptide_fdr}"
+                -psm_FDR "${processing_options.psm_fdr}"
+                -ptm_score "${processing_options.ptm_score.ptm_score_selector}"
                 #if $processing_options.ptm_score.ptm_score_selector == 1
-                    -score_neutral_losses $processing_options.ptm_score.neutral_losses
+                    -score_neutral_losses "${processing_options.ptm_score.neutral_losses}"
                     #if str($processing_options.ptm_score.ptm_threshold) != ''
-                        -ptm_threshold $processing_options.ptm_score.ptm_threshold
+                        -ptm_threshold "${processing_options.ptm_score.ptm_threshold}"
                     #end if
                 #end if
-                -protein_fraction_mw_confidence $processing_options.protein_fraction_mw_confidence
+                -protein_fraction_mw_confidence "${processing_options.protein_fraction_mw_confidence}"
             #end if
 
 
            ##Optional filtering parameters:
             #if $filtering_options.filtering_options_selector == "yes":
-                -min_peptide_length ${filtering_options.min_peptide_length}
-                -max_peptide_length ${filtering_options.max_peptide_length}
-                -max_precursor_error ${filtering_options.max_precursor_error}
-                -max_precursor_error_type ${filtering_options.max_precursor_error_type}
-                -max_xtandem_e ${filtering_options.max_xtandem_e}
-                -max_omssa_e ${filtering_options.max_omssa_e}
-                -max_mascot_e ${filtering_options.max_mascot_e}
-                -exclude_unknown_ptms ${filtering_options.exclude_unknown_ptms}
+                -min_peptide_length "${filtering_options.min_peptide_length}"
+                -max_peptide_length "${filtering_options.max_peptide_length}"
+                -max_precursor_error "${filtering_options.max_precursor_error}"
+                -max_precursor_error_type "${filtering_options.max_precursor_error_type}"
+                -max_xtandem_e "${filtering_options.max_xtandem_e}"
+                -max_omssa_e "${filtering_options.max_omssa_e}"
+                -max_mascot_e "${filtering_options.max_mascot_e}"
+                -exclude_unknown_ptms "${filtering_options.exclude_unknown_ptms}"
             #end if
 
+        ;
 
-            ##Optional output parameters:
-            ##Output folder for text summary - format 1 (three files: proteins, peptides and psms, soon deprecated).
-            -out_txt_1 \$cwd/output_reports
+        ##################################
+        ## PeptideShaker Report options ##
+        ##################################
+        java -cp \$PEPTIDESHAKER_JAR_PATH eu.isas.peptideshaker.cmd.ReportCLI
+            -temp_folder `pwd`
+            -in \$cwd/peptide_shaker_output.cps
+            -out_reports \$cwd/output_reports
 
         ;
-        cp -R ./* /home/bag/test/foo;
-        mv output_reports/*peptides.txt peptides.txt ;
-        mv output_reports/*psms.txt psms.txt ;
-        mv output_reports/*proteins.txt proteins.txt
+
+        ##mv output_reports/*peptides.txt peptides.txt ;
+        ##mv output_reports/*psms.txt psms.txt ;
+        ##mv output_reports/*proteins.txt proteins.txt
     </command>
     <stdio>
         <exit_code range="1:" level="fatal" description="Job Failed" />
@@ -608,7 +624,7 @@
         </conditional>
     </inputs>
     <outputs>
-        <data format="cps" name="output" from_work_dir="output.cps" label="PeptideShaker CPS results for ${on_string}" />
+        <data format="cps" name="output" from_work_dir="peptide_shaker_output.cps" label="PeptideShaker CPS results for ${on_string}" />
         <data format="tabular" name="output_peptides" from_work_dir="peptides.txt" label="PeptideShaker Peptide Report for ${on_string}" />
         <data format="tabular" name="output_proteins" from_work_dir="proteins.txt" label="PeptideShaker Protein Report for ${on_string}" />
         <data format="tabular" name="output_psms" from_work_dir="psms.txt" label="PeptideShaker PSM Report for ${on_string}" />
