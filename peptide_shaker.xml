@@ -15,6 +15,8 @@
         #from datetime import datetime
         #set $exp_str = "Galaxy_Experiment_%s" % datetime.now().strftime("%Y%m%d%H%M%s")
         #set $samp_str = "Sample_%s" % datetime.now().strftime("%Y%m%d%H%M%s")
+        #set $temp_stderr = 'macs2_stderr'
+
         mkdir output;
         mkdir output_reports;
         cwd=`pwd`;
@@ -40,7 +42,7 @@
         ## generate IdentificationParameters for SearchGUI ##
         #####################################################
 
-        java -cp \$SEARCHGUI_JAR_PATH eu.isas.searchgui.cmd.IdentificationParametersCLI
+        (java -cp \$SEARCHGUI_JAR_PATH eu.isas.searchgui.cmd.IdentificationParametersCLI
             -out SEARCHGUI_IdentificationParameters.parameters
             -prec_ppm "${precursor_ion_tol_units}"
             -prec_tol "${precursor_ion_tol}"
@@ -89,23 +91,25 @@
                 #end if
 
                 #if $advanced.msgf.msgf_selector == "yes"
-					-msgf_decoy ${advanced.msgf.msgf_decoy}
-					-msgf_min_pep_length ${advanced.msgf.msgf_min_pep_length}
-					-msgf_max_pep_length ${advanced.msgf.msgf_max_pep_length}
-					-msgf_termini ${advanced.msgf.msgf_termini}
-					-msgf_num_ptms ${advanced.msgf.msgf_num_ptms}
+                    -msgf_decoy ${advanced.msgf.msgf_decoy}
+                    -msgf_min_pep_length ${advanced.msgf.msgf_min_pep_length}
+                    -msgf_max_pep_length ${advanced.msgf.msgf_max_pep_length}
+                    -msgf_termini ${advanced.msgf.msgf_termini}
+                    -msgf_num_ptms ${advanced.msgf.msgf_num_ptms}
                 #end if
 
                 ##if $advanced.ms_amanda.ms_amanda_selector == "yes"
                 ##end if
 
             #end if
-        ;
+
+        2> $temp_stderr)
+        &amp;&amp;
 
         ################
         ## Search CLI ##
         ################
-        java -cp \$SEARCHGUI_JAR_PATH eu.isas.searchgui.cmd.SearchCLI
+        (java -cp \$SEARCHGUI_JAR_PATH eu.isas.searchgui.cmd.SearchCLI
             -temp_folder `pwd`
             -spectrum_files \$cwd
             -output_folder \$cwd/output
@@ -149,12 +153,13 @@
                 #end if
 
             #end if
-        ;
+        2>> $temp_stderr)
+        &amp;&amp;
 
         #########################################################
         ## generate IdentificationParameters for PeptideShaker ##
         #########################################################
-        java -cp \$PEPTIDESHAKER_JAR_PATH eu.isas.peptideshaker.cmd.IdentificationParametersCLI
+        (java -cp \$PEPTIDESHAKER_JAR_PATH eu.isas.peptideshaker.cmd.IdentificationParametersCLI
             -out PEPTIDESHAKER_IdentificationParameters.parameters
             -prec_ppm "${precursor_ion_tol_units}"
             -prec_tol "${precursor_ion_tol}"
@@ -174,12 +179,14 @@
             -fi $forward_ion
             -ri $reverse_ion
             -db input_database.fasta
-        ;
+
+        2>> $temp_stderr)
+        &amp;&amp;
 
         ######################
         ## PeptideShakerCLI ##
         ######################
-        java -cp \$PEPTIDESHAKER_JAR_PATH eu.isas.peptideshaker.cmd.PeptideShakerCLI
+        (java -cp \$PEPTIDESHAKER_JAR_PATH eu.isas.peptideshaker.cmd.PeptideShakerCLI
             -temp_folder `pwd`
             -experiment '${exp_str}'
             -sample '${samp_str}'
@@ -221,12 +228,14 @@
                 -max_mascot_e "${filtering_options.max_mascot_e}"
                 -exclude_unknown_ptms "${filtering_options.exclude_unknown_ptms}"
             #end if
-        ;
+
+        2>> $temp_stderr)
+        &amp;&amp;
 
         ##################################
         ## PeptideShaker Report options ##
         ##################################
-        java -cp \$PEPTIDESHAKER_JAR_PATH eu.isas.peptideshaker.cmd.ReportCLI
+        (java -cp \$PEPTIDESHAKER_JAR_PATH eu.isas.peptideshaker.cmd.ReportCLI
             -temp_folder `pwd`
             -in \$cwd/peptide_shaker_output.cps
             -out_reports \$cwd/output_reports
@@ -237,7 +246,9 @@
             #else:
                 -reports #echo str($outputs)#
             #end if
-        ;
+
+        2>> $temp_stderr)
+        &amp;&amp;
 
         #if '0' in str($outputs).split(','):
             find \$cwd/output_reports -name '*Certificate*' -exec bash -c 'mv "$0" "certificate.txt"' {} \;
@@ -260,8 +271,10 @@
             ;
         #end if
 
-        ## the following line is needed. Otherwise, Galaxy will strip away the ';'
-        echo 'Finished!';
+        exit_code_for_galaxy=\$?;
+        cat $temp_stderr 2&gt;&amp;1;
+        (exit \$exit_code_for_galaxy)
+
     </command>
     <inputs>
         <param format="fasta" name="input_database" type="data" label="Protein Database"
