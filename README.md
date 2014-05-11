@@ -57,6 +57,8 @@ Authors
 
 Authors and contributors:
 
+* Bjoern Gruening <bjoern.gruening@gmail.com>
+* Ira Cooke
 * Cody Wang
 * Fred Sadler
 * John Chilton <jmchilton@gmail.com>
