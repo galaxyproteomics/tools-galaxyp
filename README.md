@@ -10,9 +10,18 @@ GalaxyP - PeptideShaker
 Description
 -----------
 
-Peform protein identification combining X! Tandem and OMSSA (using SearchGUI) and PeptideShaker pipeline.
+Perform protein identification combining X! Tandem and OMSSA (using SearchGUI) and PeptideShaker pipeline.
 
 Tool wrapper for SearchGUI and PeptideShaker. This tool takes any number of mgf files and performs X! Tandem and OMSSA searches on these via SearchGUI and merges the results using PeptideShaker.
+
+Configuration
+-------------
+
+This tool requires a Java runtime 1.6 or greater to work. To avoid out of memory errors you should set the maximum heapspace for java processes as the default is most likely too small.  For example, to set this in your shell;
+
+export _JAVA_OPTIONS='-Xmx1500M'
+
+It is also possible to set this on a per tool basis using advanced features of the galaxy job config system
 
 Note:
 
