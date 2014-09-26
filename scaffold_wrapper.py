@@ -47,8 +47,8 @@ def execute(command, stdin=None):
                 if returncode != 0:
                     raise Exception("Program returned with non-zero exit code %d. stderr: %s" % (returncode, read_stderr()))
     finally:
-        print open(tmp_stderr_name, "r").read(64000)
-        print open(tmp_stdout_name, "r").read(64000)
+        print((open(tmp_stderr_name, "r").read(64000)))
+        print((open(tmp_stdout_name, "r").read(64000)))
 
 
 def delete_file(path):
@@ -152,7 +152,7 @@ def parse_groups(inputs_file, group_parts=["group"], input_parts=["name", "path"
 def build_samples(samples_file):
     group_data = parse_groups(samples_file, group_parts=["sample", "mudpit", "category"], input_parts=["name", "path", "ext"])
     samples_description = ""
-    for sample_name, sample_data in group_data.iteritems():
+    for sample_name, sample_data in list(group_data.items()):
         files = sample_data["inputs"]
         mudpit = sample_data["group_data"]["mudpit"]
         category = sample_data["group_data"]["category"]
@@ -307,7 +307,7 @@ def execute_scaffold(options, template, template_parameters):
 
     # Prepare and create driver file
     driver_contents = Template(template).substitute(template_parameters)
-    print driver_contents
+    print(driver_contents)
     driver_path = os.path.abspath("driver.xml")
     open(driver_path, "w").write(driver_contents)
 
