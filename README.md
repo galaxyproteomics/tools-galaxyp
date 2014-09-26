@@ -4,7 +4,6 @@ GalaxyP - ProteinPilot
 * Home: <https://bitbucket.org/galaxyp/proteinpilot>
 * Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/proteinpilot>
 * Tool ID: `proteinpilot`
-* Tool Type: `default`
 
 
 Description
