@@ -1,5 +1,5 @@
-GalaxyP - Protein Database Downloader
-=====================================
+GalaxyP - FASTA Merge Files and Filter Unique Sequences
+=======================================================
 
 * Home: <https://bitbucket.org/galaxyp/fasta_merge_files_and_filter_unique_sequences>
 * Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/fasta_merge_files_and_filter_unique_sequences>
