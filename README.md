@@ -1,10 +1,9 @@
 GalaxyP - MGF Formatter
 =======================
 
-* Home: <https://bitbucket.org/galaxyp/mgf-formatter>
+* Home: <https://bitbucket.org/galaxyp/mgf_formatter>
 * Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/mgf_formatter>
 * Tool ID: `mgf_formatter`
-* Tool Type: `default`
 
 
 Description
