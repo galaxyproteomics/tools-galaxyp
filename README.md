@@ -1,10 +1,9 @@
 GalaxyP - Peptide-Spectrum Match Evaluator
 ==========================================
 
-* Home: <https://bitbucket.org/galaxyp/psm-eval>
+* Home: <https://bitbucket.org/galaxyp/psm_eval>
 * Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/psm_eval>
 * Tool ID: `psm_eval`
-* Tool Type: `default`
 
 
 Description
@@ -17,6 +16,8 @@ See:
 * https://github.com/jmchilton/protvis/tree/lorikeet-reintegration
 * <https://bitbucket.org/Andrew_Brock/proteomics-visualise>
 * Note, unrelated to: <http://mbostock.github.io/protovis/>
+
+System dependency note: The Python package `lxml` is used, which requires these system libraries to be installed: libxml2-devel, libxslt-devel
 
 
 GalaxyP Community
