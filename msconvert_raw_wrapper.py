@@ -3,7 +3,7 @@ import optparse
 import os
 import sys
 import tempfile
-import shutil 
+import shutil
 import subprocess
 import re
 from os.path import basename
@@ -33,14 +33,14 @@ def read_stderr():
             except OverflowError:
                 pass
     return stderr
-    
+
 def execute(command, stdin=None):
     with open(tmp_stderr_name, 'wb') as tmp_stderr:
         with open(tmp_stdout_name, 'wb') as tmp_stdout:
             proc = subprocess.Popen(args=command, shell=True, stderr=tmp_stderr.fileno(), stdout=tmp_stdout.fileno(), stdin=stdin, env=os.environ)
             returncode = proc.wait()
             if returncode != 0:
-                raise Exception, "Program returned with non-zero exit code %d. stderr: %s" % (returncode, read_stderr())
+                raise Exception("Program returned with non-zero exit code %d. stderr: %s" % (returncode, read_stderr()))
 
 def delete_file(path):
     if os.path.exists(path):
@@ -114,7 +114,7 @@ def run_script():
     cmd = "%s --inten%s" % (cmd, options.intensityencoding)
     cmd = "%s %s" % (cmd, input_file)
     cmd = "%s %s" % (cmd, filter_commands)
-    print cmd
+    print(cmd)
     execute(cmd)
     output_files = os.listdir('output')
     assert len(output_files) == 1

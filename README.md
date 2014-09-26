@@ -4,7 +4,6 @@ GalaxyP - ProteoWizard msconvert
 * Home: <https://bitbucket.org/galaxyp/msconvert>
 * Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/msconvert>
 * Tool ID: `msconvert`
-* Tool Type: `default`
 
 
 Description
@@ -12,28 +11,12 @@ Description
 
 msconvert from ProteoWizard.
 
+Note: This requires manual installation of ProteoWizard, and may require a Windows environment.
+
 See:
 
 * <http://proteowizard.sourceforge.net/>
 * <http://proteowizard.sourceforge.net/tools/msconvert.html>
-
-
-Warning Notice
---------------
-
-This repository requires a custom modification to Galaxy. It should be considered unsupported by the GalaxyP community until this notice is removed.
-
-```
-MULTIFILE_EXTENSION_PREFIX = "m:"
-
-msconvert.xml
-10:    #if $ext.startswith("m:")
-11:    #set $ext = $ext[len("m:"):]
-
-msconvert_raw.xml
-13:    #if $ext.startswith("m:")
-14:    #set $ext = $ext[len("m:"):]
-```
 
 
 Installing

@@ -45,8 +45,8 @@ def execute(command, stdin=None):
                 if returncode != 0:
                     raise Exception("Program returned with non-zero exit code %d. stderr: %s" % (returncode, read_stderr()))
     finally:
-        print open(tmp_stderr_name, "r").read()
-        print open(tmp_stdout_name, "r").read()
+        print(( open(tmp_stderr_name, "r").read() ))
+        print(( open(tmp_stdout_name, "r").read() ))
 
 
 def delete_file(path):
@@ -167,7 +167,7 @@ def _create_filters_file(options, file_num=None, debug=False):
 
     filters_file.close()
     if debug:
-        print open(filters_file_path, "r").read()
+        print(( open(filters_file_path, "r").read() ))
     return filters_file_path
 
 
@@ -195,7 +195,7 @@ def _run(base_cmd, output_dir='output', inputs=[], debug=False):
     os.mkdir(output_dir)
     cmd = "%s -o %s %s" % (base_cmd, shellquote(output_dir), inputs_as_str)
     if debug:
-        print cmd
+        print(cmd)
     execute(cmd)
     output_files = os.listdir(output_dir)
     assert len(output_files) == 1
@@ -234,12 +234,19 @@ def run_script():
         input_base = None
         if len(options.input_names) > i:
             input_base = options.input_names[i]
+            input_base = input_base.replace("'", "").replace("\"", "")
+            print("1- input_base: %s" % input_base)
         if not input_base:
             input_base = 'input%s' % i
+            print("2- input_base: %s" % input_base)
         if not input_base.lower().endswith(options.fromextension.lower()):
             input_file = '%s.%s' % (input_base, options.fromextension)
+            print("3- input_base: %s" % input_base)
+            print("3- input_file: %s" % input_file)
         else:
             input_file = input_base
+            print("4- input_base: %s" % input_base)
+            print("4- input_file: %s" % input_file)
         input_file = input_file
         copy_to_working_directory(input, input_file)
         input_files.append(input_file)
