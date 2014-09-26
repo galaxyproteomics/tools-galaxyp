@@ -7,18 +7,18 @@ class Sequence:
     def __init__(self):
         self.header = ""
         self.sequence = ""
-   
+
 class FASTAReader:
     """
         FASTA db iterator. Returns a single FASTA sequence object.
     """
     def __init__(self, fasta_name):
         self.fasta_file = open(fasta_name)
-        
+
     def __iter__(self):
         return self
-        
-    def next(self):
+
+    def __next__(self):
         ''' Iteration '''
         while True:
             line = self.fasta_file.readline()
@@ -26,10 +26,10 @@ class FASTAReader:
                 raise StopIteration
             if line[0] == '>':
                 break
-        
+
         seq = Sequence()
         seq.header = line.rstrip().replace('\n','').replace('\r','')
-       
+
         while True:
             tail = self.fasta_file.tell()
             line = self.fasta_file.readline()
@@ -38,8 +38,11 @@ class FASTAReader:
             if line[0] == '>':
                 self.fasta_file.seek(tail)
                 break
-            seq.sequence = seq.sequence + line.rstrip().replace('\n','').replace('\r','')          
+            seq.sequence = seq.sequence + line.rstrip().replace('\n','').replace('\r','')
         return seq
+
+    # Python 2/3 compat
+    next = __next__
 
 
 def main():
