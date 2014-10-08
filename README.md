@@ -1,23 +1,21 @@
-GalaxyP - Peptide-Spectrum Match Evaluator
-==========================================
+GalaxyP - PepXML to Tabular
+===========================
 
-* Home: <https://bitbucket.org/galaxyp/psm_eval>
-* Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/psm_eval>
-* Tool ID: `psm_eval`
+* Home: <https://bitbucket.org/galaxyp/pepxml_to_xls>
+* Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/pepxml_to_xls>
+* Tool ID: `pepxml_to_xls`
 
 
 Description
 -----------
 
-Contains the psm_eval tool that allows for re-evaluation of identified PSM based on multiple, flexible user supplied criteria and produces results that can be used to visualize PSMs using ProtVis.
+Converts PepXML to Tabular using PepXMLViewer from the the TransProteomicPipeline.
 
 See:
 
-* https://github.com/jmchilton/protvis/tree/lorikeet-reintegration
-* <https://bitbucket.org/Andrew_Brock/proteomics-visualise>
-* Note, unrelated to: <http://mbostock.github.io/protovis/>
-
-System dependency note: The Python package `lxml` is used, which requires these system libraries to be installed: libxml2-devel, libxslt-devel
+* <http://www.proteomecenter.org/software.php>
+* <http://tools.proteomecenter.org/wiki/index.php?title=Software:TPP>
+* <https://en.wikipedia.org/wiki/Trans-Proteomic_Pipeline>
 
 
 GalaxyP Community
