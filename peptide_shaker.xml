@@ -1,193 +1,27 @@
-<tool id="peptide_shaker" name="Peptide Shaker" version="1.19.5.0">
+<tool id="peptide_shaker" name="Peptide Shaker" version="1.35.0">
     <description>
         Perform protein identification using various search engines (using SearchGUI) and combine results with PeptideShaker.
     </description>
-    <requirements>
-        <requirement type="package" version="0.31.4">peptide_shaker</requirement>
-        <requirement type="package" version="1.19.5">searchgui</requirement>
-        <!--<requirement type="package" version="2.2.29">blast+</requirement>-->
-    </requirements>
-    <stdio>
-        <exit_code range="1:" level="fatal" description="Job Failed" />
-        <regex match="java.*Exception" level="fatal" description="Java Exception"/> 
-        <regex match="Could not create the Java virtual machine" level="fatal" description="JVM Error"/>
-    </stdio>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements" />
+    <expand macro="stdio" />
     <command>
-
-        #from datetime import datetime
-        #set $exp_str = "Galaxy_Experiment_%s" % datetime.now().strftime("%Y%m%d%H%M%s")
-        #set $samp_str = "Sample_%s" % datetime.now().strftime("%Y%m%d%H%M%s")
-        #set $temp_stderr = 'macs2_stderr'
-
-        mkdir output;
-        mkdir output_reports;
-        cwd=`pwd`;
-        #for $mgf in $peak_lists:
-            #set $input_name = $mgf.display_name.replace(".mgf", "") + ".mgf"
-            ln -s '${mgf}' '${input_name}';
-        #end for
-        ##ln -s "${input_database}" input_database.fasta;
-        cp "${input_database}" input_database.fasta;
-
-        ###########################################
-        ####       Creating decoy database     ####
-        ###########################################
-        #if $create_decoy:
-            echo "Creating decoy database.";
-            java -cp \$SEARCHGUI_JAR_PATH eu.isas.searchgui.cmd.FastaCLI -in input_database.fasta -decoy;
-            rm input_database.fasta;
-            cp input_database_concatenated_target_decoy.fasta input_database.fasta;
-            ##ln -sf input_database_concatenated_target_decoy.fasta input_database.fasta;
-        #end if
-
-        #####################################################
-        ## generate IdentificationParameters for SearchGUI ##
-        #####################################################
-
-        (java -cp \$SEARCHGUI_JAR_PATH eu.isas.searchgui.cmd.IdentificationParametersCLI
-            -out SEARCHGUI_IdentificationParameters.parameters
-            -prec_ppm "${precursor_ion_tol_units}"
-            -prec_tol "${precursor_ion_tol}"
-            -frag_tol "${fragment_tol}"
-            -enzyme "${enzyme}"
-            #set $fixed_mods_str = $fixed_modifications or ''
-            #set $variable_mods_str = $variable_modifications or ''
-            #if $fixed_mods_str
-                -fixed_mods "${fixed_mods_str}" 
-            #end if
-            #if $variable_mods_str
-                -variable_mods "${variable_mods_str}"
-            #end if
-            -min_charge "${min_charge}"
-            -max_charge "${max_charge}"
-            -mc "${missed_cleavages}"
-            -fi "${forward_ion}"
-            -ri "${reverse_ion}"
-            -db input_database.fasta
-
-            #if $advanced.advanced_type_selector == "advanced":
-
-                #if $advanced.xtandem.xtandem_selector == "yes"
-
-                    -xtandem_npeaks ${advanced.xtandem.xtandem_npeaks}
-                    -xtandem_min_peaks ${advanced.xtandem.xtandem_min_peaks}
-                    -xtandem_min_frag_mz ${advanced.xtandem.xtandem_min_frag_mz}
-                    -xtandem_min_prec_mass ${advanced.xtandem.xtandem_min_prec_mass}
-                    -xtandem_noise_suppr ${advanced.xtandem.xtandem_noise_suppr}
-
-                    #if $advanced.xtandem.xtandem_refine.xtandem_refine_selector == "yes"
-                        -xtandem_refine 1
-                        -xtandem_refine_unc ${advanced.xtandem.xtandem_refine.xtandem_refine_unc}
-                        -xtandem_refine_semi ${advanced.xtandem.xtandem_refine.xtandem_refine_semi}
-                        -xtandem_refine_p_mut ${advanced.xtandem.xtandem_refine.xtandem_refine_p_mut}
-                        -xtandem_refine_snaps ${advanced.xtandem.xtandem_refine.xtandem_refine_snaps}
-                        -xtandem_refine_spec_synt ${advanced.xtandem.xtandem_refine.xtandem_refine_spec_synt}
-                    #end if
-                #end if
-
-                #if $advanced.omssa.omssa_selector == "yes"
-                    -omssa_hitlist_length ${advanced.omssa.hitlist_length}
-                    -omssa_remove_prec ${advanced.omssa.remove_precursor}
-                    -omssa_scale_prec ${advanced.omssa.scale_precursor}
-                    -omssa_estimate_charge ${advanced.omssa.estimate_charge}
-                #end if
-
-                #if $advanced.msgf.msgf_selector == "yes"
-                    -msgf_decoy ${advanced.msgf.msgf_decoy}
-                    -msgf_min_pep_length ${advanced.msgf.msgf_min_pep_length}
-                    -msgf_max_pep_length ${advanced.msgf.msgf_max_pep_length}
-                    -msgf_termini ${advanced.msgf.msgf_termini}
-                    -msgf_num_ptms ${advanced.msgf.msgf_num_ptms}
-                #end if
-
-                ##if $advanced.ms_amanda.ms_amanda_selector == "yes"
-                ##end if
-
-            #end if
-
-        2> $temp_stderr)
-        &amp;&amp;
-
-        ################
-        ## Search CLI ##
-        ################
-        (java -Djava.awt.headless=true -cp \$SEARCHGUI_JAR_PATH eu.isas.searchgui.cmd.SearchCLI 
-            -temp_folder `pwd`
-            -spectrum_files \$cwd
-            -output_folder \$cwd/output
-            -id_params SEARCHGUI_IdentificationParameters.parameters
-
-            -threads "\${GALAXY_SLOTS:-12}"
-            -correct_titles "${correct_titles}"
-            $missing_titles
-            -mgf_splitting "${mgf_splitting}"
-            -mgf_spectrum_count "${mgf_spectrum_count}"
-
-            ## Turn of the protein tree generation as it can produce errors if the search is finished before the tree is created
-            ## the tree is generated afterwards in PeptideShaker
-            -protein_index 0
-
-            ##-makeblastdb_folder \$BLAST_ROOT_DIR
-
-            #if $advanced.advanced_type_selector == "advanced":
-
-                #if $advanced.xtandem.xtandem_selector == "yes"
-                    -xtandem 1
-                #else
-                    -xtandem 0
-                #end if
-
-                #if $advanced.omssa.omssa_selector == "yes"
-                    -omssa 1
-                #else
-                    -omssa 0
-                #end if
-
-                #if $advanced.msgf.msgf_selector == "yes"
-                    -msgf 1
-                #else
-                    -msgf 0
-                #end if
-
-                #if $advanced.ms_amanda.ms_amanda_selector == "yes"
-                    -ms_amanda 1
-                #else
-                    -ms_amanda 0
-                #end if
-
-            #else
-                -ms_amanda 0
-            #end if
-            
-        2>> $temp_stderr)
-        &amp;&amp;
+<![CDATA[
 
         #########################################################
         ## generate IdentificationParameters for PeptideShaker ##
         #########################################################
         (java -cp \$PEPTIDESHAKER_JAR_PATH eu.isas.peptideshaker.cmd.IdentificationParametersCLI
             -out PEPTIDESHAKER_IdentificationParameters.parameters
-            -prec_ppm "${precursor_ion_tol_units}"
-            -prec_tol "${precursor_ion_tol}"
-            -frag_tol "${fragment_tol}"
-            -enzyme "${enzyme}"
-            #set $fixed_mods_str = $fixed_modifications or ''
-            #set $variable_mods_str = $variable_modifications or ''
-            #if $fixed_mods_str
-                -fixed_mods "$fixed_mods_str" 
-            #end if
-            #if $variable_mods_str
-                -variable_mods "$variable_mods_str"
-            #end if
-            -min_charge $min_charge
-            -max_charge $max_charge
-            -mc $missed_cleavages
-            -fi $forward_ion
-            -ri $reverse_ion
+
+            @GENERAL_PARAMETERS@
+
             -db input_database.fasta
 
         2>> $temp_stderr)
-        &amp;&amp;
+        &&
 
         ######################
         ## PeptideShakerCLI ##
@@ -236,7 +70,7 @@
             #end if
 
         2>> $temp_stderr)
-        &amp;&amp;
+        &&
 
         ##################################
         ## PeptideShaker Report options ##
@@ -255,7 +89,7 @@
             -reports #echo ','.join($cleaned_list)#
 
         2>> $temp_stderr)
-        &amp;&amp;
+        &&
 
         #if 'mzidentML' in str($outputs).split(','):
             java -cp \$PEPTIDESHAKER_JAR_PATH eu.isas.peptideshaker.cmd.MzidCLI
@@ -294,7 +128,7 @@
         exit_code_for_galaxy=\$?;
         cat $temp_stderr 2&gt;&amp;1;
         (exit \$exit_code_for_galaxy)
-
+]]>
     </command>
     <inputs>
         <param format="fasta" name="input_database" type="data" label="Protein Database"
@@ -304,43 +138,8 @@
 
         <param format="mgf" name="peak_lists" type="data" multiple="true" label="Input Peak Lists (mgf)"
             help="Select appropriate MGF dataset(s) from history" />
-        <param name="precursor_ion_tol_units" type="select" label="Precursor Ion Tolerance Units"
-            help="Select based on instrument used, as different machines provide different quality of spectra. ppm is a standard for most precursor ions">
-            <option value="1">Parts per million (ppm)</option>
-            <option value="0">Daltons</option>
-        </param>
-        <param name="precursor_ion_tol" type="float" value="10" label="Percursor Ion Tolerance"
-            help="Provide error value for precursor ion, based on instrument used. 10 ppm recommended for Orbitrap instrument"/>
-        <param name="fragment_tol" type="float" value="0.5" label="Fragment Tolerance (Daltons)"
-            help="Provide error value for fragment ions, based on instrument used"/>
-        <param name="enzyme" type="select" label="Enzyme"
-            help="Which enzyme was used for protein digest in experiment? In most cases, trypsin is used">
-            <option value="Trypsin">Trypsin</option>
-            <option value="Arg-C">Arg-C</option>
-            <option value="CNBr">CNBr</option>
-            <option value="Chymotrypsin (FYWL)">Chymotrypsin (FYWL)</option>
-            <option value="Formic Acid">Formic Acid</option>
-            <option value="Lys-C">Lys-C</option>
-            <option value="Lys-C, no P rule">Lys-C, no P rule</option>
-            <option value="Pepsin A">Pepsin A</option>
-            <option value="Trypsin + CNBr">Trypsin + CNBr</option>
-            <option value="Trypsin + Chymotrypsin (FYWLKR)">Trypsin + Chymotrypsin (FYWLKR)</option>
-            <option value="Trypsin, no P rule">Trypsin, no P rule</option>
-            <option value="whole protein">whole protein</option>
-            <option value="Asp-N">Asp-N</option>
-            <option value="Glu-C">Glu-C</option>
-            <option value="Asp-N + Glu-C">Asp-N + Glu-C</option>
-            <option value="Top-Down">Top-Down</option>
-            <option value="Semi-Tryptic">Semi-Tryptic</option>
-            <option value="No enzyme">No enzyme</option>
-            <option value="Chymotrypsin, no P rule (FYWL)">Chymotrypsin, no P rule (FYWL)</option>
-            <option value="Asp-N (DE)">Asp-N (DE)</option>
-            <option value="Glu-C (DE)">Glu-C (DE)</option>
-            <option value="Lys-N (K)">Lys-N (K)</option>
-            <option value="Thermolysin, no P rule">Thermolysin, no P rule</option>
-            <option value="Semi-Chymotrypsin (FYWL)">Semi-Chymotrypsin (FYWL)</option>
-            <option value="Semi-Glu-C">Semi-Glu-C</option>
-        </param>
+ 
+        <expand macro="general_options"/>
 
         <param name="correct_titles" type="select" label="How should PeptideShaker deal with duplicate spectra?"
             help="Unless you suspect some input files to be genuine duplicates then rename spectra is the safest option">
@@ -579,115 +378,6 @@
             </when>
         </conditional>
 
-        <param name="missed_cleavages" type="integer" value="2" label="Maximum Missed Cleavages"
-            help="Allow peptides to contain up to this many missed enzyme cleavage sites."/>
-        <param name="fixed_modifications" type="select" label="Fixed Modifications" multiple="true"
-            help="Occurs in known places on peptide sequence. Hold the appropriate key while clicking to select multiple items">
-            <options from_file="searchgui_mods.loc">
-                <column name="name" index="0" />
-                <column name="value" index="0" />
-            </options>
-        </param>
-        <param name="variable_modifications" type="select" label="Variable Modifications" multiple="true" 
-            help="Can occur anywhere on the peptide sequence; adds additional error to search score. Hold the appropriate key while clicking to select multiple items">
-            <options from_file="searchgui_mods.loc">
-                <column name="name" index="0" />
-                <column name="value" index="0" />
-            </options>
-        </param>
-        <param name="min_charge" label="Minimum Charge" value="2" type="integer" help="Lowest searched charge value for fragment ions"/>
-        <param name="max_charge" label="Maximum Charge" value="4" type="integer" help="Highest searched charge value for fragment ions"/>
-        <param name="forward_ion" label="Forward Ion" type="select" help="Searched fragment ion type. Select a, b or c based on collisions induced in experiment">
-            <option value="a">a</option>
-            <option value="b" selected="true">b</option>
-            <option value="c">c</option>
-        </param>
-        <param name="reverse_ion" label="Reverse Ion" type="select" help="Searched fragment ion type. Select x, y, or z based on collisions induced in experiment">
-            <option value="x">x</option>
-            <option value="y" selected="true">y</option>
-            <option value="z">z</option>
-        </param>
-        <conditional name="advanced">
-            <param name="advanced_type_selector" type="select" label="Basic or Advanced Search options">
-                <option value="basic" selected="True">Basic</option>
-                <option value="advanced">Advanced</option>
-            </param>
-            <when value="basic" />
-            <when value="advanced">
-                <conditional name="xtandem">
-                    <param name="xtandem_selector" type="select" label="Run X!Tandem search">
-                        <option value="yes" selected="True">Search with X!Tandem</option>
-                        <option value="no">No X!Tandem search</option>
-                    </param>
-                    <when value="no" />
-                    <when value="yes">
-                        <param name="xtandem_npeaks" label="X!Tandem: Total Peaks" type="integer" value="50" help="Maximum number of peaks to be used from a spectrum"/>
-                        <param name="xtandem_min_peaks" label="X!Tandem: Min Peaks" type="integer" value="15" help="Minimum number of peaks required for a spectrum to be considered"/>
-                        <param name="xtandem_min_frag_mz" label="X!Tandem: Min Frag m/z" type="integer" value="200" help="Fragment mass peaks with m/z less than this value will be discarded"/>
-                        <param name="xtandem_min_prec_mass" label="X!Tandem: Min Precursor Mass" type="integer" value="200" help="Minimum mass of 1+ mass of parent ion to be considered"/>
-                        <param name="xtandem_noise_suppr" label="X!Tandem: Noise Suppression" type="boolean" checked="true" truevalue="1" falsevalue="0" help="Use noise suppression"/>
-
-                        <conditional name="xtandem_refine"><!-- -xtandem_refine -->
-                            <param name="xtandem_refine_selector" type="select" label="X!Tandem peptide model refinement">
-                                <option value="no" selected="True">Don't refine</option>
-                                <option value="yes" >Use refinement</option>
-                            </param>
-                            <when value="no"/>
-                            <when value="yes">
-                                <param name="xtandem_refine_unc" label="X!Tandem: Unanticipated cleavage, refinement" type="boolean" truevalue="1" falsevalue="0" help="Allow for unanticipated cleavage during refinement"/>
-                                <param name="xtandem_refine_semi" label="X!Tandem: Cleavage semi, refinement" type="boolean" truevalue="1" falsevalue="0" help="Search for semi-tryptic peptides during refinement"/>
-                                <param name="xtandem_refine_p_mut" label="X!Tandem: Point mutations, refinement" type="boolean" truevalue="1" falsevalue="0" help="Allow for point mutations during refinement"/>
-                                <param name="xtandem_refine_snaps" label="X!Tandem: snAPs, refinement" type="boolean" truevalue="1" falsevalue="0" help="Search for known single amino acid polymorphisms during refinement"/>
-                                <param name="xtandem_refine_spec_synt" label="X!Tandem: Spectrum synthesis, refinement" type="boolean" truevalue="1" falsevalue="0" help="Use spectrum synthesis scoring"/>
-                            </when>
-                        </conditional>
-                    </when>
-                </conditional>
-
-                <conditional name="omssa">
-                    <param name="omssa_selector" type="select" label="Run OMSSA search">
-                        <option value="yes" selected="True">Search with OMSSA</option>
-                        <option value="no">No OMSSA search</option>
-                    </param>
-                    <when value="no" />
-                    <when value="yes">
-                        <param name="hitlist_length" label="OMSSA: Hit List Length" type="integer" value="25" />
-                        <param name="remove_precursor" label="OMSSA: Remove Precurosr" type="boolean" truevalue="1" falsevalue="0" checked="true"/>
-                        <param name="scale_precursor" label="OMSSA: Scale Precursor Mass" type="boolean" truevalue="1" falsevalue="0" checked="false"/>
-                        <param name="estimate_charge" label="OMSSA: Estimate Charge" type="boolean" truevalue="1" falsevalue="0" checked="true" />
-                    </when>
-                </conditional>
-
-                <conditional name="msgf">
-                    <param name="msgf_selector" type="select" label="Run MSGF search">
-                        <option value="yes" selected="True">Search with MSGF</option>
-                        <option value="no">No MSGF search</option>
-                    </param>
-                    <when value="no" />
-                    <when value="yes">
-                        <param name="msgf_decoy" label="Search Decoys" type="boolean" truevalue="1" falsevalue="0" help="If yes then a decoy database will be generated and searched. Assumed input database contains no decoys"/>
-                        <param name="msgf_min_pep_length" label="Minimum Peptide Length" type="integer" value="6" help="Minimum length for a peptide to be considered"/>
-                        <param name="msgf_max_pep_length" label="Maximum Peptide Length" type="integer" value="30" help="Maximum length for a peptide to be considered"/>
-                        <param name="msgf_termini" label="Number of tolerable termini" type="select" format="text" help="Searches will take much longer if selecting a value other than 2">
-                            <option value="0">0 (ie non-specific cleavage)</option>
-                            <option value="1">1 (ie semi-tryptic cleavage)</option>
-                            <option value="2" selected="true">2 (ie fully-tryptic cleavage)</option>
-                        </param>
-                        <param name="msgf_num_ptms" label="Max PTMs per peptide" type="integer" value="2"/>
-                    </when>
-                </conditional>
-
-                <conditional name="ms_amanda">
-                    <param name="ms_amanda_selector" type="select" label="Run MS Amanda search">
-                        <option value="yes">Search with MS Amanda</option>
-                        <option value="no" selected="True">No MS Amanda search</option>
-                    </param>
-                    <when value="no" />
-                    <when value="yes">
-                    </when>
-                </conditional>
-            </when>
-        </conditional>
         <conditional name="processing_options">
             <param name="processing_options_selector" type="select" label="Specify Advanced PeptideShaker Processing Options">
                 <option value="no" selected="True">Default Processing Options</option>
@@ -780,7 +470,6 @@
             <param name="variable_modifications" value="oxidation of m"/>
             <param name="min_charge" value="1"/>
             <param name="max_charge" value="3"/>
-            <param name="advanced_type_selector" value="advanced"/>
             <param name="species_type_selector" value="no_species_type"/>
             <param name="processing_options_selector" value="no"/>
             <param name="filtering_options_selector" value="no"/>
@@ -955,4 +644,5 @@ To cite the underlying tools (PeptideShaker and SearchGUI) please refer to the l
 
 If you use this tool in Galaxy, please cite Chilton J, Ira Cooke, Bjoern Gruening et al. https://bitbucket.org/galaxyp/peptideshaker
     </help>
+    <expand macro="citations" />
 </tool>
