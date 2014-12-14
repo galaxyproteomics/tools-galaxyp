@@ -1,0 +1,339 @@
+<tool id="peptide_shaker" name="Peptide Shaker" version="1.23.0">
+    <description>
+        Perform protein identification using various search engines (using SearchGUI) and combine results with PeptideShaker.
+    </description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements" />
+    <expand macro="stdio" />
+    <command>
+<![CDATA[
+        #from datetime import datetime
+        #set $exp_str = "Galaxy_Experiment_%s" % datetime.now().strftime("%Y%m%d%H%M%s")
+        #set $samp_str = "Sample_%s" % datetime.now().strftime("%Y%m%d%H%M%s")
+        #set $temp_stderr = 'macs2_stderr'
+
+        mkdir output;
+        mkdir output_reports;
+        cwd=`pwd`;
+        #for $mgf in $peak_lists:
+            #set $input_name = $mgf.display_name.replace(".mgf", "") + ".mgf"
+            ln -s '${mgf}' '${input_name}';
+        #end for
+        ##ln -s "${input_database}" input_database.fasta;
+        cp "${input_database}" input_database.fasta;
+
+        ###########################################
+        ####       Creating decoy database     ####
+        ###########################################
+        #if $create_decoy:
+            echo "Creating decoy database.";
+            java -cp \$SEARCHGUI_JAR_PATH eu.isas.searchgui.cmd.FastaCLI -in input_database.fasta -decoy;
+            rm input_database.fasta;
+            cp input_database_concatenated_target_decoy.fasta input_database.fasta;
+            ##ln -sf input_database_concatenated_target_decoy.fasta input_database.fasta;
+        #end if
+
+        #####################################################
+        ## generate IdentificationParameters for SearchGUI ##
+        #####################################################
+
+        (java -cp \$SEARCHGUI_JAR_PATH eu.isas.searchgui.cmd.IdentificationParametersCLI
+            -out SEARCHGUI_IdentificationParameters.parameters
+
+            @GENERAL_PARAMETERS@
+
+            -db input_database.fasta
+
+            #if $advanced.advanced_type_selector == "advanced":
+
+                #if $advanced.xtandem.xtandem_selector == "yes"
+
+                    -xtandem_npeaks ${advanced.xtandem.xtandem_npeaks}
+                    -xtandem_min_peaks ${advanced.xtandem.xtandem_min_peaks}
+                    -xtandem_min_frag_mz ${advanced.xtandem.xtandem_min_frag_mz}
+                    -xtandem_min_prec_mass ${advanced.xtandem.xtandem_min_prec_mass}
+                    -xtandem_noise_suppr ${advanced.xtandem.xtandem_noise_suppr}
+
+                    #if $advanced.xtandem.xtandem_refine.xtandem_refine_selector == "yes"
+                        -xtandem_refine 1
+                        -xtandem_refine_unc ${advanced.xtandem.xtandem_refine.xtandem_refine_unc}
+                        -xtandem_refine_semi ${advanced.xtandem.xtandem_refine.xtandem_refine_semi}
+                        -xtandem_refine_p_mut ${advanced.xtandem.xtandem_refine.xtandem_refine_p_mut}
+                        -xtandem_refine_snaps ${advanced.xtandem.xtandem_refine.xtandem_refine_snaps}
+                        -xtandem_refine_spec_synt ${advanced.xtandem.xtandem_refine.xtandem_refine_spec_synt}
+                    #end if
+                #end if
+
+                #if $advanced.omssa.omssa_selector == "yes"
+                    -omssa_hitlist_length ${advanced.omssa.hitlist_length}
+                    -omssa_remove_prec ${advanced.omssa.remove_precursor}
+                    -omssa_scale_prec ${advanced.omssa.scale_precursor}
+                    -omssa_estimate_charge ${advanced.omssa.estimate_charge}
+                #end if
+
+                #if $advanced.msgf.msgf_selector == "yes"
+                    -msgf_decoy ${advanced.msgf.msgf_decoy}
+                    -msgf_min_pep_length ${advanced.msgf.msgf_min_pep_length}
+                    -msgf_max_pep_length ${advanced.msgf.msgf_max_pep_length}
+                    -msgf_termini ${advanced.msgf.msgf_termini}
+                    -msgf_num_ptms ${advanced.msgf.msgf_num_ptms}
+                #end if
+
+                ##if $advanced.ms_amanda.ms_amanda_selector == "yes"
+                ##end if
+
+            #end if
+
+        2> $temp_stderr)
+        &&
+
+        ################
+        ## Search CLI ##
+        ################
+        (java -Djava.awt.headless=true -cp \$SEARCHGUI_JAR_PATH eu.isas.searchgui.cmd.SearchCLI 
+            -temp_folder `pwd`
+            -spectrum_files \$cwd
+            -output_folder \$cwd/output
+            -id_params SEARCHGUI_IdentificationParameters.parameters
+
+            -threads "\${GALAXY_SLOTS:-12}"
+            -correct_titles "${correct_titles}"
+            $missing_titles
+            -mgf_splitting "${mgf_splitting}"
+            -mgf_spectrum_count "${mgf_spectrum_count}"
+
+            ## Turn of the protein tree generation as it can produce errors if the search is finished before the tree is created
+            ## the tree is generated afterwards in PeptideShaker
+            -protein_index 0
+
+            ##-makeblastdb_folder \$BLAST_ROOT_DIR
+
+            #if $advanced.advanced_type_selector == "advanced":
+
+                #if $advanced.xtandem.xtandem_selector == "yes"
+                    -xtandem 1
+                #else
+                    -xtandem 0
+                #end if
+
+                #if $advanced.omssa.omssa_selector == "yes"
+                    -omssa 1
+                #else
+                    -omssa 0
+                #end if
+
+                #if $advanced.msgf.msgf_selector == "yes"
+                    -msgf 1
+                #else
+                    -msgf 0
+                #end if
+
+                #if $advanced.ms_amanda.ms_amanda_selector == "yes"
+                    -ms_amanda 1
+                #else
+                    -ms_amanda 0
+                #end if
+
+                #if $advanced.myrimatch.myrimatch_selector == "yes"
+                    -myrimatch 1
+                #else
+                    -myrimatch 0
+                #end if
+
+                #if $advanced.comet.comet_selector == "yes"
+                    -comet 1
+                #else
+                    -comet 0
+                #end if
+
+            #else
+                -ms_amanda 0
+            #end if
+            
+            ## single zip file
+            -output_option 0
+
+        2>> $temp_stderr)
+
+        &&
+
+        exit_code_for_galaxy=\$?;
+        cat $temp_stderr 2&gt;&amp;1;
+        (exit \$exit_code_for_galaxy)
+]]>
+    </command>
+    <inputs>
+        <param format="fasta" name="input_database" type="data" label="Protein Database"
+            help="Select FASTA database from history"/>
+
+        <param name="create_decoy" type="boolean" truevalue="True" falsevalue="False" checked="true"
+            label="Create a concatenated target/decoy database before running PeptideShaker"
+            help="Selecting this option will help PeptideShaker calculate FDR values" />
+
+        <param format="mgf" name="peak_lists" type="data" multiple="true" label="Input Peak Lists (mgf)"
+            help="Select appropriate MGF dataset(s) from history" />
+
+        <expand macro="general_options"/>
+
+        <param name="correct_titles" type="select" label="How should PeptideShaker deal with duplicate spectra?"
+            help="Unless you suspect some input files to be genuine duplicates then rename spectra is the safest option">
+            <option value="0">no correction</option>
+            <option value="1" selected="True">rename spectra</option>
+            <option value="2">delete spectra</option>
+        </param>
+
+        <param name="missing_titles" type="boolean" checked="false" truevalue="-missing_titles 1" falsevalue="-missing_titles 0"
+            label="Add missing spectrum titles" help="(-missing_titles)"/>
+
+        <param name="mgf_splitting" type="integer" value="1000" label="The maximum mgf file size in MB before splitting the mgf"
+            help="Choose a smaller value if you are running on a machine with limited memory"/>
+
+        <param name="mgf_spectrum_count" type="integer" value="25000" label="The maximum number of spectra per mgf file when splitting"
+            help="Choose a smaller value if you are running on a machine with limited memory"/>
+
+        <conditional name="advanced">
+            <param name="advanced_type_selector" type="select" label="Basic or Advanced Search options">
+                <option value="basic" selected="True">Basic</option>
+                <option value="advanced">Advanced</option>
+            </param>
+            <when value="basic" />
+            <when value="advanced">
+                <conditional name="xtandem">
+                    <param name="xtandem_selector" type="select" label="Run X!Tandem search">
+                        <option value="yes" selected="True">Search with X!Tandem</option>
+                        <option value="no">No X!Tandem search</option>
+                    </param>
+                    <when value="no" />
+                    <when value="yes">
+                        <param name="xtandem_npeaks" label="X!Tandem: Total Peaks" type="integer" value="50" help="Maximum number of peaks to be used from a spectrum"/>
+                        <param name="xtandem_min_peaks" type="integer" value="15" 
+                            label="X!Tandem: Min Peaks" help="Minimum number of peaks required for a spectrum to be considered"/>
+                        <param name="xtandem_min_frag_mz" type="integer" value="200" 
+                            label="X!Tandem: Min Frag m/z" help="Fragment mass peaks with m/z less than this value will be discarded"/>
+                        <param name="xtandem_min_prec_mass" label="X!Tandem: Min Precursor Mass" type="integer" value="200" help="Minimum mass of 1+ mass of parent ion to be considered"/>
+                        <param name="xtandem_noise_suppr" label="X!Tandem: Noise Suppression" type="boolean" checked="true" truevalue="1" falsevalue="0" help="Use noise suppression"/>
+
+                        <conditional name="xtandem_refine"><!-- -xtandem_refine -->
+                            <param name="xtandem_refine_selector" type="select" label="X!Tandem peptide model refinement">
+                                <option value="no" selected="True">Don't refine</option>
+                                <option value="yes" >Use refinement</option>
+                            </param>
+                            <when value="no"/>
+                            <when value="yes">
+                                <param name="xtandem_refine_unc" type="boolean" truevalue="1" falsevalue="0"
+                                    label="X!Tandem: Unanticipated cleavage, refinement" help="Allow for unanticipated cleavage during refinement"/>
+                                <param name="xtandem_refine_semi" type="boolean" truevalue="1" falsevalue="0" 
+                                    label="X!Tandem: Cleavage semi, refinement" help="Search for semi-tryptic peptides during refinement"/>
+                                <param name="xtandem_refine_p_mut" type="boolean" truevalue="1" falsevalue="0" 
+                                    label="X!Tandem: Point mutations, refinement" help="Allow for point mutations during refinement"/>
+                                <param name="xtandem_refine_snaps" type="boolean" truevalue="1" falsevalue="0" 
+                                    label="X!Tandem: snAPs, refinement" help="Search for known single amino acid polymorphisms during refinement"/>
+                                <param name="xtandem_refine_spec_synt" type="boolean" truevalue="1" falsevalue="0" 
+                                    label="X!Tandem: Spectrum synthesis, refinement" help="Use spectrum synthesis scoring"/>
+                            </when>
+                        </conditional>
+                    </when>
+                </conditional>
+
+                <conditional name="omssa">
+                    <param name="omssa_selector" type="select" label="Run OMSSA search">
+                        <option value="yes" selected="True">Search with OMSSA</option>
+                        <option value="no">No OMSSA search</option>
+                    </param>
+                    <when value="no" />
+                    <when value="yes">
+                        <param name="hitlist_length" label="OMSSA: Hit List Length" type="integer" value="25" />
+                        <param name="remove_precursor" label="OMSSA: Remove Precurosr" type="boolean" truevalue="1" falsevalue="0" checked="true"/>
+                        <param name="scale_precursor" label="OMSSA: Scale Precursor Mass" type="boolean" truevalue="1" falsevalue="0" checked="false"/>
+                        <param name="estimate_charge" label="OMSSA: Estimate Charge" type="boolean" truevalue="1" falsevalue="0" checked="true" />
+                    </when>
+                </conditional>
+
+                <conditional name="msgf">
+                    <param name="msgf_selector" type="select" label="Run MSGF search">
+                        <option value="yes" selected="True">Search with MSGF</option>
+                        <option value="no">No MSGF search</option>
+                    </param>
+                    <when value="no" />
+                    <when value="yes">
+                        <param name="msgf_decoy" label="Search Decoys" type="boolean" truevalue="1" falsevalue="0" help="If yes then a decoy database will be generated and searched. Assumed input database contains no decoys"/>
+                        <param name="msgf_min_pep_length" label="Minimum Peptide Length" type="integer" value="6" help="Minimum length for a peptide to be considered"/>
+                        <param name="msgf_max_pep_length" label="Maximum Peptide Length" type="integer" value="30" help="Maximum length for a peptide to be considered"/>
+                        <param name="msgf_termini" label="Number of tolerable termini" type="select" format="text" help="Searches will take much longer if selecting a value other than 2">
+                            <option value="0">0 (ie non-specific cleavage)</option>
+                            <option value="1">1 (ie semi-tryptic cleavage)</option>
+                            <option value="2" selected="true">2 (ie fully-tryptic cleavage)</option>
+                        </param>
+                        <param name="msgf_num_ptms" label="Max PTMs per peptide" type="integer" value="2"/>
+                    </when>
+                </conditional>
+
+                <conditional name="ms_amanda">
+                    <param name="ms_amanda_selector" type="select" label="Run MS Amanda search">
+                        <option value="yes">Search with MS Amanda</option>
+                        <option value="no" selected="True">No MS Amanda search</option>
+                    </param>
+                    <when value="no" />
+                    <when value="yes">
+                    </when>
+                </conditional>
+
+                <conditional name="myrimatch">
+                    <param name="myrimatch_selector" type="select" label="Run MyriMatch search">
+                        <option value="yes">Search with MyriMatch</option>
+                        <option value="no" selected="True">No MyriMatch search</option>
+                    </param>
+                    <when value="no" />
+                    <when value="yes">
+                    </when>
+                </conditional>
+
+                <conditional name="comet">
+                    <param name="comet_selector" type="select" label="Run Comet search">
+                        <option value="yes">Search with Comet</option>
+                        <option value="no" selected="True">No Comet search</option>
+                    </param>
+                    <when value="no" />
+                    <when value="yes">
+                    </when>
+                </conditional>
+
+            </when>
+        </conditional>
+
+    </inputs>
+    <outputs>
+        <data format="bgzip" name="searchgui_results" from_work_dir="output.mzid" label="${tool.name} on ${on_string}" />
+    </outputs>
+    <tests>
+        <test>
+            <param name="input_database" value="tinydb.fasta"/>
+            <param name="peak_lists" value="tinyspectra.mgf"/>
+            <param name="precursor_ion_tol" value="100"/>
+            <param name="fixed_modifications" value="carbamidomethyl c"/>
+            <param name="variable_modifications" value="oxidation of m"/>
+            <param name="min_charge" value="1"/>
+            <param name="max_charge" value="3"/>
+            <param name="advanced_type_selector" value="advanced"/>
+            <!--param name="xtandem_selector" value="no"/>-->
+            <param name="xtandem_selector" value="yes"/>
+            <param name="xtandem_selector.xtandem_refine_selector" value="yes"/>
+
+            <param name="omssa_selector" value="no"/>
+            <param name="msgf_selector" value="yes"/>
+            <param name="ms_amanda_selector" value="no"/>
+            
+            <output name="output" file="tinyoutput.cps" compare="sim_size" delta="600" /> 
+        </test>
+    </tests>
+    <help>
+**What it does**
+
+Runs multiple search engines (X! Tandem, OMSSA and MS-GF+) on any number of MGF peak lists using the SearchGUI.
+
+
+    </help>
+    <expand macro="citations" />
+</tool>
