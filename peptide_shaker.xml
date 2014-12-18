@@ -11,32 +11,27 @@
     <expand macro="stdio" />
     <command>
 <![CDATA[
+        #from datetime import datetime
+        #set $exp_str = "Galaxy_Experiment_%s" % datetime.now().strftime("%Y%m%d%H%M%s")
+        #set $samp_str = "Sample_%s" % datetime.now().strftime("%Y%m%d%H%M%s")
+        #set $temp_stderr = "peptideshaker_stderr"
 
-        #########################################################
-        ## generate IdentificationParameters for PeptideShaker ##
-        #########################################################
-        (java -cp \$PEPTIDESHAKER_JAR_PATH eu.isas.peptideshaker.cmd.IdentificationParametersCLI
-            -out PEPTIDESHAKER_IdentificationParameters.parameters
+    
+        cwd=`pwd`;
 
-            @GENERAL_PARAMETERS@
-
-            -db input_database.fasta
-
-        2>> $temp_stderr)
-        &&
+        ln -s '$searchgui_zip' searchgui_input.zip;
 
         ######################
         ## PeptideShakerCLI ##
         ######################
         (java -cp \$PEPTIDESHAKER_JAR_PATH eu.isas.peptideshaker.cmd.PeptideShakerCLI
             -temp_folder `pwd`
-            -experiment '${exp_str}'
-            -sample '${samp_str}'
+            -experiment '$exp_str'
+            -sample '$samp_str'
             -replicate 1
-            -spectrum_files \$cwd
-            -identification_files \$cwd/output
+            -identification_files \$cwd/searchgui_input.zip
             -out \$cwd/peptide_shaker_output.cps
-            -id_params PEPTIDESHAKER_IdentificationParameters.parameters
+            -zip \$cwd/peptideshaker_out.zip
 
             -threads "\${GALAXY_SLOTS:-12}"
 
@@ -74,60 +69,8 @@
             #end if
 
         2>> $temp_stderr)
+
         &&
-
-        ##################################
-        ## PeptideShaker Report options ##
-        ##################################
-        (java -cp \$PEPTIDESHAKER_JAR_PATH eu.isas.peptideshaker.cmd.ReportCLI
-            -temp_folder `pwd`
-            -in \$cwd/peptide_shaker_output.cps
-            -out_reports \$cwd/output_reports
-            #set $cleaned_list = str($outputs).split(',')
-            #if 'cps' in $cleaned_list:
-                #silent $cleaned_list.remove('cps')
-            #end if
-            #if 'mzidentML' in $cleaned_list:
-                #silent $cleaned_list.remove('mzidentML')
-            #end if
-            -reports #echo ','.join($cleaned_list)#
-
-        2>> $temp_stderr)
-        &&
-
-        #if 'mzidentML' in str($outputs).split(','):
-            java -cp \$PEPTIDESHAKER_JAR_PATH eu.isas.peptideshaker.cmd.MzidCLI
-                -in \$cwd/peptide_shaker_output.cps
-                -output_file output.mzid
-                -contact_first_name 'Proteomics'
-                -contact_last_name 'Galaxy'
-                -contact_email 'galaxyp@umn.edu'
-                -contact_address 'galaxyp@umn.edu'
-                -organization_name 'University of Minnesota'
-                -organization_email 'galaxyp@umn.edu'
-                -organization_address 'Minneapolis, MN 55455, Vereinigte Staaten'
-                ;
-        #end if
-        #if '0' in str($outputs).split(','):
-            find \$cwd/output_reports -name '*Certificate*' -exec bash -c 'mv "$0" "certificate.txt"' {} \;
-            ;
-        #end if
-        #if '2' in str($outputs).split(','):
-            find \$cwd/output_reports -name '*PSM*' -exec bash -c 'mv "$0" "psm.txt"' {} \;
-            ;
-        #end if
-        #if '3' in str($outputs).split(','):
-            find \$cwd/output_reports -name '*Peptide*' -exec bash -c 'mv "$0" "peptides.txt"' {} \;
-            ;
-        #end if
-        #if '4' in str($outputs).split(','):
-            find \$cwd/output_reports -name '*Protein*' -exec bash -c 'mv "$0" "proteins.txt"' {} \;
-            ;
-        #end if
-        #if '1' in str($outputs).split(','):
-            find \$cwd/output_reports -name '*Hierarchical*' -exec bash -c 'mv "$0" "hierarchical.txt"' {} \;
-            ;
-        #end if
 
         exit_code_for_galaxy=\$?;
         cat $temp_stderr 2>&1;
@@ -135,29 +78,9 @@
 ]]>
     </command>
     <inputs>
-        <param format="fasta" name="input_database" type="data" label="Protein Database"
-            help="Select FASTA database from history"/>
+        <param format="bgzip" name="searchgui_zip" type="data" label="Zipped SearchGUI results"
+            help="SearchGUI Results from History"/>
 
-        <param name="create_decoy" label="Create a concatenated target/decoy database before running PeptideShaker." type="boolean" truevalue="True" falsevalue="False" checked="true" help="Selecting this option will help PeptideShaker calculate FDR values" />
-
-        <param format="mgf" name="peak_lists" type="data" multiple="true" label="Input Peak Lists (mgf)"
-            help="Select appropriate MGF dataset(s) from history" />
- 
-        <expand macro="general_options"/>
-
-        <param name="correct_titles" type="select" label="How should PeptideShaker deal with duplicate spectra?"
-            help="Unless you suspect some input files to be genuine duplicates then rename spectra is the safest option">
-            <option value="0">no correction</option>
-            <option value="1" selected="True">rename spectra</option>
-            <option value="2">delete spectra</option>
-        </param>
-
-        <param name="missing_titles" label="Add missing spectrum titles" type="boolean" checked="false" truevalue="-missing_titles 1" falsevalue="-missing_titles 0" help="(-missing_titles)"/>
-
-        <param name="mgf_splitting" type="integer" value="1000" label="The maximum mgf file size in MB before splitting the mgf"
-            help="Choose a smaller value if you are running on a machine with limited memory"/>
-        <param name="mgf_spectrum_count" type="integer" value="25000" label="The maximum number of spectra per mgf file when splitting"
-            help="Choose a smaller value if you are running on a machine with limited memory"/>
 
         <conditional name="species_type">
             <param name="species_type_selector" type="select" optional="true" label="The species type to use for the gene annotation"
@@ -431,40 +354,11 @@
             </when>
         </conditional>
 
-        <param name="outputs" type="select" display="checkboxes" multiple="True" label="Output options">
-            <option value="mzidentML" selected="True">mzidentML File</option>
-            <option value="3" selected="True">Peptide Report</option>
-            <option value="4" selected="True">Protein Report</option>
-            <option value="2">PSM Report</option>
-            <option value="0">Certificate of Analysis</option>
-            <option value="1">Hierarchical Report</option>
-            <option value="cps">CPS file</option>
-            <validator type="no_options" message="Please select at least one output file" />
-        </param>
     </inputs>
     <outputs>
-        <data format="mzid" name="mzidentML" from_work_dir="output.mzid" label="${tool.name} on ${on_string}: mzidentML file">
-            <filter>'mzidentML' in outputs</filter>
-        </data>
-        <data format="cps" name="output" from_work_dir="peptide_shaker_output.cps" label="${tool.name} on ${on_string}: CPS file">
-            <filter>'cps' in outputs</filter>
-        </data>
-        <data format="txt" name="output_certificate" from_work_dir="certificate.txt" label="${tool.name} on ${on_string}: Parameters">
-            <filter>'0' in outputs</filter>
-        </data>
-        <data format="tabular" name="output_psm" from_work_dir="psm.txt" label="${tool.name} on ${on_string}: PSM Report">
-            <filter>'2' in outputs</filter>
-        </data>
-        <data format="tabular" name="output_peptides" from_work_dir="peptides.txt" label="${tool.name} on ${on_string}: Peptide Report">
-            <filter>'3' in outputs</filter>
-        </data>
-        <data format="tabular" name="output_proteins" from_work_dir="proteins.txt" label="${tool.name} on ${on_string}: Protein Report">
-            <filter>'4' in outputs</filter>
-        </data>
-        <data format="tabular" name="output_hierarchical" from_work_dir="hierarchical.txt" label="${tool.name} on ${on_string}: Hierarchical Report">
-            <filter>'1' in outputs</filter>
-        </data>
+        <data format="bgzip" name="peptideshaker_results" from_work_dir="peptideshaker_out.zip" label="${tool.name} on ${on_string}" />
     </outputs>
+
     <tests>
         <test>
             <param name="input_database" value="tinydb.fasta"/>
