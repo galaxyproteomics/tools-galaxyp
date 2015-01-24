@@ -1,0 +1,376 @@
+<tool id="maxquant" version="0.1.0" name="MaxQuant">
+  <description>
+  </description>
+  <requirements>
+    <requirement>maxquant</requirement>
+    <requirement type="platform">windows</requirement>
+  </requirements>
+  <configfiles>
+    <configfile name="inputs_config">##Describe inputs
+#set $fraction = 0
+#set $type = str($analysis_type.type)
+#if $type.startswith("sg" )
+#set $groups = [$analysis_type]
+#elif $type.startswith("mgs")
+#set $groups = $analysis_type.groups
+#end if
+#for $i, $group in enumerate($groups)
+num:${str(i + 1)}
+#if $type.endswith("samples")
+#for $j, $input in enumerate($group.inputs)
+name:${input.display_name}
+path:${input}
+sample:$j
+#end for
+#else
+#if $type.endswith("fractions")
+#set $samples = [$group]
+#else
+#set $samples = $group.samples
+#end if
+#for $j, $sample in enumerate($samples)
+#for $k, $input in enumerate($sample.inputs)
+name:${input.display_name}
+path:${input}
+sample:$j
+#end for
+#end for
+#end if
+#end for
+</configfile>
+  </configfiles>
+  <command interpreter="python">maxquant_wrapper.py 
+    --input_groups=$inputs_config
+    --database="${database}"
+    --database_name="${database.name}"
+    --protease=$analysis_type.protease
+    --first_search_tol=$analysis_type.first_search_tol
+    --main_search_tol=$analysis_type.main_search_tol
+    --max_missed_cleavages=$analysis_type.max_missed_cleavages
+    --max_n_mods=$analysis_type.max_n_mods
+    --variable_mods="${analysis_type.variable_modifications or ''}"
+    #if $analysis_type.advanced_group_parameters.specify
+    --do_mass_filtering=$analysis_type.advanced_group_parameters.do_mass_filtering
+    --max_charge=$analysis_type.advanced_group_parameters.max_charge
+    #end if
+    #set $run = $analysis_type.run
+    #set $lcms_run_type = $run.lcms_run_type
+    --lcms_run_type=$lcms_run_type
+    #if str($lcms_run_type) != "3"
+    ## i.e. is not reporter ion type
+    #if $run.labels_conditional.labeled
+    #for $label_group in $run.labels_conditional.label_groups
+    --labels="${label_group.labels or ''}"
+    #end for
+    --max_labeled_aa=$run.labels_conditional.max_labeled_aa
+    #end if
+    #else
+    --reporter_type=$run.reporter_type
+    #end if 
+    #set $sp = $advanced_sequence_parameters
+    #if $sp.specify
+    --include_contamiants=${str(sp['include_contamiants']).lower()}
+    --equal_il=${str(sp['equal_il']).lower()}
+    --randomize=${str(sp['randomize'])}
+    #end if
+    #if $quantification.specify
+    #set $restrict = $quantification.restrict.restrict_protein_quantification
+    --restrict_protein_quantification=${str(restrict).lower()}
+    #if $quantification.restrict.restrict_protein_quantification
+    --restrict_mods="${quantification.restrict.restrict_modifications or ''}"
+    #end if
+    --quant_mode=$quantification.quant_mode
+    --use_counterparts=$quantification.use_counterparts
+    --min_ratio_count=$quantification.min_ratio_count
+    #end if
+    #if $site_quantification.specify
+    --site_quant_mode=$site_quantification.site_quant_mode
+    --use_norm_ratios_for_occupancy=$site_quantification.use_norm_ratios_for_occupancy
+    #end if
+    #set $identification_type = str($identification.options_type)
+    #if $identification_type != "none"
+    --protein_fdr=$identification.protein_fdr
+    --peptide_fdr=$identification.peptide_fdr
+    --site_fdr=$identification.site_fdr
+    #if $identification_type != "simple"
+    --peptide_pep=$identification.peptide_pep
+    #end if
+    #end if
+    #if $misc.specify
+    --re_quantify="$misc.re_quantify"
+    #end if
+    --fixed_mods="${fixed_modifications or ''}"
+    --output_protein_groups=$output_protein_groups
+    --output_peptides=$output_peptides
+    --output_evidence=$output_evidence
+    --output_parameters=$output_parameters
+    --output_msms=$output_msms
+    --output_mqpar=$output_mqpar
+  </command>
+  <macros>
+    <macro name="input_param">
+      <param format="raw" multiple="true" name="inputs" type="data" label="RAW Inputs" help="" />
+    </macro>
+    <macro name="mod_opts">
+      <options from_file="maxquant_mods.loc">
+        <column name="name" index="0"/>
+        <column name="value" index="0" />
+      </options>
+      <sanitizer>
+        <valid>
+          <add value="&lt;"/>
+          <add value="&gt;"/>
+          <add value="["/>
+          <add value="]"/>
+        </valid>
+      </sanitizer>
+    </macro>
+    <macro name="protease_opts">
+      <options from_file="maxquant_proteases.loc">
+        <column name="name" index="0"/>
+        <column name="value" index="0" />
+      </options>
+    </macro>
+    <macro name="group_params">
+      <param name="protease" label="Enzyme" type="select">
+        <expand macro="protease_opts" />
+      </param>
+      <param name="first_search_tol" label="First Search Tolerance (ppm)" type="float" value="20" />
+      <param name="main_search_tol" label="Main Search Tolerance (ppm)" type="float" value="6" />
+      <param name="max_n_mods" type="integer" label="Maximum Number of Modifications per Peptide" value="5" />
+      <param name="max_missed_cleavages" type="integer" label="Maximum Number of Missed Cleavages" value="2" />
+      <param name="variable_modifications" label="Variable Modifications" type="select" multiple="true">
+        <expand macro="mod_opts" />
+      </param>
+      <conditional name="run">
+        <param name="lcms_run_type" type="select" label="Run Type">
+          <option value="0">Standard</option>
+          <option value="2">All ion fragmentation</option>
+          <option value="3">Reporter ion</option>
+        </param>
+        <when value="0">
+          <expand macro="labels" />
+        </when>
+        <when value="2"> 
+          <expand macro="labels" />
+        </when>
+        <when value="3">
+          <expand macro="reporter" />
+        </when>
+      </conditional>
+      <conditional name="advanced_group_parameters">
+        <param name="specify" type="boolean" label="Specify Advanced Group Parameters" checked="false" />
+        <when value="false">
+        </when>
+        <when value="true">
+          <param name="do_mass_filtering" type="boolean" label="Individual Peptide Mass Tolerances" checked="true" truevalue="true" falsevalue="false" />
+          <param name="max_charge" type="integer" label="Maximum Charge" value="7" />
+          <!-- 
+            TODO: First charge protease, first charge mods.
+          -->
+        </when>
+      </conditional>      
+    </macro>
+    <macro name="labels">
+      <conditional name="labels_conditional">
+        <param name="labeled" type="boolean" label="Specify Labels" checked="false" />
+        <when value="false">
+        </when>
+        <when value="true">
+          <repeat name="label_groups" title="Label Groups">
+            <param name="labels" type="select" title="Labels" multiple="true" help="Select none to describe unlabelled 'light labels'.">
+              <option value="Arg6">Arg6</option>
+              <option value="Arg10">Arg10</option>
+              <option value="Lys4">Lys4</option>
+              <option value="Lys6">Lys6</option>
+              <option value="Lys8">Lys8</option>
+            </param>
+          </repeat>
+          <param name="max_labeled_aa" type="integer" title="Max Labeled Amino Acids" value="3" />
+        </when>
+      </conditional>      
+    </macro>
+    <macro name="reporter">
+      <param name="reporter_type" type="select" label="Reporter Ions Type">
+        <option value="itraq_4plex">4-plex iTRAQ</option>
+        <option value="itraq_8plex">8-plex iTRAQ</option>
+        <option value="tmt_2plex">2-plex TMT</option>
+        <option value="tmt_6plex">6-plex TMT</option>
+      </param>
+    </macro>
+    <macro name="advanced_group_conditional">
+
+    </macro>
+    <macro name="advanced_sequences_conditional">
+      <conditional name="advanced_sequence_parameters">
+        <param name="specify" type="boolean" label="Specify Advanced Sequence Parameters" checked="false" />
+        <when value="false">
+        </when>
+        <when value="true">
+          <param name="include_contamiants" type="boolean" label="Include Contamiant Sequences" checked="true" />
+          <param name="equal_il" type="boolean" label="I = L" checked="false" />
+          <param name="randomize" type="select" label="Decoy Type">
+            <option value="false" selected="true">Reverse</option>
+            <option value="true">Randomize</option>
+          </param>
+          <!-- TODO: special_aas, KR -->
+        </when>
+      </conditional>
+    </macro>
+    <macro name="identification_conditional">
+      <conditional name="identification">
+        <param name="options_type" type="select" label="Specify Identification Parameters">
+          <option value="none">None, use all defaults.</option>
+          <option value="simple">Simple, specify a few high level parameters.</option>
+          <option value="advanced">Advanced, specify many identification parameters.</option>
+        </param>
+        <when value="none">
+        </when>
+        <when value="simple">
+          <expand macro="simple_identification_params" />
+        </when>
+        <when value="advanced">
+          <expand macro="simple_identification_params" />
+          <expand macro="advanced_identification_params" />
+        </when>
+      </conditional>
+    </macro>
+    <macro name="site_quantification_conditional">
+      <conditional name="site_quantification">
+        <param name="specify" type="boolean" label="Specify Advanced Site Quantification Parameters" checked="false" />
+        <when value="false">
+        </when>
+        <when value="true">
+          <param name="site_quant_mode" type="select" label="Site Quantification Mode">
+            <!-- TODO verify values -->
+            <option value="0" selected="true">Use least modified peptides</option>
+            <option value="1">Use largest change</option>
+          </param>
+          <param name="use_norm_ratios_for_occupancy" type="boolean" label="Use normalized Ratios for  Occupancy" truevalue="true" falsevalue="false" checked="true"/>
+        </when>
+      </conditional>
+    </macro>
+    <macro name="protein_quantification_conditional">
+      <conditional name="quantification">
+        <param name="specify" type="boolean" label="Specify Advanced Protein Quantification Parameters" checked="false" />
+        <when value="false">
+        </when>
+        <when value="true">
+          <conditional name="restrict">
+            <param name="restrict_protein_quantification" type="boolean" label="Restrict Protein Quantification" checked="true" help="to unmodified peptides and those with certain modifications."/>
+            <when value="false">
+            </when>
+            <when value="true">
+              <param name="restrict_modifications" label="Modifications for Quantification" type="select" help="If advanced protein quantification parameters is not selected these default to Oxidation (M) and Actetyl (Protein N-term), but they must be selected (if desired) in this mode." multiple="true">
+                <expand macro="mod_opts" />
+              </param>
+            </when>
+          </conditional>
+          <param name="quant_mode" type="select" label="Protein Quantification Mode">
+            <option value="0">Use all peptides</option>
+            <option value="1" selected="true">Use razor and unique peptides</option>
+            <option value="2">Use unique peptides</option>
+          </param>
+          <param name="use_counterparts" type="boolean" label="Discard Unmodified Counterpart Peptides." checked="true" truevalue="false" falsevalue="true" />
+          <param name="min_ratio_count" label="Minimum Ratio Count" value="2" type="integer" />
+        </when>
+      </conditional>
+    </macro>
+    <macro name="simple_identification_params">
+      <param name="protein_fdr" label="Protein FDR" value="0.01" type="float" />
+      <param name="peptide_fdr" label="Peptide FDR" value="0.01" type="float" />
+      <param name="site_fdr" label="Protein FDR" value="0.01" type="float" />
+    </macro>
+    <macro name="advanced_identification_params">
+      <param name="peptide_pep" label="Max Peptide PEP" value="1" type="float" />
+      <!-- TODO: Apply site FDR seperately (boolean), Min peptides, Min Score,  
+           min peptide length, min razor + unique peptides, filter labeled aa,
+           min unique peptides, second peptides (boolean true) -->
+    </macro>
+    <macro name="misc_conditional">
+      <conditional name="misc">
+        <param name="specify" type="boolean" label="Specify Misc Parameters" checked="false" />
+        <when value="false">
+        </when>
+        <when value="true">
+          <param name="re_quantify" type="boolean" label="Re-quantify" checked="true" truevalue="true" falsevalue="false" />
+          <!--
+            "Keep low-scoring versions of identified peptides" 0 = No, 1 only within parameters groups, 2 = Also between parameter groups.
+            Match Between Runs: bool
+               Time window (minutes): 2
+            Label-free quantification:
+               LFO min ratio count 2
+               Fast LFQ
+            iBAQ
+               Log fit
+          -->
+        </when>
+      </conditional>
+    </macro>
+  </macros>
+  <inputs>
+    <conditional name="analysis_type">
+      <param name="type" type="select" label="Analysis Type" help="The wrapper has not yet implemented multiple groups with different parameters">
+        <option value="sg_fractions" selected="true">Single Group - Fractions of One Sample</option>
+        <option value="sg_samples">Single Group - Single File Samples</option>
+        <option value="sg_both">Single Group - Multiple Fractions and Samples</option>
+        <option value="mgs_fractions">Multi-Group (Identical Parameters) - Fractions of One Sample</option>
+        <option value="mgs_samples">Multi-Group (Identical Parameters) - Single File Samples</option>
+        <option value="mgs_both">Multi-Group (Identical Parameters) - Multiple Fractions and Samples</option>
+      </param>
+      <when value="mgs_fractions">
+        <repeat name="groups" title="Group">
+          <expand macro="input_param" />
+        </repeat>
+	      <expand macro="group_params" />
+      </when>
+      <when value="mgs_samples">
+        <repeat name="groups" title="Group">
+          <expand macro="input_param" />
+        </repeat>
+        <expand macro="group_params" />
+      </when>
+      <when value="mgs_both">
+        <repeat name="groups" title="Group">
+          <repeat name="samples" title="Sample">
+            <expand macro="input_param" />
+          </repeat>
+        </repeat>
+        <expand macro="group_params" />
+      </when>
+      <when value="sg_fractions">
+        <expand macro="input_param" />
+        <expand macro="group_params" />
+      </when>
+      <when value="sg_samples">
+        <expand macro="input_param" />
+        <expand macro="group_params" />
+      </when>
+      <when value="sg_both">
+        <repeat name="samples" title="Sample">
+          <expand macro="input_param" />
+        </repeat>
+        <expand macro="group_params" />
+      </when>
+    </conditional>
+    <param format="fasta" name="database" type="data" label="FASTA Database" help="" />
+    <expand macro="advanced_sequences_conditional" />
+    <param name="fixed_modifications" label="Fixed Modifications" type="select" multiple="true">
+      <expand macro="mod_opts" />
+    </param>
+    <expand macro="identification_conditional" />
+    <expand macro="protein_quantification_conditional" />
+    <expand macro="site_quantification_conditional" />
+    <expand macro="misc_conditional" />
+  </inputs>
+  <outputs>
+    <data format="tabular" name="output_protein_groups" label="MaxQuant Protein Groups for ${on_string}"/>
+    <data format="tabular" name="output_peptides" label="MaxQuant Peptides for ${on_string}"/>
+    <data format="tabular" name="output_evidence" label="MaxQuant Evidence for ${on_string}"/>
+    <data format="tabular" name="output_parameters" label="MaxQuant Tabular Parameters for ${on_string}"/>
+    <data format="tabular" name="output_msms" label="MaxQuant MSMS for ${on_string}"/>
+    <data format="tabular" name="output_mqpar" label="MaxQuant Parameters XML for ${on_string}"/>
+  </outputs>
+  <help>
+  </help>
+</tool>
