@@ -1,7 +1,7 @@
 GalaxyP - Append False Discovery Rate
 =====================================
 
-* Home: <https://bitbucket.org/galaxyp/appendfdr>
+* Home: <https://github.com/galaxyproteomics/tools-galaxyp/>
 * Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/appendfdr>
 * Tool ID: `append_fdr`
 * Tool Type: `default`
@@ -36,7 +36,7 @@ You can copy, modify, distribute and perform the work, even for commercial purpo
 Contributing
 ------------
 
-Contributions to this repository are reviewed through pull requests. If you would like your work acknowledged, please also add yourself to the Authors section. If your pull request is accepted, you will also be acknowledged in <https://bitbucket.org/galaxyp/galaxyp/CONTRIBUTORS.md> unless you opt-out.
+Contributions to this repository are reviewed through pull requests. If you would like your work acknowledged, please also add yourself to the Authors section. If your pull request is accepted, you will also be acknowledged in <https://github.com/galaxyproteomics/tools-galaxyp/>
 
 
 Authors

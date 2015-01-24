@@ -1,7 +1,7 @@
 GalaxyP - LTQ-iQuant CLI
 ========================
 
-* Home: <https://bitbucket.org/galaxyp/ltq_iquant_cli>
+* Home: <https://github.com/galaxyproteomics/tools-galaxyp/>
 * Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/ltq_iquant_cli>
 * Tool ID: `ltq_iquant_cli`
 
@@ -39,7 +39,7 @@ You can copy, modify, distribute and perform the work, even for commercial purpo
 Contributing
 ------------
 
-Contributions to this repository are reviewed through pull requests. If you would like your work acknowledged, please also add yourself to the Authors section. If your pull request is accepted, you will also be acknowledged in <https://bitbucket.org/galaxyp/galaxyp/CONTRIBUTORS.md> unless you opt-out.
+Contributions to this repository are reviewed through pull requests. If you would like your work acknowledged, please also add yourself to the Authors section. If your pull request is accepted, you will also be acknowledged in <https://github.com/galaxyproteomics/tools-galaxyp/>
 
 
 Authors
