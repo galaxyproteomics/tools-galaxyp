@@ -23,9 +23,9 @@ System dependency note: The Python package `lxml` is used, which requires these 
 GalaxyP Community
 -----------------
 
-Current governing community policies for [GalaxyP](https://bitbucket.org/galaxyp/) and other information can be found at:
+Current governing community policies for [GalaxyP](https://github.com/galaxyproteomics/) and other information can be found at:
 
-<https://bitbucket.org/galaxyp/galaxyp>
+<https://github.com/galaxyproteomics>
 
 
 License
