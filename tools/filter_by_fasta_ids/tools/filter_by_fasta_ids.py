@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 """ A script to build specific fasta databases """
-from __future__ import print_function
 import sys
 import logging
 
