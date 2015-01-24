@@ -1,0 +1,202 @@
+<tool id="directag_and_tagrecon" version="0.1.0" name="DirecTag and TagRecon">
+  <requirements>
+    <requirement type="package" version="333">binaries_for_package_directag</requirement>
+    <requirement type="package" version="444">binaries_for_package_tagrecon</requirement>
+  </requirements>
+
+  <description></description>
+  <command>
+  #set $db_name = $input_database.display_name.replace(".fasta", "") + ".fasta"
+  #if $output_type.value == "mzid"
+  #set $output_ext="mzid"
+  #set $output_format="mzIdentML"
+  #else
+  #set $output_ext="pepXML"
+  #set $output_format="pepXML"
+  #end if
+  #set $input_name = $input.display_name
+  #set $tags_name = $input_name.split(".")[0] + ".tags"
+  #set $output_name = $input_name.split(".")[0] + "." + $output_ext
+  #set $static_mods_str = ""
+  #for $static_mod in $static_mods
+  #set $static_mods_str = $static_mods_str + "" + str($static_mod.aa) + " " + str($static_mod.mass)
+  #end for
+  #set $dynamic_mods_str = ""
+  #set $dynamic_mod_index = 0
+  #for $dynamic_mod in $dynamic_mods
+  #set $dynamic_mods_str = $dynamic_mods_str + "" + str($dynamic_mod.motif) + " " + $mod_rep_chars[$dynamic_mod_index] + " " + str($dynamic_mod.mass)
+  #set $dynamic_mod_index = $dynamic_mod_index + 1
+  #end for
+  ln -s '$input' '${input_name}';
+  ln -s '$input_database' '${db_name}';
+  cp \${TAGRECON_UNIMOD_PATH:-${GALAXY_DATA_INDEX_DIR}/unimod.xml} .;
+  cp \${TAGRECON_BLOSUM_PATH:-${GALAXY_DATA_INDEX_DIR}/blosum62.fas} .;
+  directag '${input_name}' \
+  -StaticMods '${static_mods_str}' \
+  -DynamicMods '${dynamic_mods_str}' \
+  -MaxDynamicMods '$max_dynamic_mods' \
+  -MaxResults ${max_tags} \
+  -FragmentMzTolerance ${tag_mz_tolerance} \
+  #if $advanced_charge_options.specify
+  -UseChargeStateFromMS $advanced_charge_options.use_ms_charge_state \
+  #end if
+  #if $tag_weights.specify
+  -IntensityScoreWeight $tag_weights.intensity \
+  -MzFidelityScoreWeight $tag_weights.mz \
+  -ComplementScoreWeight $tag_weights.complement \
+  #end if
+  ;
+  tagrecon -DecoyPrefix '${decoy_prefix}' \
+  -ProteinDatabase '${db_name}' \
+  -OutputFormat '${$output_format}' \
+  -StaticMods '${static_mods_str}' \
+  -DynamicMods '${dynamic_mods_str}' \
+  -MaxDynamicMods '$max_dynamic_mods' \
+  -CleavageRules '${protease}' \
+  -MaxMissedCleavages ${max_missed_cleavages} \
+  #if $advanced_cleavage_options.specify
+  -MinTerminiCleavages $advanced_cleavage_options.min_termini_cleavages \
+  -UseNETAdjustment $advanced_cleavage_options.use_net_adjustment \
+  #end if
+  #if $advanced_charge_options.specify
+  -UseChargeStateFromMS $advanced_charge_options.use_ms_charge_state \
+  #end if
+  #if $search_untagged.search
+  -SearchUntaggedSpectra true \
+  -UntaggedSpectraPrecMZTol $search_untagged.precursor_mz_tolerance
+  #end if
+  '${tags_name}';
+  mv '$output_name' output
+  </command>
+  <stdio>
+    <exit_code range="1:" level="fatal" description="Job Failed" />
+    <regex match="^Could not find the default configuration file.*$"
+      source="both"
+      level="warning" />
+  </stdio>
+  <inputs>
+    <conditional name="type">
+      <param name="input_type" type="select" label="Input Type">
+        <option value="mzml">mzML</option>
+        <option value="mzxml">mzXML</option>
+        <option value="mgf">mgf</option>
+        <option value="ms2">ms2</option>
+      </param>
+      <when value="mzml">
+        <param format="mzml" name="input" type="data" label="Input mzML"/>
+      </when>
+      <when value="mzxml">
+        <param format="mzxml" name="input" type="data" label="Input mzXML"/>
+      </when>
+      <when value="mgf">
+        <param format="mgf" name="input" type="data" label="Input mgf"/>
+      </when>
+      <when value="ms2">
+        <param format="ms2" name="input" type="data" label="Input ms2"/>
+      </when>
+    </conditional>
+    <param name="output_type" type="select" label="Output Type">
+      <option value="raw_pepxml">pepXML</option>
+      <option value="mzid">mzIdentML</option>
+    </param>
+    <param format="fasta" name="input_database" type="data" label="Protein Database"/>
+    <param name="decoy_prefix" type="text" label="Decoy Prefix"/>
+    <repeat name="static_mods" title="Static Modifications (used by both directag and tagrecon) ">
+      <param name="aa" type="text" label="Amino Acid" />
+      <param name="mass" type="float" label="Mass" value="0" />
+    </repeat>
+    <repeat name="dynamic_mods" title="Dynamic Modifications  (used by both directag and tagrecon)" max="7">
+      <param name="motif" type="text" label="Amino Acid Motif" />
+      <param name="mass" type="float" label="Mass" value="0" />
+    </repeat>
+    <param name="max_dynamic_mods" type="integer" label="Maximum Dynamic Mods per Sequence" value="2" />
+    <param name="tag_length" type="integer" label="Tag Length" value="3" help="A sequence tag is generated from the gaps between a number of peaks equal to this parameter plus one. Longer tag lengths are more specific, but harder to find because many consecutive ion fragments are rare." />
+    <param name="max_tags" type="integer" label="Maximum Number of Tags per Spectrum" value="20" />
+    <param name="tag_mz_tolerance" type="float" label="Fragment m/z Tolerance during Tag Generation (Da/z)" value=".5" />
+    <param name="protease" type="select" label="Protease">
+      <options from_file="proteases.loc">
+        <column name="name" index="0" />
+        <column name="value" index="1" />
+      </options>
+    </param>
+    <param name="max_missed_cleavages" label="Maximum Number of Missed Cleavages" type="integer" value="-1" />
+    <conditional name="advanced_cleavage_options">
+      <param name="specify" type="boolean" label="Specify advanced cleavage options" help="" truevalue="true" falsevalue="false" />
+      <when value="false" />
+      <when value="true">
+        <param name="min_termini_cleavages" type="select" label="Minimum Termini Cleavages" value="2" help="A peptide must start after a cleavage and end before a cleavage. Setting this parameter to 0 or 1 will reduce that requirement, so that neither terminus or only one terminus of the peptide must match one of the cleavage rules specified above.">
+          <option value="2">2</option>
+          <option value="1">1</option>
+          <option value="0">0</option>
+        </param>
+        <param name="use_net_adjustment" type="boolean" label="Use NET Adjustment" help="When enabled, TagRecon adds a probabilistic bonus to peptide scores depending on whether the peptides are fully-enzymatic, semi-enzymatic, or non-enzymatic." truevalue="true" falsevalue="false" />
+      </when>
+    </conditional>
+    <conditional name="advanced_charge_options">
+      <param name="specify" type="boolean" label="Specify Advanced Charge State Handling Options" help="" truevalue="true" falsevalue="false" />
+      <when value="false" />
+      <when value="true">
+        <param name="use_ms_charge_state" type="boolean" label="Use Charge State from MS" truevalue="true" falsevalue="false" help="When enabled, DirecTag and TagRecon will not use their internal algorithm to determine charge state of a spectrum when it is available in the input file." />
+        <!-- TODO: Add DuplicateSpectra, NumChargeStates -->
+      </when>
+    </conditional>
+    <!-- TODO: Advanced Peptide Filtering: Min/Max Peptide Mass/Length -->
+    <conditional name="tag_weights">
+      <param name="specify" type="boolean" label="Override Default Tag Weighting" help="By default equal weights are assigned to intensity, m/z fidelity, and complement scores." truevalue="true" falsevalue="false" />
+      <when value="false" />
+      <when value="true">
+        <param name="intensity" type="float" label="Intensity Score Weight" help="" value="1.0" />
+        <param name="mz" type="float" label="m/z Fidelity Score Weight" help="" value="1.0" />
+        <param name="complement" type="float" label="Complement Score Weight" help="" value="1.0" />
+      </when>
+    </conditional>
+    <conditional name="search_untagged">
+      <param name="search" type="boolean" label="Search Untagged Spectra" help="Search untagged spectra like a database search." truevalue="true" falsevalue="false" />
+      <when value="false" />
+      <when value="true">
+        <param name="precursor_mz_tolerance" type="float" label="Untagged Spectra Precursor m/z Tolerance" value="1.25" />
+      </when>
+    </conditional>
+    <conditional name="unknown_mass_shifts">
+      <param name="how" type="select" label="Explaination for Unknown Mass Shifts">
+        <option value="">None, disable delta mass interpretation by TagRecon</option>
+        <option value="blindptms">Blind PTMs</option>
+        <option value="mutations">Mutations</option>
+        <!-- TODO: Add preferredptms -->
+      </param>
+      <when value="blindptms">
+        <!-- BlindPTMResidues ??? -->
+      </when>
+      <when value="mutations">
+        <!-- BlosumScoreThreshold ??? BlosumThreshold ???-->
+      </when>
+      <when value="" />
+    </conditional>
+  </inputs>
+<!--
+  Both:
+  AdjustPrecursorMass (defaults to false)
+
+  TagRecon:
+  Skip for now: ComputeXCorr
+  Skip forever: ProteinSampleSize
+
+  TO ADD:
+
+  Both: Advanced, ClassSizeMultiplier, float 2.0.
+-->
+  <outputs>
+    <data format="raw_pepxml" name="output" from_work_dir="output">
+      <change_format>
+        <when input="output_type" value="mzid" format="mzid" />
+      </change_format>
+    </data>
+  </outputs>
+
+  <help>
+**What it does**
+
+Performs protein identification via Directag and TagRecon.
+  </help>
+</tool>
+
