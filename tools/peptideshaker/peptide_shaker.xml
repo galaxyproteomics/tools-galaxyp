@@ -1,0 +1,654 @@
+<tool id="peptide_shaker" name="Peptide Shaker" version="1.36.0">
+    <description>
+        Perform protein identification using various search engines based on results from SearchGUI
+    </description>
+    <requirements>
+        <requirement type="package" version="0.36">peptide_shaker</requirement>
+    </requirements>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="stdio" />
+    <command>
+<![CDATA[
+        #from datetime import datetime
+        #set $exp_str = "Galaxy_Experiment_%s" % datetime.now().strftime("%Y%m%d%H%M%s")
+        #set $samp_str = "Sample_%s" % datetime.now().strftime("%Y%m%d%H%M%s")
+        #set $temp_stderr = "peptideshaker_stderr"
+
+        mkdir output_reports;
+        cwd=`pwd`;
+
+        ln -s '$searchgui_input' searchgui_input.zip &&
+        mkdir temp && 
+        cp searchgui_input.zip temp/searchgui_input.zip &&
+        cd temp &&
+        unzip searchgui_input.zip &&
+        cp ./data/* ../ &&
+        cd ../ &&
+        ######################
+        ## PeptideShakerCLI ##
+        ######################
+        (java -cp \$PEPTIDESHAKER_JAR_PATH eu.isas.peptideshaker.cmd.PeptideShakerCLI
+            -temp_folder `pwd`
+            -experiment '$exp_str'
+            -sample '$samp_str'
+            -replicate 1
+            -identification_files \$cwd/searchgui_input.zip
+            -out \$cwd/peptide_shaker_output.cps
+            -zip \$cwd/peptideshaker_out.zip
+
+            -threads "\${GALAXY_SLOTS:-12}"
+
+            ##Optional gene annotation parameter
+            #if $species_type.species_type_selector != 'no_species_type':
+                -species_type "${species_type.species_type_selector}"
+                -species "${species_type.species}"
+                -species_update 1
+            #end if
+
+            ##Optional processing parameters:
+            #if $processing_options.processing_options_selector == "yes"
+                -protein_FDR "${processing_options.protein_fdr}"
+                -peptide_FDR "${processing_options.peptide_fdr}"
+                -psm_FDR "${processing_options.psm_fdr}"
+                -ptm_score "${processing_options.ptm_score.ptm_score_selector}"
+                #if $processing_options.ptm_score.ptm_score_selector == 1
+                    -score_neutral_losses "${processing_options.ptm_score.neutral_losses}"
+                    #if str($processing_options.ptm_score.ptm_threshold) != ''
+                        -ptm_threshold "${processing_options.ptm_score.ptm_threshold}"
+                    #end if
+                #end if
+                -protein_fraction_mw_confidence "${processing_options.protein_fraction_mw_confidence}"
+            #end if
+
+           ##Optional filtering parameters:
+            #if $filtering_options.filtering_options_selector == "yes":
+                -min_peptide_length "${filtering_options.min_peptide_length}"
+                -max_peptide_length "${filtering_options.max_peptide_length}"
+                -max_precursor_error "${filtering_options.max_precursor_error}"
+                -max_precursor_error_type "${filtering_options.max_precursor_error_type}"
+                ##-max_xtandem_e "${filtering_options.max_xtandem_e}"
+                ##-max_omssa_e "${filtering_options.max_omssa_e}"
+                ##-max_mascot_e "${filtering_options.max_mascot_e}"
+                -exclude_unknown_ptms "${filtering_options.exclude_unknown_ptms}"
+            #end if
+
+        2>> $temp_stderr)
+
+        &&
+
+
+        echo "Running Reports";
+
+        ##################################
+        ## PeptideShaker Report options ##
+        ##################################
+
+        #if 'mzidentML' in str($outputs).split(','):
+            echo "Generating mzIdentML";
+            (java -cp \$PEPTIDESHAKER_JAR_PATH eu.isas.peptideshaker.cmd.MzidCLI
+                -in \$cwd/peptide_shaker_output.cps
+                -output_file output.mzid
+                -contact_first_name 'Proteomics'
+                -contact_last_name 'Galaxy'
+                -contact_email 'galaxyp@umn.edu'
+                -contact_address 'galaxyp@umn.edu'
+                -organization_name 'University of Minnesota'
+                -organization_email 'galaxyp@umn.edu'
+                -organization_address 'Minneapolis, MN 55455, Vereinigte Staaten'
+            2>> $temp_stderr) 
+            &&
+        #end if
+
+        #if set(["0","1","2","3","4"]).intersection(set(str($outputs).split(','))):
+            (java -cp \$PEPTIDESHAKER_JAR_PATH eu.isas.peptideshaker.cmd.ReportCLI
+                -temp_folder `pwd`
+                -in \$cwd/peptide_shaker_output.cps
+                -out_reports \$cwd/output_reports
+                #set $cleaned_list = str($outputs).split(',')
+                #if 'cps' in $cleaned_list:
+                    #silent $cleaned_list.remove('cps')
+                #end if
+                #if 'mzidentML' in $cleaned_list:
+                    #silent $cleaned_list.remove('mzidentML')
+                #end if
+                #if 'zip' in $cleaned_list:
+                    #silent $cleaned_list.remove('zip')
+                #end if
+                ## Only numbers are left over. These corresponds to different reports.
+                -reports #echo ','.join($cleaned_list)#
+
+            2>> $temp_stderr)
+            &&
+        #end if
+
+        #if '0' in str($outputs).split(','):
+            find \$cwd/output_reports -name '*Certificate*' -exec bash -c 'mv "$0" "certificate.txt"' {} \;
+            ;
+        #end if
+        #if '1' in str($outputs).split(','):
+            find \$cwd/output_reports -name '*Hierarchical*' -exec bash -c 'mv "$0" "hierarchical.txt"' {} \;
+            ;
+        #end if
+        #if '2' in str($outputs).split(','):
+            find \$cwd/output_reports -name '*PSM*' -exec bash -c 'mv "$0" "psm.txt"' {} \;
+            ;
+        #end if
+        #if '3' in str($outputs).split(','):
+            find \$cwd/output_reports -name '*Peptide*' -exec bash -c 'mv "$0" "peptides.txt"' {} \;
+            ;
+        #end if
+        #if '4' in str($outputs).split(','):
+            find \$cwd/output_reports -name '*Protein*' -exec bash -c 'mv "$0" "proteins.txt"' {} \;
+            ;
+        #end if
+
+        exit_code_for_galaxy=\$?;
+        cat $temp_stderr 2>&1;
+        (exit \$exit_code_for_galaxy)
+]]>
+    </command>
+    <inputs>
+        <param name="searchgui_input" format="searchgui_archive" type="data" label="Compressed SearchGUI results"
+            help="SearchGUI Results from History"/>
+
+        <conditional name="species_type">
+            <param name="species_type_selector" type="select" optional="true" label="The species type to use for the gene annotation"
+                help="(Optional) If your species is supported under one of the groups, selecting it will allow GO annotations and other information to be included in the results">
+                <option value="Fungi">Fungi</option>
+                <option value="Plants">Plants</option>
+                <option value="Metazoa">Metazoa</option>
+                <option value="Vertebrates">Vertebrates</option>
+                <option value="Protists">Protists</option>
+                <option value="no_species_type" selected="true">No species restriction</option>
+            </param>
+            <when value="Protists">
+                <param name="species" type="select" label="The species to use for the gene annotation"
+                    help="">
+                    <option value="Albugo laibachii">Albugo laibachii</option>
+                    <option value="Dictyostelium discoideum">Dictyostelium discoideum</option>
+                    <option value="Entamoeba histolytica">Entamoeba histolytica</option>
+                    <option value="Giardia lamblia">Giardia lamblia</option>
+                    <option value="Guillardia theta CCMP2712">Guillardia theta CCMP2712</option>
+                    <option value="Hyaloperonospora arabidopsidis">Hyaloperonospora arabidopsidis</option>
+                    <option value="Leishmania major">Leishmania major</option>
+                    <option value="Phaeodactylum tricornutum">Phaeodactylum tricornutum</option>
+                    <option value="Phytophthora infestans">Phytophthora infestans</option>
+                    <option value="Phytophthora ramorum">Phytophthora ramorum</option>
+                    <option value="Phytophthora sojae">Phytophthora sojae</option>
+                    <option value="Plasmodium berghei">Plasmodium berghei</option>
+                    <option value="Plasmodium chabaudi">Plasmodium chabaudi</option>
+                    <option value="Plasmodium falciparum">Plasmodium falciparum</option>
+                    <option value="Plasmodium knowlesi">Plasmodium knowlesi</option>
+                    <option value="Plasmodium vivax">Plasmodium vivax</option>
+                    <option value="Pythium ultimum">Pythium ultimum</option>
+                    <option value="Tetrahymena thermophila">Tetrahymena thermophila</option>
+                    <option value="Thalassiosira pseudonana">Thalassiosira pseudonana</option>
+                    <option value="Toxoplasma gondii">Toxoplasma gondii</option>
+                    <option value="Trypanosoma brucei">Trypanosoma brucei</option>
+                </param>
+            </when>
+            <when value="Plants">
+                <param name="species" type="select" label="The species to use for the gene annotation"
+                    help="">
+                    <option value="Arabidopsis lyrata">Arabidopsis lyrata</option>
+                    <option value="Arabidopsis thaliana">Arabidopsis thaliana</option>
+                    <option value="Brachypodium distachyon">Brachypodium distachyon</option>
+                    <option value="Brassica rapa genes">Brassica rapa genes</option>
+                    <option value="Chlamydomonas reinhardtii">Chlamydomonas reinhardtii</option>
+                    <option value="Cyanidioschyzon merolae">Cyanidioschyzon merolae</option>
+                    <option value="Glycine max">Glycine max</option>
+                    <option value="Hordeum vulgare">Hordeum vulgare</option>
+                    <option value="Medicago truncatula">Medicago truncatula</option>
+                    <option value="Musa acuminata">Musa acuminata</option>
+                    <option value="Oryza brachyantha">Oryza brachyantha</option>
+                    <option value="Oryza glaberrima">Oryza glaberrima</option>
+                    <option value="Oryza sativa Indica Group">Oryza sativa Indica Group</option>
+                    <option value="Oryza sativa">Oryza sativa</option>
+                    <option value="Physcomitrella patens">Physcomitrella patens</option>
+                    <option value="Populus trichocarpa">Populus trichocarpa</option>
+                    <option value="Selaginella moellendorffii">Selaginella moellendorffii</option>
+                    <option value="Setaria italica">Setaria italica</option>
+                    <option value="Solanum lycopersicum">Solanum lycopersicum</option>
+                    <option value="Solanum tuberosum">Solanum tuberosum</option>
+                    <option value="Sorghum bicolor">Sorghum bicolor</option>
+                    <option value="Vitis vinifera">Vitis vinifera</option>
+                    <option value="Zea mays">Zea mays</option>
+                </param>
+            </when>
+            <when value="Metazoa">
+                <param name="species" type="select" label="The species to use for the gene annotation"
+                    help="">
+                    <option value="Acyrthosiphon pisum">Acyrthosiphon pisum</option>
+                    <option value="Aedes aegypti">Aedes aegypti</option>
+                    <option value="Amphimedon queenslandica">Amphimedon queenslandica</option>
+                    <option value="Anopheles darlingi">Anopheles darlingi</option>
+                    <option value="Anopheles gambiae">Anopheles gambiae</option>
+                    <option value="Apis mellifera">Apis mellifera</option>
+                    <option value="Atta cephalotes">Atta cephalotes</option>
+                    <option value="Bombyx mori">Bombyx mori</option>
+                    <option value="Brugia malayi">Brugia malayi</option>
+                    <option value="Caenorhabditis brenneri">Caenorhabditis brenneri</option>
+                    <option value="Caenorhabditis briggsae">Caenorhabditis briggsae</option>
+                    <option value="Caenorhabditis elegans">Caenorhabditis elegans</option>
+                    <option value="Caenorhabditis japonica">Caenorhabditis japonica</option>
+                    <option value="Caenorhabditis remanei">Caenorhabditis remanei</option>
+                    <option value="Culex quinquefasciatus">Culex quinquefasciatus</option>
+                    <option value="Danaus plexippus">Danaus plexippus</option>
+                    <option value="Daphnia pulex">Daphnia pulex</option>
+                    <option value="Drosophila ananassae">Drosophila ananassae</option>
+                    <option value="Drosophila erecta">Drosophila erecta</option>
+                    <option value="Drosophila grimshawi">Drosophila grimshawi</option>
+                    <option value="Drosophila melanogaster">Drosophila melanogaster</option>
+                    <option value="Drosophila mojavensis">Drosophila mojavensis</option>
+                    <option value="Drosophila persimilis">Drosophila persimilis</option>
+                    <option value="Drosophila pseudoobscura">Drosophila pseudoobscura</option>
+                    <option value="Drosophila sechellia">Drosophila sechellia</option>
+                    <option value="Drosophila simulans">Drosophila simulans</option>
+                    <option value="Drosophila virilis">Drosophila virilis</option>
+                    <option value="Drosophila willistoni">Drosophila willistoni</option>
+                    <option value="Drosophila yakuba">Drosophila yakuba</option>
+                    <option value="Heliconius melpomene">Heliconius melpomene</option>
+                    <option value="Ixodes scapularis">Ixodes scapularis</option>
+                    <option value="Loa loa">Loa loa</option>
+                    <option value="Megaselia scalaris">Megaselia scalaris</option>
+                    <option value="Nasonia vitripennis">Nasonia vitripennis</option>
+                    <option value="Nematostella vectensis">Nematostella vectensis</option>
+                    <option value="Pediculus humanus">Pediculus humanus</option>
+                    <option value="Pristionchus pacificus">Pristionchus pacificus</option>
+                    <option value="Schistosoma mansoni">Schistosoma mansoni</option>
+                    <option value="Strigamia maritima">Strigamia maritima</option>
+                    <option value="Strongylocentrotus purpuratus">Strongylocentrotus purpuratus</option>
+                    <option value="Tribolium castaneum">Tribolium castaneum</option>
+                    <option value="Trichinella spiralis">Trichinella spiralis</option>
+                    <option value="Trichoplax adhaerens">Trichoplax adhaerens</option>
+                </param>
+            </when>
+            <when value="Fungi">
+                <param name="species" type="select" label="The species to use for the gene annotation"
+                    help="">
+                    <option value="Ashbya gossypii">Ashbya gossypii</option>
+                    <option value="Aspergillus clavatus">Aspergillus clavatus</option>
+                    <option value="Aspergillus flavus">Aspergillus flavus</option>
+                    <option value="Aspergillus fumigatus">Aspergillus fumigatus</option>
+                    <option value="Aspergillus fumigatusa1163">Aspergillus fumigatusa1163</option>
+                    <option value="Aspergillus nidulans">Aspergillus nidulans</option>
+                    <option value="Aspergillus niger">Aspergillus niger</option>
+                    <option value="Aspergillus oryzae">Aspergillus oryzae</option>
+                    <option value="Aspergillus terreus">Aspergillus terreus</option>
+                    <option value="Botryotinia fuckeliana">Botryotinia fuckeliana</option>
+                    <option value="Cryptococcus neoformans">Cryptococcus neoformans</option>
+                    <option value="Fusarium oxysporum">Fusarium oxysporum</option>
+                    <option value="Gaeumannomyces graminis">Gaeumannomyces graminis</option>
+                    <option value="Gibberella moniliformis">Gibberella moniliformis</option>
+                    <option value="Gibberella zeae">Gibberella zeae</option>
+                    <option value="Glomerella graminicola">Glomerella graminicola</option>
+                    <option value="Komagataella pastoris">Komagataella pastoris</option>
+                    <option value="Leptosphaeria maculans">Leptosphaeria maculans</option>
+                    <option value="Magnaporthe oryzae">Magnaporthe oryzae</option>
+                    <option value="Magnaporthe poae">Magnaporthe poae</option>
+                    <option value="Melampsora larici-populina">Melampsora larici-populina</option>
+                    <option value="Nectria haematococca">Nectria haematococca</option>
+                    <option value="Neosartorya fischeri">Neosartorya fischeri</option>
+                    <option value="Neurospora crassa">Neurospora crassa</option>
+                    <option value="Phaeosphaeria nodorum">Phaeosphaeria nodorum</option>
+                    <option value="Puccinia graminis">Puccinia graminis</option>
+                    <option value="Puccinia triticina">Puccinia triticina</option>
+                    <option value="Pyrenophora teres">Pyrenophora teres</option>
+                    <option value="Pyrenophora tritici-repentis">Pyrenophora tritici-repentis</option>
+                    <option value="Saccharomyces cerevisiae">Saccharomyces cerevisiae</option>
+                    <option value="Schizosaccharomyces pombe">Schizosaccharomyces pombe</option>
+                    <option value="Sclerotinia sclerotiorum">Sclerotinia sclerotiorum</option>
+                    <option value="Sporisorium reilianum">Sporisorium reilianum</option>
+                    <option value="Trichoderma reesei">Trichoderma reesei</option>
+                    <option value="Trichoderma virens">Trichoderma virens</option>
+                    <option value="Tuber melanosporum">Tuber melanosporum</option>
+                    <option value="Ustilago maydis">Ustilago maydis</option>
+                    <option value="Yarrowia lipolytica">Yarrowia lipolytica</option>
+                    <option value="Zymoseptoria tritici">Zymoseptoria tritici</option>
+                </param>
+            </when>
+            <when value="Vertebrates">
+                <param name="species" type="select" label="The species to use for the gene annotation"
+                    help="">
+                    <option value="Ailuropoda melanoleuca">Ailuropoda melanoleuca</option>
+                    <option value="Anolis carolinensis">Anolis carolinensis</option>
+                    <option value="Bos taurus">Bos taurus</option>
+                    <option value="Caenorhabditis elegans">Caenorhabditis elegans</option>
+                    <option value="Callithrix jacchus">Callithrix jacchus</option>
+                    <option value="Canis familiaris">Canis familiaris</option>
+                    <option value="Cavia porcellus">Cavia porcellus</option>
+                    <option value="Choloepus hoffmanni">Choloepus hoffmanni</option>
+                    <option value="Ciona intestinalis">Ciona intestinalis</option>
+                    <option value="Ciona savignyi">Ciona savignyi</option>
+                    <option value="Danio rerio">Danio rerio</option>
+                    <option value="Dasypus novemcinctus">Dasypus novemcinctus</option>
+                    <option value="Dipodomys ordii">Dipodomys ordii</option>
+                    <option value="Drosophila melanogaster">Drosophila melanogaster</option>
+                    <option value="Echinops telfairi">Echinops telfairi</option>
+                    <option value="Equus caballus">Equus caballus</option>
+                    <option value="Erinaceus europaeus">Erinaceus europaeus</option>
+                    <option value="Felis catus">Felis catus</option>
+                    <option value="Gallus gallus">Gallus gallus</option>
+                    <option value="Gasterosteus aculeatus">Gasterosteus aculeatus</option>
+                    <option value="Gorilla gorilla">Gorilla gorilla</option>
+                    <option value="Homo sapiens">Homo sapiens</option>
+                    <option value="Ictidomys tridecemlineatus">Ictidomys tridecemlineatus</option>
+                    <option value="Latimeria chalumnae">Latimeria chalumnae</option>
+                    <option value="Loxodonta africana">Loxodonta africana</option>
+                    <option value="Macaca mulatta">Macaca mulatta</option>
+                    <option value="Macropus eugenii">Macropus eugenii</option>
+                    <option value="Meleagris gallopavo">Meleagris gallopavo</option>
+                    <option value="Microcebus murinus">Microcebus murinus</option>
+                    <option value="Monodelphis domestica">Monodelphis domestica</option>
+                    <option value="Mus musculus">Mus musculus</option>
+                    <option value="Mustela putorius furo">Mustela putorius furo</option>
+                    <option value="Myotis lucifugus">Myotis lucifugus</option>
+                    <option value="Nomascus leucogenys">Nomascus leucogenys</option>
+                    <option value="Ochotona princeps">Ochotona princeps</option>
+                    <option value="Oreochromis niloticus">Oreochromis niloticus</option>
+                    <option value="Ornithorhynchus anatinus">Ornithorhynchus anatinus</option>
+                    <option value="Oryctolagus cuniculus">Oryctolagus cuniculus</option>
+                    <option value="Oryzias latipes">Oryzias latipes</option>
+                    <option value="Otolemur garnettii">Otolemur garnettii</option>
+                    <option value="Pan troglodytes">Pan troglodytes</option>
+                    <option value="Petromyzon marinus">Petromyzon marinus</option>
+                    <option value="Pelodiscus sinensis">Pelodiscus sinensis</option>
+                    <option value="Pongo abelii">Pongo abelii</option>
+                    <option value="Procavia capensis">Procavia capensis</option>
+                    <option value="Pteropus vampyrus">Pteropus vampyrus</option>
+                    <option value="Rattus norvegicus">Rattus norvegicus</option>
+                    <option value="Saccharomyces cerevisiae">Saccharomyces cerevisiae</option>
+                    <option value="Sarcophilus harrisii">Sarcophilus harrisii</option>
+                    <option value="Sorex araneus">Sorex araneus</option>
+                    <option value="Sus scrofa">Sus scrofa</option>
+                    <option value="Taeniopygia guttata">Taeniopygia guttata</option>
+                    <option value="Takifugu rubripes">Takifugu rubripes</option>
+                    <option value="Tarsius syrichta">Tarsius syrichta</option>
+                    <option value="Tetraodon nigroviridis">Tetraodon nigroviridis</option>
+                    <option value="Tupaia belangeri">Tupaia belangeri</option>
+                    <option value="Tursiops truncatus">Tursiops truncatus</option>
+                    <option value="Vicugna pacos">Vicugna pacos</option>
+                    <option value="Xenopus tropicalis">Xenopus tropicalis</option>
+                    <option value="Xiphophorus maculatus">Xiphophorus maculatus</option>
+                </param>
+            </when>
+        </conditional>
+        <conditional name="processing_options">
+            <param name="processing_options_selector" type="select" label="Specify Advanced PeptideShaker Processing Options">
+                <option value="no" selected="True">Default Processing Options</option>
+                <option value="yes">Advanced Processing Options</option>
+            </param>
+            <when value="no" />
+            <when value="yes">
+                <param name="protein_fdr" label="FDR at the protein level" help="In percent (default 1% FDR: '1')" value="1" type="float" />
+                <param name="peptide_fdr" label="FDR at the peptide level" help="In percent (default 1% FDR: '1')" value="1" type="float" />
+                <param name="psm_fdr" label="FDR at the PSM level" help="In percent (default 1% FDR: '1')" value="1" type="float" />
+                <param name="protein_fraction_mw_confidence" value="95.0" type="float" label="Minimum confidence required for a protein in the fraction MW plot"
+                    help="default 95%: '95.0'" />
+                <conditional name="ptm_score">
+                    <param name="ptm_score_selector" type="select" label="The PTM probabilistic score to use for PTM localization">
+                        <option value="0" selected="True">A-score</option>
+                        <option value="1">PhosphoRS</option>
+                    </param>
+                    <when value="0" />
+                    <when value="1">
+                        <param name="score_neutral_losses" label="Include Neutral Losses in A Score" type="boolean" truevalue="1" falsevalue="0" />
+                        <param name="ptm_threshold" label="The threshold to use for the PTM scores" value="" type="float"
+                            help="Automatic mode will be used if not set" />
+                    </when>
+                </conditional>
+                <!-- SKIPPING -protein_fraction_mw_confidence ${processing_options.protein_fraction_mw_confidence} -->
+            </when>
+        </conditional>
+        <conditional name="filtering_options">
+            <param name="filtering_options_selector" type="select" label="Specify Advanced Filtering Options"
+                help="Filter based on peptide lengths, precursor mass error, E value errors from X! Tandem and OMSSA, and include/exclude unknown PTM’s">
+                <option value="no" selected="True">Default Filtering Options</option>
+                <option value="yes">Advanced Processing Options</option>
+            </param>
+            <when value="no" />
+            <when value="yes">
+                <param name="min_peptide_length" type="integer" label="Minimum Peptide Length" value="6" />
+                <param name="max_peptide_length" type="integer" label="Maximum Peptide Length" value="30" />
+                <param name="max_precursor_error" type="float" label="Maximum Precursor Error" value="10"
+                    help="Next option specifies units (Da or ppm)" />
+                <param name="max_precursor_error_type" label="Maximum Precursor Error Type" type="select">
+                    <option value="0">ppm</option>
+                    <option value="1">Daltons</option>
+                </param>
+                <!--param name="max_xtandem_e" label="Maximum X! Tandem e-value" value="100" type="float" help="" /-->
+                <!--param name="max_omssa_e" label="Maximum OMSSA e-value" value="100" type="float" help="" /-->
+                <!--param name="max_mascot_e" label="Maximum Mascot e-value filter" value="100" type="float" help="" /-->
+                <param name="exclude_unknown_ptms" label="Exclude Unknown PTMs" type="boolean" truevalue="1" falsevalue="0" checked="true" />
+            </when>
+        </conditional>
+        <param name="outputs" type="select" display="checkboxes" multiple="True" label="Output options">
+            <option value="zip">Zip File for import to Desktop App</option>
+            <option value="mzidentML" selected="True">mzidentML File</option>
+            <option value="3" >Peptide Report</option>
+            <option value="4" >Protein Report</option>
+            <option value="2">PSM Report</option>
+            <option value="0">Certificate of Analysis</option>
+            <option value="1">Hierarchical Report</option>
+            <option value="cps">CPS file</option>
+            <validator type="no_options" message="Please select at least one output file" />
+        </param>
+    </inputs>
+    <outputs>
+        <data format="peptideshaker_archive" name="peptideshaker_results" from_work_dir="peptideshaker_out.zip" label="${tool.name} on ${on_string}: Zip file">
+            <filter>'zip' in outputs</filter>
+        </data>
+        <data format="mzid" name="mzidentML" from_work_dir="output.mzid" label="${tool.name} on ${on_string}: mzidentML file">
+            <filter>'mzidentML' in outputs</filter>
+        </data>
+        <data format="cps" name="output" from_work_dir="peptide_shaker_output.cps" label="${tool.name} on ${on_string}: CPS file">
+            <filter>'cps' in outputs</filter>
+        </data>
+        <data format="txt" name="output_certificate" from_work_dir="certificate.txt" label="${tool.name} on ${on_string}: Parameters">
+            <filter>'0' in outputs</filter>
+        </data>
+        <data format="tabular" name="output_hierarchical" from_work_dir="hierarchical.txt" label="${tool.name} on ${on_string}: Hierarchical Report">
+            <filter>'1' in outputs</filter>
+        </data>
+        <data format="tabular" name="output_psm" from_work_dir="psm.txt" label="${tool.name} on ${on_string}: PSM Report">
+            <filter>'2' in outputs</filter>
+        </data>
+        <data format="tabular" name="output_peptides" from_work_dir="peptides.txt" label="${tool.name} on ${on_string}: Peptide Report">
+            <filter>'3' in outputs</filter>
+        </data>
+        <data format="tabular" name="output_proteins" from_work_dir="proteins.txt" label="${tool.name} on ${on_string}: Protein Report">
+            <filter>'4' in outputs</filter>
+        </data>>
+    </outputs>
+    <tests>
+        <test>
+            <param name="searchgui_input" value="tiny_searchgui_result1.zip" ftype="searchgui_archive"/>
+            <param name="species_type_selector" value="no_species_type"/>
+            <param name="processing_options_selector" value="no"/>
+            <param name="filtering_options_selector" value="no"/>
+            <param name="outputs" value="zip,2"/>
+            <output name="output" file="peptide_shaker_result1.zip" ftype="peptideshaker_archive" compare="sim_size" delta="600" />
+            <output name="output_psm" file="peptide_shaker_psm_result1.tabular" ftype="tabular" /> 
+        </test>
+        <test>
+            <param name="searchgui_input" value="tiny_searchgui_result1.zip" ftype="searchgui_archive"/>
+            <param name="species_type_selector" value="no_species_type"/>
+            <param name="processing_options_selector" value="no"/>
+            <param name="filtering_options_selector" value="yes"/>
+            <param name="min_peptide_length" value="1"/>
+            <param name="outputs" value="3"/>
+            <output name="output_peptides" file="peptide_shaker_peptides_result2.tabular" ftype="tabular" />
+        </test>
+        <test>
+            <param name="searchgui_input" value="tiny_searchgui_result1.zip" ftype="searchgui_archive"/>
+            <param name="species_type_selector" value="Vertebrates"/>
+            <param name="species" value="Homo sapiens"/>
+            <param name="processing_options_selector" value="no"/>
+            <param name="filtering_options_selector" value="yes"/>
+            <param name="min_peptide_length" value="1"/>
+            <param name="outputs" value="3"/>
+            <output name="output_peptides" file="peptide_shaker_peptides_result3.tabular" ftype="tabular" />
+        </test>
+    </tests>
+    <help>
+**What it does**
+
+Runs multiple search engines (X! Tandem, OMSSA and MS-GF+) on any number of MGF peak lists using the SearchGUI application and combines the results.
+
+https://code.google.com/p/peptide-shaker/
+
+https://code.google.com/p/searchgui/
+
+----
+
+Reports
+=======
+
+
+PSM Report
+----------
+
+* Protein(s):                Protein(s) to which the peptide can be attached
+* Sequence:                  Sequence of the peptide
+* Variable Modifications:   The variable modifications
+* D-score:	                D-score for variable PTM localization
+* probabilistic PTM score:	The probabilistic score (e.g. A-score or PhosphoRS) used for variable PTM localization.
+* Localization Confidence:	The confidence in variable PTM localization.
+* Fixed Modifications:	    The fixed modifications.
+* Spectrum File:	The spectrum file.
+* Spectrum Title:	The title of the spectrum.
+* Spectrum Scan Number:	The spectrum scan number.
+* RT:	Retention time
+* m/z:	Measured m/z
+* Measured Charge:	The charge as given in the spectrum file.
+* Identification Charge:	The charge as inferred by the search engine.
+* Theoretical Mass:	The theoretical mass of the peptide.
+* Isotope Number:	The isotope number targetted by the instrument.
+* Precursor m/z Error:	The precursor m/z matching error.
+* Score:	Score of the retained peptide as a combination of the algorithm scores (used to rank PSMs).
+* Confidence:	Confidence in percent associated to the retained PSM.
+* Decoy:	Indicates whether the peptide is a decoy (1: yes, 0: no).
+* Validation: Indicates the validation level of the protein group.
+
+
+Protein Report
+--------------
+
+* Main Accession:	Main accession of the protein group.
+* Description:	Description of the protein designed by the main accession.
+* Gene Name:	The gene names of the Ensembl gene ID associated to the main accession.
+* Chromosome:	The chromosome of the Ensembl gene ID associated to the main accession.
+* PI:	Protein Inference status of the protein group.
+* Secondary Accessions:	Other accessions in the protein group (alphabetical order).
+* Protein Group:	The complete protein group (alphabetical order).
+* #Peptides:	Total number of peptides.
+* #Validated Peptides:	Number of validated peptides.
+* #Unique:	Total number of peptides unique to this protein group.
+* #PSMs:	Number of PSMs
+* #Validated PSMs:	Number of validated PSMs
+* Coverage (%):	Sequence coverage in percent of the protein designed by the main accession.
+* Possible Coverage (%):	Possible sequence coverage in percent of the protein designed by the main accession according to the search settings.
+* MW (kDa):	Molecular Weight.
+* Spectrum Counting NSAF: 	Normalized Spectrum Abundance Factor (NSAF)
+* Spectrum Counting emPAI:	exponentially modified Protein Abundance Index (emPAI)
+* Confident Modification Sites: Number of Confident Modification Sites	List of the sites where a variable modification was confidently localized.
+* Other Modification Sites: Number of other Modification Sites	List of the non*confident sites where a variable modification was localized.
+* Score:	Score of the protein group.
+* Confidence:	Confidence in percent associated to the protein group.
+* Decoy:	Indicates whether the protein group is a decoy (1: yes, 0: no).
+* Validation:	Indicates the validation level of the protein group.
+
+
+Peptide Report
+--------------
+
+
+* Protein(s):	Protein(s) to which this peptide can be attached.
+* AAs Before:	The amino-acids before the sequence.
+* Sequence:	Sequence of the peptide.
+* AAs After:	The amino-acids after the sequence.
+* Modified Sequence:	The peptide sequence annotated with variable modifications.
+* Variable Modifications:	The variable modifications.
+* Localization Confidence:	The confidence in PTMs localization.
+* Fixed Modifications:	The fixed modifications.
+* #Validated PSMs:	Number of validated PSMs.
+* #PSMs:	Number of PSMs.
+* Score:	Score of the peptide.
+* Confidence:	Confidence in percent associated to the peptide.
+* Decoy:	Indicates whether the peptide is a decoy (1: yes, 0: no).
+* Validation:	Indicates the validation level of the protein group.
+
+
+Hierachical Report
+------------------
+
+* Main Accession:	Main accession of the protein group.
+* Description:	Description of the protein designed by the main accession.
+* PI:	Protein Inference status of the protein group.
+* Secondary Accessions:	Other accessions in the protein group (alphabetical order).
+* Protein Group:	The complete protein group (alphabetical order).
+* #Peptides:	Total number of peptides.
+* #Validated Peptides:	Number of validated peptides.
+* #Unique:	Total number of peptides unique to this protein group.
+* #PSMs:	Number of PSMs
+* #Validated PSMs:	Number of validated PSMs
+* Coverage (%):	Sequence coverage in percent of the protein designed by the main accession.
+* Possible Coverage (%):	Possible sequence coverage in percent of the protein designed by the main accession according to the search settings.
+* MW (kDa):	Molecular Weight.
+* Spectrum Counting NSAF: 	Normalized Spectrum Abundance Factor (NSAF)
+* Spectrum Counting emPAI:	exponentially modified Protein Abundance Index (emPAI)
+* Confident Modification Sites: # Confident Modification Sites	List of the sites where a variable modification was confidently localized.
+* Other Modification Sites: # Other Modification Sites	List of the non-confident sites where a variable modification was localized.
+* Score:	Score of the protein group.
+* Confidence:	Confidence in percent associated to the protein group.
+* Decoy:	Indicates whether the protein group is a decoy (1: yes, 0: no).
+* Validation:	Indicates the validation level of the protein group.
+* Protein(s):	Protein(s) to which this peptide can be attached.
+* AAs Before:	The amino-acids before the sequence.
+* Sequence:	Sequence of the peptide.
+* AAs After:	The amino-acids after the sequence.
+* Variable Modifications:	The variable modifications.
+* Localization Confidence:	The confidence in PTMs localization.
+* Fixed Modifications:	The fixed modifications.
+* #Validated PSMs:	Number of validated PSMs.
+* #PSMs:	Number of PSMs.
+* Score:	Score of the peptide.
+* Confidence:	Confidence in percent associated to the peptide.
+* Decoy:	Indicates whether the peptide is a decoy (1: yes, 0: no).
+* Validation:	Indicates the validation level of the protein group.
+* Protein(s):	Protein(s) to which the peptide can be attached.
+* Sequence:	Sequence of the peptide.
+* Modified Sequence:	The peptide sequence annotated with variable modifications.
+* Variable Modifications:	The variable modifications.
+* D-score:	D-score for variable PTM localization.
+* probabilistic PTM score:	The probabilistic score (e.g. A-score or PhosphoRS) used for variable PTM localization.
+* Localization Confidence:	The confidence in variable PTM localization.
+* Fixed Modifications:	The fixed modifications.
+* Spectrum File:	The spectrum file.
+* Spectrum Title:	The title of the spectrum.
+* Spectrum Scan Number:	The spectrum scan number.
+* RT:	Retention time
+* m/z:	Measured m/z
+* Measured Charge:	The charge as given in the spectrum file.
+* Identification Charge:	The charge as inferred by the search engine.
+* Theoretical Mass:	The theoretical mass of the peptide.
+* Isotope Number:	The isotope number targetted by the instrument.
+* Precursor m/z Error:	The precursor m/z matching error.
+* Score:	Score of the retained peptide as a combination of the algorithm scores (used to rank PSMs).
+* Confidence:	Confidence in percent associated to the retained PSM.
+* Decoy:	Indicates whether the peptide is a decoy (1: yes, 0: no).
+* Validation:	Indicates the validation level of the protein group.
+
+
+------
+
+**Citation**
+
+To cite the underlying tools (PeptideShaker and SearchGUI) please refer to the list of papers at http://peptide-shaker.googlecode.com  
+
+If you use this tool in Galaxy, please cite Chilton J, Ira Cooke, Bjoern Gruening et al. https://bitbucket.org/galaxyp/peptideshaker
+    </help>
+    <expand macro="citations" />
+</tool>
