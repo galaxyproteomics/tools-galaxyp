@@ -312,7 +312,7 @@ def execute_scaffold(options, template, template_parameters):
     open(driver_path, "w").write(driver_contents)
 
     # Run Scaffold
-    execute("ScaffoldBatch3 '%s'" % driver_path)
+    execute("ScaffoldBatch4 '%s'" % driver_path)
 
 if __name__ == '__main__':
     __main__()
