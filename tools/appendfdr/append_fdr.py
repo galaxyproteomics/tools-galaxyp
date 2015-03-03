@@ -1,13 +1,13 @@
 #!/usr/bin/env python
-import optparse
 import sys
+import optparse
 
 try:
     # Ubuntu deps: gfortan libblas-dev liblapack-dev
     # pip deps: numpy scipy
     from math import sqrt
     from scipy.optimize import root
-    from numpy import arange, exp, concatenate, sum, log, array, seterr
+    import numpy as np
 except ImportError:
     # Allow this script to be used for global FDR even
     # if these dependencies are not present.
@@ -50,13 +50,13 @@ def compute_fdr(sorted_scores, accum_hits, accum_decoys, settings):
 
 def _compute_pspep(all_hits, decoy_hits, settings):
     scaling = _get_scaling(settings)
-    seterr(all="ignore")
-    sigma = array([sqrt(x) if x > 0 else 0.2 for x in decoy_hits])
+    np.seterr(all="ignore")
+    sigma = np.array([sqrt(x) if x > 0 else 0.2 for x in decoy_hits])
     if isinstance(all_hits, list):
-        all_hits = array(all_hits)
+        all_hits = np.array(all_hits)
     if isinstance(decoy_hits, list):
-        decoy_hits = array(decoy_hits)
-    searchSeg = concatenate((exp(arange(-8, 9, 2)), -1 * exp(arange(-8, 9, 2))))
+        decoy_hits = np.array(decoy_hits)
+    searchSeg = np.concatenate(( np.exp( np.arange(-8, 9, 2) ), -1 * np.exp( np.arange(-8, 9, 2) )))
     bestResids = sys.float_info.max
     bestResidsComb = [0.0, 0.0, 0.0]
     for aEst in searchSeg:
@@ -70,7 +70,7 @@ def _compute_pspep(all_hits, decoy_hits, settings):
                 except:
                     pass
     (a, b, c) = bestResidsComb[0:3]
-    fdr_local = scaling * (exp(b * (all_hits - a)) / (exp(b * (all_hits - a)) + 1)) * c
+    fdr_local = scaling * ( np.exp(b * (all_hits - a)) / (np.exp(b * (all_hits - a)) + 1)) * c
     return fdr_local
 
 
@@ -83,7 +83,7 @@ def _non_linear_fit(aEst, bEst, cEst, all_hits, decoy_hits, sigma, scaling=2):
     guess = [aEst, bEst, cEst]
 
     def f(a, b, c):
-        return c * (log(exp(b * (all_hits - a)) + 1) - log(exp(-b * a) + 1)) / b
+        return c * ( np.log( np.exp(b * (all_hits - a)) + 1) - np.log(np.exp(-b * a) + 1)) / b
 
     def fcn(p):
         a = p[0]
@@ -95,7 +95,7 @@ def _non_linear_fit(aEst, bEst, cEst, all_hits, decoy_hits, sigma, scaling=2):
     a = solution.x[0]
     b = solution.x[1]
     c = solution.x[2]
-    resids = sum((decoy_hits - f(a, b, c)) ** 2) / len(all_hits)
+    resids = np.sum((decoy_hits - f(a, b, c)) ** 2) / len(all_hits)
     return (a, b, c, resids)
 
 
@@ -152,7 +152,6 @@ def __read_entries(input_file, settings):
 
 
 class Entry(object):
-
     def __init__(self, line, settings, index):
         self.settings = settings
         line_parts = line.split(settings["separator"])

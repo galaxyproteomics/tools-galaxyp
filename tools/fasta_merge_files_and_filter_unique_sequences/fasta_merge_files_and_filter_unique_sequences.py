@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-import sys,os
+import os
+import sys
 
-#====================================================================== Classes
 class Sequence:
     ''' Holds protein sequence information '''
     def __init__(self):
@@ -56,7 +56,6 @@ def main():
                 pass
             else:
                 seen_sequences.add(protein.sequence)
-
                 out_file.write(protein.header)
                 out_file.write(os.linesep)
                 out_file.write(protein.sequence)
