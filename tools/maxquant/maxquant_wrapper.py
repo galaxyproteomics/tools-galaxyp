@@ -10,7 +10,6 @@ from string import Template
 from xml.sax.saxutils import escape
 import xml.etree.ElementTree as ET
 
-import pprint
 import re
 
 log = logging.getLogger(__name__)
