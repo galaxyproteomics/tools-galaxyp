@@ -118,6 +118,9 @@ def run_script():
         stop_err("Must specify output location")
     input_files = []
     for i, input in enumerate(options.inputs):
+        # the commnadline template cannot determine if optional files exists, so do it here
+        if not os.path.exists(input):  
+            continue
         input_base = None
         if len(options.input_names) > i:
             input_base = options.input_names[i]
@@ -141,11 +144,11 @@ def run_script():
     ## AB_SCIEX_MS_Converter <input format> <input data> <output content type> <output format> <output file> [data compression setting] [data precision setting] [create index flag]
     inputs_as_str = " ".join(['%s' % shellquote(input) for input in input_files])
     output_file = re.sub('(%s)?$' % options.fromextension.lower(), options.toextension, input_files[0].lower())
-    cmd = "AB_SCIEX_MS_Converter %s %s %s %s %s" % (options.fromextension.upper(), inputs_as_str, options.content_type, options.toextension.upper(), output_file )
+    cmd = "AB_SCIEX_MS_Converter %s %s -%s %s %s" % (options.fromextension.upper(), inputs_as_str, options.content_type, options.toextension.upper(), output_file )
     if str_to_bool(options.zlib):
         cmd = "%s %s" % (cmd, "/zlib")
     if options.binaryencoding:
-        cmd = "%s %s" % (cmd, "/singleprecision" if options.binaryencoding == '32' else "/doubleprecision")
+        cmd = "%s %s" % (cmd, "/singleprecision" if options.binaryencoding == '32' else "")
     if str_to_bool(options.zlib):
         cmd = "%s %s" % (cmd, "/index")
     if options.debug:
