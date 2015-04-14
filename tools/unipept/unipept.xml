@@ -1,8 +1,8 @@
-<tool id="unipept" name="Unipept" version="0.1.0">
+<tool id="unipept" name="Unipept" version="1.1.0">
     <description>retrieve taxonomy for peptides</description>
     <macros>
         <xml name="equate_il">
-            <param name="equate_il" type="boolean" truevalue="-e" falsevalue="" checked="false" label="Equate isoleucine and leucine">
+            <param name="equate_il" type="boolean" truevalue="-e" falsevalue="" checked="true" label="Equate isoleucine and leucine">
                 <help>isoleucine (I) and leucine (L) are equated when matching tryptic peptides to UniProt records</help>
             </param >
         </xml>
@@ -13,7 +13,10 @@
         </xml>
         <xml name="names">
             <param name="names" type="boolean" truevalue="-n" falsevalue="" checked="true" label="names" >
-                <help>return the names of taxons</help>
+                <help>return the names in complete taxonomic lineage</help>
+            </param >
+            <param name="allfields" type="boolean" truevalue="-A" falsevalue="" checked="false" label="allfields" >
+                <help>include fields for most specific taxonomic classification: taxon_rank,taxon_id,taxon_name before lineage</help>
             </param >
         </xml>
     </macros>
@@ -27,7 +30,7 @@
       --api=$unipept.api
       $unipept.equate_il $unipept.extra 
       #if $unipept.api != 'pept2prot':
-        $unipept.names 
+        $unipept.names $unipept.allfields
       #end if
       $strict
       #if str($peptide_src.fmt) == 'proteomic':
@@ -58,29 +61,29 @@
       #if 'csv' in str($outputs).split(','):
         --csv $output_csv
       #end if
-      #if 'mismatch' in str($outputs).split(','):
-        --mismatch $output_mismatch
+      #if 'unmatched' in str($outputs).split(','):
+        --unmatched $output_unmatched
       #end if
     ]]></command>
     <inputs>
       <conditional name="unipept">
           <param name="api" type="select" label="Unipept application" >
-              <option value="pept2taxa" selected="true">pept2taxa: organisms associated with the UniProt entries containing a given tryptic peptide</option>
-              <option value="pept2lca">pept2lca: lowest common ancestor</option>
+              <option value="pept2lca" selected="true">pept2lca: lowest common ancestor</option>
+              <option value="pept2taxa">pept2taxa: organisms associated with the UniProt entries containing a given tryptic peptide</option>
               <option value="pept2prot">pept2prot: UniProt entries containing a given tryptic peptide</option>
           </param>
+          <when value="pept2lca">
+              <expand macro="equate_il" />
+              <expand macro="extra">
+                  <help>Return the complete lineage of the taxonomic lowest common ancestor, and include ID fields.</help>
+              </expand>
+              <expand macro="names" />
+          </when>
           <when value="pept2taxa">
               <expand macro="equate_il" />
               <expand macro="extra">
                   <checked>true</checked>
-                  <help>Return the complete lineage of each organism.</help>
-              </expand>
-              <expand macro="names" />
-          </when>
-          <when value="pept2lca">
-              <expand macro="equate_il" />
-              <expand macro="extra">
-                  <help>Return the complete lineage of the taxonomic lowest common ancestor.</help>
+                  <help>Return the complete lineage of each organism, and include ID fields.</help>
               </expand>
               <expand macro="names" />
           </when>
@@ -122,7 +125,7 @@
         <option value="tsv" selected="true">tabular</option>
         <option value="csv">Comma Separated Values (.csv)</option>
         <option value="json">JSON</option>
-        <option value="mismatch">Mismatches</option>
+        <option value="unmatched">Unmatched peptides</option>
       </param>
       <param name="strict" type="boolean" truevalue="--strict" falsevalue="" checked="false" label="Exit with error on invalid peptides, otherwise ignore them"/>
     </inputs>
@@ -136,44 +139,64 @@
       <data name="output_csv" format="csv" label="${tool.name} ${unipept.api} on ${on_string} csv"> 
         <filter>'csv' in outputs</filter>
       </data> 
-      <data name="output_mismatch" format="tabular" label="${tool.name} ${unipept.api} on ${on_string} mismatch"> 
-        <filter>'mismatch' in outputs</filter>
+      <data name="output_unmatched" format="tabular" label="${tool.name} ${unipept.api} on ${on_string} unmatched"> 
+        <filter>'unmatched' in outputs</filter>
       </data> 
     </outputs>
     <tests>
       <test>
+        <param name="api" value="pept2lca"/>
         <param name="fmt" value="tabular"/>
-        <param name="input_tsv" value="input.tsv"/>
+        <param name="input_tsv" value="tryptic.tsv"/>
         <param name="column" value="2"/>
         <param name="extra" value="True"/>
         <param name="names" value="True"/>
-        <param name="outputs" value="tsv,mismatch"/>
+        <param name="outputs" value="tsv,unmatched"/>
         <output name="output_tsv">
             <assert_contents>
-              <has_text text="AIPQLEVARPADAYETAEAYR" />
+              <has_text text="Homininae" />
             </assert_contents>
         </output>
-        <output name="output_mismatch">
+        <output name="output_unmatched">
             <assert_contents>
-              <has_text text="DQIAHEGK" />
+              <has_text text="QTAMAV" />
             </assert_contents>
         </output>
       </test>
       <test>
+        <param name="api" value="pept2lca"/>
         <param name="fmt" value="fasta"/>
-        <param name="input_tsv" value="input.fasta"/>
+        <param name="input_fasta" value="peptide.fa"/>
         <param name="equate_il" value="True"/>
         <param name="extra" value="True"/>
         <param name="names" value="True"/>
-        <param name="outputs" value="json,mismatch"/>
+        <param name="outputs" value="json,tsv"/>
         <output name="output_json">
             <assert_contents>
-              <has_text text="AIPQLEVARPADAYETAEAYR" />
+              <has_text text="VMDVNDHKPEFYNCSLPACTFTPEEAQVNFTGYVDEHASPHIPIDDLTMVVYDPDKGSNGTFLLSLGGPDAEAFSVSPERAAGSASVQVLVRVSALVDYERQTAMAV" />
             </assert_contents>
         </output>
-        <output name="output_mismatch">
+        <output name="output_tsv">
             <assert_contents>
-              <has_text text="DQIAHEGK" />
+              <has_text text="9606" />
+              <has_text text="9598" />
+            </assert_contents>
+        </output>
+      </test>
+      <test>
+        <param name="api" value="pept2taxa"/>
+        <param name="fmt" value="fasta"/>
+        <param name="input_fasta" value="peptide.fa"/>
+        <param name="equate_il" value="True"/>
+        <param name="extra" value="False"/>
+        <param name="names" value="False"/>
+        <param name="outputs" value="tsv"/>
+        <output name="output_tsv">
+            <assert_contents>
+              <has_text text="sapiens" />
+              <has_text text="troglodytes" />
+              <has_text text="Gorilla" />
+              <has_text text="Macaca" />
             </assert_contents>
         </output>
       </test>
@@ -182,8 +205,24 @@
     **Unipept** 
 
     Retrieve Uniprot and taxanomic information for trypic peptides.
+    
+    Unipept API documentation - http://unipept.ugent.be/apidocs 
 
-    **pept2prot**
+    **Input**
+
+    Input peptides can be retrieved from tabular, fasta, mzid, or pepxml datasets.  
+ 
+    Processing deatils::
+
+        The input peptides are split into typtic peptide fragments in order to match the Unipept records.   
+        Only fragments that are complete tryptic peptides between 5 and 50 animo acid in length will be matched by Unipept.
+        The match to the most specific tryptic fragment is reported.
+
+
+    **Unipept APIs**
+
+    **pept2prot**  - http://unipept.ugent.be/apidocs/pept2prot
+
     Returns the list of UniProt entries containing a given tryptic peptide. This is the same information as provided on the Protein matches tab when performing a search with the Tryptic Peptide Analysis in the web interface. 
 
     By default, each object contains the following information fields extracted from the UniProt record::
@@ -202,9 +241,9 @@
         insdc_ids: a space separated list of associated insdc accession numbers
         insdc_protein_ids: a space separated list of associated insdc protein accession numbers
 
-    http://unipept.ugent.be/apidocs/pept2prot
 
-    **pept2taxa**
+    **pept2taxa**  - http://unipept.ugent.be/apidocs/pept2taxa
+
     Returns the set of organisms associated with the UniProt entries containing a given tryptic peptide. This is the same information as provided on the Lineage table tab when performing a search with the Tryptic Peptide Analysis in the web interface.
 
     By default, each object contains the following information fields extracted from the UniProt record and NCBI taxonomy::
@@ -245,9 +284,9 @@
         varietas_id
         forma_id
 
-    http://unipept.ugent.be/apidocs/pept2taxa
 
-    **pept2lca** 
+    **pept2lca**  - http://unipept.ugent.be/apidocs/pept2lca
+
     Returns the taxonomic lowest common ancestor for a given tryptic peptide. This is the same information as provided when performing a search with the Tryptic Peptide Analysis in the web interface.
 
     By default, each object contains the following information fields extracted from the UniProt record and NCBI taxonomy::
@@ -288,7 +327,6 @@
         varietas_id
         forma_id
 
-    http://unipept.ugent.be/apidocs/pept2lca
 
     **Attributions**
 
