@@ -20,6 +20,13 @@ working_directory = os.getcwd()
 tmp_stderr_name = tempfile.NamedTemporaryFile(dir=working_directory, suffix='.stderr').name
 tmp_stdout_name = tempfile.NamedTemporaryFile(dir=working_directory, suffix='.stdout').name
 
+class Data:
+    def __init__(self, name, fraction, experiment):
+        self.name = name
+        self.fraction = fraction
+        self.experiment = experiment
+
+
 
 def stop_err(msg):
     sys.stderr.write("%s\n" % msg)
@@ -358,11 +365,8 @@ def parse_groups(inputs_file):
     groups = []
     while i < len(inputs_lines):
         groups.append({"path": inputs_lines[i],
-                       "name": re.sub(r'.raw$', "", inputs_lines[i+1]),
-                       "sample": inputs_lines[i+2],
-                       "experiment": inputs_lines[i+3],
-                       "group": inputs_lines[i+4]})
-        i += 5
+                       "name": re.sub(r'.raw$', "", inputs_lines[i+1])})
+        i += 2
     return groups
 
 
@@ -619,16 +623,36 @@ def setup_database(options):
         tree.write(database_conf)
     return os.path.abspath(database_destination)
 
+def read_expdesign(experimental_design):
+    table_data = []
+    with open(experimental_design, 'r') as e:
+        for line in e:
+            row_data = line.split('\t')
+            table_data.append(Data(row_data[0], row_data[1], row_data[2].rstrip()))
+    return table_data
 
-def setup_inputs(input_groups_path):
+
+def find_data_expdesign(table, raw):
+    for row in table:
+        if row.name == raw:
+            return row
+
+def setup_inputs(input_groups_path, experimental_design):
     parsed_groups = parse_groups(input_groups_path)
     
     names = [x['name'] for x in parsed_groups]
     paths = [os.path.abspath(name+".raw") for name in names]
     paths_intermediate = [x['path'] for x in parsed_groups]
-    samples = [x['sample'] for x in parsed_groups]
-    experiments = [x['experiment'] for x in parsed_groups]
-    groups = [x['group'] for x in parsed_groups]
+
+    samples = []
+    experiments = []
+    groups = []
+    for name in names:
+        table_row = find_data_expdesign(experimental_design, name)
+        samples.append(table_row.fraction)
+        experiments.append(table_row.experiment)
+        groups.append(1)
+
 
     for (name,path) in zip(names, paths_intermediate):
         symlink(path, name+".raw")
@@ -660,6 +684,7 @@ def split_mods(mods_string):
 def run_script():
     parser = optparse.OptionParser()
     parser.add_option("--input_groups")
+    parser.add_option("--exp_design")
     parser.add_option("--database")
     parser.add_option("--andromeda_config")
     parser.add_option("--database_name")
@@ -777,7 +802,9 @@ def run_script():
 
     update_fragment_settings(options)
 
-    raw_file_info = setup_inputs(options.input_groups)
+    experimental_design = read_expdesign(options.exp_design)
+
+    raw_file_info = setup_inputs(options.input_groups, experimental_design)
 
     properties = get_properties(options)
     properties["raw_file_info"] = raw_file_info
