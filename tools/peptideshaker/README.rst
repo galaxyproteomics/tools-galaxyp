@@ -1,17 +1,17 @@
 GalaxyP - PeptideShaker
 =======================
 
-* Home: <https://github.com/galaxyproteomics/tools-galaxyp/>
-* Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/peptideshaker>
-* Tool ID: `peptideshaker`, `search_gui`
+- Home: <https://github.com/galaxyproteomics/tools-galaxyp/>
+- Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/peptideshaker>
+- Tool ID: `peptideshaker`, `search_gui`
 
 
 Description
 -----------
 
-Perform protein identification combining X! Tandem and OMSSA (using SearchGUI) and PeptideShaker pipeline.
+Perform protein identification combining numerous search engines (using SearchGUI) followed by peptide and protein inference with PeptideShaker.
 
-Tool wrapper for SearchGUI and PeptideShaker. This tool takes any number of mgf files and performs X! Tandem and OMSSA searches on these via SearchGUI and merges the results using PeptideShaker.
+Includes tool wrappers for SearchGUI and PeptideShaker. The SearchGUI tool takes any number of mgf files and performs searches on these.  It creates a large zip archive with all search results, the original database and spectra.  This can then be fed to the PeptideShaker tool which merges the results and performs peptide and protein inference.
 
 
 Configuration
@@ -20,6 +20,10 @@ Configuration
 This tool requires a Java runtime 1.6 or greater to work. To avoid out of memory errors you should set the maximum heapspace for java processes as the default is most likely too small. For example, to set this in your shell:
 
     export _JAVA_OPTIONS='-Xmx1500M'
+
+On some systems you may also need to adjust the amount of memory available for class definitions in addition to the maximum heapspace. For example:
+
+	export _JAVA_OPTIONS='-Xmx1500M -XX:MaxPermSize=256M'
 
 It is also possible to set this on a per tool basis using advanced features of the galaxy job config system.
 
@@ -36,9 +40,11 @@ See:
 GalaxyP Community
 -----------------
 
-Current governing community policies for [GalaxyP](https://github.com/galaxyproteomics/) and other information can be found at:
+Current governing community policies for GalaxyP_ and other information can be found at:
 
 <https://github.com/galaxyproteomics>
+
+.. _GalaxyP: https://github.com/galaxyproteomics/
 
 
 License
