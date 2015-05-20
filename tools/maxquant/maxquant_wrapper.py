@@ -10,6 +10,8 @@ from string import Template
 from xml.sax.saxutils import escape
 import xml.etree.ElementTree as ET
 
+import re
+
 log = logging.getLogger(__name__)
 
 DEBUG = True
@@ -170,7 +172,7 @@ class FileLock(object):
 TEMPLATE = """<?xml version="1.0" encoding="utf-8"?>
 <MaxQuantParams xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" runOnCluster="false" processFolder="$process_folder">
   $raw_file_info
-  <experimentalDesignFilename>$experimental_design_file</experimentalDesignFilename>
+  <experimentalDesignFilename/>
   <slicePeaks>$slice_peaks</slicePeaks>
   <tempFolder/>
   <ncores>$num_cores</ncores>
@@ -256,7 +258,7 @@ TEMPLATE = """<?xml version="1.0" encoding="utf-8"?>
     </ParameterGroups>
   </groups>
   <qcSettings>
-    <qcSetting xsi:nil="true" />
+    $qcSetting
   </qcSettings>
   <msmsParams>
     $ftms_fragment_settings
@@ -269,9 +271,7 @@ TEMPLATE = """<?xml version="1.0" encoding="utf-8"?>
   <quantMode>$quant_mode</quantMode>
   <siteQuantMode>$site_quant_mode</siteQuantMode>
   <groupParams>
-    <groupParam>
-      $group_params
-    </groupParam>
+      $group_params_multi
   </groupParams>
 </MaxQuantParams>
 """
@@ -350,37 +350,19 @@ def build_isobaric_labels(reporter_type):
     return wrap(map(xml_string, labels), "isobaricLabels")
 
 
-def parse_groups(inputs_file, group_parts=["num"], input_parts=["name", "path", "sample"]):
+def parse_groups(inputs_file):
     inputs_lines = [line.strip() for line in open(inputs_file, "r").readlines()]
     inputs_lines = [line for line in inputs_lines if line and not line.startswith("#")]
-    cur_group = None
+
     i = 0
-    group_prefixes = ["%s:" % group_part  for group_part in group_parts]
-    input_prefixes = ["%s:" % input_part for input_part in input_parts]
-    groups = {}
+    groups = []
     while i < len(inputs_lines):
-        line = inputs_lines[i]
-        if line.startswith(group_prefixes[0]):
-            # Start new group
-            cur_group = line[len(group_prefixes[0]):]
-            group_data = {}
-            for j, group_prefix in enumerate(group_prefixes):
-                group_line = inputs_lines[i + j]
-                group_data[group_parts[j]] = group_line[len(group_prefix):]
-            i += len(group_prefixes)
-        elif line.startswith(input_prefixes[0]):
-            input = []
-            for j, input_prefix in enumerate(input_prefixes):
-                part_line = inputs_lines[i + j]
-                part = part_line[len(input_prefixes[j]):]
-                input.append(part)
-            if cur_group not in groups:
-                groups[cur_group] = {"group_data": group_data, "inputs": []}
-            groups[cur_group]["inputs"].append(input)
-            i += len(input_prefixes)
-        else:
-            # Skip empty line
-            i += 1
+        groups.append({"path": inputs_lines[i],
+                       "name": re.sub(r'.raw$', "", inputs_lines[i+1]),
+                       "sample": inputs_lines[i+2],
+                       "experiment": inputs_lines[i+3],
+                       "group": inputs_lines[i+4]})
+        i += 5
     return groups
 
 
@@ -425,21 +407,37 @@ def get_file_paths(files):
 def get_file_names(file_names):
     return wrap([xml_string(name) for name in file_names], "fileNames")
 
-
 def get_file_groups(file_groups):
     return wrap([xml_int(file_group) for file_group in file_groups], "paramGroups")
 
 
+def get_file_fractions(names, file_fractions):
+    return wrap([get_fraction(name, fraction) for name,fraction in zip(names, file_fractions)], "Fractions")
+
+def get_fraction(name, fraction):
+    return wrap(xml_type("Key", "string", name) + xml_type("Value", "short", fraction),"fraction")
+
+def get_file_experiments(names, file_experiments):
+    return wrap(wrap_with_param(wrap([get_experiment(name, exp) for name, exp in zip(names, file_experiments)], "Items"), "column", "Name", "Experiment"), "Values")
+
+def get_experiment(name, exp):
+    return wrap(xml_type("Key", "string", name) + xml_type("Value", "string", exp),"Item")    
+
 def wrap(values, tag):
     return "<%s>%s</%s>" % (tag, "".join(values), tag)
 
+def wrap_with_param(values, tag, param_type, param):
+    return "<%s %s=\"%s\">%s</%s>" % (tag, param_type, param, "".join(values), tag)
+
+
+def xml_type(tag, xml_type, value):
+    return "<%s xsi:type=\"xsd:%s\">%s</%s>" % (tag, xml_type, value, tag)
 
 def xml_string(str):
     if str:
         return "<string>%s</string>" % escape(str)
     else:
         return "<string />"
-
 
 def xml_int(value):
     return "<int>%d</int>" % int(value)
@@ -531,7 +529,6 @@ def get_properties(options):
       "num_cores": str(options.num_cores),
       "database": xml_string(setup_database(options)),
       "process_folder": os.path.join(os.getcwd(), "process"),
-      "experimental_design_file": os.path.join(os.getcwd(), "design.txt"),
     }
     for prop in direct_properties:
         props[prop] = str(getattr(options, prop))
@@ -589,63 +586,61 @@ def setup_database(options):
     database_name = database_name.replace(" ", "_")
     (database_basename, extension) = os.path.splitext(database_name)
     database_destination = get_unique_path(database_basename, ".fasta")
+    database_id = options.andromeda_config
+    if(database_id == 'all_include'):
+        database_regex = '(.*)'
+    elif(database_id == 'all_after'):
+        database_regex = '>(.*)'
+    elif(database_id == 'upTofirst_space'):
+        database_regex = '>([^ ]*)'
+    elif(database_id == 'ipi_acc'):
+        database_regex = '>IPI:([^\| .]*)'
+    elif(database_id == 'ncbi_acc'):
+        database_regex = '>(gi\|[0-9]*)'
+    elif(database_id == 'upTofirst_tab'):
+        database_regex = '>([^\t]*)'
+    elif(database_id == 'uniprot'):
+        database_regex = '>.*\|(.*)\|'
+    elif(database_id == 'upTofirst_slash'):
+        database_regex = '>([^\|]*)'
+
+
     assert database_destination == os.path.basename(database_destination)
     symlink(database_path, database_destination)
 
     database_conf = get_env_property("MAXQUANT_DATABASE_CONF", None)
     if not database_conf:
-        exe_path = which("MaxQuantCmd.exe")
+        exe_path = "C:\MaxQuant\\bin\MaxQuantCmd.exe"
         database_conf = os.path.join(os.path.dirname(exe_path), "conf", "databases.xml")
     with FileLock(database_conf + ".galaxy_lock"):
         tree = ET.parse(database_conf)
         root = tree.getroot()
         databases_node = root.find("Databases")
         database_node = ET.SubElement(databases_node, 'databases')
-        database_node.attrib["search_expression"] = ">([^ ]*)"
+        database_node.attrib["search_expression"] = database_regex
         database_node.attrib["replacement_expression"] = "%1"
         database_node.attrib["filename"] = database_destination
         tree.write(database_conf)
     return os.path.abspath(database_destination)
 
 
-def setup_design(groups):
-    fraction = 0
-    with open(os.path.join(os.getcwd(), "design.txt"), "w") as f:
-        f.write("Name\tFraction\tExperiment\n")
-        for group, group_info in groups.iteritems():
-            files = group_info["inputs"]
-            group_num = group_info["group_data"]["num"]
-            for (name, path, sample) in files:
-                fraction += 1
-                name = os.path.splitext(normalize_name(name))[0]
-                experiment = "G%sS%s" % (group_num, sample)
-                f.write("%s\t%s\t%s\n" % (name, fraction, experiment))
-
-
 def setup_inputs(input_groups_path):
     parsed_groups = parse_groups(input_groups_path)
-    paths = []
-    names = []
-    group_nums = []
-    for group, group_info in parsed_groups.iteritems():
-        files = group_info["inputs"]
-        group_num = group_info["group_data"]["num"]
-        for (name, path, sample) in files:
-            name = normalize_name(name)
-            symlink(path, name)
-            paths.append(os.path.abspath(name))
-            names.append(os.path.splitext(name)[0])
-            group_nums.append(group_num)
-    setup_design(parsed_groups)
-    file_data = (get_file_paths(paths), get_file_names(names), get_file_groups(group_nums))
-    return "<rawFileInfo>%s%s%s<Fractions/><Values/></rawFileInfo> " % file_data
+    
+    names = [x['name'] for x in parsed_groups]
+    paths = [os.path.abspath(name+".raw") for name in names]
+    paths_intermediate = [x['path'] for x in parsed_groups]
+    samples = [x['sample'] for x in parsed_groups]
+    experiments = [x['experiment'] for x in parsed_groups]
+    groups = [x['group'] for x in parsed_groups]
 
+    for (name,path) in zip(names, paths_intermediate):
+        symlink(path, name+".raw")
 
-def normalize_name(name):
-    name = os.path.basename(name)
-    if not name.lower().endswith(".raw"):
-        name = "%s%s" % (name, ".RAW")
-    return name
+    file_data = (get_file_paths(paths), get_file_names(names), get_file_groups(groups),
+                 get_file_fractions(names, samples), get_file_experiments(names, experiments))
+
+    return "<rawFileInfo>%s%s%s%s%s</rawFileInfo> " % file_data
 
 
 def set_group_params(properties, options):
@@ -670,8 +665,9 @@ def run_script():
     parser = optparse.OptionParser()
     parser.add_option("--input_groups")
     parser.add_option("--database")
+    parser.add_option("--andromeda_config")
     parser.add_option("--database_name")
-    parser.add_option("--num_cores", type="int", default=4)
+    parser.add_option("--num_cores", type="int", default=1)
     parser.add_option("--max_missed_cleavages", type="int", default=2)
     parser.add_option("--protease", default="Trypsin/P")
     parser.add_option("--first_search_tol", default="20")
@@ -786,14 +782,24 @@ def run_script():
     update_fragment_settings(options)
 
     raw_file_info = setup_inputs(options.input_groups)
+
     properties = get_properties(options)
     properties["raw_file_info"] = raw_file_info
     properties["isobaric_labels"] = build_isobaric_labels(options.reporter_type)
     set_group_params(properties, options)
+
+    number_of_raws = raw_file_info.count('<int>')
+    properties["group_params_multi"] = ""
+    properties["qcSetting"] = ""
+    for s in range(number_of_raws):
+        properties["qcSetting"] += "<qcSetting xsi:nil=\"true\" />\n"
+        properties["group_params_multi"] += "<groupParam>"+properties["group_params"]+"</groupParam>\n"
+
+
     driver_contents = Template(TEMPLATE).substitute(properties)
     open("mqpar.xml", "w").write(driver_contents)
     print driver_contents
-    execute("MaxQuantCmd.exe mqpar.xml %d" % options.num_cores)
+    execute("C:\MaxQuant\\bin\MaxQuantCmd.exe mqpar.xml %d" % options.num_cores)
     for key, basename in text_outputs.iteritems():
         attribute = "output_%s" % key
         destination = getattr(options, attribute, None)

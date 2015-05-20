@@ -1,59 +1,38 @@
 <tool id="maxquant" version="0.1.0" name="MaxQuant">
-  <description>
-  </description>
+  <description></description>
   <requirements>
     <requirement>maxquant</requirement>
     <requirement type="platform">windows</requirement>
   </requirements>
   <configfiles>
     <configfile name="inputs_config">##Describe inputs
-#set $fraction = 0
-#set $type = str($analysis_type.type)
-#if $type.startswith("sg" )
-#set $groups = [$analysis_type]
-#elif $type.startswith("mgs")
-#set $groups = $analysis_type.groups
-#end if
-#for $i, $group in enumerate($groups)
-num:${str(i + 1)}
-#if $type.endswith("samples")
-#for $j, $input in enumerate($group.inputs)
-name:${input.display_name}
-path:${input}
-sample:$j
-#end for
-#else
-#if $type.endswith("fractions")
-#set $samples = [$group]
-#else
-#set $samples = $group.samples
-#end if
-#for $j, $sample in enumerate($samples)
-#for $k, $input in enumerate($sample.inputs)
-name:${input.display_name}
-path:${input}
-sample:$j
-#end for
-#end for
-#end if
-#end for
-</configfile>
+    
+    #for $s in $sample
+       ${s.inputs}
+       ${s.inputs.display_name}
+       ${s.fraction_of_sample}
+       ${s.class_of_sample}
+       ${s.group}
+    #end for
+
+    </configfile>
   </configfiles>
   <command interpreter="python">maxquant_wrapper.py 
     --input_groups=$inputs_config
     --database="${database}"
     --database_name="${database.name}"
-    --protease=$analysis_type.protease
-    --first_search_tol=$analysis_type.first_search_tol
-    --main_search_tol=$analysis_type.main_search_tol
-    --max_missed_cleavages=$analysis_type.max_missed_cleavages
-    --max_n_mods=$analysis_type.max_n_mods
-    --variable_mods="${analysis_type.variable_modifications or ''}"
-    #if $analysis_type.advanced_group_parameters.specify
-    --do_mass_filtering=$analysis_type.advanced_group_parameters.do_mass_filtering
-    --max_charge=$analysis_type.advanced_group_parameters.max_charge
+    --andromeda_config="${andromeda_id}"
+    --protease=$protease
+    --first_search_tol=$first_search_tol
+    --main_search_tol=$main_search_tol
+    --max_missed_cleavages=$max_missed_cleavages
+    --max_n_mods=$max_n_mods
+    --variable_mods="${variable_modifications or ''}"
+    #if $advanced_group_parameters.specify
+    --do_mass_filtering=$advanced_group_parameters.do_mass_filtering
+    --max_charge=$advanced_group_parameters.max_charge
     #end if
-    #set $run = $analysis_type.run
+    #set $run = $run
     #set $lcms_run_type = $run.lcms_run_type
     --lcms_run_type=$lcms_run_type
     #if str($lcms_run_type) != "3"
@@ -109,13 +88,13 @@ sample:$j
   </command>
   <macros>
     <macro name="input_param">
-      <param format="raw" multiple="true" name="inputs" type="data" label="RAW Inputs" help="" />
+      <param format="raw" multiple="false" name="inputs" type="data" label="RAW Inputs" help="" />
+      <param name="fraction_of_sample" label="Fraction" type="integer" value="1" />
+      <param name="class_of_sample" label="Class" type="text" value="Control" />
+      <param name="group" label="Parameter group" type="hidden" value="1"/>
     </macro>
     <macro name="mod_opts">
-      <options from_file="maxquant_mods.loc">
-        <column name="name" index="0"/>
-        <column name="value" index="0" />
-      </options>
+      <options from_data_table="maxquant_mods" />
       <sanitizer>
         <valid>
           <add value="&lt;"/>
@@ -126,10 +105,7 @@ sample:$j
       </sanitizer>
     </macro>
     <macro name="protease_opts">
-      <options from_file="maxquant_proteases.loc">
-        <column name="name" index="0"/>
-        <column name="value" index="0" />
-      </options>
+      <options from_data_table="proteases" />
     </macro>
     <macro name="group_params">
       <param name="protease" label="Enzyme" type="select">
@@ -309,51 +285,22 @@ sample:$j
     </macro>
   </macros>
   <inputs>
-    <conditional name="analysis_type">
-      <param name="type" type="select" label="Analysis Type" help="The wrapper has not yet implemented multiple groups with different parameters">
-        <option value="sg_fractions" selected="true">Single Group - Fractions of One Sample</option>
-        <option value="sg_samples">Single Group - Single File Samples</option>
-        <option value="sg_both">Single Group - Multiple Fractions and Samples</option>
-        <option value="mgs_fractions">Multi-Group (Identical Parameters) - Fractions of One Sample</option>
-        <option value="mgs_samples">Multi-Group (Identical Parameters) - Single File Samples</option>
-        <option value="mgs_both">Multi-Group (Identical Parameters) - Multiple Fractions and Samples</option>
-      </param>
-      <when value="mgs_fractions">
-        <repeat name="groups" title="Group">
-          <expand macro="input_param" />
-        </repeat>
-	      <expand macro="group_params" />
-      </when>
-      <when value="mgs_samples">
-        <repeat name="groups" title="Group">
-          <expand macro="input_param" />
-        </repeat>
-        <expand macro="group_params" />
-      </when>
-      <when value="mgs_both">
-        <repeat name="groups" title="Group">
-          <repeat name="samples" title="Sample">
-            <expand macro="input_param" />
-          </repeat>
-        </repeat>
-        <expand macro="group_params" />
-      </when>
-      <when value="sg_fractions">
-        <expand macro="input_param" />
-        <expand macro="group_params" />
-      </when>
-      <when value="sg_samples">
-        <expand macro="input_param" />
-        <expand macro="group_params" />
-      </when>
-      <when value="sg_both">
-        <repeat name="samples" title="Sample">
-          <expand macro="input_param" />
-        </repeat>
-        <expand macro="group_params" />
-      </when>
-    </conditional>
+    <repeat name="sample" title="Sample">
+      <expand macro="input_param" />
+    </repeat>
+    <expand macro="group_params" />
+
     <param format="fasta" name="database" type="data" label="FASTA Database" help="" />
+    <param name="andromeda_id" type="select" label="Andromeda config">
+      <option value="all_include">Everything including ></option>
+      <option value="all_after">Everything after ></option>
+      <option value="upTofirst_space">Up to first space</option>
+      <option value="ipi_acc">IPI accession</option>
+      <option value="ncbi_acc">NCBI accession</option>
+      <option value="upTofirst_tab">Up to first character</option>
+      <option value="uniprot">Uniprot</option>
+      <option value="upTofirst_slash">Up to first \ or |</option>
+    </param>
     <expand macro="advanced_sequences_conditional" />
     <param name="fixed_modifications" label="Fixed Modifications" type="select" multiple="true">
       <expand macro="mod_opts" />
