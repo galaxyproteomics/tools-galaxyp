@@ -5,26 +5,37 @@
         <requirement type="package" version="0.3.2">msproteomicstools</requirement>
     </requirements>
     <stdio>
-        <exit_code level="fatal" range="1:"/>
+        <!-- Anything other than zero is an error -->
+        <exit_code range="1:" />
+        <exit_code range=":-1" />
+        <!-- In case the return code has not been set propery check stderr too -->
+        <regex match="Error:" />
+        <regex match="Exception:" />
     </stdio>
     <version_command>feature_alignment.py --version</version_command>
     <command>
 <![CDATA[
     feature_alignment.py 
         --in #echo '" "'.join([ str($file) for $file in $inputs ]) #
-        --file_format $oformat
-        #if str($oformat) == "openswath":
+        --file_format $iformat
+        ##if str($iformat) == "openswath":
             --out $out
-        #end if
+        ##end if
         --out_matrix out_matrix.tsv
         --out_ids $out_ids
         --fdr_cutoff $fdr_cutoff
-        #if $max_fdr_quality and $max_fdr_quality is not None:
-            --max_fdr_quality "$max_fdr_quality"
+        #if $max_fdr_quality:
+            --max_fdr_quality $max_fdr_quality
         #end if
-        --max_rt_diff $max_rt_diff
-        --iso_max_rt_diff $iso_max_rt_diff
-        --frac_selected $frac_selected
+        #if $max_rt_diff:
+            --max_rt_diff $max_rt_diff
+        #end if
+        #if $iso_max_rt_diff:
+            --iso_max_rt_diff $iso_max_rt_diff
+        #end if
+        #if $frac_selected:
+            --frac_selected $frac_selected
+        #end if
         --method $method
         --matrix_output_method $matrix_output_method
         --realign_method $realign_method
@@ -34,22 +45,22 @@
 ]]></command>
     <inputs>
 
-        <param name="inputs" type="data" multiple="True"
+        <param name="inputs" type="data" multiple="True" format="txt"
             label="A list of mProphet output files containing all peakgroups" help="(--in)"/>
-        <param name="oformat" type="select" label="Which input file format is used" help="(--file_format)">
-            <option value="openswath">OpenSwath</option>
-            <option value="peakview" selected="True">Peakview</option>
+        <param name="iformat" type="select" label="Which input file format is used" help="(--file_format)">
+            <option value="openswath" selected="True">OpenSwath</option>
+            <option value="peakview">Peakview</option>
         </param>
 
         <param name="fdr_cutoff" type="float" value="0.01" label="Seeding score cutoff" help="(--fdr_cutoff)" />
-        <param name="max_fdr_quality" type="text" default="-1.0"
+        <param name="max_fdr_quality" type="float" value="-1.0" default="-1.0" optional="True"
             label="Extension score cutoff"
             help="During the extension phase of the algorithm, peakgroups of this quality will still be considered for alignment (in FDR) - it is possible to give a range in the format lower,higher+stepsize,stepsize - e.g. 0,0.31,0.01 (-1 will set it to fdr_cutoff) (--max_fdr_quality)"/>
-        <param name="max_rt_diff" type="integer" value="30" default="30"
+        <param name="max_rt_diff" type="integer" value="30" default="30" optional="True"
             label="Maximal difference in RT for two aligned features" help="(--max_rt_diff)"/>
-        <param name="iso_max_rt_diff" type="text" value="10" default="10"
+        <param name="iso_max_rt_diff" type="integer" value="10" default="10" optional="True"
             label="Maximal difference in RT for two isotopic channels in the same run" help="(--iso_max_rt_diff)" />
-        <param name="frac_selected" type="float" value="0.0" min="0" max="1"
+        <param name="frac_selected" type="float" value="0.0" min="0" max="1" optional="True"
             label="Do not write peakgroup if selected in less than this fraction of runs" help="(--frac_selected)"/>
         <param name="method" type="select"
             label="Which method to use for the clustering"
@@ -88,10 +99,63 @@
         <!-- Id file only containing the ids -->
         <data format="tabular" name="out_ids"/>
         <!-- Output file with filtered peakgroups for quantification (only works for OpenSWATH) -->
-        <data format="text" name="out">
-            <filter>oformat == 'openswath'</filter>
+        <data format="tabular" name="out">
+            <!-- according to the documentation this output only works for SWATH, 
+            but it is a requirement argument in python argparse.
+            So we need to output it. -->
+            <!--filter>iformat == 'openswath'</filter-->
         </data>
     </outputs>
+    <tests>
+        <test>
+            <param name="inputs" value="feature_alignment_openswath_input_1.csv" ftype="txt" />
+            <param name="iformat" value="openswath" />
+            <param name="method" value="best_cluster_score" />
+            <param name="max_fdr_quality" value="0.4" />
+            <param name="matrix_output_method" value="RT" />
+            <output name="out_matrix" file="feature_alignment_1_openswath_output_matrix.csv" ftype="tabular" />
+            <output name="out_ids" file="feature_alignment_1_openswath_output_cluster_ids.csv" ftype="tabular" />
+        </test>
+        <test>
+            <param name="inputs" value="feature_alignment_openswath_input_1.csv" ftype="txt" />
+            <param name="iformat" value="openswath" />
+            <param name="method" value="best_overall" />
+            <param name="max_fdr_quality" value="0.4" />
+            <param name="matrix_output_method" value="RT" />
+            <output name="out_matrix" file="feature_alignment_2_output_2_matrix.csv" ftype="tabular" />
+            <output name="out_ids" file="feature_alignment_2_output_1_ids.csv" ftype="tabular" />
+        </test>
+        <!-- needs R dependency; The python equivalent should be enough I guess.
+        <test>
+            <param name="inputs" value="feature_alignment_3_openswath_input.csv" ftype="txt" />
+            <param name="iformat" value="openswath" />
+            <param name="realign_method" value="splineR" />
+            <param name="method" value="best_cluster_score" />
+            <param name="max_fdr_quality" value="0.4" />
+            <param name="maxtrix_output_method" value="RT" />
+            <output name="out_ids" file="feature_alignment_3_openswath_output_cluster_ids.csv" ftype="tabular" />
+        </test>
+        -->
+        <test>
+            <param name="inputs" value="feature_alignment_3_openswath_input.csv" ftype="txt" />
+            <param name="iformat" value="openswath" />
+            <param name="realign_method" value="splinePy" />
+            <param name="method" value="best_cluster_score" />
+            <param name="max_fdr_quality" value="0.4" />
+            <param name="matrix_output_method" value="RT" />
+            <output name="out_ids" file="feature_alignment_3_openswath_output_cluster_ids.csv" ftype="tabular" />
+        </test>
+        <test>
+            <param name="inputs" value="feature_alignment_peakview_input_2.csv" ftype="txt" />
+            <param name="iformat" value="peakview" />
+            <param name="method" value="best_cluster_score" />
+            <param name="max_fdr_quality" value="0.0001" />
+            <param name="fdr_cutoff" value="0.000000001" />
+            <param name="matrix_output_method" value="RT" />
+            <output name="out_matrix" file="feature_alignment_5_peakview_output_matrix.csv" ftype="tabular" />
+        </test>
+
+    </tests>
     <help>
 <![CDATA[
 
