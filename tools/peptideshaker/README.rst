@@ -99,4 +99,6 @@ Authors and contributors:
 * Cody Wang
 * Fred Sadler
 * John Chilton <jmchilton@gmail.com>
+* Gerben Menschaert
+* Elvis Ndah
 * Minnesota Supercomputing Institute, Univeristy of Minnesota
