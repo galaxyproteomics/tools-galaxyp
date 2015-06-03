@@ -14,8 +14,8 @@ Perform protein identification combining numerous search engines (using SearchGU
 Includes tool wrappers for SearchGUI and PeptideShaker. The SearchGUI tool takes any number of mgf files and performs searches on these.  It creates a large zip archive with all search results, the original database and spectra.  This can then be fed to the PeptideShaker tool which merges the results and performs peptide and protein inference.
 
 
-Configuration
--------------
+General Requirements
+--------------------
 
 This tool requires a Java runtime 1.6 or greater to work. To avoid out of memory errors you should set the maximum heapspace for java processes as the default is most likely too small. For example, to set this in your shell:
 
@@ -27,7 +27,31 @@ On some systems you may also need to adjust the amount of memory available for c
 
 It is also possible to set this on a per tool basis using advanced features of the galaxy job config system.
 
-Note:
+MSAmanda on linux
+-----------------
+
+Running MS Amanda on Linux requires that you have Mono installed. Mono 3.2.1 or newer is required and the libmono-system-core4.0-cil has to be installed. To check your Mono version run
+ 
+ 	mono -V
+ 
+ On ubuntu Mono can be installed as follows
+
+ 	sudo apt-get install mono-runtime
+ 	sudo apt-get install libmono-system-core4.0-cil
+
+ For more help on installing Mono please see http://www.mono-project.com/download. 
+
+Myrimatch on linux
+------------------
+
+If you get the error "locale::facet::_S_create_c_locale name not valid", this can be fixed by running the command
+	
+	export LC_ALL=C
+
+before running SearchGUI/MyriMatch. To make this fix permanent, put the export line in your .bash_profile (~/.bash_profile). 
+
+Note
+----
 
 - PeptideShaker may require xvfb to simulate an X environment if this is installed on a headless server.
 
