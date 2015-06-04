@@ -41,15 +41,6 @@ Running MS Amanda on Linux requires that you have Mono installed. Mono 3.2.1 or 
 
  For more help on installing Mono please see http://www.mono-project.com/download. 
 
-Myrimatch on linux
-------------------
-
-If you get the error "locale::facet::_S_create_c_locale name not valid", this can be fixed by running the command
-	
-	export LC_ALL=C
-
-before running SearchGUI/MyriMatch. To make this fix permanent, put the export line in your .bash_profile (~/.bash_profile). 
-
 Note
 ----
 
