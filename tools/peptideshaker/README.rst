@@ -30,16 +30,14 @@ It is also possible to set this on a per tool basis using advanced features of t
 MSAmanda on linux
 -----------------
 
-Running MS Amanda on Linux requires that you have Mono installed. Mono 3.2.1 or newer is required and the libmono-system-core4.0-cil has to be installed. To check your Mono version run
- 
- 	mono -V
- 
- On ubuntu Mono can be installed as follows
+Running MS Amanda on Linux requires that you have Mono installed. Mono 3.2.1 or newer is required.  If you install via the toolshed Mono should be installed automatically, however if this does not work you can install it manually.
+  
+On ubuntu Mono can be installed as follows
 
- 	sudo apt-get install mono-runtime
- 	sudo apt-get install libmono-system-core4.0-cil
+	sudo apt-get install mono-runtime
+	sudo apt-get install libmono-system-core4.0-cil
 
- For more help on installing Mono please see http://www.mono-project.com/download. 
+For more help on installing Mono please see http://www.mono-project.com/download. 
 
 Note
 ----
