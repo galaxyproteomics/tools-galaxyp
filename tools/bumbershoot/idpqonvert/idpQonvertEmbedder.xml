@@ -1,0 +1,124 @@
+<?xml version="1.0"?>
+<tool id="idpqonvertEmbedder" name="idpEmbedder" version="0.1.0">
+    <description>Embed human/mouse gene metadata into IDPicker files</description>
+    <requirements>
+        <requirement type="package" version="3.0.8789">bumbershoot</requirement>
+    </requirements>
+    <stdio>
+        <exit_code range="1:" level="fatal" description="Job Failed" />
+        <regex match="\nError:.*\n" source="both" level="fatal" />
+    </stdio>
+    <command>
+<![CDATA[
+        #set $input_name = $input.display_name
+        cp '$input' output;
+        ln -s output output.idpDB;
+        ln -s \$(dirname \$(which idpQonvert))/gene2protein.db3 gene2protein.db3;
+
+        #if $use_raw_data_condition.use_raw_data
+            #for $i in $use_raw_data_condition.input_raw
+                ln -s '${i.file_name}' '${i.display_name}';
+            #end for
+        #end if
+
+        idpQonvert
+            -EmbedOnly true
+            -EmbedGeneMetadata $embedGeneMetadata
+            #if $use_raw_data_condition.use_raw_data
+                -EmbedSpectrumScanTimes $use_raw_data_condition.embedSpectrumScanTimes
+                -EmbedSpectrumSources $use_raw_data_condition.embedSpectrumSources
+                -QuantitationMethod $use_raw_data_condition.quantitationMethod
+            #end if
+            output.idpDB;
+]]>
+    </command>
+    <inputs>
+        <param name="input" type="data" format="idpdb" label="Input idpDB file" />
+        <param name="embedGeneMetadata" type="boolean" value="true" label="Embed Gene Metadata?" help="Allows gene-centric analysis in IDPicker. The gene metadata embedding only works for human/mouse proteins from a RefSeq database. For best results, run idpQonvert with RefSeq no matter what database was used for the search: idpQonvert always remap the peptides anyway. Non-human/mouse proteins and any unmappable human/mouse proteins will get gene ids like &quot;Unmapped_&lt;protein accession&gt;&quot;. This option, run by itself, is very fast." />
+        <conditional name="use_raw_data_condition">
+            <param name="use_raw_data" type="boolean" label="Do you have the raw data (spectra)?" help="More embed options are available if the raw spectra are available." />
+            <when value="false"></when>
+            <when value="true">
+                <param name="input_raw" type="data" format="mzml,mzxml,mgf,ms2,mz5" label="Input raw MS files" multiple="true" />
+                <param name="embedSpectrumSources" type="boolean" value="false" label="Embed Spectrum Sources?" help="Allows visualizing peptide-spectrum-matches without downloading the raw data. Embedding spectra will greatly increase the size of the database, even though only spectra that passed the import FDR filter will be included. This option can take a LONG time to run." />
+                <param name="embedSpectrumScanTimes" type="boolean" value="false" label="Embed Spectrum Scan Times?" help="If the pepXML/mzIdentML file did not contain scan time (retention time) information, this will look up that information in the raw data. This option, run by itself, will take some time (it has to open every raw file)." />
+                <param name="quantitationMethod" type="select" label="Quantitation Method" help="Enables quantitation methods other than spectral counting. For isobaric isotope labelling quantitation (iTRAQ/TMT) or intensity-based label-free quantitation (XIC), select the appropriate QuantitationMethod here. You have to keep iTRAQ/TMT and label-free data separate since you can only specify a single QuantitationMethod for the entire assembly. Like embedding spectrum sources, this option can take a LONG time to run, although not quite as long.">
+                    <option value="None" selected="true">None</option>
+                    <option value="LabelFree">Label-free (XIC)</option>
+                    <option value="ITRAQ4plex">iTRAQ 4-plex</option>
+                    <option value="ITRAQ8plex">iTRAQ 8-plex</option>
+                    <option value="TMT2plex">TMT 2-plex</option>
+                    <option value="TMT6plex">TMT 6-plex</option>
+                    <option value="TMT10plex">TMT 10-plex</option>
+                </param>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data format="idpdb" name="output" from_work_dir="output" />
+    </outputs>
+    <tests>
+        <test>
+            <param name="input" value="../../idpassemble/test-data/201208-378803.idpDB" />
+            <param name="embedGeneMetadata" value="false" />
+            <param name="use_raw_data_condition.use_raw_data" value="false" /> 
+            <param name="use_raw_data_condition.input_raw" value="" />
+            <param name="use_raw_data_condition.embedSpectrumSources" value="false" />
+            <param name="use_raw_data_condition.embedSpectrumScanTimes" value="false" />
+            <param name="use_raw_data_condition.quantitationMethod" value="None" />
+            <output name="output" file="../../idpassemble/test-data/201208-378803.idpDB" compare="sim_size" delta_size="500000" />
+        </test>
+        <test>
+            <param name="input" value="../../idpassemble/test-data/201208-378803.idpDB" />
+            <param name="embedGeneMetadata" value="true" />
+            <param name="use_raw_data_condition.use_raw_data" value="false" /> 
+            <param name="use_raw_data_condition.input_raw" value="" />
+            <param name="use_raw_data_condition.embedSpectrumSources" value="false" />
+            <param name="use_raw_data_condition.embedSpectrumScanTimes" value="false" />
+            <param name="use_raw_data_condition.quantitationMethod" value="None" />
+            <output name="output" file="../../idpqonvert/test-data/201208-378803-embeddedGenes.idpDB" compare="sim_size" delta_size="500000" />
+        </test>
+        <test>
+            <param name="input" value="../../idpassemble/test-data/201208-378803.idpDB" />
+            <param name="embedGeneMetadata" value="true" />
+            <param name="use_raw_data" value="true" /> 
+            <param name="input_raw" value="../../myrimatch/test-data/input/201208-378803.mzML" />
+            <param name="embedSpectrumSources" value="false" />
+            <param name="embedSpectrumScanTimes" value="true" />
+            <param name="quantitationMethod" value="None" />
+            <output name="output" file="../../idpqonvert/test-data/201208-378803-embeddedGenesAndScanTimes.idpDB" compare="sim_size" delta_size="500000" />
+        </test>
+        <test>
+            <param name="input" value="../../idpassemble/test-data/201208-378803.idpDB" />
+            <param name="embedGeneMetadata" value="true" />
+            <param name="use_raw_data" value="true" /> 
+            <param name="input_raw" value="../../myrimatch/test-data/input/201208-378803.mzML" />
+            <param name="embedSpectrumSources" value="true" />
+            <param name="embedSpectrumScanTimes" value="false" />
+            <param name="quantitationMethod" value="None" />
+            <output name="output" file="../../idpqonvert/test-data/201208-378803-embeddedGenesAndSpectra.idpDB" compare="sim_size" delta_size="500000" />
+        </test>
+        <test>
+            <param name="input" value="../../idpassemble/test-data/201208-378803.idpDB" />
+            <param name="embedGeneMetadata" value="true" />
+            <param name="use_raw_data" value="true" /> 
+            <param name="input_raw" value="../../myrimatch/test-data/input/201208-378803.mzML" />
+            <param name="embedSpectrumSources" value="false" />
+            <param name="embedSpectrumScanTimes" value="true" />
+            <param name="quantitationMethod" value="ITRAQ4plex" />
+            <output name="output" file="../../idpqonvert/test-data/201208-378803-embeddedGenesAndQuantitation.idpDB" compare="sim_size" delta_size="500000" />
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+**What it does**
+
+Embeds optional data and metadata into the IDPicker 3 idpDB files. This should be run after all idpDB files have been merged together (e.g. after idpAssemble).
+]]>
+    </help>
+    <citations>
+        <citation type="doi">10.1021/pr900360j</citation>
+        <citation type="bibtex">@misc{toolsGalaxyP, author = {Chilton, J, Chambers MC, et al.}, title = {Galaxy Proteomics Tools}, publisher = {GitHub}, journal = {GitHub repository},
+                                      year = {2015}, url = {https://github.com/chambm/tools-galaxyp}}</citation> <!-- TODO: fix substitution of commit ", commit = {$sha1$}" -->
+    </citations>
+</tool>

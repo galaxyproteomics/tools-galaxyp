@@ -1,7 +1,7 @@
 <tool id="myrimatch" version="0.1.0" name="MyriMatch">
     <description></description>
     <requirements>
-        <requirement type="package" version="3.0.8738">bumbershoot</requirement>
+        <requirement type="package" version="3.0.8789">bumbershoot</requirement>
     </requirements>
     <stdio>
         <exit_code range="1:" level="fatal" description="Job Failed" />
@@ -10,7 +10,6 @@
           level="warning" />
     </stdio>
     <command>
-        #set $mod_rep_chars = "*$^@.%!"
         #set $db_name = $input_database.display_name.replace(".fasta", "") + ".fasta"
         #if $output_type.value == "mzid"
             #set $output_ext="mzid"
@@ -21,16 +20,19 @@
         #end if
         #set $input_name = $input.display_name
         #set $output_name = $input_name.split(".")[0] + "." + $output_ext
+
         #set $static_mods_str = ""
         #for $static_mod in $static_mods
-          #set $static_mods_str = $static_mods_str + "" + str($static_mod.aa) + " " + str($static_mod.mass)
+          #set $static_mods_str = $static_mods_str + " " + str($static_mod.aa) + " " + str($static_mod.mass)
         #end for
-            #set $dynamic_mods_str = ""
-            #set $dynamic_mod_index = 0
+        #set $static_mods_str = $static_mods_str.lstrip()
+
+        #set $dynamic_mods_str = ""
         #for $dynamic_mod in $dynamic_mods
-            #set $dynamic_mods_str = $dynamic_mods_str + "" + str($dynamic_mod.motif) + " " + $mod_rep_chars[$dynamic_mod_index] + " " + str($dynamic_mod.mass)
-            #set $dynamic_mod_index = $dynamic_mod_index + 1
+            #set $dynamic_mods_str = $dynamic_mods_str + " " + str($dynamic_mod.motif) + " * " + str($dynamic_mod.mass)
         #end for
+        #set $dynamic_mods_str = $dynamic_mods_str.lstrip()
+
         ln -s '$input' '${input_name}';
         ln -s '$input_database' '${db_name}';
         nice myrimatch -cpus 1 -DecoyPrefix '${decoy_prefix}'
@@ -53,6 +55,13 @@
             -UseSmartPlusThreeModel $advanced.use_smart_plus_three_model
             -MinPeptideLength $advanced.min_peptide_length
             -MaxPeptideLength $advanced.max_peptide_length
+            -MinTerminiCleavages $advanced.min_termini_cleavages
+            -MaxMissedCleavages $advanced.max_missed_cleavages
+            -MaxDynamicMods $advanced.max_dynamic_mods
+            -NumChargeStates $advanced.num_charge_states
+            -MaxResultRank $advanced.max_result_rank
+            #set $set = str($advanced.monoisotope_adjustment_set).replace("[[", "[").replace("]]","]")
+            -MonoisotopeAdjustmentSet '$set'
             #if $advanced.max_peak_count
               -MaxPeakCount $advanced.max_peak_count
             #end if
@@ -84,11 +93,24 @@
                <option value="Formic_acid">Formic acid</option>
           </param>
           <repeat name="static_mods" title="Static Modifications">
-              <param name="aa" type="text" label="Amino Acid" />
+              <param name="aa" type="text" label="Amino Acid">
+                  <sanitizer><valid initial="string.ascii_uppercase"><remove value="B"/><remove value="J"/><remove value="O"/><remove value="Z"/></valid></sanitizer>
+              </param>
               <param name="mass" type="float" label="Mass" value="0" />
           </repeat>
           <repeat name="dynamic_mods" title="Dynamic Modifications" max="7">
-              <param name="motif" type="text" label="Amino Acid Motif" />
+              <param name="motif" type="text" label="Amino Acid Motif">
+                  <sanitizer>
+                      <valid initial="string.ascii_uppercase">
+                          <remove value="B"/><remove value="J"/><remove value="O"/><remove value="Z"/>
+                          <add value="["/><add value="]"/>
+                          <add value="("/><add value=")"/>
+                          <add value="{"/><add value="}"/>
+                          <add value="."/>
+                          <add value="!"/>
+                      </valid>
+                  </sanitizer>
+              </param>
               <param name="mass" type="float" label="Mass" value="0" />
           </repeat>
           <conditional name="precursor_tolerance">
@@ -103,14 +125,14 @@
                       <option value="ppm">Parts per million</option>
                       <option value="daltons">Daltons</option>
                   </param>
-                  <param name="avg_precursor_mz_tolerance" type="float" value="1.5" label="Average Precursor m/z Tolerance" />
+                  <param name="avg_precursor_mz_tolerance" type="float" value="1.25" label="Average Precursor m/z Tolerance" />
                   <param name="avg_precursor_mz_tolerance_units" type="select" label="Average Precursor m/z Tolerance Units">
                       <option value="ppm">Parts per million</option>
                       <option value="daltons" selected="true">Daltons</option>
                   </param>
               </when>
               <when value="avg">
-                  <param name="avg_precursor_mz_tolerance" type="float" value="1.5" label="Average Precursor m/z Tolerance" />
+                  <param name="avg_precursor_mz_tolerance" type="float" value="1.25" label="Average Precursor m/z Tolerance" />
                   <param name="avg_precursor_mz_tolerance_units" type="select" label="Average Precursor m/z Tolerance Units">
                       <option value="ppm">Parts per million</option>
                       <option value="daltons" selected="true">Daltons</option>
@@ -150,7 +172,9 @@
                   <param name="max_dynamic_mods" type="integer" value="4" label="Maximum Dynamic Mods" />
                   <param name="num_charge_states" type="integer" value="3" label="Number of Charge States" />
                   <param name="max_result_rank" type="integer" value="2" label="Maximum Result Rank" />
-                  <param name="monoisotope_adjustment_set" type="text" value="" label="Monoisotope Adjustment Set" />
+                  <param name="monoisotope_adjustment_set" type="text" value="" label="Monoisotope Adjustment Set">
+                      <sanitizer invalid_char=""><valid initial="string.digits"><add value="["/><add value="]"/><add value=","/><add value="-"/></valid><mapping initial="none"></mapping></sanitizer>
+                  </param>
               </when>
           </conditional>
     </inputs>
@@ -163,8 +187,8 @@
     </outputs>
     <tests>
         <test>
-            <param name="input" value="201208-378803.mzML" />
-            <param name="input_database" value="cow.protein.PRG2012-subset.fasta" />
+            <param name="input" value="../../myrimatch/test-data/input/201208-378803.mzML" />
+            <param name="input_database" value="../../myrimatch/test-data/input/cow.protein.PRG2012-subset.fasta" />
             <param name="decoy_prefix" value="XXX_" />
             <param name="static_mods_0|aa" value="C" />
             <param name="static_mods_0|mass" value="58.00548" />
@@ -176,6 +200,7 @@
             <param name="dynamic_mods_2|mass" value="0.984016" />
             <param name="precursor_type" value="mono" />
             <param name="mono_precursor_mz_tolerance" value="50" />
+            <param name="use_advanced" value="true" />
             <param name="min_termini_cleavages" value="1" />
             <param name="max_missed_cleavages" value="2" />
             <param name="max_dynamic_mods" value="2" />
@@ -183,7 +208,22 @@
             <param name="max_result_rank" value="3" />
             <param name="monoisotope_adjustment_set" value="[-1,2]" />
             <param name="use_smart_plus_three_model" value="false" />
-            <output name="output" file="201208-378803-mm.pepXML" />
+            <output name="output" file="../../myrimatch/test-data/201208-378803-mm.pepXML" lines_diff="12" />
+        </test>
+        <test>
+            <param name="input" value="../../myrimatch/test-data/input/201208-378803.mzML" />
+            <param name="input_database" value="../../myrimatch/test-data/input/cow.protein.PRG2012-subset.fasta" />
+            <param name="protease" value="Trypsin" />
+            <param name="decoy_prefix" value="XXX_" />
+            <param name="precursor_type" value="mono" />
+            <param name="mono_precursor_mz_tolerance" value="15" />
+            <param name="use_advanced" value="true" />
+            <param name="min_termini_cleavages" value="2" />
+            <param name="max_missed_cleavages" value="4" />
+            <param name="num_charge_states" value="3" />
+            <param name="max_result_rank" value="1" />
+            <param name="monoisotope_adjustment_set" value="0" />
+            <output name="output" file="../../myrimatch/test-data/201208-378803-mm-15ppm-fully-tryptic.pepXML" lines_diff="12" />
         </test>
     </tests>
     <help>
@@ -191,17 +231,11 @@
 **What it does**
 
 Performs protein identification via database search using MyriMatch.
-
-------
-
-**Citation**
-
-For the underlying tool, please cite `MyriMatch: highly accurate tandem mass spectral peptide identification by multivariate hypergeometric analysis. Tabb DL, Fernando CG, Chambers MC. J Proteome Res. 6(2) 654-61. 2007 Feb. PMCID PMC2525619`
-
-If you use this tool in Galaxy, please cite `Chilton J, Chambers MC, et al. https://github.com/galaxyproteomics/tools-galaxyp/tree/master/tools/myrimatch`
 ]]>
     </help>
     <citations>
         <citation type="doi">10.1021/pr0604054</citation>
+        <citation type="bibtex">@misc{toolsGalaxyP, author = {Chilton, J, Chambers MC, et al.}, title = {Galaxy Proteomics Tools}, publisher = {GitHub}, journal = {GitHub repository},
+                                      year = {2015}, url = {https://github.com/chambm/tools-galaxyp}}</citation> <!-- TODO: fix substitution of commit ", commit = {$sha1$}" -->
     </citations>
 </tool>
