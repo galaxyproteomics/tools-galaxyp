@@ -13,7 +13,7 @@ Bumbershoot idpQonvert, a part of Bumbershoot IDPicker.
 
 See:
 
-* <http://fenchurch.mc.vanderbilt.edu/bumbershoot/idpicker/>
+* <http://fenchurch.mc.vanderbilt.edu/>
 
 
 GalaxyP Community
@@ -47,5 +47,8 @@ Authors
 
 Authors and contributors:
 
+* Matt Chambers <matt.chambers42@gmail.com>
+  Vanderbilt University Medical Center
+
 * John Chilton <jmchilton@gmail.com>
-* Minnesota Supercomputing Institute, Univeristy of Minnesota
+  Minnesota Supercomputing Institute, University of Minnesota

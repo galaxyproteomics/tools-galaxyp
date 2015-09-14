@@ -1,19 +1,19 @@
-GalaxyP - idpQonvert
+GalaxyP - idpAssemble
 ====================
 
 * Home: <https://github.com/galaxyproteomics/tools-galaxyp/>
-* Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/idpqonvert>
-* Tool ID: `idpqonvert`
+* Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/idpassemble>
+* Tool ID: `idpassemble`
 
 
 Description
 -----------
 
-Bumbershoot idpQonvert, a part of Bumbershoot IDPicker.
+Bumbershoot idpAssemble, a part of Bumbershoot IDPicker.
 
 See:
 
-* <http://fenchurch.mc.vanderbilt.edu/bumbershoot/idpicker/>
+* <http://fenchurch.mc.vanderbilt.edu/>
 
 
 GalaxyP Community
@@ -47,5 +47,8 @@ Authors
 
 Authors and contributors:
 
+* Matt Chambers <matt.chambers42@gmail.com>
+  Vanderbilt University Medical Center
+
 * John Chilton <jmchilton@gmail.com>
-* Minnesota Supercomputing Institute, Univeristy of Minnesota
+  Minnesota Supercomputing Institute, University of Minnesota
