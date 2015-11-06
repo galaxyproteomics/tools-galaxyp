@@ -42,6 +42,8 @@ For more help on installing Mono please see http://www.mono-project.com/download
 Note
 ----
 
+- Requires Galaxy release v15.10 or later, which fixes the installation of package_peptideshaker_1_1 and provides a searchgui_archive datatype that includes a version
+
 - PeptideShaker may require xvfb to simulate an X environment if this is installed on a headless server.
 
 See:
@@ -49,6 +51,14 @@ See:
 * <https://code.google.com/p/peptide-shaker/>
 * <https://code.google.com/p/searchgui/>
 
+
+Search GUI - Fixed and Variable Modifications
+-------------------------------------------
+
+ - Options for modifications are read from local data file: searchgui_mods.loc
+   This is copied from searchgui_mods.loc.sample on the first installation.  
+
+The modifications are from:  https://github.com/compomics/compomics-utilities/blob/master/src/main/java/com/compomics/util/experiment/identification/search_parameters_cli/IdentificationParametersInputBean.java
 
 GalaxyP Community
 -----------------
