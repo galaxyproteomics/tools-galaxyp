@@ -1,0 +1,265 @@
+<tool id="msgfplus" name="MS-GF+" version="0.1">
+    <description>
+        Identifies peptides in tandem mass spectra using the MS-GF+ search engine.
+    </description>
+    <requirements>
+        <requirement type="package" version="10089">msgfplus</requirement>
+        <environment_variable name="LC_ALL" action="set_to">C</environment_variable>        
+    </requirements>
+    <stdio>
+        <exit_code range="1:" level="fatal" description="Job Failed" />
+        <regex match="java.*Exception" level="fatal" description="Java Exception"/> 
+        <regex match="Could not create the Java virtual machine" level="fatal" description="JVM Error"/>
+    </stdio>
+    <command>
+<![CDATA[
+        #set $db_name = $d.display_name.replace(".fasta", "") + ".fasta"
+        #set $input_name = $s.display_name
+        #set $output_name = $input_name.replace(".mzML", "") + ".mzid"
+        ln -s '$s' '${input_name}' &&
+        ln -s '$d' '${db_name}' &&
+
+        echo \\#Mods > Mods.txt &&
+        #set $common_mods = str($common_fixed_modifications) + "," + str($common_variable_modifications)
+        #for $mod in $common_mods.split(",")
+          echo '$mod.replace("_", ",")' >> Mods.txt &&
+        #end for
+
+        #for $mod in $custom_mods
+          echo '${mod.formula_or_mass},${mod.aa_specificity},${mod.fix_or_opt},${mod.position_specificity},${mod.mod_name}' >> Mods.txt &&
+        #end for
+
+        msgfjar=\$(which MSGFPlus.jar) &&
+        ( [ -f "\$msgfjar" ] || (echo MSGFPlus.jar not found && exit 1)) &&
+
+        java -jar \$msgfjar
+            -s '$input_name'
+            -d '$db_name'
+            -thread \${GALAXY_SLOTS:-1}
+            -mod Mods.txt
+            -tda $tda
+            -t $t$precursor_ion_tol_units
+            -ti $advanced.isotope_low,$advanced.isotope_high
+            -m $advanced.m
+            -inst $inst
+            -e $e
+            -protocol $advanced.protocol
+            -ntt $ntt
+            -minLength $advanced.minLength
+            -maxLength $advanced.maxLength
+            -minCharge $advanced.minCharge
+            -maxCharge $advanced.maxCharge
+            -n $advanced.n
+            -addFeatures $advanced.addFeatures
+        &&
+        mv '$output_name' output
+]]>
+    </command>
+    <inputs>
+        <param argument="-s" type="data" format="mzml" label="Input Raw MS File(s)"/>
+        <param argument="-d" type="data" format="fasta" label="Protein Database" help="Select FASTA database from history"/>
+        <param argument="-tda" type="boolean" truevalue="1" falsevalue="0" checked="true" label="Search with on-the-fly decoy database?" help="MSGF+ uses XXX_ as an accession prefix to indicate a decoy hit" />
+        <param argument="-t" type="float" value="10" label="Precursor mass tolerance" help="Error tolerance for matching peptide mass to precursor ion mass"/>
+        <param name="precursor_ion_tol_units" type="select" label="Precursor mass tolerance units" help="Daltons are common for low-res instruments, ppm for high-res instruments">
+            <option value="ppm" selected="true">Parts per million (ppm)</option>
+            <option value="Da">Daltons</option>
+        </param>
+        <param argument="-inst" label="Instrument type" type="select" help="The instrument type that generated the MS/MS spectra is used to determine the scoring model">
+            <option value="0" selected="true">Low-res (LCQ/LTQ)</option>
+            <option value="1" >High-res (LTQ-Orbitrap)</option>
+            <option value="2" >Q-TOF</option>
+            <option value="3" >Q-Exactive</option>
+        </param>
+        <param argument="-e" type="select" label="Enzyme" help="Enzyme used to digest proteins in sample preparation; trypsin is the most commonly used enzyme">
+            <option value="0">Unspecific cleavage</option>
+            <option value="1" selected="true">Trypsin, no P rule</option>
+            <option value="2">Chymotrypsin, no P rule (FYWL)</option>
+            <option value="3">Lys-C, no P rule</option>
+            <option value="4">Lys-N</option>
+            <option value="5">Glu-C (glutamyl endopeptidase)</option>
+            <option value="6">Arg-C</option>
+            <option value="7">Asp-N</option>
+            <option value="8">Alpha-lytic protease</option>
+            <option value="9">No enzyme</option>
+        </param>
+        <param argument="-ntt" type="select" format="text" label="Number of tolerable termini" help="Semi-specific requires more time than fully specific; non-specific requires much more.">
+            <option value="2" selected="true">Fully specific (both termini match cleavage rules)</option>
+            <option value="1">Semi-specific (at least one terminus must match cleavage rules)</option>
+            <option value="0">Non-specific (neither terminus is required to match cleavage rules)</option>
+        </param>
+
+        <param name="common_fixed_modifications" type="select" label="Common Fixed Modifications" multiple="true" help="Occurs in known places on peptide sequence. Hold the appropriate key while clicking to select multiple items">
+            <option value="C2H3N1O1_C_fix_any_Carbamidomethyl" selected="true">Carbamidomethyl C</option>
+            <option value="144.102063_*_fix_N-term_iTRAQ4plex">iTRAQ 4-plex N-term</option>
+            <option value="144.102063_K_fix_any_iTRAQ4plex">iTRAQ 4-plex K</option>
+            <option value="225.155833_*_fix_N-term_TMT6plex">TMT 2-plex N-term</option>
+            <option value="225.155833_K_fix_any_TMT6plex">TMT 2-plex K</option>
+            <option value="229.162932_*_fix_N-term_TMT6plex">TMT 6-or-10-plex N-term</option>
+            <option value="229.162932_K_fix_any_TMT6plex">TMT 6-or-10-plex K</option>
+            <sanitizer invalid_char=""><valid initial="string.printable"><add value="["/><add value="]"/><add value=","/><add value="-"/></valid><mapping initial="none"></mapping></sanitizer>
+        </param>
+        <param name="common_variable_modifications" type="select" label="Common Variable Modifications" multiple="true" help="Can occur anywhere on the peptide sequence; adds additional error to search score. Hold the appropriate key while clicking to select multiple items">
+            <option value="C2H2O1_K_opt_any_Acetyl">Acetylation K</option>
+            <option value="C2H2O_*_opt_Prot-N-term_Acetyl">Acetylation Protein N-term</option>
+            <option value="C2H3NO_C_opt_any_Carbamidomethyl">Carbamidomethyl C</option>
+            <option value="C2H3NO_*_opt_N-term_Carbamidomethyl">Carbamidomethyl N-term</option>
+            <option value="H-1N-1O1_N_opt_any_Deamidated">Deamidation N</option>
+            <option value="H-1N-1O1_Q_opt_any_Deamidated">Deamidation Q</option>
+            <option value="CH2_K_opt_any_Methyl">Methylation K</option>
+            <option value="O1_M_opt_any_Oxidation" selected="true">Oxidation M</option>
+            <option value="HO3P_S_opt_any_Phospho">Phosphorylation S</option>
+            <option value="HO3P_T_opt_any_Phospho">Phosphorylation T</option>
+            <option value="HO3P_Y_opt_any_Phospho">Phosphorylation Y</option>
+            <option value="H-2O-1_E_opt_N-term_Glu-&gt;pyro-Glu">Pyro-glu from E</option>
+            <option value="H-3N-1_Q_opt_N-term_Gln-&gt;pyro-Glu">Pyro-glu from Q</option>
+            <sanitizer invalid_char=""><valid initial="string.printable"><add value="["/><add value="]"/><add value=","/><add value="-"/></valid><mapping initial="none"></mapping></sanitizer>
+        </param>
+        
+        <repeat name="custom_mods" title="Custom Modifications" help="Specify modifications with custom parameters">
+            <param name="formula_or_mass" type="text" label="Formula or Mass">
+                <sanitizer>
+                    <valid initial="string.digits">
+                        <add value="C"/>
+                        <add value="H"/>
+                        <add value="O"/>
+                        <add value="N"/>
+                        <add value="S"/>
+                        <add value="P"/>
+                        <add value="B"/><add value="r"/>
+                        <add value="C"/><add value="l"/>
+                        <add value="F"/><add value="e"/>
+                        <add value="S"/>
+                        <add value="."/>
+                        <add value="-"/>
+                    </valid>
+                </sanitizer>
+            </param>
+            <param name="aa_specificity" type="select" multiple="true" label="Amino Acid Specificity">
+                <option value="*" selected="true">Any</option>
+                <option value="A">A</option>
+                <option value="C">C</option>
+                <option value="D">D</option>
+                <option value="E">E</option>
+                <option value="F">F</option>
+                <option value="G">G</option>
+                <option value="H">H</option>
+                <option value="I">I</option>
+                <option value="K">K</option>
+                <option value="L">L</option>
+                <option value="M">M</option>
+                <option value="N">N</option>
+                <option value="P">P</option>
+                <option value="Q">Q</option>
+                <option value="R">R</option>
+                <option value="S">S</option>
+                <option value="T">T</option>
+                <option value="V">V</option>
+                <option value="W">W</option>
+                <option value="Y">Y</option>
+            </param>
+            <param name="fix_or_opt" type="select" label="Variable or Fixed?">
+                <option value="opt" selected="true">Variable</option>
+                <option value="fix">Fixed</option>
+            </param>
+            <param name="position_specificity" type="select" label="Positional Specificity">
+                <option value="any" selected="true">Any</option>
+                <option value="n-term">Peptide N-terminal</option>
+                <option value="c-term">Peptide C-terminal</option>
+                <option value="prot-n-term">Protein N-terminal</option>
+                <option value="prot-c-term">Protein C-terminal</option>
+            </param>
+            <param name="mod_name" type="text" label="Name" help="If this mod has an entry there in Unimod, this name should match its name there" />
+        </repeat>
+
+        <!-- MS-GF+ ADVANCED PARAMETERS -->
+        <section name="advanced" title="Advanced Options">
+            <param argument="-minCharge" label="Minimum precursor charge" value="2" type="integer" help="Minimum precursor charge to consider if charges are not specified in the spectrum file"/>
+            <param argument="-maxCharge" label="Maximum precursor charge" value="3" type="integer" help="Maximum precursor charge to consider if charges are not specified in the spectrum file"/>
+            <param argument="-minLength" label="Minimum peptide length" value="6" type="integer" help="Minimum peptide length to consider"/>
+            <param argument="-maxLength" label="Maximum peptide length" value="40" type="integer" help="Maximum peptide length to consider"/>
+            <param name="num_ptms" label="Maximum modifications allowed per peptide" type="integer" value="2" />
+            <param argument="-m" label="Fragmentation type" type="select" help="Fragmentation method identifier (used to determine the scoring model)">
+                <option value="0" selected="True">As written in the spectrum or CID if no info</option>
+                <option value="1" >CID</option>
+                <option value="2" >ETD</option>
+                <option value="3" >HCD</option>
+            </param>
+            <param argument="-protocol" label="Protocol type" type="select" help="Protocols are used to enable scoring parameters for enriched and/or labeled samples">
+                <option value="0" selected="True">Automatic</option>
+                <option value="1" >Phosphorylation</option>
+                <option value="2" >iTRAQ</option>
+                <option value="3" >iTRAQPhospho</option>
+                <option value="4" >TMT</option>
+                <option value="5" >Standard</option>
+            </param>
+            <param argument="-n" label="Maximum matches per spectrum" type="integer" value="1" help="Number of peptide matches per spectrum to report" />
+            <param argument="-addFeatures" label="Calculate additional scoring features?" type="boolean" truevalue="1" falsevalue="0" help="If true, several extra derivative scores are calculated for each match" />
+            <param name="isotope_low" label="Lower isotope error range" type="integer" value="0" help="Takes into account of the error introduced by chooosing a non-monoisotopic peak for fragmentation (-ti)" />
+            <param name="isotope_high" label="Upper isotope error range" type="integer" value="1" /> 
+        </section>
+    </inputs>
+    <outputs>
+        <data name="output" format="mzid" from_work_dir="output" />
+    </outputs>
+    <tests>
+        <test>
+            <param name="s" value="input/201208-378803.mzML" />
+            <param name="d" value="input/cow.protein.PRG2012-subset.fasta" />
+            <param name="tda" value="1" />
+            <param name="ntt" value="1" />
+            <param name="t" value="50" />
+            <param name="precursor_ion_tol_units" value="ppm" />            
+            <param name="common_fixed_modifications" value="" />
+            <param name="common_variable_modifications" value="" />
+            <output name="output" file="201208-378803-msgf-50ppm-semitryptic-no_mods.mzid" lines_diff="6" />
+        </test>
+        <test>
+            <param name="s" value="input/201208-378803.mzML" />
+            <param name="d" value="input/cow.protein.PRG2012-subset.fasta" />
+            <param name="tda" value="1" />
+            <param name="t" value="0.02" />
+            <param name="precursor_ion_tol_units" value="Da" />
+            <param name="isotope_low" value="-1" />
+            <param name="isotope_high" value="0" />
+            <param name="m" value="3" />
+            <param name="inst" value="2" />
+            <param name="e" value="3" />
+            <param name="protocol" value="2" />
+            <param name="minLength" value="10" />
+            <param name="maxLength" value="20" />
+            <param name="minCharge" value="2" />
+            <param name="maxCharge" value="6" />
+            <param name="n" value="2" />
+            <param name="addFeatures" value="1" />
+
+            <param name="common_fixed_modifications" value="C2H3N1O1_C_fix_any_Carbamidomethyl,144.102063_*_fix_N-term_iTRAQ4plex,144.102063_K_fix_any_iTRAQ4plex" />
+            <param name="common_variable_modifications" value="O1_M_opt_any_Oxidation,H-3N-1_Q_opt_N-term_Gln->pyro-Glu" />
+
+            <param name="custom_mods_0|formula_or_mass" value="C-2H-2O-2" />
+            <param name="custom_mods_0|aa_specificity" value="G" />
+            <param name="custom_mods_0|fix_or_opt" value="opt" />
+            <param name="custom_mods_0|position_specificity" value="c-term" />
+            <param name="custom_mods_0|mod_name" value="Gly-loss+Amide" />
+
+            <param name="custom_mods_1|formula_or_mass" value="C10H10N5O7P" />
+            <param name="custom_mods_1|aa_specificity" value="CS" />
+            <param name="custom_mods_1|fix_or_opt" value="opt" />
+            <param name="custom_mods_1|position_specificity" value="any" />
+            <param name="custom_mods_1|mod_name" value="cGMP" />
+
+            <output name="output" file="201208-378803-msgf-2mmu-tryptic-many_mods.mzid" lines_diff="6" />
+        </test>
+    </tests>
+    <help>
+**What it does**
+
+Performs protein identification via database search using MS-GF+.
+
+    </help>
+    <citations>
+        <citation type="doi">10.1038/ncomms6277</citation>
+        <citation type="doi">10.1021/pr8001244</citation>
+        <citation type="bibtex">@misc{toolsGalaxyP, author = {Chilton, J, Gruening, B, Chambers, MC, et al.}, title = {Galaxy Proteomics Tools}, publisher = {GitHub}, journal = {GitHub repository},
+                                      year = {2015}, url = {https://github.com/galaxyproteomics/tools-galaxyp}}</citation> <!-- TODO: fix substitution of commit ", commit = {$sha1$}" -->
+    </citations>
+</tool>
