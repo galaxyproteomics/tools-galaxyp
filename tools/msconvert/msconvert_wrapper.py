@@ -240,7 +240,7 @@ def run_script():
         if not input_base:
             input_base = 'input%s' % i
             print("2- input_base: %s" % input_base)
-        if not input_base.lower().endswith(options.fromextension.lower()) and input not in options.implicits:
+        if not input_base.lower().endswith('.%s' % options.fromextension.lower()) and input not in options.implicits:
             input_file = '%s.%s' % (input_base, options.fromextension)
             print("3- input_base: %s" % input_base)
             print("3- input_file: %s" % input_file)
@@ -250,8 +250,9 @@ def run_script():
             print("4- input_file: %s" % input_file)
         input_file = input_file
         copy_to_working_directory(input, input_file)
-        if input not in options.implicits:
-            input_files.append(input_file)
+        if input in options.implicits:
+            continue
+        input_files.append(input_file)
 
     cmd = _build_base_cmd(options)
     file_column = options.filter_table_file_column

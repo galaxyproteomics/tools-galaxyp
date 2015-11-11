@@ -264,7 +264,7 @@ def setup_methods(options):
     handle_sample_type(options, method_parameters)
     method_contents = Template(METHOD_TEMPLATE).substitute(method_parameters)
     PROTEINPILOT_METHODS_DIR = get_env_property("PROTEIN_PILOT_METHODS_FOLDER", "C:\\ProgramData\\AB SCIEX\\ProteinPilot\\ParagonMethods\\")
-    methods_name = "gx_%d%s" % (int(time.time() * 1000), os.path.split(os.getcwd())[-1])
+    methods_name = "gx_%s" % os.path.split(os.getcwd())[-1]
     methods_path = os.path.join(PROTEINPILOT_METHODS_DIR, "%s.xml" % methods_name)
     open(methods_path, "w").write(method_contents)
     return (methods_name, methods_path, database_path)

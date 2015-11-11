@@ -1,4 +1,4 @@
-<tool id="search_gui" name="Search GUI" version="1.28.0">
+<tool id="search_gui" name="Search GUI" version="@SEARCHGUI_VERSION@.1">
     <description>
         Perform protein identification using various search engines and prepare results for input to Peptide Shaker
     </description>
@@ -6,7 +6,7 @@
         <import>macros.xml</import>
     </macros>
     <requirements>
-        <requirement type="package" version="1.28">searchgui</requirement>
+        <requirement type="package" version="@SEARCHGUI_VERSION@">searchgui</requirement>
         <environment_variable name="LC_ALL" action="set_to">C</environment_variable>        
     </requirements>
     <expand macro="stdio" />
@@ -20,6 +20,14 @@
         mkdir output;
         mkdir output_reports;
         cwd=`pwd`;
+        export HOME=\$cwd;
+
+        ##Create a searchgui.properties file for the version, which will be added to the searchgui_results if not already present
+        echo "searchgui.version=@SEARCHGUI_VERSION@" >> searchgui.properties;
+
+        cp -r "\${SEARCHGUI_JAR_PATH%/*}" bin;
+        tmp_searchgui_jar_path=`echo "\$cwd/bin/\${SEARCHGUI_JAR_PATH\#\#/*/}"`;
+
         #for $mgf in $peak_lists:
             #set $input_name = $mgf.display_name.replace(".mgf", "") + ".mgf"
             ln -s -f '${mgf}' '${input_name}';
@@ -32,7 +40,7 @@
         ###########################################
         #if $create_decoy:
             echo "Creating decoy database.";
-            java -cp \$SEARCHGUI_JAR_PATH eu.isas.searchgui.cmd.FastaCLI -in input_database.fasta -decoy &&
+            java -cp \$tmp_searchgui_jar_path eu.isas.searchgui.cmd.FastaCLI -in input_database.fasta -decoy &&
             rm input_database.fasta &&
             cp input_database_concatenated_target_decoy.fasta input_database.fasta &&
             ## ln -sf input_database_concatenated_target_decoy.fasta input_database.fasta;
@@ -42,8 +50,8 @@
         ## generate IdentificationParameters for SearchGUI ##
         #####################################################
 
-        (java -cp \$SEARCHGUI_JAR_PATH eu.isas.searchgui.cmd.IdentificationParametersCLI
-            -out SEARCHGUI_IdentificationParameters.parameters
+        (java -cp \$tmp_searchgui_jar_path eu.isas.searchgui.cmd.IdentificationParametersCLI
+            -out SEARCHGUI_IdentificationParameters.par
 
             @GENERAL_PARAMETERS@
 
@@ -163,6 +171,27 @@
                 -myrimatch_max_peak ${myrimatch.myrimatch_max_peak}                    
             #end if
 
+            #*
+            #if $andromeda.andromeda_advanced == "yes"
+                -andromeda_max_pep_mass ${andromeda.andromeda_max_pep_mass}
+                -andromeda_max_comb ${andromeda.andromeda_max_comb}
+                -andromeda_top_peaks ${andromeda.andromeda_top_peaks}
+                -andromeda_top_peaks_window ${andromeda.andromeda_top_peaks_window}
+                -andromeda_incl_water ${andromeda.andromeda_incl_water}
+                -andromeda_incl_ammonia ${andromeda.andromeda_incl_ammonia}
+                -andromeda_neutral_losses ${andromeda.andromeda_neutral_losses}
+                -andromeda_fragment_all ${andromeda.andromeda_fragment_all}
+                -andromeda_emp_correction ${andromeda.andromeda_emp_correction}
+                -andromeda_higher_charge ${andromeda.andromeda_higher_charge}
+                -andromeda_equal_il ${andromeda.andromeda_equal_il}
+                -andromeda_frag_method ${andromeda.andromeda_frag_method}
+                -andromeda_max_mods ${andromeda.andromeda_max_mods}
+                -andromeda_min_pep_length ${andromeda.andromeda_min_pep_length}
+                -andromeda_max_pep_length ${andromeda.andromeda_max_pep_length}
+                -andromeda_max_psms ${andromeda.andromeda_max_psms}
+            #end if
+            *#
+
             #if $tide.tide_advanced == "yes"
                 -tide_num_ptms ${tide.tide_num_ptms}
                 -tide_num_ptms_per_type ${tide.tide_num_ptms_per_type}
@@ -247,11 +276,11 @@
         ################
         ## Search CLI ##
         ################
-        (java -Djava.awt.headless=true -cp \$SEARCHGUI_JAR_PATH eu.isas.searchgui.cmd.SearchCLI 
+        (java -Djava.awt.headless=true -cp \$tmp_searchgui_jar_path eu.isas.searchgui.cmd.SearchCLI 
             -temp_folder `pwd`
             -spectrum_files \$cwd
             -output_folder \$cwd/output
-            -id_params SEARCHGUI_IdentificationParameters.parameters
+            -id_params SEARCHGUI_IdentificationParameters.par
 
             -threads "\${GALAXY_SLOTS:-12}"
 
@@ -311,6 +340,12 @@
                 -ms_amanda 0
             #end if
 
+            #if 'Andromeda' in $engines_list:
+                -andromeda 1
+            #else
+                -andromeda 0
+            #end if
+
             ## single zip file
             -output_option 0
 
@@ -322,6 +357,10 @@
         &&
 
         (mv output/searchgui_out.zip searchgui_out.zip 2>> $temp_stderr)
+
+        &&
+
+        (zip -u searchgui_out.zip searchgui.properties 2>> $temp_stderr)
 
         &&
 
@@ -344,6 +383,7 @@
 
         <!-- Search Engine Selection -->
         <param name="engines" type="select" display="checkboxes" multiple="True" label="DB-Search Engines">
+            <help>Comet and Tide shouldn't both be selected since they use a similar algoritm.</help>
             <option value="X!Tandem" selected="True">X!Tandem</option>
             <option value="MyriMatch">MyriMatch</option>
             <option value="MS_Amanda">MS_Amanda</option> 
@@ -351,6 +391,9 @@
             <option value="OMSSA" selected="True">OMSSA</option>
             <option value="Comet">Comet</option>
             <option value="Tide">Tide</option>
+            <!-- Windows only
+            <option value="Andromeda">Andromeda</option>
+            -->
             <validator type="no_options" message="Please select at least one output file" />
         </param>
 
@@ -774,6 +817,39 @@
             </when>
         </conditional>
 
+        <!-- Andromeda ADVANCED PARAMETERS -->
+        <!-- Windows only
+        <conditional name="andromeda">
+            <param name="andromeda_advanced" type="select" label="Andromeda Options">
+                <option value="yes">Advanced</option>
+                <option value="no" selected="True">Default</option>
+            </param>
+            <when value="no" />
+            <when value="yes">
+                <param name="andromeda_max_pep_mass" type="float" value="4600.0" label="Andromeda maximum peptide mass, default is: 4600.0" />
+                <param name="andromeda_max_comb" type="integer" value="250" label="Andromeda maximum combinations, default is: 250" />
+                <param name="andromeda_top_peaks" type="integer" value="8" label="Andromeda number of top peaks, default is: 8" />
+                <param name="andromeda_top_peaks_window" type="integer" value="100" label="Andromeda top peaks window width, default is: 100" />
+                <param name="andromeda_incl_water" type="boolean" truevalue="1" falsevalue="0" checked="true" label="Andromeda account for water losses, default is: true" />
+                <param name="andromeda_incl_ammonia" type="boolean" truevalue="1" falsevalue="0" checked="true" label="Andromeda account for ammonina losses, default is: true" />
+                <param name="andromeda_neutral_losses" type="boolean" truevalue="1" falsevalue="0" checked="true" label="Andromeda neutral losses are sequence dependent, default is: true" />
+                <param name="andromeda_fragment_all" type="boolean" truevalue="1" falsevalue="0" checked="false" label="Andromeda fragment all option, default is: false" />
+                <param name="andromeda_emp_correction" type="boolean" truevalue="1" falsevalue="0" checked="true" label="Andromeda emperical correction, default is: true" />
+                <param name="andromeda_higher_charge" type="boolean" truevalue="1" falsevalue="0" checked="true" label="Andromeda higher charge option, default is: true" />
+                <param name="andromeda_equal_il" type="boolean" truevalue="1" falsevalue="0" checked="false" label="Andromeda whether I and L should be considered indistinguishable, default is: false" />
+                <param name="andromeda_frag_method" type="select" value="" label="Andromeda fragmentation method, (HCD, CID or EDT), default is: CID." >
+                   <option value="CID" selected="true">CID</option>
+                   <option value="HCD">HCD</option>
+                   <option value="EDT">EDT</option>
+                </param>
+                <param name="andromeda_max_mods" type="integer" value="5" label="Andromeda maximum number of modifications, default is: 5" />
+                <param name="andromeda_min_pep_length" type="integer" value="8" label="Andromeda minimum peptide length when using no enzyme, default is: 8" />
+                <param name="andromeda_max_pep_length" type="integer" value="25" label="Andromeda maximum peptide length when using no enzyme, default is: 25" />
+                <param name="andromeda_max_psms" type="integer" value="10" label="Andromeda maximum number of spectrum matches spectrum, default is: 10" />
+            </when>
+        </conditional>
+        -->
+
         <!-- Comet ADVANCED PARAMETERS -->
         <conditional name="comet">
             <param name="comet_advanced" type="select" label="Comet Options">
@@ -873,7 +949,7 @@
     </outputs>
     <tests>
 
-        <!-- Test that specifying non-default search engines -->
+        <!-- Test that specifying non-default search engines works -->
         <test>
             <param name="peak_lists" value="searchgui_tinyspectra1.mgf"/>
             <param name="input_database" value="searchgui_tinydb1.fasta" ftype="fasta"/>
@@ -888,6 +964,22 @@
 
             <output name="output" file="tiny_searchgui_result1.zip" ftype="searchgui_archive" compare="sim_size" delta="600" /> 
         </test>
+
+        <!-- Test that search works with MSAmanda -->
+        <test>
+            <param name="peak_lists" value="searchgui_tinyspectra1.mgf"/>
+            <param name="input_database" value="searchgui_tinydb1.fasta" ftype="fasta"/>
+            <param name="precursor_ion_tol" value="100"/>
+            <param name="fixed_modifications" value="carbamidomethyl c"/>
+            <param name="variable_modifications" value="oxidation of m"/>
+            <param name="min_charge" value="1"/>
+            <param name="max_charge" value="3"/>
+            <param name="engines" value="MS_Amanda"/>
+
+            <output name="output" file="tiny_searchgui_result_amandaonly.zip" ftype="searchgui_archive" compare="sim_size" delta="600" /> 
+        </test>
+
+
     </tests>
     <help>
 **What it does**

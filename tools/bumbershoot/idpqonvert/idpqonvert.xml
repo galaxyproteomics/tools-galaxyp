@@ -1,0 +1,208 @@
+<?xml version="1.0"?>
+<tool id="idpqonvert" name="idpQonvert" version="0.1.0">
+    <description>Prepare identification results for IDPicker</description>
+    <macros>
+        <xml name="normalizationOptions">
+            <option value="off" selected="true">None</option>
+            <option value="quantile">Quantile</option>
+            <option value="linear">Linear</option>
+        </xml>
+    </macros>
+    <requirements>
+        <requirement type="package" version="3.0.8789">bumbershoot</requirement>
+    </requirements>
+    <stdio>
+        <exit_code range="1:" level="fatal" description="Job Failed" />
+        <regex match="^Error:.*$" source="both" level="fatal" />
+    </stdio>
+    <command>
+<![CDATA[
+        #set $db_name = $ProteinDatabase.display_name.replace(".fasta", "") + ".fasta"
+        #set $input_name = $input.display_name
+        #set $output_name = $input_name.split(".")[0] + ".idpDB"
+        ln -s '$input' '${input_name}' &&
+        ln -s '$ProteinDatabase' '${db_name}' &&
+
+        idpQonvert
+            -DecoyPrefix '${DecoyPrefix}'
+            -WriteQonversionDetails true
+            -ProteinDatabase '${db_name}'
+            -MaxFDR $MaxFDR
+            -EmbedSpectrumScanTimes false
+            -EmbedSpectrumSources false
+            #set $score_info = []
+            #for $engine in ["myrimatch:mvh", "xcorr", "sequest:xcorr", "sequest:deltacn", "mascot:score", "x!tandem:expect", "x!tandem:hyperscore", "ms-gf:specevalue", "comet:xcorr", "comet:deltacn", "comet:expect"]
+                #set $name = $engine.replace(":", "_").replace("!","")
+                #set $weight = $getVar("scoring." + $name + "." + $name + "_weight.value")
+                #set $type = $getVar("scoring." + $name + "." + $name + "_type.value")
+                #set $score_info = $score_info + [str($weight) + " " + $type + " " + $engine]
+                #continue
+            #end for
+            #for $i, $s in enumerate($scoring.extra_score)
+                #set $name = $s.extra_score_name
+                #set $type = $s.extra_score_normalization
+                #set $weight = $s.extra_score_weight
+                #set $score_info = $score_info + [str($weight) + " " + $type + " " + $name]
+            #end for
+            #set $score_str = "; ".join($score_info)
+            -ScoreInfo '$score_str'
+            -MaxImportFDR $advanced_options.MaxImportFDR
+            -MaxResultRank $advanced_options.MaxResultRank
+            -RerankMatches $advanced_options.RerankMatches
+            -Gamma $advanced_options.Gamma
+            -Nu $advanced_options.Nu
+            -PolynomialDegree $advanced_options.PolynomialDegree
+            -TruePositiveThreshold $advanced_options.TruePositiveThreshold
+            -MaxTrainingRank $advanced_options.MaxTrainingRank
+            -SVMType $advanced_options.SVMType
+            -Kernel $advanced_options.Kernel
+            -ChargeStateHandling $advanced_options.ChargeStateHandling
+            -TerminalSpecificityHandling $advanced_options.TerminalSpecificityHandling
+            -MissedCleavagesHandling $advanced_options.MissedCleavagesHandling
+            -QonverterMethod $advanced_options.QonverterMethod
+            -MinPartitionSize $advanced_options.MinPartitionSize
+            '${input_name}' &&
+        mv '$output_name' output
+]]>
+    </command>
+    <inputs>
+        <param name="input" type="data" format="mzid,raw_pepxml" label="Input mzIdentML/pepXML file(s)" />
+        <param argument="-ProteinDatabase" format="fasta" type="data" label="Protein Database" help="The FASTA protein database to map peptides against. Only peptides from target proteins will be mapped; decoy peptides will be stored as-is in the idpDB." />
+        <param argument="-DecoyPrefix" type="text" label="Decoy Prefix" help="The prefix to look for on protein accessions to determine whether it is a target or decoy." />
+        <param argument="-MaxFDR" type="float" label="Max FDR" min="0.0000001" value="0.05" help="PSMs with a greater FDR than this will be excluded from the filtered data set, but remain in the file." />
+        <section name="advanced_options" title="Advanced Options">
+            <param argument="-MaxImportFDR" type="float" label="Max Import FDR" min="0.1" value="0.25" help="PSMs with a greater FDR than this will be completely excluded from the idpDB." />
+            <param argument="-MaxResultRank" type="integer" label="Max Result Rank" min="1" value="2" />
+            <param argument="-MaxTrainingRank" type="integer" label="Max Training Rank" min="1" value="1" />
+            <param argument="-RerankMatches" type="boolean" label="Rerank Matches" checked="false" truevalue="true" falsevalue="false" />
+            <param argument="-Gamma" type="float" label="Gamma" value="5" />
+            <param argument="-Nu" type="float" label="Nu" value="-0.5" />
+            <param argument="-TruePositiveThreshold" type="float" label="True Positive Threshold" min="0.0000001" value="0.01" />
+            <param argument="-PolynomialDegree" type="integer" label="Polynomial Degree" min="1" value="3" />
+            <param argument="-MinPartitionSize" type="integer" label="Minimum Partition Size" min="10" value="10" />
+            <param argument="-SVMType" label="SVM Type" type="select">
+                <option value="CSVC" selected="true">CSVC</option>
+                <option value="NuSVC">Nu SCV</option>
+                <option value="OneClass">One Class</option>
+                <option value="NuSVR">Nu SVR</option>
+                <option value="EpsilonSVR">Epsilon SVR</option>
+            </param>
+            <param argument="-Kernel" label="Kernel" type="select">
+                <option value="Linear" selected="true">Linear</option>
+                <option value="Polynomial">Polynomial</option>
+                <option value="RBR">Radial Basis Function</option>
+                <option value="Sigmoid">Sigmoid</option>
+            </param>
+            <param argument="-ChargeStateHandling" label="Charge State Handling" type="select">
+                <option value="Partition" selected="true">Partition</option>
+                <option value="Ignore">Ignore</option>
+                <option value="Feature">Feature</option>
+            </param>
+            <param argument="-TerminalSpecificityHandling" label="Terminal Specificity Handling" type="select">
+                <option value="Partition" selected="true">Partition</option>
+                <option value="Ignore">Ignore</option>
+                <option value="Feature">Feature</option>
+            </param>
+            <param argument="-MissedCleavagesHandling" label="Missed Cleavages Handling" type="select">
+                <option value="Ignore" selected="true">Ignore</option>
+                <option value="Feature">Feature</option>
+            </param>
+            <param argument="-MassErrorHandling" label="Mass Error Handling" type="select">
+                <option value="Ignore" selected="true">Ignore</option>
+                <option value="Feature">Feature</option>
+            </param>
+            <param argument="-QonverterMethod" label="Qonverter Method" type="select">
+                <option value="MonteCarlo" selected="true">Monte Carlo (recommended)</option>
+                <option value="SingleSVM">SVM (single)</option>
+                <option value="PartitionSVM">SVM (parition)</option>
+                <option value="StaticWeighted">Static Weighted</option>
+            </param>
+        </section>
+        <section name="scoring" title="Custom Score Settings">
+            <section name="myrimatch_mvh" title="Myrimatch (mvh) Score/Weight" expanded="False">
+                <param name="myrimatch_mvh_weight" label="Myrimatch (mvh) Weight" type="float" min="-1" max="1" value="1" />
+                <param name="myrimatch_mvh_type" label="Myrimatch (mvh) Normalization" type="select"><expand macro="normalizationOptions" /></param>
+            </section>
+            <section name="xcorr" title="Non-Sequest (xcorr) Score/Weight" expanded="False">
+                <param name="xcorr_weight" label="XCorr Weight" type="float" min="-1" max="1" value="1" />
+                <param name="xcorr_type" label="XCorr Normalization" type="select"><expand macro="normalizationOptions" /></param>
+            </section>
+            <section name="sequest_xcorr" title="Sequest (xcorr) Score/Weight" expanded="False">
+                <param name="sequest_xcorr_weight" label="Sequest (xcorr) Weight" type="float" min="-1" max="1" value="1" />
+                <param name="sequest_xcorr_type" label="Sequest (xcorr) Normalization" type="select"><expand macro="normalizationOptions" /></param>
+            </section>
+            <section name="sequest_deltacn" title="Sequest (deltacn) Score/Weight" expanded="False">
+                <param name="sequest_deltacn_weight" label="Sequest (deltacn) Weight" type="float" min="-1" max="1" value="1" />
+                <param name="sequest_deltacn_type" label="Sequest (deltacn) Normalization" type="select"><expand macro="normalizationOptions" /></param>
+            </section>
+            <section name="mascot_score" title="Mascot (score) Score/Weight" expanded="False">
+                <param name="mascot_score_weight" label="Mascot Score Weight" type="float" min="-1" max="1" value="1" />
+                <param name="mascot_score_type" label="Mascot Score Normalization" type="select"><expand macro="normalizationOptions" /></param>
+            </section>
+            <section name="xtandem_expect" title="X! Tandem (expect) Score/Weight" expanded="False">
+                <param name="xtandem_expect_weight" label="X! Tandem (expectation) Weight" type="float" min="-1" max="1" value="-1" />
+                <param name="xtandem_expect_type" label="X! Tandem (expectation) Normalization" type="select"><expand macro="normalizationOptions" /></param>
+            </section>
+            <section name="xtandem_hyperscore" title="X! Tandem (hyperscore) Score/Weight" expanded="False">
+                <param name="xtandem_hyperscore_weight" label="X! Tandem (hyperscore) Weight" type="float" min="-1" max="1" value="1" />
+                <param name="xtandem_hyperscore_type" label="X! Tandem (hyperscore)Normalization" type="select"><expand macro="normalizationOptions" /></param>
+            </section>
+            <section name="ms-gf_specevalue" title="MS-GF+ (specevalue) Score/Weight" expanded="False">
+                <param name="ms-gf_specevalue_weight" label="MS-GF+ (specevalue) Weight" type="float" min="-1" max="1" value="-1" />
+                <param name="ms-gf_specevalue_type" label="MS-GF+ (specevalue) Normalization" type="select"><expand macro="normalizationOptions" /></param>
+            </section>
+            <section name="comet_xcorr" title="Comet (xcorr) Score/Weight" expanded="False">
+                <param name="comet_xcorr_weight" label="Comet (xcorr) Weight" type="float" min="-1" max="1" value="1" />
+                <param name="comet_xcorr_type" label="Comet (xcorr) Normalization" type="select"><expand macro="normalizationOptions" /></param>
+            </section>
+            <section name="comet_deltacn" title="Comet (deltacn) Score/Weight" expanded="False">
+                <param name="comet_deltacn_weight" label="Comet (deltacn) Weight" type="float" min="-1" max="1" value="1" />
+                <param name="comet_deltacn_type" label="Comet (deltacn) Normalization" type="select"><expand macro="normalizationOptions" /></param>
+            </section>
+            <section name="comet_expect" title="Comet (expect) Score/Weight" expanded="False">
+                <param name="comet_expect_weight" label="Comet (expect) Weight" type="float" min="-1" max="1" value="-1" />
+                <param name="comet_expect_type" label="Comet (expect) Normalization" type="select"><expand macro="normalizationOptions" /></param>
+            </section>
+            <repeat name="extra_score" title="Extra Search Engine Score/Weight">
+                <param name="extra_score_name" label="Name" type="text" help="For scores in the PSI-MS controlled vocabulary, this field must match the name for that score; for other scores, the UserParam name or pepXML name will suffice." value="SearchEngineName" />
+                <param name="extra_score_normalization" label="Normalization Method" type="select"><expand macro="normalizationOptions" /></param>
+                <param name="extra_score_weight" label="Weight" type="float" help="Negative weights indicate that a lower score is better (e.g. expectation value, p-value)." min="-1" max="1" value="1" />
+            </repeat>
+        </section>
+    </inputs>
+    <outputs>
+        <data format="idpdb" name="output" from_work_dir="output" />
+    </outputs>
+    <tests>
+        <test>
+            <param name="input" value="input/201208-378803-myrimatch.pepXML" />
+            <param name="ProteinDatabase" value="input/cow.protein.PRG2012-subset.fasta" />
+            <param name="MaxFDR" value="0.05" />
+            <output name="output" file="201208-378803-myrimatch.idpDB" compare="sim_size" delta="500000" />
+        </test>
+        <test>
+            <param name="input" value="input/201208-378803-cm.pep.xml" />
+            <param name="ProteinDatabase" value="input/cow.protein.PRG2012-subset.fasta" />
+            <param name="MaxFDR" value="0.05" />
+            <output name="output" file="201208-378803-cm.idpDB" compare="sim_size" delta="500000" />
+        </test>
+        <test>
+            <param name="input" value="input/201208-378803-msgf.mzid" />
+            <param name="ProteinDatabase" value="input/cow.protein.PRG2012-subset.fasta" />
+            <param name="MaxFDR" value="0.05" />
+            <output name="output" file="201208-378803-msgf.idpDB" compare="sim_size" delta="500000" />
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+**What it does**
+
+Creates IDPicker 3 idpDB files from pepXML and mzIdentML files. The input files should be unfiltered and must come from a target/decoy database search.
+]]>
+    </help>
+    <citations>
+        <citation type="doi">10.1021/pr900360j</citation>
+        <citation type="bibtex">@misc{toolsGalaxyP, author = {Chilton, J, Chambers MC, et al.}, title = {Galaxy Proteomics Tools}, publisher = {GitHub}, journal = {GitHub repository},
+                                      year = {2015}, url = {https://github.com/galaxyproteomics/tools-galaxyp}}</citation> <!-- TODO: fix substitution of commit ", commit = {$sha1$}" -->
+    </citations>
+</tool>

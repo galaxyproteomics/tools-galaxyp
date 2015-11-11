@@ -49,4 +49,5 @@ Authors and contributors:
 
 * Cody Wang
 * John Chilton <jmchilton@gmail.com>
+* James Johnson <jj@umn.edu>
 * Minnesota Supercomputing Institute, Univeristy of Minnesota
