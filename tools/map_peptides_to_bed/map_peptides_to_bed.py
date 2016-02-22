@@ -232,7 +232,7 @@ def __main__():
   parser.add_option( '-t', '--translated_bed', dest='translated_bed', default=None, help='A bed file with added 13th column having a translation'  )
   parser.add_option( '-i', '--input', dest='input', default=None, help='Tabular file with peptide_sequence column' )
   parser.add_option( '-p', '--peptide_column', type='int', dest='peptide_column', default=1, help='column ordinal with peptide sequence' )
-  parser.add_option( '-n', '--name_column', type='int', dest='name_column', default=None, help='column ordinal with protein name' )
+  parser.add_option( '-n', '--name_column', type='int', dest='name_column', default=2, help='column ordinal with protein name' )
   parser.add_option( '-s', '--start_column', type='int', dest='start_column', default=None, help='column with peptide start position in protein' )
   parser.add_option( '-B', '--bed', dest='bed', default=None, help='Output a bed file with added 13th column having translation'  )
   ## parser.add_option( '-G', '--gff3', dest='gff', default=None, help='Output translations to a GFF3 file'  )
