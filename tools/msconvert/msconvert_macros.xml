@@ -1,0 +1,675 @@
+<macros>
+  <xml name="generic_requirements">
+    <requirements>
+      <requirement type="package" version="3.0.9016">proteowizard</requirement>
+    </requirements>
+  </xml>
+  <token name="@VERSION@">3.0</token>
+  
+  <xml name="msconvertCommand">
+    <command interpreter="python">
+<![CDATA[
+    #import re
+    #set $ext = $input.ext
+    msconvert_wrapper.py
+    #if $ext == 'wiff':
+      #set basename = 'absciex'
+      #if hasattr($input, 'display_name')
+        #set basename = $re.sub('\W','_',$input.display_name)
+      #end if
+      --input=${input.extra_files_path}/wiff
+      --input_name='${basename}.wiff
+      --implicit=${input.extra_files_path}/wiff_scan
+      --input=${input.extra_files_path}/wiff_scan
+      --input_name='${basename}.wiff.scan
+    #else
+      --input=${input}
+      #if hasattr($input, 'display_name')
+      --input_name='${input.display_name}'
+      #end if
+    #end if
+    --output=${output}
+    ## BEGIN_VERSION_DEFAULT
+    --fromextension=$ext
+    ## END_VERSION_DEFAULT
+    --toextension=${output_type}
+
+    ## DATA PROCESSING FILTERS (NOTE: FOR VENDOR METHOD TO WORK, PEAK PICKING MUST BE THE FIRST FILTER!)
+      #if $data_processing.precursor_refinement.use_mzrefinement
+        #set $input_ident_name = $re.sub('\W','_',$data_processing.precursor_refinement.input_ident.display_name)
+        #if $data_processing.precursor_refinement.input_ident.ext == 'mzid':
+          #set $input_ident_name = $re.sub('(?i)([.]?mzid)*$','.mzid',$input_ident_name)
+        #elif $data_processing.precursor_refinement.input_ident.ext == 'pepxml':
+          #set $input_ident_name = $re.sub('(?i)([.]?pep[.]?xml)*$','.pep.xml',$input_ident_name)
+        #end if
+      --ident=$data_processing.precursor_refinement.input_ident
+      --ident_name=$input_ident_name
+      --refinement=$output_refinement
+      --filter "mzRefiner $input_ident_name
+        msLevels=$data_processing.precursor_refinement.precursor_refinement_ms_levels
+        thresholdScore=$data_processing.precursor_refinement.thresholdScore
+        thresholdValue=$data_processing.precursor_refinement.thresholdValue
+        thresholdStep=$data_processing.precursor_refinement.thresholdStep
+        maxSteps=$data_processing.precursor_refinement.thresholdMaxSteps"
+      #end if
+
+      #if $data_processing.peak_picking.pick_peaks
+      --filter "peakPicking $data_processing.peak_picking.pick_peaks_algorithm msLevel=$data_processing.peak_picking.pick_peaks_ms_levels"
+      #end if
+
+      #if str($data_processing.charge_state_calculation.charge_state_calculation_method) == "predictor"
+      --filter "chargeStatePredictor
+        overrideExistingCharge=$data_processing.charge_state_calculation.predictor_overrideExistingCharge
+        minMultipleCharge=$data_processing.charge_state_calculation.minMultipleCharge
+        maxMultipleCharge=$data_processing.charge_state_calculation.maxMultipleCharge
+        singleChargeFractionTIC=$data_processing.charge_state_calculation.singleChargeFractionTIC
+        maxKnownCharge=$data_processing.charge_state_calculation.maxKnownCharge"
+      #else if str($data_processing.charge_state_calculation.charge_state_calculation_method) == "turbocharger"
+      --filter "turbocharger
+        minCharge=$data_processing.charge_state_calculation.minCharge
+        maxCharge=$data_processing.charge_state_calculation.maxCharge
+        precursorsBefore=$data_processing.charge_state_calculation.precursorsBefore
+        precursorsAfter=$data_processing.charge_state_calculation.precursorsAfter
+        halfIsoWidth=$data_processing.charge_state_calculation.halfIsoWidth
+        defaultMinCharge=$data_processing.charge_state_calculation.defaultMinCharge
+        defaultMaxCharge=$data_processing.charge_state_calculation.defaultMaxCharge"
+      #end if
+
+      #for threshold_entry in $data_processing.thresholds
+      --filter "threshold $threshold_entry.threshold_type $threshold_entry.value $threshold_entry.orientation"
+      #end for
+
+      #if $data_processing.filter_mz_windows.do_mzwindow_filter
+      --filter "mzWindow [$data_processing.filter_mz_windows.mz_window_from,$data_processing.filter_mz_windows.mz_window_to]"
+      #end if
+
+      #if $data_processing.etd_filtering.do_etd_filtering
+      --filter "ETDFilter $data_processing.etd_filtering.remove_precursor
+        $data_processing.etd_filtering.remove_charge_reduced
+        $data_processing.etd_filtering.remove_neutral_loss
+        $data_processing.etd_filtering.blanket_removal
+        $data_processing.etd_filtering.matching_tolerance $data_processing.etd_filtering.matching_tolerance_units"
+      #end if
+
+      #if $data_processing.ms2denoise.denoise
+      --filter "MS2Denoise $data_processing.ms2denoise.num_peaks $data_processing.ms2denoise.window_width $data_processing.ms2denoise.relax"
+      #end if
+
+      #if str($data_processing.ms2deisotope) == "true"
+      --filter "MS2Deisotope"
+      #end if
+
+
+    ## SCAN INCLUSION/EXCLUSION FILTERS
+      #if str($filtering.activation) != "false"
+      --filter "activation $filtering.activation"
+      #end if
+
+      #if len($filtering.indices) > 0
+      --filter "index
+      #for $index in $filtering.indices
+      [${index.from},${index.to}]
+      #end for
+      "
+      #end if
+
+      #if len($filtering.scan_numbers) > 0
+      --filter "scanNumber
+      #for $scan_number in $filtering.scan_numbers
+      [${scan_number.from},${scan_number.to}]
+      #end for
+      "
+      #end if
+
+      #if $filtering.strip_it.value
+      --filter "stripIT"
+      #end if
+
+      #if $filtering.filter_ms_levels.do_ms_level_filter
+      --filter "msLevel [$filtering.filter_ms_levels.ms_level_from, $filtering.filter_ms_levels.ms_level_to]"
+      #end if
+
+      #if str($filtering.polarity) != "false"
+      --filter "polarity $filtering.polarity"
+      #end if
+
+      #if str($filtering.analyzer) != "false"
+      --filter "analyzer $filtering.analyzer"
+      #end if
+      
+    ## OUTPUT ENCODING
+      -- 
+      #set $mz_encoding = str($settings.mz_encoding)
+      #set $intensity_encoding = str($settings.intensity_encoding)
+      #if $mz_encoding == $intensity_encoding
+        #if $mz_encoding == "64"
+          --64
+        #else
+          --32
+        #end if
+      #else
+        --mz${mz_encoding}
+        --inten${intensity_encoding}
+      #end if
+
+      #set binary_compression = str($settings.binary_compression)
+      #if $binary_compression == "zlib"
+      --zlib
+      #else if $binary_compression == "numpressLinearPic"
+      --numpressLinear --numpressPic
+      #else if $binary_compression == "numpressLinearSlof"
+      --numpressLinear --numpressSlof
+      #else if $binary_compression == "numpressLinear"
+      --numpressLinear
+      #else if $binary_compression == "numpressPic"
+      --numpressPic
+      #else if $binary_compression == "numpressSlof"
+      --numpressSlof
+      #end if
+
+      #if $settings.gzip_compression
+      --gzip
+      #end if
+
+]]>
+    </command>
+  </xml>
+
+  <xml name="msconvertInputParameters">
+    <param name="output_type" type="select" label="Output Type">
+      <option value="mz5" selected="true">mz5</option>
+      <option value="mzML">mzML</option>
+      <option value="mzXML">mzXML</option>
+      <option value="mgf">mgf</option>
+      <option value="ms2">ms2</option>
+    </param>
+
+    <section name="data_processing" title="Data Processing Filters">
+      
+      <conditional name="peak_picking">
+        <param type="boolean" name="pick_peaks" label="Apply peak picking?" truevalue="true" falsevalue="false" />
+        <when value="false" />
+        <when value="true">
+          <param name="pick_peaks_ms_levels" type="select" label="Peak Peaking - Apply to MS Levels">
+            <option value="1">MS1 Only (1)</option>
+            <option value="2">MS2 Only (2)</option>
+            <option value="2-">MS2 and on (2-)</option>
+            <option value="1-" selected="true">All Levels (1-)</option>
+          </param>
+          <param type="select" name="pick_peaks_algorithm" label="Peak Picking - Algorithm" help="The vendor method only works on Agilent, Bruker, Sciex, Thermo data, and only on Windows (although some vendors work on Wine)">
+            <option value="vendor" selected="true">Prefer vendor algorithm, fallback to local-maximum</option>
+            <option value="cwt">CantWaiT - continuous wavelet transform</option>
+          </param>
+        </when>
+      </conditional>
+
+      <conditional name="precursor_refinement" title="MZRefinery Precursor Refinement" expanded="true">
+        <param type="boolean" name="use_mzrefinement" label="Apply m/z refinement with identification data?" truevalue="true" falsevalue="false" checked="False" />
+        <when value="false"></when>
+        <when value="true">
+          <param name="input_ident" type="data" format="pepxml,mzid" label="MZRefinery - Input identification data" />
+          <param name="thresholdScore" type="text" value="mvh" label="MZRefinery - Threshold Score Name" help="E.g. 'mvh' for MyriMatch, 'xcorr' for Sequest, 'specevalue' for MS-GF+" />
+          <param name="thresholdValue" type="text" value="50-" label="MZRefinery - Threshold Score Value" help="MZRefinery uses peptide-spectrum-matches with scores from this range to build its model. '100-' means score equal to or greater than 100. '-1e-10' means less than or equal to 1e-10." />
+          <param name="thresholdStep" type="float" value="0" label="MZRefinery - Threshold Score Step" help="If there are not enough quality hits at the given score threshold value, the threshold can be increased by this step (until maxSteps is reached)." />
+          <param name="thresholdMaxSteps" type="integer" value="0" label="MZRefinery - At most, how many steps to widen the threshold?" />
+          <param name="precursor_refinement_ms_levels" type="select" label="MZRefinery - Apply to MS Levels">
+            <option value="1">MS1 Only (1)</option>
+            <option value="2">MS2 Only (2)</option>
+            <option value="2-">MS2 and on (2-)</option>
+            <option value="1-" selected="true">All Levels (1-)</option>
+          </param>
+        </when>
+      </conditional>
+
+      <conditional name="charge_state_calculation">
+        <param name="charge_state_calculation_method" type="select" label="(Re-)calculate charge states?">
+          <option value="false">no</option>
+          <option value="predictor">Based on how much intensity is above vs. below the precursor m/z in the MS/MS scan</option>
+          <option value="turbocharger">Based on isotopic distribution of the precursor in nearby survey scans</option>
+        </param>
+        <when value="false" />
+        <when value="predictor">
+          <param name="predictor_overrideExistingCharge" type="boolean" label="Always override existing charge?" value="false" />
+          <param name="minMultipleCharge" type="integer" label="Minimum multiple charge state" value="2" />
+          <param name="maxMultipleCharge" type="integer" label="Maximum multiple charge state" value="3" />
+          <param name="singleChargeFractionTIC" type="float" label="Fraction of intensity below the precursor to be considered singly charged" max="1" min="0" value="0.9" />
+          <param name="maxKnownCharge" type="integer" label="Maximum charge allowed for &quot;known&quot; charges" help="This is applied even when not overriding existing charges (i.e. it overrides only obviously bogus charge states)" value="0" />
+        </when>
+        <when value="turbocharger">
+          <param name="minCharge" type="integer" label="Minimum possible charge state" value="1" min="1" help="Charge states lower than this will not be considered." />
+          <param name="maxCharge" type="integer" label="Maximum possible charge state" value="8" min="2" help="Charge states greater than this will not be considered." />
+          <param name="precursorsBefore" type="integer" label="Number of preceding survey scans to check for precursor isotopes" value="2" min="1" />
+          <param name="precursorsAfter" type="integer" label="Number of succeeding survey scans to check for precursor isotopes" value="0" min="0" />
+          <param name="halfIsoWidth" type="float" label="Half-width of isolation window" min="0.0001" value="1.25" />
+          <param name="defaultMinCharge" type="integer" label="Minimum possible charge state to apply if no isotope is found" value="0" />
+          <param name="defaultMaxCharge" type="integer" label="Maximum possible charge state to apply if no isotope is found" value="0" />
+        </when>
+      </conditional>
+
+      <repeat name="thresholds" title="Filter by Threshold">
+        <param type="select" label="Specify threshold on" name="threshold_type" help="">
+          <option value="count">Peak count</option>
+          <option value="count-after-ties">Peak count (after ties)</option>
+          <option value="absolute">Peak absolute intensity</option>
+          <option value="bpi-relative">Fraction of base peak intensity</option>
+          <option value="tic-relative">Fraction of total ion current</option>
+          <option value="tic-fraction">Aggregate fraction of total ion current</option>
+        </param>
+        <param type="float" name="value" label="Threshold" value="1" help="For count methods, this is the number of peaks to keep. For the absolute method, this is the raw intensity above/below which peak will be accepted. For the &quot;Aggregated fraction&quot; method, peaks are accepted until this fraction of the TIC is accounted for." />
+        <param type="select" label="Keep" name="orientation">
+          <option value="most-intense">Most intense peaks</option>
+          <option value="least-intense">Least intense peaks</option>
+        </param>
+      </repeat>
+
+      <conditional name="filter_mz_windows">
+        <param name="do_mzwindow_filter" type="boolean" truevalue="true" falsevalue="false" label="Filter m/z Window" help="" />
+        <when value="false" />
+        <when value="true">
+          <param name="mz_window_from" type="float" label="Filter m/z From" value="0.0" optional="false" />
+          <param name="mz_window_to" type="float" label="Filter m/z To" value="0.0" optional="true" />
+        </when>
+      </conditional>
+
+      <conditional name="etd_filtering">
+        <param type="boolean" name="do_etd_filtering" label="Filter out ETD precursor peaks?" truevalue="true" falsevalue="false" />
+        <when value="false" />
+        <when value="true">
+          <param name="remove_precursor" type="select" label="ETD Remove Unreacted Precursor">
+            <option value="true" selected="true">yes</option>
+            <option value="false">no</option>
+          </param>
+          <param name="remove_charge_reduced" type="select" label="ETD Remove Charge Reduced Precursors">
+            <option value="true" selected="true">yes</option>
+            <option value="false">no</option>
+          </param>
+          <param name="remove_neutral_loss" type="select" label="ETD Remove Neutral Losses" help="Remove neutral loss species from nominal and charge reduced precursors">
+            <option value="true" selected="true">yes</option>
+            <option value="false">no</option>
+          </param>
+          <param name="blanket_removal" type="select" label="ETD Blanket Removal of Neutral Losses" help="Remove neutral losses in a charge-scaled 60 Da swath (rather than only around known loss species)">
+            <option value="true" selected="true">yes</option>
+            <option value="false">no</option>
+          </param>
+          <param name="matching_tolerance" type="float" label="ETD Matching Tolerance" value="3.1" />
+          <param name="matching_tolerance_units" type="select" label="Units for ETD Matching Tolerance">
+            <option value="MZ" selected="true">mz</option>
+            <option value="PPM">ppm</option>
+          </param>
+        </when>
+      </conditional>
+
+      <conditional name="ms2denoise">
+        <param name="denoise" type="boolean" label="De-noise MS2 with moving window filter"  />
+        <when value="true">
+          <param name="num_peaks" label="De-noise: Number of peaks in window" value="6" type="integer" />
+          <param name="window_width" type="float" label="De-noise: Window width (Daltons)" value="30" />
+          <param name="relax" label="De-noise: Multicharge fragment relaxation" checked="true" type="boolean" truevalue="true" falsevalue="false" />
+        </when>
+        <when value="false" />
+      </conditional>
+
+      <param name="ms2deisotope" type="boolean" label="Deisotope MS2 using Markey method" help="" truevalue="true" falsevalue="false" />
+
+    </section>
+
+
+    <section name="filtering" title="Scan Inclusion/Exclusion Filters">
+      
+      <param name="activation" type="select" label="Filter by Activation">
+        <option value="false" selected="true">no</option>
+        <option value="ETD">ETD</option>
+        <option value="CID">CID</option>
+        <option value="SA">SA</option>
+        <option value="HCD">HCD</option>
+        <option>BIRD</option>
+        <option>ECD</option>
+        <option>IRMPD</option>
+        <option>PD</option>
+        <option>PSD</option>
+        <option>PQD</option>
+        <option>SID</option>
+        <option>SORI</option>
+      </param>
+
+      <repeat name="indices" title="Filter Scan Indices">
+        <param name="from" type="integer" label="Filter Scan Index From" value="0" optional="false" />
+        <param name="to" type="integer" label="Filter Scan Index To" value="0" optional="true" />
+      </repeat>
+
+      <repeat name="scan_numbers" title="Filter Scan Numbers">
+        <param name="from" type="integer" label="Filter Scan Number From" value="0" optional="false" />
+        <param name="to" type="integer" label="Filter Scan Number To" value="0" optional="true" />
+      </repeat>
+
+      <param type="boolean" name="strip_it" label="Strip Ion Trap MS1 Scans" />
+
+      <conditional name="filter_ms_levels">
+        <param name="do_ms_level_filter" type="boolean" label="Filter MS Levels" />
+        <when value="false" />
+        <when value="true">
+          <param name="ms_level_from" type="integer" label="Filter MS Level From" value="0" optional="false" />
+          <param name="ms_level_to" type="integer" label="Filter MS Level To" value="0" optional="true" />
+        </when>
+      </conditional>
+
+      <param name="polarity" type="select" label="Filter by Polarity">
+        <option value="false" selected="true">no</option>
+        <option value="positive">positive</option>
+        <option value="negative">negative</option>
+      </param>
+
+      <param name="analyzer" type="select" label="Filter by Analyzer">
+        <option value="false" selected="true">no</option>
+        <option value="quad">Quadrupole</option>
+        <option value="orbi">Orbitrap</option>
+        <option value="FT">Fourier-transform</option>
+        <option value="IT">Ion trap</option>
+        <option value="TOF">Time of flight</option>
+      </param>
+    </section>
+
+
+    <section name="settings" title="Output Encoding Settings">
+      <param type="select" name="mz_encoding" label="m/z Encoding Precision">
+        <option value="64" selected="true">64</option>
+        <option value="32">32</option>
+      </param>
+      <param type="select" name="intensity_encoding" label="Intensity Encoding Precision">
+        <option value="64">64</option>
+        <option value="32" selected="true">32</option>
+      </param>
+      <param type="select" name="binary_compression" label="Binary data compression">
+        <option value="false">None</option>
+        <option value="zlib" selected="true">zlib</option>
+        <option value="numpressLinearPic">numpressLinear/numpressPic</option>
+        <option value="numpressLinearSlof">numpressLinear/numpressSlof</option>
+        <option value="numpressLinear">numpressLinear only</option>
+        <option value="numpressPic">numpressPic only</option>
+        <option value="numpressSlof">numpressSlof only</option>
+      </param>
+      <param type="boolean" name="gzip_compression" label="Compress output file with gzip" truevalue="true" falsevalue="false" />
+    </section>
+  </xml>
+  
+  <xml name="msconvertOutput">
+    <outputs>
+      <data format="mzml" name="output" label="${input.name.rsplit('.',1)[0]}.${output_type}" >
+        <change_format>
+          <when input="output_type" value="mz5" format="mz5" />
+          <when input="output_type" value="mzXML" format="mzxml" />
+          <when input="output_type" value="ms2" format="ms2" />
+          <when input="output_type" value="mgf" format="mgf" />
+        </change_format>
+      </data>
+      <data format="csv" name="output_refinement" label="${input.name.rsplit('.',1)[0]}.mzRefinement.tsv">
+        <filter>data_processing['precursor_refinement']['use_mzrefinement'] == True</filter>
+      </data>
+    </outputs>
+  </xml>
+
+
+  <xml name="msconvert_tests">
+    <test>
+      <param name="input" value="small.mzML" />
+      <param name="output_type" value="mzML" />
+      <param name="pick_peaks" value="true" />
+      <param name="pick_peaks_algorithm" value="cwt" />
+      <param name="pick_peaks_ms_levels" value="1-" />
+      <output name="output" file="small-peakpicking-cwt-allMS.mzML" />
+    </test>
+
+    <!-- this data file only has profile MS1, so the result is the same -->
+    <test>
+      <param name="input" value="small.mzML" />
+      <param name="output_type" value="mzML" />
+      <param name="pick_peaks" value="true" />
+      <param name="pick_peaks_algorithm" value="cwt" />
+      <param name="pick_peaks_ms_levels" value="1" />
+      <output name="output" file="small-peakpicking-cwt-allMS.mzML" /> 
+    </test>
+    <test>
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="output_type" value="mz5" />
+      <param name="mz_encoding" value="64" />
+      <param name="intensity_encoding" value="64" />
+      <output name="output" file="small-zlib-64.mz5" compare="sim_size" delta="100" />
+    </test>
+    <test>
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="output_type" value="mzXML" />
+      <param name="mz_encoding" value="32" />
+      <param name="intensity_encoding" value="32" />
+      <output name="output" file="small-zlib-32.mzXML" />
+    </test>
+    <!-- TODO: how to test gzipped output?
+    <test>
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="output_type" value="mzXML" />
+      <param name="mz_encoding" value="32" />
+      <param name="intensity_encoding" value="32" />
+      <param name="binary_compression" value="false" />
+      <param name="gzip_compression" value="true" />
+      <output name="output" file="small-off-32.mzXML.gz" compare="sim_size" delta="100" />
+    </test>
+    <test>
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="output_type" value="mzML" />
+      <param name="mz_encoding" value="32" />
+      <param name="intensity_encoding" value="32" />
+      <param name="binary_compression" value="false" />
+      <param name="gzip_compression" value="true" />
+      <output name="output" file="small-off-32.mzML.gz" compare="sim_size" delta="100" />
+    </test>-->
+
+    <test>
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="output_type" value="mzML" />
+      <param name="binary_compression" value="numpressLinearPic" />
+      <output name="output" file="small-numpressLP.mzML" />
+    </test>
+
+    <test>
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="output_type" value="mzML" />
+      <param name="binary_compression" value="numpressLinearSlof" />
+      <output name="output" file="small-numpressLS.mzML" />
+    </test>
+
+    <test>
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="output_type" value="mzML" />
+      <param name="binary_compression" value="numpressLinear" />
+      <output name="output" file="small-numpressL.mzML" />
+    </test>
+
+    <test>
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="output_type" value="mzML" />
+      <param name="binary_compression" value="numpressPic" />
+      <output name="output" file="small-numpressP.mzML" />
+    </test>
+
+    <test>
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="output_type" value="mzML" />
+      <param name="binary_compression" value="numpressSlof" />
+      <output name="output" file="small-numpressS.mzML" />
+    </test>
+
+    <test>
+      <param name="input" value="Rpal_01.mz5" />
+      <param name="output_type" value="mzML" />
+      <param name="binary_compression" value="numpressLinearPic" />
+      <param name="use_mzrefinement" value="true" />
+      <param name="input_ident" value="Rpal_01.pepXML.gz" />
+      <param name="thresholdScore" value="mvh" />
+      <param name="thresholdValue" value="40-" />
+      <output name="output" file="Rpal_01-mzRefinement.mzML" compare="sim_size" delta="0" />
+      <output name="output.refinement" file="Rpal_01.pepXML.mzRefinement.tsv" />
+    </test>
+    
+    <test>
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="output_type" value="mzML" />
+      <param name="binary_compression" value="numpressLinearPic" />
+      <param name="charge_state_calculation_method" value="predictor" />
+      <param name="predictor_overrideExistingCharge" value="true" />
+      <param name="minMultipleCharge" value="2" />
+      <param name="maxMultipleCharge" value="5" />
+      <param name="singleChargeFractionTIC" value="0.95" />
+      <param name="maxKnownCharge" value="8" />
+      <output name="output" file="small-chargeStatePredictor.mzML" />
+    </test>
+    <test>
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="output_type" value="mzML" />
+      <param name="binary_compression" value="numpressLinearPic" />
+      <param name="charge_state_calculation_method" value="turbocharger" />
+      <param name="minCharge" value="1" />
+      <param name="maxCharge" value="5" />
+      <param name="precursorsBefore" value="1" />
+      <param name="precursorsAfter" value="1" />
+      <param name="halfIsoWidth" value="1.5" />
+      <param name="defaultMinCharge" value="1" />
+      <param name="defaultMaxCharge" value="5" />
+      <output name="output" file="small-turbocharger.mzML" />
+    </test>
+    <test>
+      <param name="input" value="D100930_yeast_SCX10S_rak_ft8E_pc_01.mz5" />
+      <param name="output_type" value="mzML" />
+      <param name="do_etd_filtering" value="true" />
+      <param name="remove_precursor" value="true" />
+      <param name="remove_charge_reduced" value="true" />
+      <param name="remove_neutral_loss" value="false" />
+      <param name="blanket_removal" value="false" />
+      <param name="matching_tolerance" value="50" />
+      <param name="matching_tolerance_units" value="ppm" />
+      <param name="binary_compression" value="numpressLinearPic" />
+      <output name="output" file="D100930_yeast_SCX10S_rak_ft8E_pc_01-etdfilter.mzML" />
+    </test>
+    <test>
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="output_type" value="mzML" />
+      <param name="thresholds_0|threshold_type" value="count" />
+      <param name="thresholds_0|value" value="100" />
+      <param name="thresholds_0|orientation" value="most-intense" />
+      <param name="thresholds_1|threshold_type" value="absolute" />
+      <param name="thresholds_1|value" value="1" />
+      <param name="thresholds_1|orientation" value="most-intense" />
+      <param name="binary_compression" value="numpressLinearPic" />
+      <output name="output" file="small-threshold.mzML" />
+    </test>
+    <test>
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="output_type" value="mzML" />
+      <param name="do_mzwindow_filter" value="true" />
+      <param name="mz_window_from" value="420" />
+      <param name="mz_window_to" value="840" />
+      <param name="binary_compression" value="numpressLinearPic" />
+      <output name="output" file="small-mzWindow.mzML" />
+    </test>
+    <test>
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="output_type" value="mzML" />
+      <param name="denoise" value="true" />
+      <param name="num_peaks" value="10" />
+      <param name="window_width" value="40" />
+      <param name="relax" value="false" />
+      <param name="binary_compression" value="numpressLinearPic" />
+      <output name="output" file="small-denoise.mzML" />
+    </test>
+    <test>
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="output_type" value="mzML" />
+      <param name="ms2deisotope" value="true" />
+      <param name="binary_compression" value="numpressLinearPic" />
+      <output name="output" file="small-deisotope.mzML" />
+    </test>
+    <test>
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="output_type" value="mzML" />
+      <param name="activation" value="CID" />
+      <param name="binary_compression" value="numpressLinearPic" />
+      <output name="output" file="small-activation.mzML" />
+    </test>
+    <test>
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="output_type" value="mzML" />
+      <param name="indices_0|from" value="2" />
+      <param name="indices_0|to" value="4" />
+      <param name="indices_1|from" value="10" />
+      <param name="indices_1|to" value="10" />
+      <param name="indices_2|from" value="13" />
+      <param name="indices_2|to" value="15" />
+      <param name="binary_compression" value="numpressLinearPic" />
+      <output name="output" file="small-index-filter.mzML" />
+    </test>
+    <test>
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="output_type" value="mzML" />
+      <param name="strip_it" value="true" />
+      <param name="binary_compression" value="numpressLinearPic" />
+      <output name="output" file="small-strip-it.mzML" />
+    </test>
+    <test>
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="output_type" value="mzML" />
+      <param name="do_ms_level_filter" value="true" />
+      <param name="ms_level_from" value="2" />
+      <param name="ms_level_to" value="2" />
+      <param name="binary_compression" value="numpressLinearPic" />
+      <output name="output" file="small-ms-level-filter.mzML" />
+    </test>
+    <test>
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="output_type" value="mzML" />
+      <param name="polarity" value="positive" />
+      <param name="binary_compression" value="numpressLinearPic" />
+      <output name="output" file="small-polarity-filter.mzML" />
+    </test>
+    <test>
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="output_type" value="mzML" />
+      <param name="analyzer" value="IT" />
+      <param name="binary_compression" value="numpressLinearPic" />
+      <output name="output" file="small-analyzer-filter.mzML" />
+    </test>
+    <test>
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="output_type" value="mzML" />
+      <param name="scan_numbers_0|from" value="3" />
+      <param name="scan_numbers_0|to" value="5" />
+      <param name="scan_numbers_1|from" value="11" />
+      <param name="scan_numbers_1|to" value="11" />
+      <param name="scan_numbers_2|from" value="14" />
+      <param name="scan_numbers_2|to" value="16" />
+      <param name="binary_compression" value="numpressLinearPic" />
+      <output name="output" file="small-index-filter.mzML" /> <!-- the scan numbers here produce the same output as the index test above -->
+    </test>
+    <!--<test>
+      <param name="input" value="small.mzML" />
+      <param name="output_type" value="mzML" />
+      <param name="binary_compression" value="numpressLinearPic" />
+      <output name="output" file="small-deisotope-poisson.mzML" />
+    </test>-->
+  </xml>
+  <xml name="msconvert_help">
+**What it does**
+
+Allows interconversion within various mass spectrometry peak list formats. Additional options such as filtering and/or precursor recalculation are available.
+
+You can view the original documentation here_.
+
+.. _here: http://proteowizard.sourceforge.net/tools/msconvert.html
+  </xml>
+
+  <xml name="citations">
+    <citations>
+        <citation type="doi">10.1093/bioinformatics/btn323</citation>
+        <citation type="bibtex">@misc{toolsGalaxyP, author = {Chilton, J, Chambers MC, et al.}, title = {Galaxy Proteomics Tools}, publisher = {GitHub}, journal = {GitHub repository},
+                                      year = {2015}, url = {https://github.com/galaxyproteomics/tools-galaxyp}}</citation> <!-- TODO: fix substitution of commit ", commit = {$sha1$}" -->
+    </citations>
+  </xml>
+
+</macros>

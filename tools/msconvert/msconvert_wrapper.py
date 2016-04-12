@@ -88,7 +88,7 @@ def __main__():
 
 #ENDTEMPLATE
 
-to_extensions = ['mzML', 'mzXML', 'unindexed_mzML', 'unindexed_mzXML', 'mgf', 'txt', 'ms2', 'cms2']
+to_extensions = ['mzML', 'mzXML', 'unindexed_mzML', 'unindexed_mzXML', 'mgf', 'mz5', 'txt', 'ms2', 'cms2']
 
 
 def str_to_bool(v):
@@ -171,7 +171,7 @@ def _create_filters_file(options, file_num=None, debug=False):
     return filters_file_path
 
 
-def _build_base_cmd(options):
+def _build_base_cmd(options,args=None):
     to_extension = options.toextension
     if to_extension.startswith("unindexed_"):
         to_extension = to_extension[len("unindexed_"):]
@@ -179,6 +179,8 @@ def _build_base_cmd(options):
     else:
         to_params = ""
     cmd = "msconvert --%s %s" % (to_extension, to_params)
+    if args:
+        cmd = "%s %s" % (cmd, ' '.join(args))
     if str_to_bool(options.zlib):
         cmd = "%s %s" % (cmd, "--zlib")
     if options.binaryencoding:
@@ -208,7 +210,10 @@ def run_script():
     parser.add_option('--input', dest='inputs', action='append', default=[])
     parser.add_option('--input_name', dest='input_names', action='append', default=[])
     parser.add_option('--implicit', dest='implicits', action='append', default=[], help='input files that should NOT be on the msconvert command line.')
+    parser.add_option('--ident', dest='idents', action='append', default=[])
+    parser.add_option('--ident_name', dest='ident_names', action='append', default=[])
     parser.add_option('--output', dest='output')
+    parser.add_option('--refinement', dest='refinement')
     parser.add_option('--fromextension', dest='fromextension')
     parser.add_option('--toextension', dest='toextension', default='mzML', choices=to_extensions)
     parser.add_option('--binaryencoding', dest='binaryencoding', choices=['32', '64'])
@@ -253,8 +258,11 @@ def run_script():
         if input in options.implicits:
             continue
         input_files.append(input_file)
+    for i, ident in enumerate(options.idents):
+        ident_file = options.ident_names[i]
+        copy_to_working_directory(ident, ident_file)
 
-    cmd = _build_base_cmd(options)
+    cmd = _build_base_cmd(options,args=args)
     file_column = options.filter_table_file_column
     if not file_column:
         # Apply same filters to all files, just create a unviersal filter files
@@ -275,7 +283,16 @@ def run_script():
         cmd = "%s --merge" % cmd
     output_file = _run(cmd, output_dir='output', inputs=input_files, debug=options.debug)
     shutil.copy(output_file, options.output)
+    if options.refinement:
+        # .mzRefinement.tsv
+        files = os.listdir(os.getcwd())
+        for fname in files:
+            if fname.endswith('.mzRefinement.tsv'):
+                shutil.copy(fname, options.refinement)
+                break
 
+def __main__():
+    run_script()
 
 if __name__ == '__main__':
     __main__()
