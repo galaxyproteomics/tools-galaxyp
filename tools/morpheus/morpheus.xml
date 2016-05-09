@@ -1,9 +1,7 @@
-<tool id="morpheus" name="Morpheus" version="1.171.1">
+<tool id="morpheus" name="Morpheus" version="1.171.5">
     <description>database search algorithm for high-resolution tandem mass spectra</description>
     <macros>
         <xml name="modification_options">
-            <option value="carbamidomethylation of C">carbamidomethylation of C</option>
-            <option value="oxidation of M">oxidation of M</option>
             <option value="acetylation of protein N-terminus">acetylation of protein N-terminus</option>
             <option value="acetylation of lysine">acetylation of lysine</option>
             <option value="phosphorylation of S">phosphorylation of S</option>
@@ -30,6 +28,16 @@
             <option value="iTRAQ 8-plex on K">iTRAQ 8-plex on K</option>
             <option value="iTRAQ 8-plex on Y    ">iTRAQ 8-plex on Y    </option>
         </xml>
+        <xml name="variable_modification_options">
+            <option value="oxidation of M" selected="true">oxidation of M</option>
+            <option value="carbamidomethylation of C">carbamidomethylation of C</option>
+            <expand macro="modification_options"/>
+        </xml>
+        <xml name="fixed_modification_options">
+            <option value="carbamidomethylation of C" selected="true">carbamidomethylation of C</option>
+            <option value="oxidation of M">oxidation of M</option>
+            <expand macro="modification_options"/>
+        </xml>
     </macros>
 
     <requirements>
@@ -46,17 +54,29 @@
     </stdio>
 
     <command><![CDATA[
+        mkdir output_reports;
+        cwd=`pwd`;
+        #import re
         #set $searchdb_name = $searchdb
         #if isinstance($searchdb.datatype, $__app__.datatypes_registry.get_datatype_by_extension('uniprotxml').__class__): 
           #set $searchdb_name = 'searchdb.xml'
         #else
           #set $searchdb_name = 'searchdb.fasta'
         #end if
-        mkdir output_reports;
-        ln -s $input input.mzml
-        && ln -s $searchdb $searchdb_name
+        ln -s $searchdb $searchdb_name
+        ## Need to link each input to a name in cwd, names must be unique
+        #set $input_list = []
+        #for i,input in enumerate($inputs):
+          #set $input_name = $re.sub('(?i)([.]?mzML)*$','.mzML',$re.sub('\W','_',$input.name))
+          #if $input_name in $input_list:
+            #set $input_name = str($i) + '_' + $input_name
+          #end if
+          #set $input_list = $input_list + [$input_name]
+          && ln -s $input $input_name
+        #end for
+        #set $input_names = ','.join($input_list)
         && mono \${MORPHEUS_PATH}/morpheus_cl.exe 
-        -d="input.mzml"
+        -d="$input_names"
         -db=$searchdb_name
         #if isinstance($searchdb.datatype, $__app__.datatypes_registry.get_datatype_by_extension('uniprotxml').__class__): 
           #if str( $advanced.adv_options_selector) == "set":
@@ -70,9 +90,6 @@
         #if  str($mvmi) != '':
             -mvmi=$mvmi
         #end if
-        #if  str($precmt) != 'None':
-            -precmt=$precmt
-        #end if
         #if  str($precmtv) != '':
             -precmtv=$precmtv
         #end if
@@ -80,6 +97,9 @@
             -precmtu=$precmtu
         #end if
         #if str( $advanced.adv_options_selector) == "set":
+            #if  str($advanced.precmt) != 'None':
+                -precmt=$advanced.precmt
+            #end if
             #if  str($advanced.minprecz) != '':
                 -minprecz=$advanced.minprecz
             #end if
@@ -130,26 +150,26 @@
             -vm="$vmods"
         #end if
         -mt=\${GALAXY_SLOTS:-4}
-        && ( basepath=`grep 'Input Data File:' input.log.txt | sed 's/Input Data File: \(.*\)input.mzml/\1/'`; 
-             for i in summary.tsv input.log.txt input.PSMs.tsv input.unique_peptides.tsv input.protein_groups.tsv input.pep.xml; 
-             do cat \$i | sed "s#\${basepath}input.mzml#$input.name#" | sed "s#\${basepath}$searchdb_name#$searchdb.name#" > output_reports/\$i; 
-             done )
+        #set $out_list = 'summary.tsv PSMs.tsv unique_peptides.tsv protein_groups.tsv log.txt *.pep.xml'
+        #if len($input_list) > 1:
+            && ( basepath=`grep 'Proteome Database:' log.txt  | sed 's/Proteome Database: \(.*\)${$searchdb_name}/\1/'`;
+             for i in $out_list; do cat \$i | sed "s#\${basepath}\##" > output_reports/\$i; done )
+        #else 
+            && ( basepath=`grep 'Proteome Database:' *.log.txt  | head -1 | sed 's/Proteome Database: \(.*\)${$searchdb_name}/\1/'`;
+             for i in $out_list; do cat *\$i | sed "s#\${basepath}\##" > output_reports/\$i; done )
+        #end if
     ]]></command>
     <inputs>
-        <param name="input" type="data" format="mzml" label='Indexed mzML' />
+        <param name="inputs" type="data" format="mzml" multiple="true" label='Indexed mzML' />
         <param name="searchdb" type="data" format="fasta,uniprotxml" label="MS Protein Search Database: UniProt Xml or Fasta"/>
         <param name="fm" type="select" multiple="true" optional="true" label="Fixed Modifications">
-            <expand macro="modification_options" />
+            <expand macro="fixed_modification_options" />
         </param>
         <param name="vm" type="select" multiple="true" optional="true" label="Variable Modifications">
-            <expand macro="modification_options" />
+            <expand macro="variable_modification_options" />
         </param>
         <param name="fdr" type="float" value="1" optional="true" min="0.0" max="100.0" label="FDR (Maximum False Discovery Rate percent)" />
         <param name="mvmi" type="integer" value="1024" optional="true" min="0" label="Maximum Variable Modification Isoforms Per Peptide" />
-        <param name="precmt" type="select" optional="true" label="Precursor Mass Type">
-            <option value="Monoisotopic">Monoisotopic</option>
-            <option value="Average">Average</option>
-        </param>
         <param name="precmtv" type="float" value="10." optional="true" label="Precursor Mass Tolerance Value" />
         <param name="precmtu" type="select" optional="true" label="Precursor Mass Tolerance Units">
             <option value="ppm" selected="true">ppm</option>
@@ -161,18 +181,22 @@
                 <option value="do_not_set" selected="True">Do not set</option>
             </param>
             <when value="set">
+                <param name="precmt" type="select" optional="true" label="Precursor Mass Type">
+                    <option value="Monoisotopic">Monoisotopic</option>
+                    <option value="Average">Average</option>
+                </param>
                 <param name="noup" type="boolean" truevalue="" falsevalue="-noup=True" checked="True" label="Use G-PTM with Uniprot Proteome Search Databases" />
                 <param name="minprecz" type="integer" value="2" optional="true" label="Minimum Unknown Precursor Charge State" />
                 <param name="maxprecz" type="integer" value="4" optional="true" label="Maximum Unknown Precursor Charge State" />
                 <param name="at" type="float" value="" optional="true" min="0.0" label="Absolute MS/MS Intensity Threshold" />
                 <param name="rt" type="float" value="" optional="true" min="0.0" label="Relative MS/MS Intensity Threshold" />
-                <param name="mp" type="integer" value="" optional="true" min="-1" label="Maximum Number of MS/MS Peaks" help="to disable set to: -1"/>
+                <param name="mp" type="integer" value="400" optional="true" min="-1" label="Maximum Number of MS/MS Peaks" help="to disable set to: -1"/>
                 <param name="acs" type="boolean" truevalue="-acs=True" falsevalue="-acs=False" checked="true" optional="true" label="Assign Charge States" />
-                <param name="di" type="boolean" truevalue="-di=True" falsevalue="-di=False" checked="true" optional="true" label="Deisotope" />
-                <param name="ad" type="select" optional="true" label="Append Decoys on the fly" 
+                <param name="di" type="boolean" truevalue="-di=True" falsevalue="-di=False" checked="false" optional="true" label="Deisotope" />
+                <param name="ad" type="select" optional="true" label="Create Target-Decoy Database On The Fly" 
                        help="Set to No if Search Database ia a fasta that already includes decoys.">
+                    <option value="True" selected="true">Yes</option>
                     <option value="False">No</option>
-                    <option value="True">Yes</option>
                 </param>
                 <param name="mmc" type="integer" value="2" optional="true" min="0" max="20" label="Maximum Missed Cleavages" />
                 <param name="pmc" type="boolean" truevalue="-pmc=True" falsevalue="-pmc=False" checked="false" optional="true" label="Precursor Monoisotopic Peak Correction" />
@@ -192,19 +216,21 @@
                     <option value="Retain">Retain</option>
                     <option value="Cleave">Cleave</option>
                 </param>
-                <param name="cmu" type="boolean" truevalue="-cmu=True" falsevalue="-cmu=False" checked="false" optional="true" label="Consider Modifications Unique" />
+                <param name="cmu" type="boolean" truevalue="-cmu=True" falsevalue="-cmu=False" checked="false" optional="true" label="Consider Modified Forms as Unique Peptides" />
                 <param name="mmu" type="boolean" truevalue="-mmu=True" falsevalue="-mmu=False" checked="false" optional="true" label="Minimize Memory Usage" />
             </when>
             <when value="do_not_set"/>
         </conditional>
     </inputs>
     <outputs>
-        <data name="summary" format="txt" label="${input.name.rsplit('.',1)[0]} summary.tsv" from_work_dir="output_reports/summary.tsv" />
-        <data name="log" format="txt" label="${input.name.rsplit('.',1)[0]}.log.txt" from_work_dir="output_reports/input.log.txt" />
-        <data name="output_psms" format="tabular" label="${input.name.rsplit('.',1)[0]}.PSMs.tsv" from_work_dir="output_reports/input.PSMs.tsv" />
-        <data name="output_unique_peptides" format="tabular" label="${input.name.rsplit('.',1)[0]}.unique_peptides.tsv" from_work_dir="output_reports/input.unique_peptides.tsv" />
-        <data name="output_protein_groups" format="tabular" label="${input.name.rsplit('.',1)[0]}.protein_groups.tsv" from_work_dir="output_reports/input.protein_groups.tsv" />
-        <data name="output_pepxml" format="pepxml" label="${input.name.rsplit('.',1)[0]}.pep.xml" from_work_dir="output_reports/input.pep.xml" />
+        <data name="summary" format="txt" label="${tool.name} on ${on_string}: summary.tsv" from_work_dir="output_reports/summary.tsv" />
+        <data name="log" format="txt" label="${tool.name} on ${on_string}: log.txt" from_work_dir="output_reports/log.txt" />
+        <data name="output_psms" format="tabular" label="${tool.name} on ${on_string}: PSMs.tsv" from_work_dir="output_reports/PSMs.tsv" />
+        <data name="output_unique_peptides" format="tabular" label="${tool.name} on ${on_string}: unique_peptides.tsv" from_work_dir="output_reports/unique_peptides.tsv" />
+        <data name="output_protein_groups" format="tabular" label="${tool.name} on ${on_string}: protein_groups.tsv" from_work_dir="output_reports/protein_groups.tsv" />
+        <collection name="morpheus_pep_xmls" type="list" label="${tool.name} on ${on_string} pep.xml">
+            <discover_datasets pattern="(?P&lt;name&gt;.*\.pep.xml)" ext="pepxml" visible="False" directory="output_reports" />
+        </collection>
     </outputs>
     <tests>
         <test>
