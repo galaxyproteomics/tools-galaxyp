@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 """ A script to build specific fasta databases """
+from __future__ import print_function
 import sys
 import logging
 
-#===================================== Iterator ===============================
+
+# ===================================== Iterator ===============================
 class Sequence:
     ''' Holds protein sequence information '''
     def __init__(self):
@@ -11,7 +13,8 @@ class Sequence:
         self.sequence_parts = []
 
     def get_sequence(self):
-        return "".join([line.rstrip().replace('\n','').replace('\r','') for line in self.sequence_parts])
+        return "".join([line.rstrip().replace('\n', '').replace('\r', '') for line in self.sequence_parts])
+
 
 class FASTAReader:
     """
@@ -26,28 +29,15 @@ class FASTAReader:
 
     def __next__(self):
         ''' Iteration '''
-        #while True:
-        #    line = self.fasta_file.readline()
-        #    if not line:
-        #        raise StopIteration
-        #    if line[0] == '>':
-        #        break
         next_line = self.next_line
         if not next_line:
             raise StopIteration
 
         seq = Sequence()
-        seq.header = next_line.rstrip().replace('\n','').replace('\r','')
+        seq.header = next_line.rstrip().replace('\n', '').replace('\r', '')
 
         next_line = self.fasta_file.readline()
         while next_line and next_line[0] != '>':
-            #tail = self.fasta_file.tell()
-            #line = self.fasta_file.readline()
-            #if not line:
-            #    break
-            #if line[0] == '>':
-            #    self.fasta_file.seek(tail)
-            #    break
             seq.sequence_parts.append(next_line)
             next_line = self.fasta_file.readline()
         self.next_line = next_line
@@ -55,7 +45,7 @@ class FASTAReader:
 
     # Python 2/3 compat
     next = __next__
-#==============================================================================
+
 
 def target_match(target, search_entry):
     ''' Matches '''
@@ -69,11 +59,11 @@ def target_match(target, search_entry):
 def main():
     ''' the main function'''
     logging.basicConfig(filename='filter_fasta_log',
-        level=logging.INFO,
-        format='%(asctime)s :: %(levelname)s :: %(message)s',)
+                        level=logging.INFO,
+                        format='%(asctime)s :: %(levelname)s :: %(message)s')
 
     used_sequences = set()
-    work_summary = {'wanted': 0, 'found':0, 'duplicates':0}
+    work_summary = {'wanted': 0, 'found': 0, 'duplicates': 0}
     targets = []
 
     f_target = open(sys.argv[1])
@@ -86,7 +76,6 @@ def main():
     work_summary['wanted'] = len(targets)
     homd_db = FASTAReader(sys.argv[2])
 
-    i = 0
     output = open(sys.argv[3], "w")
     try:
         for entry in homd_db:
