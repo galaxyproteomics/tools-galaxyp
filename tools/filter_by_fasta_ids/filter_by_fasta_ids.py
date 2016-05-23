@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """ A script to build specific fasta databases """
 from __future__ import print_function
-import sys
 import logging
+import optparse
 
 
 # ===================================== Iterator ===============================
@@ -62,36 +62,39 @@ def main():
                         level=logging.INFO,
                         format='%(asctime)s :: %(levelname)s :: %(message)s')
 
-    used_sequences = set()
-    work_summary = {'wanted': 0, 'found': 0, 'duplicates': 0}
+    parser = optparse.OptionParser()
+    parser.add_option('--dedup', dest='dedup', action='store_true', default=False, help='Whether to remove duplicate sequences')
+    (options, args) = parser.parse_args()
+
     targets = []
 
-    f_target = open(sys.argv[1])
-    for line in f_target.readlines():
-        targets.append(">%s" % line.strip().upper())
-    f_target.close()
+    with open(args[0]) as f_target:
+        for line in f_target.readlines():
+            targets.append(">%s" % line.strip().upper())
 
     logging.info('Read target file and am now looking for %d %s', len(targets), 'sequences.')
 
-    work_summary['wanted'] = len(targets)
-    homd_db = FASTAReader(sys.argv[2])
+    work_summary = {'wanted': len(targets), 'found': 0}
+    if options.dedup:
+        used_sequences = set()
+        work_summary['duplicates'] = 0
+    homd_db = FASTAReader(args[1])
 
-    output = open(sys.argv[3], "w")
-    try:
+    with open(args[2], "w") as output:
         for entry in homd_db:
             target_matched_results = target_match(targets, entry.header)
             if target_matched_results:
                 work_summary['found'] += 1
                 targets.remove(target_matched_results)
                 sequence = entry.get_sequence()
-                if sequence in used_sequences:
-                    work_summary['duplicates'] += 1
-                else:
-                    used_sequences.add(sequence)
-                    print(entry.header, file=output)
-                    print(sequence, file=output)
-    finally:
-        output.close()
+                if options.dedup:
+                    if sequence in used_sequences:
+                        work_summary['duplicates'] += 1
+                        continue
+                    else:
+                        used_sequences.add(sequence)
+                print(entry.header, file=output)
+                print(sequence, file=output)
 
     logging.info('Completed filtering')
     for parm, count in work_summary.items():
