@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 """ A script to build specific fasta databases """
 from __future__ import print_function
-import logging
 import optparse
 
 
@@ -58,9 +57,6 @@ def target_match(target, search_entry):
 
 def main():
     ''' the main function'''
-    logging.basicConfig(filename='filter_fasta_log',
-                        level=logging.INFO,
-                        format='%(asctime)s :: %(levelname)s :: %(message)s')
 
     parser = optparse.OptionParser()
     parser.add_option('--dedup', dest='dedup', action='store_true', default=False, help='Whether to remove duplicate sequences')
@@ -72,7 +68,7 @@ def main():
         for line in f_target.readlines():
             targets.append(">%s" % line.strip().upper())
 
-    logging.info('Read target file and am now looking for %d %s', len(targets), 'sequences.')
+    print('Read target file, now looking for %d sequences.' % len(targets))
 
     work_summary = {'wanted': len(targets), 'found': 0}
     if options.dedup:
@@ -96,9 +92,9 @@ def main():
                 print(entry.header, file=output)
                 print(sequence, file=output)
 
-    logging.info('Completed filtering')
+    print('Completed filtering.')
     for parm, count in work_summary.items():
-        logging.info('%s ==> %d', parm, count)
+        print('%s ==> %d' % (parm, count))
 
 if __name__ == "__main__":
     main()
