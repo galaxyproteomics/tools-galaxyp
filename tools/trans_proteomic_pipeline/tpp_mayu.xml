@@ -1,0 +1,443 @@
+<tool id="tpp_mayu" name="TPP Mayu" version="@WRAPPER_VERSION@.0">
+    <description>determine FDRs for identifacations of proteins,peptides,amd PTMs</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements" />
+    <stdio>
+        <exit_code range="1:" />
+    </stdio>
+    <command><![CDATA[
+        #import re
+        #import os.path
+        echo "TPP Mayu @WRAPPER_VERSION@"
+        ## link input files
+        #set $pepxml_dir = None
+        #if $pepxml_inputs and len($pepxml_inputs) > 0:
+          #set $pepxml_dir = 'pepxml_in/'
+          && mkdir "$pepxml_dir"
+          #for $pepxml_in in $pepxml_inputs:
+            #set name = $re.sub([^a-zA-Z0-9_. ]+','_',str($pepxml_in.name))
+            #if not $name.endswith('.pep.xml'):
+              #set $name = $name + '.pep.xml'
+            #end if
+            && ln -s "$pepxml_in" "$os.path.join($pepxml_dir,$name)" 
+          #end for 
+        #end if
+        #set csv_dir = None
+        #if csv_inputs and len(csv_inputs) > 0:
+          #set csv_dir = 'csv_in/'
+          && mkdir "csv_dir"
+          #for csv_in in csv_inputs:
+            #set name = $re.sub([^a-zA-Z0-9_. ]+','_',str(csv_in.name))
+            #if not $name.endswith('.csv'):
+              #set $name = $name + '.csv'
+            #end if
+            && ln -s "$csv_in" "$os.path.join($csv_dir,$name)" 
+          #end for 
+        #end if
+        && Mayu.pl 
+        #if $pepxml_dir:
+           -A "$pepxml_dir"
+        #end if
+        #if $csv_dir:
+           -B  "$csv_dir"
+        #end if
+        -C "$db" 
+        #if str($decoy_id_prefix).strip():
+          -E "$decoy_id_prefix"
+        #end if
+        #if str($sec_db.min_pep_length).strip():
+          -D "$sec_db.min_pep_length"
+        #end if
+        #if str($sec_db.tar_dec_ratio).strip():
+          -F "$sec_db.tar_dec_ratio"
+        #end if
+        $sec_db.remamb
+        #if str($sec_anal.max_psm_fdr).strip():
+          -G "$sec_anal.max_psm_fdr"
+        #end if
+        #if str($sec_anal.psm_fdr_steps).strip():
+          -H "$sec_anal.psm_fdr_steps"
+        #end if
+        #if str($sec_anal.nr_missed_cleavages).strip():
+          -I "$sec_anal.nr_missed_cleavages"
+        #end if
+        #if str($sec_anal.min_pep_mass).strip():
+          -J "$sec_anal.min_pep_mass"
+        #end if
+        #if str($sec_anal.max_pep_mass).strip():
+          -K "$sec_anal.max_pep_mass"
+        #end if
+        #if str($sec_anal.nr_prot_size_bins).strip():
+          -L "$sec_anal.nr_prot_size_bins"
+        #end if
+        #if str($sec_anal.id_set_selection).strip():
+          -N "$sec_anal.id_set_selection"
+        #end if
+        #if str($sec_anal.nr_runs_steps).strip():
+          -O "$sec_anal.nr_runs_steps"
+        #end if
+        #if str($psm.report_psms) == 'yes':
+          -P "${psm.psm_filter}=${psm.psm_fdr}:${psm.psm_ids}"
+        #end if
+        ## -xmlparser  ## Requires XML::Parser::PerlSAX
+        #if '' in $reports:
+          -PmFDR
+        #end if
+        #if 'prot_size_csv' in $reports or 'prot_size_txt' in $reports:
+          -PbinProt
+        #end if
+        #if 'feat_prot_csv' in $reports:
+          -PprotFeat
+        #end if
+        #if 'pepxml_csv' in $reports:
+          -Pio
+        #end if
+        #if 'run_r' in $reports:
+          -runR
+        #end if
+        -cumul
+        -M $prefix  ## Use defined prefix to find Outputs
+        #if 'log' in $reports:
+          -v
+          | tee $output_log
+        #end if
+        #if 'main_csv' in $reports:
+          && if [ -e ${prefix}_main*.csv ]; then cp ${prefix}_main*.csv $output_main_csv; fi
+        #end if
+        #if 'main_csv' in $reports:
+          && if [ -e ${prefix}_main*.txt ]; then cp ${prefix}_main*.txt $output_main_txt; fi
+        #end if
+        #if str($psm.report_psms) == 'yes':
+          && if [ -e ${prefix}_psm*.csv ]; then cp ${prefix}_psm*.csv $output_psm; fi
+        #end if
+        #if 'prot_size_csv' in $reports or 'prot_size_txt' in $reports:
+          && if [ -e ${prefix}_psm*.csv ]; then cp ${prefix}_psm*.csv $output_psm; fi
+        #end if
+    ]]></command>
+    <inputs>
+        <param name="pepxml_inputs" type="data" format="pepxml" multiple="true" label="input pepxml.xml file or dir"/>
+        <param name="csv_inputs" type="data" format="csv" multiple="true" label="input table.csv, comma sep"/>
+        <param name="db" type="data" format="fasta" label="target-decoy database"/>
+        <param name="decoy_id_prefix" type="text" value="rev_" label="id prefix for decoy hits"/>
+        <param name="prefix" type="hidden" value="Output" />
+        <section name="sec_db" expanded="false" title="Filtering and Trimming  Options">
+            <param name="min_pep_length" type="integer" value="" min="0" optional="true" 
+                   label="minimal peptide length for analysis" 
+                   help="Remove peptides that are shorter then this length"/>
+            <param name="remamb" type="boolean" truevalue="-remamb" falsevalue="" checked="false" label="remove ambiguous peptides prior to analysis"/>
+            <param name="tar_dec_ratio to decoy_ratio" type="float" value="" min="0." optional="true" 
+                   label="ratio of target to decoy entries (usually 1.)"  />
+        </section>
+        <section name="sec_anal" expanded="false" title="Filtering and Trimming  Options">
+            <param name="max_psm_fdr" type="float" value="" min="0." optional="true" label="maximal PSM FDR"/>
+            <param name="psm_fdr_steps" type="integer"  value="" min="0" optional="true" label="number of analysis steps"/>
+            <param name="nr_runs_steps" type="integer"  value="" min="0" optional="true" label="cumulative runs"/>
+            <param name="nr_missed_cleavages" type="integer"  value="" min="0" optional="true" label="number of missed cleavages"/>
+            <param name="nr_prot_size_bins" type="integer"  value="" min="0" optional="true" label="number of protein size bins"/>
+            <param name="min_pep_mass" type="float" value="" min="0." optional="true" label="minimal peptide mass"/>
+            <param name="max_pep_mass" type="float" value="" min="0." optional="true" label="maximal peptide mass"/>
+            <param name="id_set_selection" type="select" optional="true" label="id set selection">
+                <option value="0">all data and mFDR range(default)</option>
+                <option value="1">cumulative input files and mFDR range</option>
+                <option value="2">cumulative shuffled input files and mFDR range</option>
+                <option value="3">cumulative runs and mFDR range</option>
+                <option value="4">cumulative shuffled runs and mFDR range</option>
+                <option value="5">cumulative runs (orthogonality sorted) and mFDR range</option>
+            </param>
+            <param name="equidist" type="boolean" truevalue="-equidist" falsevalue="" checked="false" label="Use equidist binning instead of equicount"
+               help="equidist binning according to estimated number of tryptic peptides of proteins (convergence is faster with equicount binning)"/>
+            <param name="dcis" type="boolean" truevalue="-dcis" falsevalue="" checked="false" label="do not correct identical sequences in their protein size"
+               help="If not selected proteins that have identical sequences will be corrected in size to zero."/>
+        </section>
+        <conditional name="psm">
+            <param name="report_psms" type="select" label="Output a filtered list of PSMs">
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+            </param>
+            <when value="yes">
+                <param name="psm_filter" type="select" optional="true" label="select a filtered list of PSM">
+                    <option value="mFDR">filter data with PSM FDR</option>
+                    <option value="pepFDR">filter data with peptide FDR</option>
+                    <option value="protFDR">filter data with protein FDR</option>
+                </param>
+                <param name="psm_fdr" type="float" value="0.01" min="0." max="1.0" label="FDR: False Discovery Rate"/>
+                <param name="psm_ids" type="select" optional="true" label="select target/decoy PSMs">
+                    <option value="t">Target PSMs</option>
+                    <option value="d">Decoy PSMs</option>
+                    <option value="td">Both Target and Decoy PSMs</option>
+                </param>
+            </when>
+            <when value="no"/>
+        </conditional>
+        <param name="reports" type="select" multiple="true" label="Select Outputs">
+            <option value="log" selected="true">log</option>
+            <option value="main_csv" selected="true">main.csv</option>
+            <option value="main_txt">main.txt</option>
+            <option value="prot_size_csv">prot_size.csv</option>
+            <option value="prot_size_txt">prot_size.txt</option>
+            <option value="feat_prot_csv">print prot feature files</option>
+            <!--
+            <option value="pepxml_csv">output pepxml inputs as csv</option>
+            <option value="run_r">R plots</option>
+            -->
+        </param>
+        <param name="file_name_base" type="text" value="" optional="true" label="use this as file name base"/>
+    </inputs>
+    <outputs>
+        <data name="output_log" format="txt" from_work_dir="2016-07-06_11.11.53_main_1.08.csv" >
+            <filter>'log' in reports</filter>
+        </data>
+        <data name="output_main_csv" format="csv" from_work_dir="2016-07-06_11.11.53_main_1.08.csv" >
+            <filter>'main_csv' in reports</filter>
+        </data>
+        <data name="output_main_txt" format="txt" from_work_dir="2016-07-06_11.11.53_main_1.08.txt" >
+            <filter>'main_txt' in reports</filter>
+        </data>
+        <data name="output_prot_size_csv" format="csv" from_work_dir="2016-07-06_11.11.53_main_1.08.txt" >
+            <filter>'prot_size_csv' in reports</filter>
+        </data>
+        <data name="output_prot_size_txt" format="txt" from_work_dir="2016-07-06_11.11.53_main_1.08.txt" >
+            <filter>'prot_size_txt' in reports</filter>
+        </data>
+        <data name="output_feat_prot_txt" format="txt" from_work_dir="2016-07-06_11.11.53_main_1.08.txt" >
+            <filter>'feat_prot_csv' in reports</filter>
+        </data>
+        <data name="output_psm" format="csv" from_work_dir="2016-07-06_11.11.53_main_1.08.txt">
+            <filter>psm['report'] == 'yes'</filter>
+        </data>
+        <!--
+         dataset collection of pepxml_csv
+        -->
+        <!--
+         iR plots not yet included
+        -->
+    </outputs>
+    <tests>
+        <test>
+            <param name="pepxml_inputs" ftype="pepxml" value="interact-LongSwath_UPS1_1ug_rep1_Q1.pep.xml"/>
+            <param name="db" ftype="fasta" value="UPS_PlusRev.fasta"/>
+            <param name="report_psms" value="yes"/>
+            <param name="psm_filter" value="protFDR"/>
+            <param name="psm_fdr" value="0.01"/>
+            <param name="psm_ids" value="t"/>
+            <output name="output_log">
+                <assert_contents>
+                    <has_text text="interact-LongSwath_UPS1_1ug_rep1_Q1.pep.xml parsed" />
+                    <has_text text="keeping target PSM" />
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help><![CDATA[
+
+Mayu.pl 1.07
+------------
+
+
+        GENERAL:
+        Mayu is a software package to determine protein
+        identification false discovery rates (protFDR) and
+        peptide identification false discovery rates (pepFDR)
+        additionally to the peptide-spectrum match false discovery 
+        rate (mFDR).
+
+        Lukas Reiter
+        Manfred Claassen
+
+        SOFTWARE:
+        Lukas Reiter - Hengartner Laboratory
+        lukas.reiter@molbio.uzh.ch
+        Institute of Molecular Biology
+        Winterthurerstrasse 190
+        University of Zurich - Irchel
+        CH-8057 Zurich
+
+        Located at:
+        Institute for Molecular Systems Biology
+        Aebersold Laboratory
+        Wolfgang-Pauli-Str. 16
+        ETH Hoenggerberg
+        CH-8093 Zurich
+
+        INSTALLATION:
+        Perl needs to be installed on the system. E.g. use activestate perl 
+        distribution (www.activestate.com). R statistical package needs to 
+        be installed for graphical output (-runR). R command needs to be 
+        recognized on the command line.
+
+        PREREQUISITE:
+        - data searched against a single concatenated target decoy database
+        - search results as pepxml, mascot csv or Mayu table
+
+        RECOMMENDED:
+        - all data searched with similar search options
+        - protein databases preferably low in redundant sequences
+
+        EXAMPLES:
+        1. standard analysis, main analysis table printed out
+           "perl Mayu.pl -B example.csv -C tardecdb.fa -v -s"
+        2. plot graphics using the R statistical package
+           "perl Mayu.pl -B example.csv -C tardecdb.fa -v -s -runR"
+        3. remove peptides smaller than 10 amino acids from target and decoy PSM
+           "perl Mayu.pl -B example.csv -C tardecdb.fa -D 10 -v -s"
+        4. do calculations of error rates in 51 steps between 0 and 5% PSM FDR
+           "perl Mayu.pl -B example.csv -C tardecdb.fa -G 0.05 -H 51 -v -s"
+        5. print out more result tables in separate files
+           "perl Mayu.pl -B example.csv -C tardecdb.fa -PmFDR -PbinProt -PprotFeat"
+        6. start a long run on a unix system and log the standard output
+           "nohup perl Mayu.pl -B example.csv -C tardecdb.fa ... -v > log.txt &"
+        7. print out target and decoy PSM, target PSM with a PSM FDR of 0.01
+           "perl Mayu.pl -B example.csv -C tardecdb.fa -P mFDR=0.01:td"
+        8. print out target PSM whose protein ids correspond to a protFDR of 0.05
+           "perl Mayu.pl -B example.csv -C tardecdb.fa -P protFDR=0.05:t"
+        9. use pepxml as input
+           "perl Mayu.pl -A sequest_pepxml.xml -C tardecdb.fa"
+        10.pepxml as input, print out a .csv file of input for faster reanalysis
+           "perl Mayu.pl -A sequest_pepxml.xml -C tardecdb.fa -Pio"
+        11.sort the LC-MS/MS runs by orthogonality (run is recognized by its
+           scan base) and perform the analysis on cumulative data sets in 11 steps
+           "perl Mayu.pl -B example.csv -C tardecdb.fa -N 5 -O 11"
+
+        SETTINGS:
+        required: (-A or -B) and -C
+        -A :  pepXML file or directory with pepXML files (.xml)
+              from a search against the target decoy protein
+              database.
+        -B :  Mayu or Mascot csv file or directory (.csv, comma separated)
+              with PSM from a search against the target decoy
+              protein database. Check the pdf manual or example
+              file for the Mayu format.
+        -C :  target decoy search database in fasta format.
+              Protein decoy entries have to start with a 
+              prefix that marks them unambiguously (e.g. rev_).
+        -D :  minimal peptide length for analysis.
+              Remove peptides that are shorter then this length
+        -E :  decoy id prefix.
+              Decoy ids in the faste database have to start with this 
+              prefix (e.g. rev_).
+        -F :  ratio of target to decoy entries (usually 1)
+        -G :  maximal mFDR for Mayu analysis
+              Start analysis from zero mFDR and go with -H steps
+              to -G.
+        -H :  mFDR steps (resolution of the analysis).
+              Make the protein identification FDR analysis for
+              -H mFDR cutoffs.
+        -I :  number of missed cleavages used for database search.
+              Use the same number of missed cleavages for tryptic
+              peptides as for the database search.
+        -J :  minimal peptide mass.
+              Usually determined by the settings of the mass 
+              spectrometer.
+        -K :  maximal peptide mass.
+              Usually determined by the settings of the mass 
+              spectrometer.
+        -L :  number of protein size bins.
+              Bin the proteins into -L protein bins and perform
+              the protein identification FDR estimation in these
+              bins separately.
+        -M :  file name base.
+              Use this output file name base.
+        -N :  id set selection.
+              This describes the way in which identifications are
+              selected from the input data, e.g. according to 
+              input file or orthogonality sorted runs additionally
+              to an mFDR cutoff.
+              For the options 3, 4 and 5 consider that roughly 
+              -H * -O * -L calculation entities have to be performed! 
+              Therefore start with decent step numbers.
+              0: all data and mFDR range (default)
+                 take all data and apply a range of mFDR cutoffs
+              1: cumulative input files and mFDR range
+                 take 1 to n cumulative data sets corresponding
+                 to the n files (alphabetically sorted)
+              2: cumulative shuffled input files and mFDR range
+                 take 1 to n cumulative data sets corresponding
+                 to the n files (shuffled files)
+              3: cumulative runs and mFDR range
+                 take 1 to -O cumulative data sets corresponding
+                 to the -O*x runs (alphabetically sorted according
+                 to files and then runs)
+              4: cumulative shuffled runs and mFDR range
+                 take 1 to -O cumulative data sets corresponding
+                 to the -O*x runs (shuffled runs)
+              5: cumulative runs (orthogonality sorted) and mFDR range
+                 take 1 to -O cumulative data sets corresponding
+                 to the -O*x runs. The runs are sorted according to
+                 an orthogonality measure describing the uniquely
+                 contributed peptides to the data set at 1% mFDR
+                 normalized to the data amount in that run.
+                 (orthogonality data stored in ..._ortho_run.txt)
+        -O :  number of cumulative runs steps.
+              Used with option -N 3, 4 or 5
+        -P :  select a filtered list of PSM to be printed out, e.g.:
+              mFDR=0.01:t =    filter data with PSM FDR 0.01 and
+                               print out the corresponding target PSM
+              pepFDR=0.02:td = filter data with peptide identification
+                               FDR 0.02 and print out the corresponding 
+                               target and decoy PSM
+              protFDR=0.05:t = filter data with protein identification
+                               FDR 0.05 and print out the corresponding
+                               target PSM
+              
+        OPTIONS:
+        For output file formats see also the pdf manual.
+          -equidist      :  equidist binning (according to estimated
+                            number of tryptic peptides) of proteins 
+                            instead of equicount (convergence is faster 
+                            with equicount binning).
+          -dcis          :  do not correct identical sequences in
+                            their protein size.
+                            If not selected (recommended) proteins
+                            that have identical sequences will be
+                            corrected in size to zero.
+          -xmlparser     :  use a proper xml parser for pepXML parsing.
+                            This is slower but much more robust 
+                            and the parser needs to be installed 
+                            first (libxml). It is strongly recommended 
+                            to use this option! Read the manual and
+                            ask your administrator for help.
+          -PmFDR         :  print out the mFDR table files for 
+                            each input file which relates the 
+                            discriminant score (e.g. PeptideProphet
+                            probability) to an FDR estimated with 
+                            the target decoy strategy.
+          -PbinProt      :  print out size binned protein file.
+                            protFDR and additional information on
+                            the protein size partition.
+          -PprotFeat     :  print out a protein feature file
+                            (can be very large files)
+                            For each protein identification a set of
+                            features that can be used for local FDR
+                            calculation. features:
+                            - decoy (1 if decoy, 0 if target)
+                            - NS (number of PSM)
+                            - NP (number of distinct peptides)
+                            - PAT (PSM alignment type)
+                            - PSL (corrected protein sequence length in aa)
+                            - acNTP (corrected number of tryptic peptides)
+          -Pio           :  print input pepxml to a csv table
+                            file in the same directory. This file
+                            contains the PSM and can be used as
+                            input in the next run (-B instead of -A) with 
+                            the advantage of faster parsing.
+          -cumul         :  print cumulative input to stdout.
+                            Number of PSM, peptides and proteins with each
+                            cumulative input file
+          -remamb        :  remove ambiguous peptides prior to analysis
+          -runR          :  generate plots from the table output
+                            (R package needs to be installed and R
+                            recognized as a command on the command line)
+          -verbose       :  print out more
+          -status        :  print out even more
+                            do not use this option if the standard
+                            out is written/logged to a file
+          -help          :  show help
+          -manual        :  show this manual
+	
+    ]]></help>
+    <citations>
+        <citation type="doi">10.1074/mcp.M900317-MCP200</citation>
+    </citations>
+</tool>
