@@ -1,3 +1,5 @@
+[![Gitter](https://badges.gitter.im/GalaxyProteomics/tools-galaxyp.svg)](https://gitter.im/GalaxyProteomics/Lobby?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge) 
+
 GalaxyP Community
 =================
 
