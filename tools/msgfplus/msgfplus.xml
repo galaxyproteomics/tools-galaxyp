@@ -3,7 +3,7 @@
         Identifies peptides in tandem mass spectra using the MS-GF+ search engine.
     </description>
     <requirements>
-        <requirement type="package" version="v10089">msgfplus</requirement>
+        <requirement type="package" version="2016.10.26">msgf_plus</requirement>
         <environment_variable name="LC_ALL" action="set_to">C</environment_variable>
     </requirements>
     <stdio>
@@ -12,12 +12,20 @@
         <regex match="Could not create the Java virtual machine" level="fatal" description="JVM Error"/>
     </stdio>
     <command>
+
 <![CDATA[
-        #set $db_name = $d.display_name.replace(".fasta", "") + ".fasta"
-        #set $input_name = $s.display_name
+        #if $msgf_input.intype_selector == "single"
+        #set $db_name = $msgf_input.d.display_name.replace(".fasta", "") + ".fasta"
+        #set $input_name = $msgf_input.s.display_name
+        ln -s '$msgf_input.s' '${input_name}' &&
+        ln -s '$msgf_input.d' '${db_name}' &&
+        #else if $msgf_input.intype_selector == "fractions"
+        #set $db_name = $msgf_input.db_spectra.reverse.display_name.replace(".fasta", "") + ".fasta"
+        #set $input_name = $msgf_input.db_spectra.forward.display_name
+        ln -s '$msgf_input.db_spectra.forward' '${input_name}' &&
+        ln -s '$msgf_input.db_spectra.reverse' '${db_name}' &&
+        #end if
         #set $output_name = $input_name.replace(".mzML", "") + ".mzid"
-        ln -s '$s' '${input_name}' &&
-        ln -s '$d' '${db_name}' &&
 
         echo \\#Mods > Mods.txt &&
         #set $common_mods = str($common_fixed_modifications) + "," + str($common_variable_modifications)
@@ -29,10 +37,7 @@
           echo '${mod.formula_or_mass},${mod.aa_specificity},${mod.fix_or_opt},${mod.position_specificity},${mod.mod_name}' >> Mods.txt &&
         #end for
 
-        msgfjar=\$(which MSGFPlus.jar) &&
-        ( [ -f "\$msgfjar" ] || (echo MSGFPlus.jar not found && exit 1)) &&
-
-        java -jar \$msgfjar
+	msgf_plus
             -s '$input_name'
             -d '$db_name'
             -thread \${GALAXY_SLOTS:-1}
@@ -56,8 +61,20 @@
 ]]>
     </command>
     <inputs>
-        <param argument="-s" type="data" format="mzml" label="Input Raw MS File(s)"/>
-        <param argument="-d" type="data" format="fasta" label="Protein Database" help="Select FASTA database from history"/>
+        <conditional name="msgf_input">
+          <param name="intype_selector" type="select" label="Type of MSGF+ analysis">
+            <option value="single">Single database</option>
+            <option value="fractions">Prefractionated database</option>
+          </param>
+          <when value="single">
+            <param argument="-s" type="data" format="mzml" label="Input Raw MS File(s)"/>
+            <param argument="-d" type="data" format="fasta" label="Protein Database" help="Select FASTA database from history"/>
+          </when>
+          <when value="fractions">
+		  <param name="db_spectra" type="data_collection" collection_type="paired" 
+			  label="Collection: Pairs of FASTA database (forward) and spectra (reverse)"/>
+          </when>
+        </conditional>
         <param argument="-tda" type="boolean" truevalue="1" falsevalue="0" checked="true" label="Search with on-the-fly decoy database?" help="MSGF+ uses XXX_ as an accession prefix to indicate a decoy hit" />
         <param argument="-t" type="float" value="10" label="Precursor mass tolerance" help="Error tolerance for matching peptide mass to precursor ion mass"/>
         <param name="precursor_ion_tol_units" type="select" label="Precursor mass tolerance units" help="Daltons are common for low-res instruments, ppm for high-res instruments">
@@ -203,8 +220,21 @@
     </outputs>
     <tests>
         <test>
-            <param name="s" value="input/201208-378803.mzML" />
-            <param name="d" value="input/cow.protein.PRG2012-subset.fasta" />
+	    <param name="msgf_input.intype_selector" value="single" />
+            <param name="msgf_input.s" value="input/201208-378803.mzML" />
+            <param name="msgf_input.d" value="input/cow.protein.PRG2012-subset.fasta" />
+            <param name="tda" value="1" />
+            <param name="ntt" value="1" />
+            <param name="t" value="50" />
+            <param name="precursor_ion_tol_units" value="ppm" />            
+            <param name="common_fixed_modifications" value="" />
+            <param name="common_variable_modifications" value="" />
+            <output name="output" file="201208-378803-msgf_20161026-50ppm-semitryptic-no_mods.mzid" compare="sim_size" delta="20" />
+        </test>
+        <test>
+	    <param name="msgf_input.intype_selector" value="fractions" />
+            <param name="msgf_input.db_spectra.forward" value="input/201208-378803.mzML" />
+            <param name="msgf_input.db_spectra.reverse" value="input/cow.protein.PRG2012-subset.fasta" />
             <param name="tda" value="1" />
             <param name="ntt" value="1" />
             <param name="t" value="50" />
@@ -214,8 +244,9 @@
             <output name="output" file="201208-378803-msgf-50ppm-semitryptic-no_mods.mzid" lines_diff="6" />
         </test>
         <test>
-            <param name="s" value="input/201208-378803.mzML" />
-            <param name="d" value="input/cow.protein.PRG2012-subset.fasta" />
+	    <param name="msgf_input.intype_selector" value="single" />
+            <param name="msgf_input.s" value="input/201208-378803.mzML" />
+            <param name="msgf_input.d" value="input/cow.protein.PRG2012-subset.fasta" />
             <param name="tda" value="1" />
             <param name="t" value="0.02" />
             <param name="precursor_ion_tol_units" value="Da" />
@@ -242,12 +273,12 @@
             <param name="custom_mods_0|mod_name" value="Gly-loss+Amide" />
 
             <param name="custom_mods_1|formula_or_mass" value="C10H10N5O7P" />
-            <param name="custom_mods_1|aa_specificity" value="CS" />
+            <param name="custom_mods_1|aa_specificity" value="C,S" />
             <param name="custom_mods_1|fix_or_opt" value="opt" />
             <param name="custom_mods_1|position_specificity" value="any" />
             <param name="custom_mods_1|mod_name" value="cGMP" />
 
-            <output name="output" file="201208-378803-msgf-2mmu-tryptic-many_mods.mzid" lines_diff="6" />
+            <output name="output" file="201208-378803-msgf_20161026-2mmu-tryptic-many_mods.mzid" lines_diff="6" />
         </test>
     </tests>
     <help>
