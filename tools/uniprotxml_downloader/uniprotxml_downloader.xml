@@ -1,33 +1,37 @@
-<tool id="uniprotxml_downloader" name="UniProtXML Download" version="1.0.1">
-    <description>proteome</description>
+<tool id="uniprotxml_downloader" name="UniProt" version="2.0.0">
+    <description>download proteome as XML or fasta</description>
     <requirements>
-        <requirement type="package" version="2.7.12">python</requirement>
+        <requirement type="package" version="2.7">python</requirement>
     </requirements>
     <stdio>
         <exit_code range="1:"  level="fatal" description="Error downloading proteome." />
     </stdio>
     <command>
 <![CDATA[
-    python '$__tool_directory__/uniprotxml_downloader.py'
-        -v 
-        #if $taxid.choice == 'common':
-            --taxon '$taxid.organism'
-        #if $taxid.reviewed:
-            --reviewed=$taxid.reviewed
-        #end if
-        #else:
-        #for id in $taxid.taxons.split(','):
-            -t $id
-        #end for
-        #end if
-            --output="${proteome}"
+python $__tool_directory__/uniprotxml_downloader.py -v 
+#if $taxid.input_choice == 'common':
+--taxon $taxid.organism
+#if $taxid.reviewed:
+--reviewed=$taxid.reviewed
+#end if
+#elif $taxid.input_choice == 'taxids':
+#for $id in $taxid.taxons.split(','):
+-t "$id"
+#end for
+#elif $taxid.input_choice == 'history':
+--input="${taxid.taxon_file}"
+--column=#echo int(str($taxid.column)) - 1#
+#end if
+--format=$format
+--output="${proteome}"
 ]]>
     </command>
     <inputs>
         <conditional name="taxid">
-            <param name="choice" type="select" label="Select">
+            <param name="input_choice" type="select" label="Select">
                 <option value="common">A Common Organism</option>
                 <option value="taxids">By Organism IDs</option>
+                <option value="history">A history dataset with an Organism Taxonomy Name column</option>
             </param>
             <when value="common">
                 <param name="organism" type="select" label="Common Organisms"
@@ -50,36 +54,88 @@
                 </param>
             </when>
             <when value="taxids">
-                <param name="taxons" type="text" label="NCBI taxon IDs" 
+                <param name="taxons" type="text" label="NCBI Taxon IDs or names" 
                        help="Enter one or more Organsim IDs (separated by commas) from http://www.uniprot.org/proteomes/">
-                    <validator type="regex" message="OrganismID[,OrganismID]">^\d+(,\d+)*$</validator>
+                    <validator type="regex" message="OrganismID[,OrganismID]">^\w+( \w+)*(,\w+( \w+)*)*$</validator>
                 </param>
             </when>
+            <when value="history">
+                <param name="taxon_file" type="data" format="tabular" label="Dataset with Taxon Name column"/>
+                <param name="column" type="data_column" data_ref="taxon_file" label="Column with Taxon name"/>
+            </when>
         </conditional>
+        <param name="format" type="select" label="uniprot output format">
+            <option value="xml">xml</option>
+            <option value="fasta">fasta</option>
+        </param>
     </inputs>
     <outputs>
-        <data format="uniprotxml" name="proteome" label="UniProtXML" />
+        <data format="uniprotxml" name="proteome" label="UniProt.${format}">
+            <change_format>
+                <when input="format" value="fasta" format="fasta" />
+            </change_format>
+        </data>
     </outputs>
     <tests>
         <test>
-            <param name="choice" value="taxids"/>
+            <param name="input_choice" value="taxids"/>
             <param name="taxons" value="1566990"/>
-            <output name="uniprotxml">
+            <param name="format" value="xml"/>
+            <output name="proteome">
                 <assert_contents>
                     <has_text text="&lt;/uniprot&gt;" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="input_choice" value="taxids"/>
+            <param name="taxons" value="Shi470,PeCan4"/>
+            <param name="format" value="fasta"/>
+            <output name="proteome">
+                <assert_contents>
+                    <has_text text="Shi470" />
+                    <has_text text="PeCan4" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="input_choice" value="history"/>
+            <param name="taxon_file" value="Helicobacter_strains.tsv" ftype="tabular"/>
+            <param name="column" value="1"/>
+            <param name="format" value="fasta"/>
+            <output name="proteome">
+                <assert_contents>
+                    <has_text text="Shi470" />
+                    <has_text text="PeCan4" />
                 </assert_contents>
             </output>
         </test>
     </tests>
     <help>
 <![CDATA[
-**UniProtXML Downloader**
+**UniProt Downloader**
 
-Downloads a UniProtXML file from UniProtKB
+Downloads either a UniProtXML file or a fasta file from UniProtKB
 
-The Morpheus proteomics search algorithm can use this format as a search database.
+The Morpheus proteomics search algorithm can use the UniProtXML format as a search database.
 
 Available proteomes: http://www.uniprot.org/proteomes/
+
+Available taxon names: http://www.uniprot.org/taxonomy/
+
+Example taxon: http://www.uniprot.org/taxonomy/512562
+
+Taxon IDs or names can be entered as text or read from a column in a tabular dataset from your history.
+
+Example IDs and names releated to the Bacteria Helicobacter pylori (strain Shi470) ::
+
+
+ - 512562
+ - Shi470
+ - Helicobacter pylori
+ - Helicobacter
+ - Helicobacteraceae
+
 
 UniProtKB help: http://www.uniprot.org/help/uniprotkb
 
