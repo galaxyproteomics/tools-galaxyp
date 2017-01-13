@@ -7,7 +7,6 @@
     </macros>
     <requirements>
         <requirement type="package" version="@SEARCHGUI_VERSION@">searchgui</requirement>
-        <environment_variable name="LC_ALL" action="set_to">C</environment_variable>        
     </requirements>
     <expand macro="stdio" />
     <command>
@@ -16,21 +15,25 @@
         #set $exp_str = "Galaxy_Experiment_%s" % datetime.now().strftime("%Y%m%d%H%M%s")
         #set $samp_str = "Sample_%s" % datetime.now().strftime("%Y%m%d%H%M%s")
         #set $temp_stderr = "searchgui_stderr"
+        #set $bin_dir = "bin"
 
         mkdir output;
         mkdir output_reports;
         cwd=`pwd`;
         export HOME=\$cwd;
 
+        ## echo the search engines to run
+        echo "$engines";
+        echo "DB: ${input_database.display_name} sequences: ${input_database.metadata.sequences}";
+
         ##Create a searchgui.properties file for the version, which will be added to the searchgui_results if not already present
         echo "searchgui.version=@SEARCHGUI_VERSION@" >> searchgui.properties;
-
-        cp -r "\${SEARCHGUI_JAR_PATH%/*}" bin;
-        tmp_searchgui_jar_path=`echo "\$cwd/bin/\${SEARCHGUI_JAR_PATH\#\#/*/}"`;
 
         #for $mgf in $peak_lists:
             #set $input_name = $mgf.display_name.replace(".mgf", "") + ".mgf"
             ln -s -f '${mgf}' '${input_name}';
+            #set $encoded_id = $__app__.security.encode_id($mgf.id)
+            echo "Spectrums:${mgf.display_name}(API:${encoded_id}) ";
         #end for
         ##ln -s "${input_database}" input_database.fasta;
         cp "${input_database}" input_database.fasta;
@@ -40,7 +43,7 @@
         ###########################################
         #if $create_decoy:
             echo "Creating decoy database.";
-            java -cp \$tmp_searchgui_jar_path eu.isas.searchgui.cmd.FastaCLI -in input_database.fasta -decoy &&
+            searchgui eu.isas.searchgui.cmd.FastaCLI --exec_dir="\$cwd/${bin_dir}" -in input_database.fasta -decoy &&
             rm input_database.fasta &&
             cp input_database_concatenated_target_decoy.fasta input_database.fasta &&
             ## ln -sf input_database_concatenated_target_decoy.fasta input_database.fasta;
@@ -49,14 +52,17 @@
         #####################################################
         ## generate IdentificationParameters for SearchGUI ##
         #####################################################
-
-        (java -cp \$tmp_searchgui_jar_path eu.isas.searchgui.cmd.IdentificationParametersCLI
+        (searchgui eu.isas.searchgui.cmd.IdentificationParametersCLI
+            --exec_dir="\$cwd/${bin_dir}"
             -out SEARCHGUI_IdentificationParameters.par
 
             @GENERAL_PARAMETERS@
 
             -db input_database.fasta
-            $use_gene_mapping
+            #if $use_gene_mapping:
+                $use_gene_mapping
+                $update_gene_mapping
+            #end if
 
             #if $xtandem.xtandem_advanced == "yes"
 
@@ -196,6 +202,7 @@
                 -andromeda_min_pep_length ${andromeda.andromeda_min_pep_length}
                 -andromeda_max_pep_length ${andromeda.andromeda_max_pep_length}
                 -andromeda_max_psms ${andromeda.andromeda_max_psms}
+                -andromeda_decoy_mode ${andromeda.andromeda_decoy_mode}
             #end if
             *#
  
@@ -245,15 +252,16 @@
                 #if $comet.comet_spectrum.comet_spectrum_selector == "yes"
                     -comet_min_peaks ${comet.comet_spectrum.comet_min_peaks}
                     -comet_min_peak_int ${comet.comet_spectrum.comet_min_peak_int}
-                    -comet_remove_prec ${comet.comet_spectrum.comet_remove_prec}
+
+                    -comet_remove_prec ${comet.comet_spectrum.comet_prec.comet_remove_prec}
 
 
-                     #if $comet.comet_spectrum.comet_remove_prec == "1"
-                        -comet_remove_prec_tol ${comet.comet_spectrum.comet_remove_prec_tol}
+                     #if $comet.comet_spectrum.comet_prec.comet_remove_prec == "1"
+                        -comet_remove_prec_tol ${comet.comet_spectrum.comet_prec.comet_remove_prec_tol}
                      #end if
                      
-                     #if $comet.comet_spectrum.comet_remove_prec == "2"
-                        -comet_remove_prec_tol ${comet.comet_spectrum.comet_remove_prec_tol}
+                     #if $comet.comet_spectrum.comet_prec.comet_remove_prec == "2"
+                        -comet_remove_prec_tol ${comet.comet_spectrum.comet_prec.comet_remove_prec_tol}
                      #end if
                      
                     -comet_clear_mz_range_lower ${comet.comet_spectrum.comet_clear_mz_range_lower}
@@ -279,13 +287,44 @@
                 #end if
             #end if
 
+            #if $directtag.directtag_advanced == "yes"
+                -directag_tic_cutoff ${directtag.directag_tic_cutoff}
+                -directag_max_peak_count ${directtag.directag_max_peak_count}
+                -directag_intensity_classes ${directtag.directag_intensity_classes}
+                -directag_adjust_precursor ${directtag.directag_adjust_precursor}
+                -directag_min_adjustment ${directtag.directag_min_adjustment}
+                -directag_max_adjustment ${directtag.directag_max_adjustment}
+                -directag_adjustment_step ${directtag.directag_adjustment_step}
+                -directag_charge_states ${directtag.directag_charge_states}
+                #if str($directtag.directag_output_suffix).strip() != '':
+                -directag_output_suffix ${directtag.directag_output_suffix}
+                #end if
+                -directag_ms_charge_state ${directtag.directag_ms_charge_state}
+                -directag_duplicate_spectra ${directtag.directag_duplicate_spectra}
+                -directag_deisotoping ${directtag.directag_deisotoping}
+                -directag_isotope_tolerance ${directtag.directag_isotope_tolerance}
+                -directag_complement_tolerance ${directtag.directag_complement_tolerance}
+                -directag_tag_length ${directtag.directag_tag_length}
+                -directag_max_var_mods ${directtag.directag_max_var_mods}
+                -directag_max_tag_count ${directtag.directag_max_tag_count}
+                -directag_intensity_weight ${directtag.directag_intensity_weight}
+                -directag_fidelity_weight ${directtag.directag_fidelity_weight}
+                -directag_complement_weight ${directtag.directag_complement_weight}
+            #end if
+
+            #if $novor.novor_advanced == "yes"
+                -novor_fragmentation ${novor.novor_fragmentation}
+                -novor_mass_analyzer ${novor.novor_mass_analyzer}
+            #end if
+
         2> $temp_stderr)
         &&
 
         ################
         ## Search CLI ##
         ################
-        (java -Djava.awt.headless=true -cp \$tmp_searchgui_jar_path eu.isas.searchgui.cmd.SearchCLI 
+        (searchgui -Djava.awt.headless=true eu.isas.searchgui.cmd.SearchCLI 
+            --exec_dir="\$cwd/${bin_dir}"
             -temp_folder `pwd`
             -spectrum_files \$cwd
             -output_folder \$cwd/output
@@ -355,6 +394,18 @@
                 -andromeda 0
             #end if
 
+            #if 'Novor' in $engines_list:
+                -novor 1
+            #else
+                -novor 0
+            #end if
+
+            #if 'DirecTag' in $engines_list:
+                -directag 1
+            #else
+                -directag 0
+            #end if
+
             ## single zip file
             -output_option 0
 
@@ -388,6 +439,9 @@
         <param name="use_gene_mapping" type="boolean" truevalue="-useGeneMapping 1" falsevalue="-useGeneMapping 0" checked="false"
             label="gene mappings will be used and saved along with the project (UniProt databases only)"
             help="This should only be enabled for UniProt databaases" />
+        <param name="update_gene_mapping" type="boolean" truevalue="-updateGeneMapping 1" falsevalue="-updateGeneMapping 0" checked="false"
+            label="Update gene mappings automatically from Ensembl (UniProt databases only)"
+            help="This should only be enabled for UniProt databaases" />
 
         <param name="peak_lists" format="mgf" type="data" multiple="true" label="Input Peak Lists (mgf)"
             help="Select appropriate MGF dataset(s) from history" />
@@ -396,19 +450,26 @@
         <param name="engines" type="select" display="checkboxes" multiple="True" label="DB-Search Engines">
             <help>Comet and Tide shouldn't both be selected since they use a similar algoritm.</help>
             <option value="X!Tandem" selected="True">X!Tandem</option>
-            <!-- Not working in tests
-            <option value="MyriMatch">MyriMatch</option> 
-            <option value="MS_Amanda">MS_Amanda</option>
-            -->
+
             <option value="MSGF" selected="True">MS-GF+</option>
             <option value="OMSSA" selected="True">OMSSA</option>
             <option value="Comet">Comet</option>
             <!-- Not working in tests
-            <option value="Tide">Tide</option>
             -->
+            <option value="Tide">Tide</option>
+            <!-- Not working in tests
+            -->
+            <option value="MyriMatch">MyriMatch</option> 
+            <option value="MS_Amanda">MS_Amanda</option>
             <!-- Windows only
             <option value="Andromeda">Andromeda</option>
             -->
+            <!-- New with version 3.0
+            -->
+            <!--working in tests
+            -->
+            <option value="DirecTag">DirecTag</option>
+            <option value="Novor">Novor (Select for non-commercial use only)</option>
             <validator type="no_options" message="Please select at least one output file" />
         </param>
 
@@ -439,7 +500,7 @@
 
             <param name="mgf_spectrum_count" type="integer" value="25000" label="The maximum number of spectra per mgf file when splitting"
                 help="Choose a smaller value if you are running on a machine with limited memory"/>
-        </when>
+            </when>
         </conditional>
 
 
@@ -470,7 +531,7 @@
                 <param name="xtandem_stp_bias" help="Interpretation of peptide phosphorylation models"
                     label="X!Tandem: Protein stP Bias" type="boolean" truevalue="1" falsevalue="0" checked="false" /> 
                 <param name="xtandem_evalue" help="Highest value for recorded peptides"
-                    label="X!Tandem: Maximum Valid Expectation Value" type="float" value="100" />
+                    label="X!Tandem: Maximum Valid Expectation Value" type="float" value="0.01" />
                 <param name="xtandem_output_proteins" help="Controls output of protein sequences"
                     label="X!Tandem: Output Proteins" type="boolean" truevalue="1" falsevalue="0" checked="false" />
                 <param name="xtandem_output_sequences" help="Controls output of sequence information"
@@ -867,6 +928,7 @@
                 <param name="andromeda_min_pep_length" type="integer" value="8" label="Andromeda minimum peptide length when using no enzyme, default is: 8" />
                 <param name="andromeda_max_pep_length" type="integer" value="25" label="Andromeda maximum peptide length when using no enzyme, default is: 25" />
                 <param name="andromeda_max_psms" type="integer" value="10" label="Andromeda maximum number of spectrum matches spectrum, default is: 10" />
+                <param name="andromeda_decoy_mode" type="boolean" truevalue="decoy" falsevalue="none" checked="false" label="Andromeda decoy mode" />
             </when>
         </conditional>
         -->
@@ -891,20 +953,22 @@
                             label="Comet: Minimum Number of Peaks per Spectrum" help="The minimum number of peaks per spectrum" />
                         <param name="comet_min_peak_int"  type="float" value="0.0"
                             label="Comet: Minimum Peaks Intensity" help="The minimum intensity for input peaks to be considered" />
-                        <param name="comet_remove_prec" label="Comet: Remove Precursor" type="select" help="Select for precursor m/z signal removal">
-                            <option value="0"  selected="True" >off</option>
-                            <option value="1">on</option>
-                            <option value="2">as expected for ETD/ECD spectra</option>
-                        </param>
-                        <when value="0" />
-                        <when value="1">
-                            <param name="comet_remove_prec_tol"  type="float" value="1.5"
-                                label="Comet: Remove Precursor Tolerance" />
-                        </when>
-                        <when value="2">
-                            <param name="comet_remove_prec_tol"  type="float" value="1.5"
-                                label="Comet: Remove Precursor Tolerance" />
-                        </when>
+                        <conditional name="comet_prec">
+                            <param name="comet_remove_prec" label="Comet: Remove Precursor" type="select" help="Select for precursor m/z signal removal">
+                                <option value="0"  selected="True" >off</option>
+                                <option value="1">on</option>
+                                <option value="2">as expected for ETD/ECD spectra</option>
+                            </param>
+                            <when value="0" />
+                            <when value="1">
+                                <param name="comet_remove_prec_tol"  type="float" value="1.5"
+                                    label="Comet: Remove Precursor Tolerance" />
+                            </when>
+                            <when value="2">
+                                <param name="comet_remove_prec_tol"  type="float" value="1.5"
+                                    label="Comet: Remove Precursor Tolerance" />
+                            </when>
+                        </conditional>
                         <param name="comet_clear_mz_range_lower"  type="float" value="0.0"
                             label="Comet: Minimum Peaks Intensity" help="Intended for iTRAQ/TMT type data where one might want to remove the reporter ion signals, lower m/z range" />
                         <param name="comet_clear_mz_range_upper"  type="float" value="0.0"
@@ -964,6 +1028,59 @@
                 </conditional>
             </when>
         </conditional>
+        <conditional name="directtag">
+            <param name="directtag_advanced" type="select" label="DirectTag Options">
+                <option value="yes">Advanced</option>
+                <option value="no" selected="True">Default</option>
+            </param>
+            <when value="no" />
+            <when value="yes">
+                <param name="directag_tic_cutoff" type="integer" value="85" label="DirecTag TIC cutoff in percent, default is '85'."/>
+                <param name="directag_max_peak_count" type="integer" value="400" label="DirecTag max peak count, default is '400'."/>
+                <param name="directag_intensity_classes" type="integer" value="3" label="DirecTag number of intensity classses, default is '3'."/>
+                <param name="directag_adjust_precursor" type="boolean" truevalue="1" falsevalue="0" checked="false" label="DirecTag adjust precursor, default is false."/>
+                <param name="directag_min_adjustment" type="float" value="-2.5" label="DirecTag minimum precursor adjustment, default is '-2.5'."/>
+                <param name="directag_max_adjustment" type="float" value="2.5" label="DirecTag maximum precursor adjustment, default is '2.5'."/>
+                <param name="directag_adjustment_step" type="float" value="0.1" label="DirecTag precursor adjustment step, default is '0.1'."/>
+                <param name="directag_charge_states" type="integer" value="3" label="DirecTag number of charge states considered, default is '3'."/>
+                <param name="directag_output_suffix" type="text" value="" label="DirecTag output suffix, default is no suffix."/>
+                <param name="directag_ms_charge_state" type="boolean" truevalue="1" falsevalue="0" checked="false" label="DirecTag use charge state from M spectrum, default is false."/>
+                <param name="directag_duplicate_spectra" type="boolean" truevalue="1" falsevalue="0" checked="true" label="DirecTag duplicate spectra per charge, default is true."/>
+                <param name="directag_deisotoping" type="select" label="DirecTag deisotoping mode, default is no deisotoping">
+                    <option value="0" selected="true">no deisotoping</option>
+                    <option value="1">precursor only</option>
+                    <option value="2">precursor and candidate</option>
+                </param>
+                <param name="directag_isotope_tolerance" type="float" value="0.25" label="DirecTag isotope mz tolerance, default is '0.25'."/>
+                <param name="directag_complement_tolerance" type="float" value="0.5" label="DirecTag complement mz tolerance, default is '0.5'."/>
+                <param name="directag_tag_length" type="integer" value="3" label="DirecTag tag length, default is '3'."/>
+                <param name="directag_max_var_mods" type="integer" value="2" label="DirecTag maximum variable modifications per sequence, default is '2'."/>
+                <param name="directag_max_tag_count" type="integer" value="20" label="DirecTag maximum tag count, default is '20'."/>
+                <param name="directag_intensity_weight" type="float" value="1.0" label="DirecTag intensity score weight, default is '1.0'."/>
+                <param name="directag_fidelity_weight" type="float" value="1.0" label="DirecTag fidelity score weight, default is '1.0'."/>
+                <param name="directag_complement_weight" type="float" value="1.0" label="DirecTag complement_score_weight, default is '1.0'."/>
+            </when>
+        </conditional>
+
+        <conditional name="novor">
+            <param name="novor_advanced" type="select" label="Novor Options">
+                <option value="yes">Advanced</option>
+                <option value="no" selected="True">Default</option>
+            </param>
+            <when value="no" />
+            <when value="yes">
+                <param name="novor_fragmentation" type="select" label="Novor fragmentation method">
+                    <option value="HCD" selected="True">HCD</option>
+                    <option value="CID">CID</option>
+                </param>
+                <param name="novor_mass_analyzer" label="Novor: mass analyzer" type="select" help="Identifier of the instrument to generate MS/MS spectra">
+                    <option value="FT" selected="True">FT</option>
+                    <option value="Trap" >Trap</option>
+                    <option value="TOF" >TOF</option>
+                </param>
+            </when>
+        </conditional>
+
     </inputs>
     <outputs>
         <data name="searchgui_results" format="searchgui_archive" from_work_dir="searchgui_out.zip" label="${tool.name} on ${on_string}" />
@@ -983,9 +1100,8 @@
             <param name="xtandem.xtandem_advanced" value="yes"/>
             <param name="xtandem_advanced.xtandem_refine_selector" value="yes"/>
 
-            <output name="output" file="tiny_searchgui_result1.zip" ftype="searchgui_archive" compare="sim_size" delta="600" /> 
+            <output name="output" file="tiny_searchgui_result1.zip" ftype="searchgui_archive" compare="sim_size" delta="30000" /> 
         </test>
-
         <!-- Test that search works with MSAmanda -->
         <test>
             <param name="peak_lists" value="searchgui_tinyspectra1.mgf"/>
@@ -997,10 +1113,8 @@
             <param name="max_charge" value="3"/>
             <param name="engines" value="MS_Amanda"/>
 
-            <output name="output" file="tiny_searchgui_result_amandaonly.zip" ftype="searchgui_archive" compare="sim_size" delta="600" /> 
+            <output name="output" file="tiny_searchgui_result_amandaonly.zip" ftype="searchgui_archive" compare="sim_size" delta="5000" /> 
         </test>
-
-
     </tests>
     <help>
 **What it does**
