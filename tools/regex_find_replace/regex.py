@@ -10,6 +10,7 @@ def main():
   parser = OptionParser()
   parser.add_option("--input", dest="input")
   parser.add_option("--output", dest="output")
+  parser.add_option("--input_display_name", dest="input_display_name")
   parser.add_option("--pattern", dest="patterns", action="append",
                     help="regex pattern for replacement")
   parser.add_option("--replacement", dest="replacements", action="append",
@@ -33,6 +34,7 @@ def main():
           for key, value in mapped_chars.items():
             pattern = pattern.replace(value, key)
             replacement = replacement.replace(value, key)
+          replacement = replacement.replace("#{input_name}", options.input_display_name)
           if column is None:
             line = re.sub(pattern, replacement, line)
           else:
