@@ -47,19 +47,34 @@ class FASTAReader:
 
 def main():
     seen_sequences = set([])
+    seen_headers = set([])
 
     out_file = open(sys.argv[1], 'w')
-    for fasta_file in sys.argv[2:]:
+    if sys.argv[2] == "sequence":
+        unique_sequences = True
+    elif sys.argv[2] == "accession":
+        unique_sequences = False
+    else:
+        sys.exit("2nd argument must be 'sequence' or 'accession'")
+
+    for fasta_file in sys.argv[3:]:
         fa_reader = FASTAReader(fasta_file)
         for protein in fa_reader:
-            if protein.sequence in seen_sequences:
-                pass
+            if unique_sequences:
+                if protein.sequence in seen_sequences or protein.header in seen_headers:
+                    continue
+                else:
+                    seen_sequences.add(protein.sequence)
+                    seen_headers.add(protein.header)
             else:
-                seen_sequences.add(protein.sequence)
-                out_file.write(protein.header)
-                out_file.write(os.linesep)
-                out_file.write(protein.sequence)
-                out_file.write(os.linesep)
+                if protein.header in seen_headers:
+                    continue
+                else:
+                    seen_headers.add(protein.header)
+            out_file.write(protein.header)
+            out_file.write(os.linesep)
+            out_file.write(protein.sequence)
+            out_file.write(os.linesep)
     out_file.close()
 
 if __name__ == "__main__":

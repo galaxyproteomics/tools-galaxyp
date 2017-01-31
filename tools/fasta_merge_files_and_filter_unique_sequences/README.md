@@ -9,7 +9,7 @@ GalaxyP - FASTA Merge Files and Filter Unique Sequences
 Description
 -----------
 
-Merge FASTA files, keeping only unique sequences.
+Merge FASTA files, keeping either only unique sequences or only unique header/accession lines.
 
 
 GalaxyP Community
@@ -44,4 +44,5 @@ Authors
 Authors and contributors:
 
 * John Chilton <jmchilton@gmail.com>
+* Matt Chambers <matt.chambers42@gmail.com>
 * Minnesota Supercomputing Institute, Univeristy of Minnesota
