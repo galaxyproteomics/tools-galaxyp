@@ -46,7 +46,7 @@ class FASTAReader:
 
 
 def main():
-    seen_sequences = set([])
+    seen_sequences = dict([])
     seen_headers = set([])
 
     out_file = open(sys.argv[1], 'w')
@@ -58,16 +58,22 @@ def main():
         sys.exit("2nd argument must be 'sequence' or 'accession'")
 
     for fasta_file in sys.argv[3:]:
+        print("Reading entries from '%s'" % fasta_file)
         fa_reader = FASTAReader(fasta_file)
         for protein in fa_reader:
             if unique_sequences:
-                if protein.sequence in seen_sequences or protein.header in seen_headers:
+                if protein.header in seen_headers:
+                    print("Skipping protein '%s' with duplicate header" % protein.header)
+                    continue
+                elif protein.sequence in seen_sequences:
+                    print("Skipping protein '%s' with duplicate sequence (first seen as '%s')" % (protein.header, seen_sequences[protein.sequence]))
                     continue
                 else:
-                    seen_sequences.add(protein.sequence)
+                    seen_sequences[protein.sequence] = protein.header
                     seen_headers.add(protein.header)
             else:
                 if protein.header in seen_headers:
+                    print("Skipping protein '%s' with duplicate header" % protein.header)
                     continue
                 else:
                     seen_headers.add(protein.header)
