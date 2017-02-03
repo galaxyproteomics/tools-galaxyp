@@ -81,7 +81,7 @@ def main():
                     print("Skipping protein '%s' with duplicate sequence (first seen as '%s')" % (protein.header, seen_sequences[hash(protein.sequence)]))
                     continue
                 else:
-                    seen_sequences[hash(protein.sequence)] = protein.accession
+                    seen_sequences[hash(protein.sequence)] = protein.header
                     seen_accessions.add(protein.accession)
             else:
                 if protein.accession in seen_accessions:
