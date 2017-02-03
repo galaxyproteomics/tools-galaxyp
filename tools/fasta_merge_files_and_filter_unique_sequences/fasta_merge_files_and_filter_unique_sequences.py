@@ -1,19 +1,22 @@
 #!/usr/bin/env python
 import os
 import sys
+import re
 
 class Sequence:
     ''' Holds protein sequence information '''
     def __init__(self):
         self.header = ""
+        self.accession = ""
         self.sequence = ""
 
 class FASTAReader:
     """
         FASTA db iterator. Returns a single FASTA sequence object.
     """
-    def __init__(self, fasta_name):
+    def __init__(self, fasta_name, accession_parser):
         self.fasta_file = open(fasta_name)
+        self.accession_parser = accession_parser
 
     def __iter__(self):
         return self
@@ -29,6 +32,11 @@ class FASTAReader:
 
         seq = Sequence()
         seq.header = line.rstrip().replace('\n','').replace('\r','')
+
+        m = re.search(self.accession_parser, seq.header)
+        if not m or len(m.groups()) < 1 or len(m.group(1)) == 0:
+          sys.exit("Could not parse accession from '%s'" % seq.header)
+        seq.accession = m.group(1)
 
         while True:
             tail = self.fasta_file.tell()
@@ -47,7 +55,7 @@ class FASTAReader:
 
 def main():
     seen_sequences = dict([])
-    seen_headers = set([])
+    seen_accessions = set([])
 
     out_file = open(sys.argv[1], 'w')
     if sys.argv[2] == "sequence":
@@ -57,26 +65,30 @@ def main():
     else:
         sys.exit("2nd argument must be 'sequence' or 'accession'")
 
-    for fasta_file in sys.argv[3:]:
+    accession_parser = sys.argv[3]
+    for key, value in { '\'' :'__sq__', '\\' : '__backslash__' }.items():
+      accession_parser = accession_parser.replace(value, key)
+
+    for fasta_file in sys.argv[4:]:
         print("Reading entries from '%s'" % fasta_file)
-        fa_reader = FASTAReader(fasta_file)
+        fa_reader = FASTAReader(fasta_file, accession_parser)
         for protein in fa_reader:
             if unique_sequences:
-                if protein.header in seen_headers:
-                    print("Skipping protein '%s' with duplicate header" % protein.header)
+                if protein.accession in seen_accessions:
+                    print("Skipping protein '%s' with duplicate accession" % protein.header)
                     continue
-                elif protein.sequence in seen_sequences:
-                    print("Skipping protein '%s' with duplicate sequence (first seen as '%s')" % (protein.header, seen_sequences[protein.sequence]))
+                elif hash(protein.sequence) in seen_sequences:
+                    print("Skipping protein '%s' with duplicate sequence (first seen as '%s')" % (protein.header, seen_sequences[hash(protein.sequence)]))
                     continue
                 else:
-                    seen_sequences[protein.sequence] = protein.header
-                    seen_headers.add(protein.header)
+                    seen_sequences[hash(protein.sequence)] = protein.header
+                    seen_accessions.add(protein.accession)
             else:
-                if protein.header in seen_headers:
-                    print("Skipping protein '%s' with duplicate header" % protein.header)
+                if protein.accession in seen_accessions:
+                    print("Skipping protein '%s' with duplicate accession" % protein.header)
                     continue
                 else:
-                    seen_headers.add(protein.header)
+                    seen_accessions.add(protein.accession)
             out_file.write(protein.header)
             out_file.write(os.linesep)
             out_file.write(protein.sequence)
