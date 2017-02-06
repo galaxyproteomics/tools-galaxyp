@@ -1,0 +1,156 @@
+<tool id="cross_set_protfdr" name="Calculate cross-set protein FDR">
+    <requirements>
+        <requirement type="package" version="2.2">msstitch</requirement>
+        <requirement type="package">percolator</requirement>
+    </requirements>
+  
+    <description>from peptide Q scores</description>
+    
+    <command interpreter="python">
+	    <![CDATA[
+	    #if len($teps) == 1
+	   echo Only one sample set in peptides found, copying input protein table to output file
+	   &&
+	   ln -s '$tproteins' '$output'
+
+	    #else
+	    msspsmtable merge -o mtp.txt -i
+            #for $tkey in $tpeps.keys()
+	    '$tpeps[$tkey]' 
+            #end for
+	    &&
+	    msspsmtable merge -o mdp.txt -i
+            #for $dkey in $dpeps.keys()
+            '$dpeps[$dkey]'
+            #end for
+	    
+	    #for $pep in ["mtp.txt", "mdp.txt"]
+	    &&
+	    sed -i 's/Peptide sequence/Peptide/' $pep
+	    &&
+	    peptable psm2pep -i $pep --scorecolpattern svm -o pep_$pep
+	    #end for
+	    
+	    &&
+	    prottable qvality -i pep_mtp.txt --decoyfn pep_mdp.txt -o pepqval.txt --feattype svm
+	    #for $pep in ["pep_mtp.txt", "mdp.txt"]
+	    &&
+	    prottable fdr -i $pep --qvality pepqval.txt --scorecolpattern svm -o fdr_$pep
+	    #end for
+	   
+	    #if $picked.picktype.value != "none"
+	    #for $pep in ["fdr_pep_mtp.txt", "fdr_pep_mdt.txt"]
+	    &&
+	    peptable modelqvals -i $pep -o linmod_$pep --scorecolpattern svm --fdrcolpattern '^q-value'
+	    #end for
+	    #else
+	    &&
+	    mv fdr_pep_mtp.txt linmod_fdr_pep_mtp.txt 
+	    &&
+	    mv fdr_pep_mdp.txt linmod_fdr_pep_mdp.txt
+	    #end if
+	    
+	    #for $pep in ["pep_mtp.txt", "pep_mdp.txt"]
+	    &&
+	    prottable emptytable -i $pep -o prot_$pep --protcol $protcol
+	    #end for
+
+	    #for $basefn in ["pep_mtp.txt", "pep_mdp.txt"]
+	    &&
+	    prottable bestpeptide -i prot_$basefn -o protq_$basefn --peptable linmod_fdr_$pep --minlog --protcol $protcol
+	    #if $picked.picktype.value != "none"
+	    --scorecolpattern 'linear model'
+	    #else
+	    --scorecolpattern '^q-value'
+	    #end if
+	    #end for
+
+	    &&
+	    prottable pickqvality -i protq_pep_mtp.txt --decoyfn protq_pep_mdp.txt -o protqval.txt
+	    #if $picked.picktype.value != "result"
+	    --picktype $picked.picktype
+	    #elif $picked.picktype.value == "fasta"
+	    --picktype $picked.picktype --targetfasta $picked.tfasta --decoyfasta $picked.dfasta
+	    #elif $picked.picktype.value == "none"
+	    --feattype qvalue
+	    #end if
+
+	    &&
+	    prottable fdr -i protq_pep_mtp.txt --qvality protqval.txt --scorecolpattern '^Q-score' -o proteinfdr.txt
+	    #for 
+	    # end 
+
+	    &&
+	    # FIXME -2
+	    cut -f 1,-2 proteinfdr.txt > prot_qvals.txt
+	    &&
+	    sed -i 's/q-value/Cross-set picked q-value/' $pep
+	    &&
+	    join -t \$'\t' -e 'NA' -o auto '$tproteins' prot_qvals.txt > $output
+	    #end if
+	    ]]>
+	    <!-- FIXME 
+		 PEPSCORECOL=svm should be dynamic?
+		 fdrcolpattern dynamic?
+		 colnr for genes/symbols/proteins  *$protcol*
+		 GNU join necessary with -o auto
+
+		 
+
+		 -->
+
+	    calculate_crossset_proteinfdr.py --outdst $output 
+            --galaxydir $GALAXY_ROOT_DIR
+	    --targetprots $tproteins 
+	    --targetpeps 
+            #for tkey in $tpeps.keys()
+            $tpeps[tkey]
+            #end for
+            --decoypeps 
+            #for dkey in $dpeps.keys()
+            $dpeps[dkey]
+            #end for
+            #if str($picked.picktype) != "none"
+            --picked --picktype $picked.picktype
+            #if str($picked.picktype) == "fasta"
+	    --targetfasta $tfasta --decoyfasta $dfasta --genecentric genes
+            #else if str($picked.picktype) == "result"
+            --genecentric assoc
+            #end if
+            #end if
+    </command>
+    
+    <inputs>
+      <conditional name="picked">
+        <param name="picktype" type="select" display="radio" label="Use picked FDR? Make target/decoy pairs from FASTA or protein tables (in case associated ID is used)">
+          <option value="none">No picked FDR</option>        
+          <option value="fasta">FASTA</option>        
+          <option value="result">protein table</option>        
+        </param>
+        <when value="none" />
+        <when value="result" />
+        <when value="fasta">
+          <param name="tfasta" type="data" format="fasta" label="FASTA file with target proteins"/>
+          <param name="dfasta" type="data" format="fasta" label="FASTA file with decoy proteins"/>
+        </when>
+      </conditional>
+      <param name="tproteins" type="data" format="prottable" label="Target protein table"/>
+      <param name="tpeps" type="data_collection" format="peptsv" label="Target peptide table"/>
+      <param name="dpeps" type="data_collection" format="peptsv" label="Decoy peptide table"/>
+    </inputs>
+    
+    <outputs>
+        <data format="prottable" name="output"/>
+    </outputs>
+
+    <requirements>
+        <requirement type="package">percolator</requirement>
+    </requirements>
+
+   <stdio>
+       <exit_code range="1:" level="fatal" description="Error occurred calculating cross-set FDR" />
+   </stdio>
+    <help>
+    </help>
+
+</tool>
