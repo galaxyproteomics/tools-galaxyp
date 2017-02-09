@@ -1,0 +1,197 @@
+<tool id="process_psmtable" name="Process PSM table" version="1.0">
+    <description>merges, filters, adds data</description>
+    <requirements>
+        <requirement type="package" version="2.2">msstitch</requirement>
+    </requirements>
+    <command>
+	    <![CDATA[
+	    #if $percolator.yesno == "true" and $psms.multiple == "true"
+	    #for $fn, $mzidfn in zip($psms.psmtables.keys(), $percolator.mzidentmls.keys())
+	    msspsmtable percolator -i '$psms[$fn]' --mzid '$percolator.mzidentmls[$mzidfn]' -o '$fn'
+            &&
+	    #end for
+	    #else if $psms.multiple == "true" and $percolator.yesno == "false"
+	    #for $fn in $psms.psmtables.keys()
+	    ln -s '$psms[$fn]' '$fn'
+	    &&
+	    #end for
+	    #else if $percolator.yesno == "true"
+	    msspsmtable percolator -i '$psms.psmtable' --mzid '$percolator.mzidentmls[$mzidfn]' -o singlepsmtable.txt
+	    &&
+	    #else if $psms.multiple == "false" and $percolator.yesno == "false"
+	    ln -s '$psms.psmtable singlepsmtable.txt
+	    &&
+	    #end if
+
+	    #if $psms.multiple == "true"
+	    msspsmtable merge -o mergedpsms.txt -i
+            #for $fn in $psms.psmtables.keys()
+            '$fn'
+            #end for
+	    #else
+	    ln -s singlepsmtable.txt mergedpsms.txt
+	    #end if
+
+	    &&
+	    #if $filter.yesno == "true"
+	    msspsmtable conffilt -i mergedpsms.txt -o filteredpsms.txt
+	    --confidence-col $filter.confcol --confidence-lvl $filter.conflvl 
+	    --confidence-better $filter.confbet
+	    #else
+	    ln -s mergedpsms.txt filteredpsms.txt
+	    #end if
+	    
+	    &&
+	    cp '$lookup' psmlookup.sql
+	    &&
+	    msslookup psms -i filteredpsms.txt --dbfile psmlookup.sql
+            #if $speccol
+            --spectracol $speccol 
+            #end if
+            #if $dbase
+            --fasta $dbase
+            #end if
+	    #if $mapfn
+	    --map $mapfn
+	    #end if
+	    #if $decoy
+	    --decoy
+	    #end if
+	    #if $fastadelim
+	    --fastadelim $fastadelim
+	    #end if
+	    #if $genefield
+	    --genefield $genefield
+	    #end if
+	    
+	    &&
+	    msspsmtable specdata -i filemappedpsms.txt -o specdatapsms.txt --dbfile psmlookup.sql
+
+	    &&
+            #if $isobaric == "true" or $precursorquant == "true"
+	    msspsmtable quant -i specdatapsms.txt -o quantpsms.txt --dbfile psmlookup.sql
+            #if $isobaric == "true"
+            --isobaric
+            #end if
+            #if $precursorquant == "true"
+            --precursor
+            #end if
+	    #else
+	    ln -s specdatapsms.txt quantpsms.txt
+	    #end if
+	    
+	    &&
+	    #if $genes == "true"
+	    msspsmtable genes -i quantpsms.txt -o genepsms.txt --dbfile psmlookup.sql
+	    #else
+	    ln -s quantpsms.txt genepsms.txt
+	    #end if
+
+	    &&
+	    #if $proteingroup.yesno == "true"
+	    msslookup proteingroup -i filemappedpsms.txt --dbfile psmlookup.sql
+	    #if $proteingroup.proteincolumn.value 
+	    --protcol $proteingroup.proteincolumn
+	    #end if
+	    &&
+	    msspsmtable proteingroup -i quantpsms.txt --dbfile psm_lookup.sql -o pgrouped.txt
+	    #else
+	    ln - s quantpsms.txt pgrouped.txt
+	    #end if
+
+	    &&
+	    ln -s pgrouped.txt '$output'
+	    &&
+	    mv psmlookup.sql '$lookupoutput'
+           ]]>	    
+    </command>
+    <inputs>
+	    <conditional name="psms">
+		    <param type="select" name="multiple" label="Multiple tables in collection?">
+			    <option value="true">Yes</option>
+			    <option value="false">Yes</option>
+		    </param>
+		    <when value="true"> 
+			    <param name="psmtables" type="data_collection" format="mzidtsv" label="Search table from MSGF+"/>
+		    </when>
+		    <when value="false"> 
+			   <param name="psmtable" type="data" format="mzidtsv" label="Search table from MSGF+"/>
+		    </when>
+	    </conditional>
+	    <param name="speccol" type="integer" value="1" label="Spectra file column number" />
+	    <param name="dbase" type="data" format="fasta" label="Fasta database used to search" optional="true"/>
+	    <param name="fastadelim" type="select" label="FASTA delimiter" optional="true" help="In case FASTA is not ENSEMBL or Uniprot you may be able to use a simple splitter to parse out the gene names. The delimiter is what splits the fields.">
+		    <option value="pipe">| (pipe)</option>
+		    <option value="tab">tab</option>
+		    <option value="semicolon">; (semicolon)</option>
+	    </param>
+	    <param name="genefield" type="integer" label="Gene field number" optional="true" help="To be used together with FASTA delimiter, this is the number of the field in which the gene name is in. First field is nr. 1" />
+	    <param name="mapfn" type="data" format="martmap" optional="true" label="Biomart map containing genes/symbols/descriptions" />
+	    <param name="decoy" type="boolean" label="Is the PSM table a decoy?" help="Only necessary to specify in case a ENSEML fasta and Biomart map are supplied" /> 
+	   
+	   <conditional name="percolator">
+		    <param type="select" name="yesno" label="Add percolator data?">
+			    <option value="true">Yes</option>
+			    <option value="false">Yes</option>
+		    </param>
+		    <when value="true"> 
+			    <param name="mzidentmls" type="data" format="mzid" label="Percolated MSGF+ mzIdentML data" help="Make sure to select a collection here when the PSM table input is a collection" />
+		    </when>
+		    <when value="false" /> 
+	    </conditional>
+
+	    <conditional name="filter">
+		    <param type="select" name="yesno" label="Filter PSM table?">
+			    <option value="true">Yes</option>
+			    <option value="false">Yes</option>
+		    </param>
+		    <when value="true"> 
+			    <param name="confcol" type="integer" value="" label="TSV column with confidence values to filter on" />
+			    <param name="conflvl" type="float" value="" label="Threshold value" help="Lowest or highest value to include in output" />
+			    <param name="confbet" type="select" display="radio" label="Better values are:">
+				    <option value="higher">Higher</option>
+				    <option value="lower">Lower</option>
+			    </param>
+		    </when>
+		    <when value="false" />
+	    </conditional>
+
+	    <param name="isobaric" type="select" display="radio" label="Add isobaric quant intensities to PSM table" help="If it has been stored in PSM lookup">
+		    <option value="true">Yes</option>
+		    <option value="false">No</option>
+	   </param>
+	    <param name="precursorquant" type="select" display="radio" label="Add precursor quant data to PSM table" help="If it has been stored in PSM lookup">
+		    <option value="true">Yes</option>
+		    <option value="false">No</option>
+	   </param>
+	    <param name="genes" type="select" display="radio" label="Add genes to PSM table" help="If genes have been stored in PSM lookup">
+		    <option value="true">Yes</option>
+		    <option value="false">No</option>
+	   </param>
+
+	    <conditional name="proteingroup">
+		    <param type="select" name="yesno" label="Filter PSM table?">
+			    <option value="true">Yes</option>
+			    <option value="false">Yes</option>
+		    </param>
+		    <when value="true"> 
+			    <param name="proteincolumn" type="integer" optional="true" label="TSV protein column number" help="In case it is not the standard Protein column" />
+		    </when>
+		    <when value="false" />
+	    </conditional>
+
+    </inputs>
+    
+    <outputs>
+        <data format="mzidtsv" name="output"/>
+        <data format="mslookupsql" name="lookupoutput"/>
+    </outputs>
+
+    <help>
+	    This tool runs a series of commands to refine (MSGF+-derived) PSM tables with data such
+	    as uploaded spectra file name, retention time, quant intensities, protein groups, etc. 
+	    It outputs a refined PSM table as well as an SQLite lookup database for 
+	    further use by msstitch tools.
+    </help>
+
+</tool>
