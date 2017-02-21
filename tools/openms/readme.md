@@ -76,7 +76,6 @@ Generating OpenMS wrappers
     sed -i '13 a\-fidocp_executable fido_choose_parameters' wrappers/FidoAdapter.xml
     sed -i '13 a\-myrimatch_executable myrimatch' wrappers/MyriMatchAdapter.xml
     sed -i '13 a\-omssa_executable omssa' wrappers/OMSSAAdapter.xml
-    sed -i '13 a\-pepnovo_executable pepnovo' wrappers/PepNovoAdapter.xml
     sed -i '13 a\-xtandem_executable xtandem' wrappers/XTandemAdapter.xml
     ```
     
@@ -135,6 +134,9 @@ Generating OpenMS wrappers
  * Additionally cause of lacking dependencies, the following adapters have been removed in `SKIP_TOOLS_FILES.txt` as well:
     * OMSSAAdapter
     * MyrimatchAdapter
+    
+ * Additionally cause of a problematic parameter (-model_directory), the following adapter has been removed:
+    * PepNovoAdapter
 
 
 Licence (MIT)
