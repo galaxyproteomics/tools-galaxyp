@@ -122,6 +122,18 @@ Generating OpenMS wrappers
  * In `FileConverter.xml` add `auto_format="true"` to the output, e.g.:
  
         <data name="param_out" metadata_source="param_in" auto_format="true"/>
+        
+ * To add an example test case to `DecoyDatabase.xml` add the following after the output section. If standard settings change you might have to adjust the options and/or the test files.
+ 
+    ```
+       <tests>
+        <test>
+            <param name="param_in" value="DecoyDatabase_input.fasta"/>
+            <output name="param_out" file="DecoyDatabase_output.fasta"/>
+        </test>
+    </tests>
+    ```
+    
 
  * These tools have multiple outputs (number of inputs = number of outputs) which is not yet supported in Galaxy-stable and are therefore in `SKIP_TOOLS_FILES.txt`:
     * SeedListGenerator
