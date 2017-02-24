@@ -38,7 +38,7 @@ pept2prot_column_order = ['peptide','uniprot_id','taxon_id']
 pept2prot_extra_column_order = pept2prot_column_order + ['taxon_name','ec_references','go_references','refseq_ids','refseq_protein_ids','insdc_ids','insdc_protein_ids']
 
 def __main__():
-  version = '1.1'
+  version = '2.0'
   pep_pat = '^([ABCDEFGHIKLMNPQRSTVWXYZ]+)$'
 
   def read_tabular(filepath,col):
@@ -120,6 +120,8 @@ def __main__():
   parser.add_option( '-e', '--equate_il', dest='equate_il', action='store_true', default=False, help='isoleucine (I) and leucine (L) are equated when matching tryptic peptides to UniProt records' )
   parser.add_option( '-x', '--extra', dest='extra', action='store_true', default=False, help='return the complete lineage of the taxonomic lowest common ancestor' )
   parser.add_option( '-n', '--names', dest='names', action='store_true', default=False, help='return the names of all ranks in the lineage of the taxonomic lowest common ancestor' )
+  parser.add_option( '-M', '--max_request', dest='max_request', type='int', default=200, help='The maximum number of entries per unipept request' )
+  
   # output fields
   parser.add_option( '-A', '--allfields', dest='allfields', action='store_true', default=False, help='inlcude fields: taxon_rank,taxon_id,taxon_name csv and tsv outputs' )
   # Warn vs Error Flag
@@ -174,19 +176,23 @@ def __main__():
         partToPeps.setdefault(part,[]).append(peptide)
   trypticPeptides = partToPeps.keys()
   ## unipept
-  post_data = []
-  if options.equate_il:
-    post_data.append(("equate_il","true"))
-  if options.names:
-    post_data.append(("extra","true"))
-    post_data.append(("names","true"))
-  elif options.extra:
-    post_data.append(("extra","true"))
-  post_data += [('input[]', x) for x in trypticPeptides]
-  headers = {'Content-Type': 'application/x-www-form-urlencoded',  'Accept': 'application/json'}
-  url = 'http://api.unipept.ugent.be/api/v1/%s' % options.unipept
-  req = urllib2.Request( url, headers = headers, data = urllib.urlencode(post_data) )
-  unipept_resp = json.loads( urllib2.urlopen( req ).read() )
+  unipept_resp = []
+  idx = range(0,len(trypticPeptides),options.max_request)
+  idx.append(len(trypticPeptides))
+  for i in range(len(idx)-1):
+    post_data = []
+    if options.equate_il:
+      post_data.append(("equate_il","true"))
+    if options.names or options.json:
+      post_data.append(("extra","true"))
+      post_data.append(("names","true"))
+    elif options.extra or options.json:
+      post_data.append(("extra","true"))
+    post_data += [('input[]', x) for x in trypticPeptides[idx[i]:idx[i+1]]]
+    headers = {'Content-Type': 'application/x-www-form-urlencoded',  'Accept': 'application/json'}
+    url = 'http://api.unipept.ugent.be/api/v1/%s' % options.unipept
+    req = urllib2.Request( url, headers = headers, data = urllib.urlencode(post_data) )
+    unipept_resp += json.loads( urllib2.urlopen( req ).read() )
   unmatched_peptides = []
   peptideMatches = []
   if options.debug: print >> sys.stdout,"unipept response: %s\n" % str(unipept_resp)
@@ -244,8 +250,49 @@ def __main__():
         if peptide in unmatched_peptides:
           outputFile.write("%s\n" % peptide)
   if options.json:
-    with open(options.json,'w') as outputFile:
-      outputFile.write(str(resp))  
+    if options.unipept == 'pept2prot':
+      with open(options.json,'w') as outputFile:
+        outputFile.write(str(resp))
+    else:
+      found_keys = set()
+      for i,pdict in enumerate(resp):
+        found_keys |= set(pdict.keys())
+      taxa_cols = []
+      for col in pept2lca_extra_column_order[-1:0:-1]:
+        if col+'_id' in found_keys:
+          taxa_cols.append(col)
+      id_to_node = dict()
+      def get_node(id,name,rank,child,seq):
+        if id not in id_to_node:
+          data = {'count' : 0, 'self_count' : 0, 'valid_taxon' : 1,  'rank' : rank, 'sequences' : [] }
+          node = {'id' : id, 'name' : name, 'children' : [], 'kids': [],'data' : data }
+          id_to_node[id] = node
+        else:
+          node = id_to_node[id]
+        node['data']['count'] += 1
+        if seq is not None and seq not in node['data']['sequences']:
+           node['data']['sequences'].append(seq)
+        if child is None:
+          node['data']['self_count'] += 1
+        elif child['id'] not in node['kids']:
+          node['kids'].append(child['id'])
+          node['children'].append(child)
+        return node
+      root = get_node(1,'root','no rank',None,None)   
+      for i,pdict in enumerate(resp):
+        sequence = pdict.get('peptide',pdict.get('tryptic_peptide',None))
+        seq = sequence
+        child = None
+        for col in taxa_cols:
+          col_id = col+'_id'
+          if col_id in pdict and pdict.get(col_id): 
+            col_name = col if col in found_keys else col+'_name'
+            child = get_node(pdict.get(col_id,None),pdict.get(col_name,''),col,child,seq)
+            seq = None
+        if child:
+          get_node(1,'root','no rank',child,None)
+      with open(options.json,'w') as outputFile:
+        outputFile.write(json.dumps(root))  
   if options.tsv or options.csv:
     # 'pept2lca','pept2taxa','pept2prot'
     found_keys = set()
