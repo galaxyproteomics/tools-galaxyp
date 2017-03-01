@@ -11,15 +11,6 @@ More informations are available at:
  * http://open-ms.sourceforge.net
 
 
-Installation
-============
-
-Galaxy should be able to automatically install the dependencies, i.e.
-'package_openms_2_0' or 'package_qt_4_8' repository.
-
-The wrappers are included in https://testtoolshed.g2.bx.psu.edu/view/bgruening/openms.
-
-
 Generating OpenMS wrappers
 ==========================
 
