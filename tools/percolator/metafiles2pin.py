@@ -43,7 +43,8 @@ def main():
     os.makedirs(outpath)
     for count, batch in enumerate(get_perco_batches_from_spectrafiles(
             args.spectrafiles, args.batchsize, args.percopoolids)):
-        batchfiles = [args.searchfiles[index] for index in batch]
+        batchfiles = ['{}\t{}'.format(args.searchfiles[index], args.spectrafiles[index])
+                      for index in batch]
         out_file = os.path.join(outpath, 'percolatorpool{}.meta2pin'.format(
             str(count)))
         with open(out_file, 'w') as fp:
