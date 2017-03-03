@@ -8,44 +8,49 @@
     </stdio>
     <command><![CDATA[
              mkdir target && mkdir decoy &&
-             echo $target.ext &&
-             #if $target.ext == "tabular"
-             python '$prep_metafile' '$target' target/'$target.element_identifier' &&
-             python '$prep_metafile' '$decoy' decoy/'$decoy.element_identifier' &&
-             #else
-             ln -s '$target' target/'$target.element_identifier' &&
-             ln -s '$decoy' decoy/'$decoy.element_identifier' &&
+             
+             #if $mzids.inputtype == "multi"
+             #for $key in $mzids.target.keys()
+             ln -s "$mzids.target[$key]" "target/$key" &&
+             echo "target/$key" >> targetmeta &&
+             #end for
+             #for $key in $mzids.decoy.keys()
+             ln -s "$mzids.decoy[$key]" "decoy/$key" &&
+             echo "decoy/$key" >> decoymeta &&
+             #end for
+             msgf2pin -o $pinout -e $enzyme
+             #if $matches
+             -m $matches
              #end if
+             $aafreq $ptm $pngase $isotope targetmeta decoymeta
+             
+             #else
+             ln -s '$mzids.target' target/'$target.display_name' &&
+             ln -s '$mzids.decoy' decoy/'$decoy.display_name' &&
              msgf2pin -o $pinout -e $enzyme
              #if $matches
              -m $matches
              #end if
              $aafreq $ptm $pngase $isotope
-             target/"$target.element_identifier" decoy/"$decoy.element_identifier"
+             target/"$mzids.target.display_name" decoy/"$mzids.decoy.display_name"
+             #end if
+             
     ]]></command>
-    <configfiles>
-        <configfile name="prep_metafile"><![CDATA[
-import os
-import sys
-
-def link_datasets(metafile):
-    with open(metafile) as fp:
-        for line in fp:
-            dataset, element_ident = line.strip('\n').split('\t')
-            os.symlink(dataset, element_ident)
-            yield dataset
-
-
-metafile = sys.argv[1]
-newmetafile = sys.argv[2]
-with open(newmetafile, 'w') as fp:
-    for dataset in link_datasets(metafile):
-        fp.write('{}\n'.format(dataset))
-       ]]></configfile>
-    </configfiles>
     <inputs>
-        <param name="target" type="data" format="mzid,tabular" label="Target MSGF+ results or metafile pointing to them" />
-        <param name="decoy" type="data" format="mzid,tabular" label="Decoy MSGF+ results or metafile pointing to them" />
+        <conditional name="mzids">
+            <param name="inputtype" type="select" display="radio">
+                <option value="single">Single mzIdentML</option>
+                <option value="multi">Multiple mzIdentML metafile collection</option>
+            </param>
+	    <when value="single">
+                <param name="target" type="data" format="mzid" label="Target MSGF+ results or metafile pointing to them" />
+                <param name="decoy" type="data" format="mzid" label="Decoy MSGF+ results or metafile pointing to them" />
+            </when>
+	    <when value="multi">
+                <param name="target" type="data_collection" collection_type="list" format="mzid" label="Target MSGF+ results or metafile pointing to them" />
+                <param name="decoy" type="data_collection" collection_type="list" format="mzid" label="Decoy MSGF+ results or metafile pointing to them" />
+            </when>
+        </conditional>
         <param name="enzyme" type="select" label="Enzyme used">
           <option value="trypsin">trypsin</option>
           <option value="no_enzyme">no enzyme</option>
@@ -71,18 +76,30 @@ with open(newmetafile, 'w') as fp:
     </outputs>
     <tests>
         <test>
-          <param name="target" value="target.mzid" />
-          <param name="decoy" value="decoy.mzid" />
+          <param name="mzids|inputtype" value="single" />
+          <param name="mzids|target" value="target.mzid" />
+          <param name="mzids|decoy" value="decoy.mzid" />
           <param name="ptm" value="true"/>
           <param name="matches" value="1"/>
           <output name="pinout" value="percolatorInresult.txt" compare="sim_size" delta="20" />
         </test>
         <test>
-          <param name="target" value="target_meta" ftype="tabular" />
-          <param name="decoy" value="decoy_meta" ftype="tabular" />
-          <param name="ptm" value="false"/>
+          <param name="mzids|inputtype" value="multi" />
+          <param name="mzids|target">
+                <collection type="list">
+                    <element name="target1" value="target.mzid" />
+                    <element name="target2" value="target.mzid" />
+                </collection>
+          </param>
+          <param name="mzids|decoy">
+                <collection type="list">
+                    <element name="decoy1" value="decoy.mzid" />
+                    <element name="decoy2" value="decoy.mzid" />
+                </collection>
+          </param>
+          <param name="ptm" value="true"/>
           <param name="matches" value="1"/>
-          <output name="pinout" value="percolatorInresult.txt" compare="sim_size" delta="20" />
+          <output name="pinout" value="percolatorInresult_metafile.txt" compare="sim_size" delta="20" />
         </test>
     </tests>
     <help>
