@@ -1,4 +1,4 @@
-<tool id="msgfplus2pin" name="MS-GF+ output to Pin converter" version="3.0">
+<tool id="msgfplus2pin" name="MS-GF+ output to Pin converter" version="3.0.1">
     <description>to create Percolator input files</description>
     <requirements>
         <requirement type="package" version="3.0">percolator</requirement>
@@ -6,17 +6,50 @@
     <stdio>
         <exit_code range="1:"/>
     </stdio>
-    <command>
-             msgf2pin -o $pinout -e $enzyme
-             #if $matches
-             -m $matches
+    <command><![CDATA[
+             mkdir target && mkdir decoy &&
+             
+             #if $mzids.inputtype == "multi"
+                 #for $key in $mzids.target.keys()
+                     ln -s '$mzids.target[$key]' 'target/$key' &&
+                     echo 'target/$key' >> targetmeta &&
+                 #end for
+                 #for $key in $mzids.decoy.keys()
+                     ln -s '$mzids.decoy[$key]' 'decoy/$key' &&
+                     echo 'decoy/$key' >> decoymeta &&
+                 #end for
+                 msgf2pin -o $pinout -e $enzyme
+                 #if $matches
+                     -m $matches
+                 #end if
+                 $aafreq $ptm $pngase $isotope targetmeta decoymeta
+             
+             #else
+                 ln -s '$mzids.target' 'target/$target.display_name' &&
+                 ln -s '$mzids.decoy' 'decoy/$decoy.display_name' &&
+                 msgf2pin -o $pinout -e $enzyme
+                 #if $matches
+                     -m $matches
+                 #end if
+                 $aafreq $ptm $pngase $isotope
+                 'target/$mzids.target.display_name' 'decoy/$mzids.decoy.display_name'
              #end if
-             $aafreq $ptm $pngase $isotope
-             "$target" "$decoy"
-    </command>
+    ]]></command>
     <inputs>
-        <param name="target" type="data" format="mzid,meta2pin" label="Target MSGF+ results or metafile pointing to them" />
-        <param name="decoy" type="data" format="mzid,meta2pin" label="Decoy MSGF+ results or metafile pointing to them" />
+        <conditional name="mzids">
+            <param name="inputtype" type="select" display="radio">
+                <option value="single">Single mzIdentML</option>
+                <option value="multi">Multiple mzIdentMLs</option>
+            </param>
+	    <when value="single">
+                <param name="target" type="data" format="mzid" label="Target MSGF+ results" />
+                <param name="decoy" type="data" format="mzid" label="Decoy MSGF+ results" />
+            </when>
+	    <when value="multi">
+                <param name="target" type="data_collection" collection_type="list" format="mzid" label="Target MSGF+ results" />
+                <param name="decoy" type="data_collection" collection_type="list" format="mzid" label="Decoy MSGF+ results" />
+            </when>
+        </conditional>
         <param name="enzyme" type="select" label="Enzyme used">
           <option value="trypsin">trypsin</option>
           <option value="no_enzyme">no enzyme</option>
@@ -42,11 +75,30 @@
     </outputs>
     <tests>
         <test>
-          <param name="target" value="target.mzid"/>
-          <param name="decoy" value="decoy.mzid"/>
+          <param name="mzids|inputtype" value="single" />
+          <param name="mzids|target" value="target.mzid" />
+          <param name="mzids|decoy" value="decoy.mzid" />
           <param name="ptm" value="true"/>
           <param name="matches" value="1"/>
           <output name="pinout" value="percolatorInresult.txt" compare="sim_size" delta="20" />
+        </test>
+        <test>
+          <param name="mzids|inputtype" value="multi" />
+          <param name="mzids|target">
+                <collection type="list">
+                    <element name="target1" value="target.mzid" />
+                    <element name="target2" value="target.mzid" />
+                </collection>
+          </param>
+          <param name="mzids|decoy">
+                <collection type="list">
+                    <element name="decoy1" value="decoy.mzid" />
+                    <element name="decoy2" value="decoy.mzid" />
+                </collection>
+          </param>
+          <param name="ptm" value="true"/>
+          <param name="matches" value="1"/>
+          <output name="pinout" value="percolatorInresult_multifractions.txt" compare="sim_size" delta="20" />
         </test>
     </tests>
     <help>
@@ -54,10 +106,9 @@ The percolator converter msgf2pin converts mzIdentML to input for percolator.
 Target and decoy inputs are MzIdentML-files of MS-GF+ from
 separate target and decoy searches. Internal MS-GF+ target/decoy
 analysis should be turned off, and the addFeatures options turned on.
-Multiple MzIdentML-files can be merged by replacing target and decoy
-filepaths with meta files. Meta files are text files containing the
-the paths of mzid-files, one path per line. For successful results,
-the different runs should be generated under similar conditions.
+Multiple MzIdentML-files can be merged by passing lists of these.
+For successful results, the different runs should be generated under 
+similar conditions.
     </help>
     <citations>
         <citation type="doi">10.1021/pr400937n</citation>

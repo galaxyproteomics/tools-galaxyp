@@ -1,0 +1,181 @@
+<tool id="meta_proteome_analyzer" name="MetaProteomeAnalyzer" version="1.4.1">
+    <description>
+        functional and taxonomic characterization of proteins
+    </description>
+    <requirements>
+        <requirement type="package" version="1.4.1">mpa-portable</requirement>
+    </requirements>
+    <command>
+<![CDATA[
+        #set $temp_stderr = "mpa_stderr"
+
+        cwd=`pwd` &&
+        mkdir -p output_dir &&
+        ## copy mpa conf dir to working dir
+        jar_dir=`mpa-portable -get_jar_dir` &&
+        cp -R \$jar_dir/conf . &&
+
+        ## echo the search engines to run
+        #set $search_engines = str($search_engines_options.engines).split(',')
+        echo "$search_engines_options.engines" &&
+        echo "DB: ${input_database.display_name} sequences: ${input_database.metadata.sequences}" &&
+
+        #for $mgf in $peak_lists:
+            #set $input_name = $mgf.display_name.split('/')[-1].replace(".mgf", "") + ".mgf"
+            ln -s -f '${mgf}' '${input_name}' &&
+            #set $encoded_id = $__app__.security.encode_id($mgf.id)
+            echo "Spectrums:${mgf.display_name}(API:${encoded_id}) " &&
+        #end for
+        cp "${input_database}" input_database.fasta &&
+
+        ######################
+        ## MPA ##
+        ######################
+        (mpa-portable de.mpa.cli.CmdLineInterface -Djava.awt.headless=true -Xmx2048m
+            -spectrum_files \$cwd
+            -database input_database.fasta
+            -missed_cleav $missed_cleavages
+            -prec_tol ${precursor_options.prec_tol}${precursor_options.prec_tol_units}
+            -frag_tol ${precursor_options.frag_tol}Da
+            -xtandem #if 'X!Tandem' in $search_engines then 1 else 0#
+            -comet #if 'Comet' in $search_engines then 1 else 0#
+            -msgf #if 'MSGF' in $search_engines then 1 else 0#
+            -output_folder output_dir
+            -threads "\${GALAXY_SLOTS:-12}"
+         2> $temp_stderr) &&
+        mv ./output_dir/*_metaproteins.csv metaproteins.csv &&
+        mv ./output_dir/*_metaprotein_taxa.csv metaprotein_taxa.csv &&
+        mv ./output_dir/*_peptides.csv peptides.csv &&
+        mv ./output_dir/*_proteins.csv proteins.csv &&
+        mv ./output_dir/*_psms.csv psms.csv &&
+        mv ./output_dir/*_spectrum_ids.csv spectrum_ids.csv &&
+        exit_code_for_galaxy=\$? &&
+        cat $temp_stderr 2>&1 &&
+        (exit \$exit_code_for_galaxy)
+         
+]]>
+    </command>
+    <inputs>
+        <param format="fasta" name="input_database" type="data" label="Protein Database"
+            help="Select FASTA database from history"/>
+        <param name="peak_lists" format="mgf" type="data" multiple="true" label="Input Peak Lists (mgf)"
+            help="Select appropriate MGF dataset(s) from history" />
+        <param name="missed_cleavages" type="integer" value="2" label="Maximum Missed Cleavages"
+            help="Allow peptides to contain up to this many missed enzyme cleavage sites."/>
+        <section name="precursor_options" expanded="false" title="Precursor Options">
+            <param name="prec_tol_units" type="select" label="Precursor Ion Tolerance Units"
+                help="Select based on instrument used, as different machines provide different quality of spectra. ppm is a standard for most precursor ions">
+                <option value="ppm">Parts per million (ppm)</option>
+                <option value="Da">Daltons</option>
+            </param>
+            <param name="prec_tol" type="float" value="10" label="Percursor Ion Tolerance"
+                help="Provide error value for precursor ion, based on instrument used. 10 ppm recommended for Orbitrap instrument"/>
+            <param name="frag_tol" type="float" value="0.5" label="Fragment Tolerance (Daltons)"
+                help="Provide error value for fragment ions, based on instrument used"/>
+        </section>
+        <!-- Search Engine Selection -->
+        <section name="search_engines_options" expanded="false" title="Search Engine Options">
+            <param name="engines" type="select" display="checkboxes" multiple="True" label="DB-Search Engines">
+                <help>Comet and Tide shouldn't both be selected since they use a similar algoritm.</help>
+                <option value="X!Tandem" selected="True">X!Tandem</option>
+                <option value="MSGF">MS-GF+</option>
+                <option value="Comet">Comet</option>
+            </param>
+        </section>
+
+<!--
+-generate_metaproteins  Turn meta-protein generation (aka. protein grouping) on or off (1: on, 0: off, default is '1').
+-peptide_rule           The peptide rule chosen for meta-protein generation (-1: off, 0: share-one-peptide, 1: shared-peptide-subset, default is '0').
+-cluster_rule           The sequence cluster rule chosen for meta-protein generation (-1: off, 0: UniRef100, 1: UniRef90, 2: UniRef50, default is '-1').
+-taxonomy_rule          The taxonomy rule chosen for meta-protein generation (-1: off, 0: on superkingdom or lower, 1: on kingdom or lower, 2: on phylum or lower, 3: on class or lower, 4: on order or lower, 5: on family or lower, 6: on genus or lower, 7: on species or lower, 8: on subspecies, default is '-1').
+-iterative_search       Turn iterative (aka. two-step) searching on or off (1: on, 0: off, default is '0').
+-fdr_threshold          The applied FDR threshold for filtering the results (default is 0.05 == 5% FDR).
+-->
+
+
+    </inputs>
+    <outputs>
+        <data format="tabular" name="output_proteins" from_work_dir="proteins.csv" label="${tool.name} on ${on_string}: proteins">
+            <actions>
+                <action name="comment_lines" type="metadata" default="1" />
+                <action name="column_names" type="metadata" default="Protein_No,Protein_Accession,Protein_Description,Protein_Taxonomy,Sequence_Coverage,Peptide_Count,NSAF,emPAI,Spectral_Count,Isoelectric_Point,Molecular_Weight,Protein_Sequence,Peptides" />
+            </actions>
+        </data>
+        <data format="tabular" name="output_peptides" from_work_dir="peptides.csv" label="${tool.name} on ${on_string}: peptides">
+            <actions>
+                <action name="comment_lines" type="metadata" default="1" />
+                <action name="column_names" type="metadata" default="Peptide_Num,Protein_Accessions,Peptide_Sequence,Protein_Count,Spectral_Count,Taxonomic_Group,Taxonomic_Rank,NCBI_Taxonomy_ID" />
+            </actions>
+        </data>
+        <data format="tabular" name="output_PSMs" from_work_dir="psms.csv" label="${tool.name} on ${on_string}: PSMs">
+            <actions>
+                <action name="comment_lines" type="metadata" default="1" />
+                <action name="column_names" type="metadata" default="PSM_Num,Protein_Accessions,Peptide_Sequence,Spectrum_Title,Charge,Search_Engine,q-value,Score" />
+            </actions>
+        </data>
+        <data format="tabular" name="output_spectrum_ids" from_work_dir="spectrum_ids.csv" label="${tool.name} on ${on_string}: spectrum_ids">
+            <actions>
+                <action name="comment_lines" type="metadata" default="1" />
+                <action name="column_names" type="metadata" default="Spectrum_Number,Spectrum_ID,Spectrum_Title,Peptides,Protein_Accessions" />
+            </actions>
+        </data>
+        <data format="tabular" name="output_metaproteins" from_work_dir="metaproteins.csv" label="${tool.name} on ${on_string}: metaproteins">
+            <actions>
+                <action name="comment_lines" type="metadata" default="1" />
+                <action name="column_names" type="metadata" default="Meta-Protein_Num,Meta-Protein_Accession,Meta-Protein_Description,Meta-Protein_Taxonomy,Meta-Protein_UniRef100,Meta-Protein_UniRef90,Meta-Protein_UniRef50,Meta-Protein_KO,Meta-Protein_EC,Peptide_Count,Spectral_Count,Proteins,Peptides" />
+            </actions>
+        </data>
+        <data format="tabular" name="output_metaprotein_taxa" from_work_dir="metaprotein_taxa.csv" label="${tool.name} on ${on_string}: metaprotein_taxa">
+            <actions>
+                <action name="comment_lines" type="metadata" default="1" />
+                <action name="column_names" type="metadata" default="Unclassified,Superkingdom,Kingdom,Phylum,Class,Order,Family,Genus,Species,Subspecies,Num_Peptides,Spectral_Count" />
+            </actions>
+        </data>
+    </outputs>
+    <tests>
+        <test>
+            <param name="peak_lists" value="Test416Ebendorf.mgf" ftype="mgf"/>
+            <param name="input_database" value="searchdb.fa" ftype="fasta"/>
+            <param name="missed_cleavages" value="2"/>
+            <param name="prec_tol" value="ppm"/>
+            <param name="prec_tol" value="10"/>
+            <param name="frag_tol" value="0.5"/>
+            <param name="engines" value="X!Tandem,MSGF,Comet"/>
+            <output name="output_PSMs">
+               <assert_contents>
+                    <has_text text="A2SPK1" />
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help>
+**What it does**
+
+=======
+
+MetaProteomeAnalyzer (MPA) performs identification of proteins and in-depth analysis of metaproteomics (and also proteomics) data. The MPA software currently supports the database search engines Comet, MS-GF+ and X!Tandem taking MGF spectrum files as input data. User-provided FASTA databases (preferably downloaded from UniProtKB) are formatted automatically. 
+
+https://github.com/compomics/meta-proteome-analyzer
+
+----
+
+Outputs
+=======
+
+MPA generates 6 tabular outputs:
+
+* psms
+* peptides
+* proteins
+* spectrum_ids
+* metaproteins
+* metaprotein_taxa
+
+
+------
+
+    </help>
+    <citations>
+        <citation type="doi">10.1021/pr501246w</citation>
+    </citations>
+</tool>
