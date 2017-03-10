@@ -1,14 +1,13 @@
-<tool id="protein_table_fdr" name="Calculate protein FDR" version="1"> 
+<tool id="protein_table_fdr" name="Calculate protein FDR" version="1.0">
     <description>using different methods</description>
     <requirements>
         <requirement type="package" version="2.2">msstitch</requirement>
-	<requirement type="package">percolator</requirement> 
     </requirements>
     <command>
 	    <![CDATA[
-	    #if $qvality.type in ["pickfasta", "pickresult"]
+	    #if $fdr.type in ["pickfasta", "pickresult"]
                 msspeptable modelqvals -i '$targetpeptable' -o targetpeplinmod.txt
-	        --scorecolpattern "$qvality.scorecolpattern" --fdrcolpattern "$qvality.qvaluecolpattern"
+	        --scorecolpattern "$fdr.scorecolpattern" --fdrcolpattern "$fdr.qvaluecolpattern"
 	        &&
                 msspeptable modelqvals -i '$decoypeptable' -o decoypeplinmod.txt
 	        --scorecolpattern "$scorecolpattern" --fdrcolpattern $qvaluecolpattern
@@ -21,10 +20,10 @@
 	    &&
 	    mssprottable bestpeptide -i '$targetproteins' -o targetbestpeptides.txt --peptable targetpeplinmod.txt
 	    --scorecolpattern 
-	    #if $qvality.type in ["pickfasta", "pickresult"]
+	    #if $fdr.type in ["pickfasta", "pickresult"]
 	        'linear model'
 	    #else
-	        '$qvality.scorecolpattern'
+	        '$fdr.scorecolpattern'
 	    #end if
             #if $minlog
                 --logscore
@@ -35,10 +34,10 @@
             &&
 	    mssprottable bestpeptide -i '$decoyproteins' -o decoybestpeptides.txt --peptable decoypeplinmod.txt
 	    --scorecolpattern
-	    #if $qvality.type in ["pickfasta", "pickresult"]
+	    #if $fdr.type in ["pickfasta", "pickresult"]
 	        'linear model'
 	    #else
-	        '$qvality.scorecolpattern'
+	        '$fdr.scorecolpattern'
 	    #end if
             #if $minlog
                 --logscore
@@ -48,43 +47,22 @@
 	    #end if
 	    &&
 	    mssprottable
-	    #if $qvality.type in ["pickfasta", "pickresult"]
-	        pickqvality 
-                #if str($qvality.type) == "pickfasta"
+	    #if $fdr.type in ["pickfasta", "pickresult"]
+	        pickedfdr
+                #if str($fdr.type) == "pickfasta"
                     --targetfasta $tfasta --decoyfasta $dfasta
-	            #if $qvality.fastadelim
-	                --fastadelim $qvality.fastadelim
+	            #if $fdr.fastadelim
+	                --fastadelim $fdr.fastadelim
 	            #end if
-	            #if $qvality.genefield
-	                --genefield $qvality.genefield
+	            #if $fdr.genefield
+	                --genefield $fdr.genefield
 	            #end if
                 #end if
-	    #else if $qvality.type in ["qvalue", "probability"]
-	        qvality --feattype $qvality.type
-	    #end if
-	    #if $qoptions.yesno.value == "yes"
-	        --qoptions
-	        #if $qoptions.epsilon_step
-	            ***epsilon-step $qoptions.epsilon_step
-	        #end if
-	        #if $qoptions.number_of_bins
-	            ***number-of-bins $qoptions.number_of_bins
-	        #end if
-	        #if $qoptions.epsilon_cross_validation
-	            ***epsilon-cross-validation $qoptions.epsilon_cross_validation
-	        #end if
-	        #if $qoptions.reverse.value == "true"
-	            ***reverse
-	        #end if
-	        #if $qoptions.generalized.value == "true"
-	            ***generalized
-	        #end if
+	    #else if $fdr.type=="protfdr"
+	        protfdr
 	    #end if
             -i targetbestpeptides.txt --decoyfn decoybestpeptides.txt
-	    -o qvalityout.txt
-	    &&
-	    mssprottable fdr -i targetbestpeptides.txt -o '$output'
-	    --qvality qvalityout.txt --scorecolpattern '^Q-score'
+	    -o '$output'
 	    ]]>
     </command>
     
@@ -96,12 +74,11 @@
       <param name="proteincolumn" type="integer" label="Peptide table column with protein accessions if not standard Master protein column" optional="true" />
       <param name="minlog" type="boolean" label="Use -log10 of a peptide's score" help="E.g. when using q-values to calculate best peptide Q-score" truevalue="true" falsevalue="false"/>
 
-      <conditional name="qvality">
-	      <param name="type" type="select" display="radio">
+      <conditional name="fdr">
+	      <param name="type" type="select" display="radio" label="FDR method to use" help="All use best peptide per protein, picked fdr also does a linear modeling on the q-values">
 		      <option value="pickfasta">Picked FDR with FASTA</option>
 		      <option value="pickresult">Picked FDR from protein table</option>
-		      <option value="qvalue">Conventional FDR with best peptide</option>
-		      <option value="probability">Conventional FDR with protein probability</option>
+		      <option value="protfdr">Conventional FDR</option>
 	      </param>
 	      <when value="pickfasta">
                      <param name="scorecolpattern" type="text" label="Regular expression pattern to determine scorecolumn for linear modeling of q-values in peptide file" help="E.g. ^percolator svm" />
@@ -124,32 +101,10 @@
 	      <when value="probability" />
                      <param name="scorecolpattern" type="text" label="Regular expression pattern to determine scorecolumn for getting best peptide for protein" help="E.g. ^q-value or svm" />
 	</conditional>
-	<conditional name="qoptions">
-		<param name="yesno" label="Change qvality defaults?" type="select" display="radio">
-			<option value="yes">Yes</option>
-			<option value="no">No</option>
-		</param>
-		<when value="yes">
-			<param name="epsilon_step" type="float" min="0" max="1" label="qvality Epsilon step" help="The relative step size used as treshhold before cross validation error is calculated. A number between 0 and 1" optional="true" />
-			<param name="number_of_bins" type="integer" min="1" max="2147483647" label="qvality Number of bins" help="The number of spline knots used when interpolating spline function. Default: 500" optional="true"/>
-			<param name="epsilon_cross_validation" type="float" min="0" max="1" optional="true" label="qvality Epsilon cross validation" help="The relative crossvalidation step size used as treshhold before ending the iterations. A number between 0 and 1." />
-			<param name="reverse" type="select" label="qvality Reverse" help="Indicating that the scoring mechanism is reversed, i.e. that low scores are better than higher scores">
-			    <option value="false">No</option>
-			    <option value="true">Yes</option>
-			</param>
-			<param name="generalized" type="select" label="qvality Generalized" help="Generalized target decoy competition, situations where PSMs known to more frequently be incorrect are mixed in with the correct PSMs">
-			    <option value="false">No</option>
-			    <option value="true">Yes</option>
-			</param>
-		</when>
-		<when value="no" />
-	</conditional>
     </inputs>
-    
     <outputs>
         <data format="prottable" name="output"/>
     </outputs>
-
     <help>
 	    This tool takes a protein table and adds protein FDR columns to it. It follows
 	    Savitsky et al and can deliver picked FDR for gene tables, or from the same
@@ -157,5 +112,4 @@
     </help>
     <citations>
     </citations>
-
 </tool>
