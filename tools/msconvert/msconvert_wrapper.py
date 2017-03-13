@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import re
 import logging
+import shlex
 
 assert sys.version_info[:2] >= (2, 6)
 
@@ -40,7 +41,8 @@ def execute(command, stdin=None):
     try:
         with open(tmp_stderr_name, 'wb') as tmp_stderr:
             with open(tmp_stdout_name, 'wb') as tmp_stdout:
-                proc = subprocess.Popen(args=command, shell=True, stderr=tmp_stderr.fileno(), stdout=tmp_stdout.fileno(), stdin=stdin, env=os.environ)
+                args = shlex.split(command) # handle proper splitting of quoted args
+                proc = subprocess.Popen(args=args, shell=False, stderr=tmp_stderr.fileno(), stdout=tmp_stdout.fileno(), stdin=stdin, env=os.environ)
                 returncode = proc.wait()
                 if returncode != 0:
                     raise Exception("Program returned with non-zero exit code %d. stderr: %s" % (returncode, read_stderr()))
