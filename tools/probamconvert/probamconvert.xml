@@ -1,0 +1,127 @@
+<tool id="probamconvert" name="proBAMconvert" version="0.1.0">
+    <description>peptide identifications to proBAM or proBED</description>
+    <requirements>
+        <requirement type="package" version="1.0.0">probamconvert</requirement>
+    </requirements>
+    <stdio>
+        <exit_code range="1:" />
+    </stdio>
+    <command><![CDATA[
+        #set $psm_file = 'input.'+str($input.datatype.file_ext)
+        ln -s "$input" $psm_file;
+        proBAM.py --name="converted" --file=$psm_file --conversion_mode=$conversion_mode
+        --database=$refsrc.database
+        #if str($refsrc.database) == 'ENSEMBL':
+            --species=$refsrc.species
+            #if $refsrc.version:
+                --version=$refsrc.version
+            #end if
+        #end if
+        #if str($optional.decoy_annotation) != '':
+            --decoy_annotation='$optional.decoy_annotation'
+        #end if
+        --pre_picked_annotation=$optional.pre_picked_annotation
+        --mismatches=$optional.mismatches
+        $optional.rm_duplicates
+        $optional.three_frame_translation
+        $optional.include_unmapped
+    ]]></command>
+    <inputs>
+        <param name="input" type="data" format="mzid,pepxml" label="Peptide Indentification (mzIdentML or pepXML)"/>
+        <param name="conversion_mode" type="select" label="Convert to:">
+            <option value="proBAM_psm">proBAM_psm</option>
+            <option value="proBAM_peptide">proBAM_peptide</option>
+            <option value="proBAM_peptide_mod">proBAM_peptide_mod</option>
+            <option value="proBED">proBED</option>
+        </param>
+        <conditional name="refsrc">
+            <param name="database" type="select" label="Genomics reference database">
+                <option value="ENSEMBL">ENSEMBL</option>
+            </param>
+            <when value="ENSEMBL">
+                <param name="species" type="select" label="species">
+                    <option value="homo_sapiens">homo_sapiens</option>
+                    <option value="mus_musculus">mus_musculus</option>
+                    <option value="danio_rerio">danio_rerio</option>
+                    <option value="drosophila_melanogaster">drosophila_melanogaster</option>
+                </param>
+                <param name="version" type="select" optional="true" label="ensembl release version">
+                    <option value="87">87</option>
+                    <option value="86">86</option>
+                    <option value="85">85</option>
+                    <option value="84">84</option>
+                    <option value="83">83</option>
+                    <option value="82">82</option>
+                    <option value="81">81</option>
+                    <option value="80">80</option>
+                    <option value="79">79</option>
+                    <option value="78">78</option>
+                    <option value="77">77</option>
+                    <option value="76">76</option>
+                    <option value="75">75</option>
+                    <option value="74">74</option>
+                </param>
+            </when>
+        </conditional>
+        <section name="optional" expanded="false" title="Optional settings">
+            <param name="decoy_annotation" type="text" value="" optional="true" label="decoy_annotation list"
+                help="default is: REV_,DECOY_,_REVERSED,REVERSED_,_DECOY">
+            </param> 
+            <param name="mismatches" type="integer" value="0" min="0" max="5" label="allowed mismatches"/>
+            <param name="rm_duplicates" type="boolean" truevalue="--rm_duplicates=Y" falsevalue="--rm_duplicates=N" checked="false"
+                label="remove duplicates"/>
+            <param name="three_frame_translation" type="boolean" truevalue="--three_frame_translation=Y" falsevalue="--three_frame_translation=N" checked="false"
+                label="translate transcript sequences in 3 frames"/>
+            <param name="include_unmapped" type="boolean" truevalue="--include_unmapped=Y" falsevalue="--include_unmapped=N" checked="false"
+                label="unmapped psm should be included in the output"/>
+            <param name="pre_picked_annotation"  type="select" label="pre_picked_annotation"> 
+                <option value="all" selected="true">all</option>
+                <option value="UniProt_ACC">UniProt_ACC</option>
+                <option value="UniProt_Entry">UniProt_Entry</option>
+                <option value="Ensembl_tr">Ensembl_tr</option>
+                <option value="Ensembl_pr">Ensembl_pr</option>
+                <option value="RefSeq">RefSeq</option>
+                <option value="First">First</option>
+            </param>
+         </section>
+    </inputs>
+    <outputs>
+        <data name="output_bam" format="pro.bam" label="" from_work_dir="converted.sorted.bam">
+            <filter>conversion_mode != 'proBED'</filter>
+        </data>
+        <data name="output_bed" format="pro.bed" label="" from_work_dir="converted.pro.bed">
+            <filter>conversion_mode == 'proBED'</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test>
+            <param name="input" ftype="mzid" value="test.mzid"/>
+            <param name="conversion_mode" value="proBED"/>
+            <param name="database" value="ENSEMBL"/>
+            <param name="species" value="homo_sapiens"/>
+            <param name="version" value="87"/>
+            <output name="output_bed">
+                <assert_contents>
+                    <has_text text="Q7Z6Z7_0" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="input" ftype="mzid" value="test.mzid"/>
+            <param name="conversion_mode" value="proBAM_psm"/>
+            <param name="database" value="ENSEMBL"/>
+            <param name="species" value="homo_sapiens"/>
+            <param name="version" value="87"/>
+            <output name="output_bed">
+                <assert_contents>
+                    <has_text text="Q7Z6Z7_0" />
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help><![CDATA[
+
+proBAMconvert reads common peptide identification files and attempt to extract all relevant attributes from the files, including comments and enzyme information, and converts these attributes to comply with proBAM/proBED. Next, protein identifiers are extracted from the peptide identification files for every PSM. Different software tend to have their own rules to encode protein identifiers, proBAMconvert is designed to be compliant with a wide range of encodings. A crucial prerequisite of proBAMconvert is that the protein identifiers are among the identifiers that proBAM can recognize (see chapter 4). Once the protein identifiers have been retrieved, genomic information is extracted from Ensembl (transcript sequence, exon information, genomic coordinates,...). Next, using this genomic information the peptides are mapped onto the corresponding sequence reconstructed from Ensembl. Combining the genomic information from Ensembl and PSM information from the peptide identification file, the proBAM/proBED file is generated. proBAMconvert has various options, allowing to adopt proBAM/proBED output for a specific research question.
+
+    ]]></help>
+</tool>
