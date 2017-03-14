@@ -65,3 +65,4 @@ Authors and contributors:
 * Fred Sadler
 * John Chilton <jmchilton@gmail.com>
 * Minnesota Supercomputing Institute, Univeristy of Minnesota
+* Jeremy Volkening, University of Wisconsin-Madison
