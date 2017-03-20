@@ -33,16 +33,14 @@ def get_setnames(filenames, setpatterns, setnames):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--infiles', dest='galaxyinfiles', nargs='+')
-    parser.add_argument('--displaynames', dest='properinfilenames', nargs='+')
+    parser.add_argument('--infiles', dest='infiles', nargs='+')
     parser.add_argument('--setpatterns', dest='setpatterns', nargs='+')
     parser.add_argument('--setnames', dest='setnames', nargs='+')
     args = parser.parse_args()
     cmd = ['msslookup', 'spectra', '-i']
-    cmd = cmd.extend(args.infiles)
+    cmd.extend(args.infiles)
     cmd.append('--setnames')
-    cmd = cmd.extend(get_setnames(args.properinfilenames, args.setpatterns,
-                                  args.setnames))
+    cmd.extend(get_setnames(args.infiles, args.setpatterns, args.setnames))
     subprocess.call(cmd)
 
 
