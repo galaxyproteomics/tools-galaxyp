@@ -8,46 +8,43 @@
     </stdio>
     <command>
 	    <![CDATA[
-	    #if $percolator.yesno == "true" and $psms.multiple == "true"
-    	        #for $fn, $mzidfn in zip($psms.psmtables.keys(), $percolator.mzidentmls.keys())
-    	            msspsmtable percolator -i '$psms[$fn]' --mzid '$percolator.mzidentmls[$mzidfn]' -o '$fn'
+	    #if $psms.percolator.yesno == "true" and $psms.multiple == "true"
+    	        #for $fn, $mzidfn in zip($psms.psmtables.keys(), $psms.percolator.mzidentmls.keys())
+    	            msspsmtable percolator -i '$psms.psmtables[$fn]' --mzid '$psms.percolator.mzidentmls[$mzidfn]' -o '$fn'
                 &&
 	        #end for
-	    #else if $psms.multiple == "true" and $percolator.yesno == "false"
+	    #else if $psms.multiple == "true" and $psms.percolator.yesno == "false"
 	        #for $fn in $psms.psmtables.keys()
-	            ln -s '$psms[$fn]' '$fn'
+	            ln -s '$psms.psmtables[$fn]' '$fn'
 	            &&
 	        #end for
-	    #else if $percolator.yesno == "true"
-	        msspsmtable percolator -i '$psms.psmtable' --mzid '$percolator.mzidentmls[$mzidfn]' -o singlepsmtable.txt
+	    #else if $psms.percolator.yesno == "true"
+	        msspsmtable percolator -i '$psms.psmtable' --mzid '$psms.percolator.mzidentmls' -o psms.txt
 	        &&
-	    #else if $psms.multiple == "false" and $percolator.yesno == "false"
-	        ln -s '$psms.psmtable singlepsmtable.txt
+	    #else if $psms.multiple == "false" and $psms.percolator.yesno == "false"
+	        ln -s '$psms.psmtable' psms.txt
 	        &&
 	    #end if
 
 	    #if $psms.multiple == "true"
-	        msspsmtable merge -o mergedpsms.txt -i
+	        msspsmtable merge -o psms.txt -i
                 #for $fn in $psms.psmtables.keys()
                     '$fn'
                 #end for
-	    #else
-	        ln -s singlepsmtable.txt mergedpsms.txt
+	    &&
 	    #end if
 
-	    &&
 	    #if $filter.yesno == "true"
-	        msspsmtable conffilt -i mergedpsms.txt -o filteredpsms.txt
+	        msspsmtable conffilt -i psms.txt -o filteredpsms.txt
 	        --confidence-col $filter.confcol --confidence-lvl $filter.conflvl 
 	        --confidence-better $filter.confbet
-	    #else
-	        ln -s mergedpsms.txt filteredpsms.txt
+	        && mv filteredpsms.txt psms.txt
+	    &&
 	    #end if
 	    
-	    &&
 	    cp '$lookup' psmlookup.sql
 	    &&
-	    msslookup psms -i filteredpsms.txt --dbfile psmlookup.sql
+	    msslookup psms -i psms.txt --dbfile psmlookup.sql
             #if $speccol
                 --spectracol $speccol 
             #end if
@@ -68,12 +65,13 @@
 	    #end if
 	    
 	    &&
-	    msspsmtable specdata -i filemappedpsms.txt -o specdatapsms.txt --dbfile psmlookup.sql
+	    msspsmtable specdata -i psms.txt -o specdatapsms.txt --dbfile psmlookup.sql
+            && mv specdatapsms.txt psms.txt
 
-	    &&
             #if $isobaric.yesno == "true" or $precursorquant == "true"
-	        msspsmtable quant -i specdatapsms.txt -o quantpsms.txt --dbfile psmlookup.sql
-                #if $isobaric == "true"
+	        &&
+	        msspsmtable quant -i psms.txt -o quantpsms.txt --dbfile psmlookup.sql
+                #if $isobaric.yesno == "true"
                     --isobaric
                 #end if
                 #if $precursorquant == "true"
@@ -81,32 +79,29 @@
                 #end if
 		#if $isobaric.yesno == "true" and $isobaric.ratios.yesno == "true"
 		    && 
-		    msspsmtable isoquant -i quantpsms.txt -o quantratios.txt --isobquantcolpattern $isobaric.ratios.isobpattern 
+		    msspsmtable isoratio -i quantpsms.txt -o quantratios.txt --isobquantcolpattern $isobaric.ratios.isobpattern 
 		    --denompatterns $isobaric.ratios.denompatterns --minint $isobaric.ratios.minint
 		    && mv quantratios.txt quantpsms.txt
 		#end if
-	    #else
-	        ln -s specdatapsms.txt quantpsms.txt
+	        && mv quantpsms.txt psms.txt
 	    #end if
 	    
-	    &&
 	    #if $genes == "true"
-	        msspsmtable genes -i quantpsms.txt -o genepsms.txt --dbfile psmlookup.sql
-	    #else
-	        ln -s quantpsms.txt genepsms.txt
-	    #end if
-
-	    &&
-	    #if $proteingroup.yesno == "true"
-	        msslookup proteingroup -i filemappedpsms.txt --dbfile psmlookup.sql
 	        &&
-	        msspsmtable proteingroup -i quantpsms.txt --dbfile psm_lookup.sql -o pgrouped.txt
-	    #else
-	        ln - s quantpsms.txt pgrouped.txt
+	        msspsmtable genes -i psms.txt -o genepsms.txt --dbfile psmlookup.sql
+	        && mv genepsms.txt psms.txt
+	    #end if
+
+	    #if $proteingroup
+	        &&
+	        msslookup proteingroup -i psms.txt --dbfile psmlookup.sql
+	        &&
+	        msspsmtable proteingroup -i psms.txt --dbfile psmlookup.sql -o pgrouped.txt
+                && mv pgrouped.txt psms.txt
 	    #end if
 
 	    &&
-	    ln -s pgrouped.txt '$output'
+	    mv psms.txt '$output'
 	    &&
 	    mv psmlookup.sql '$lookupoutput'
            ]]>	    
@@ -119,12 +114,34 @@
 		    </param>
 		    <when value="true"> 
 			    <param name="psmtables" type="data_collection" format="mzidtsv" label="Search table from MSGF+"/>
+    	                    <conditional name="percolator">
+    	                             <param type="select" name="yesno" label="Add percolator data?">
+    	                         	    <option value="true">Yes</option>
+    	                         	    <option value="false">Yes</option>
+    	                             </param>
+    	                             <when value="true"> 
+    	                         	    <param name="mzidentmls" type="data_collection" format="mzid" label="Percolated MSGF+ mzIdentML data" />
+    	                             </when>
+    	                             <when value="false" /> 
+    	                     </conditional>
+
 		    </when>
 		    <when value="false"> 
 			   <param name="psmtable" type="data" format="mzidtsv" label="Search table from MSGF+"/>
+    	                   <conditional name="percolator">
+    	                            <param type="select" name="yesno" label="Add percolator data?">
+    	                        	    <option value="true">Yes</option>
+    	                        	    <option value="false">Yes</option>
+    	                            </param>
+    	                            <when value="true"> 
+    	                        	    <param name="mzidentmls" type="data" format="mzid" label="Percolated MSGF+ mzIdentML data" />
+    	                            </when>
+    	                            <when value="false" /> 
+    	                    </conditional>
 		    </when>
 	    </conditional>
 	    <param name="speccol" type="integer" value="1" label="Spectra file column number" />
+	    <param name="lookup" type="data" format="sqlite" label="SQLite database for lookup operations" help="Contain spectra and possibly quant data" optional="true"/>
 	    <param name="dbase" type="data" format="fasta" label="Fasta database used to search" optional="true"/>
 	    <param name="fastadelim" type="select" label="FASTA delimiter" optional="true" help="In case FASTA is not ENSEMBL or Uniprot you may be able to use a simple splitter to parse out the gene names. The delimiter is what splits the fields.">
 		    <option value="pipe">| (pipe)</option>
@@ -135,17 +152,6 @@
 	    <param name="mapfn" type="data" format="martmap" optional="true" label="Biomart map containing genes/symbols/descriptions" />
 	    <param name="decoy" type="boolean" label="Is the PSM table a decoy?" help="Only necessary to specify in case a ENSEML fasta and Biomart map are supplied" /> 
 	   
-	   <conditional name="percolator">
-		    <param type="select" name="yesno" label="Add percolator data?">
-			    <option value="true">Yes</option>
-			    <option value="false">Yes</option>
-		    </param>
-		    <when value="true"> 
-			    <param name="mzidentmls" type="data" format="mzid" label="Percolated MSGF+ mzIdentML data" help="Make sure to select a collection here when the PSM table input is a collection" />
-		    </when>
-		    <when value="false" /> 
-	    </conditional>
-
 	    <conditional name="filter">
 		    <param type="select" name="yesno" label="Filter PSM table?">
 			    <option value="true">Yes</option>
@@ -197,101 +203,103 @@
 		    <param name="psms|multiple" value="true" />
 		    <param name="psms|psmtables">
 			    <collection type="list">
-				    <element name="psmtable1" value="psmtable.txt" />
-				    <element name="psmtable2" value="psmtable.txt" />
+				    <element name="psmtable1" value="psmtable1.txt" />
+				    <element name="psmtable2" value="psmtable2.txt" />
 			   </collection>
 		    </param>
 		    <param name="speccol" value="1" />
-		    <param name="dbase" value="db.fasta" />
-		    <param name="mapfn" value="biomart.map" />
+		    <param name="dbase" value="ens85_small.fasta" />
+		    <param name="lookup" value="spectra_quant.sql" />
+		    <param name="mapfn" value="biomart.txt" />
 		    <param name="decoy" value="false" />
-		    <param name="percolator|yesno" value="true" />
-		    <param name="percolator|mzidentmls" >
-			    <!-- FIXME correct names! -->
+		    <param name="psms|percolator|yesno" value="true" />
+		    <param name="psms|percolator|mzidentmls" >
 			    <collection type="list">
-				    <element name="mzid1" value="psms.mzid" />
-				    <element name="mzid2" value="psms.mzid" />
+				    <element name="mzid1" value="mzid_perco1.xml" />
+				    <element name="mzid2" value="mzid_perco2.xml" />
 			    </collection>
 		    </param>
 		    <param name="filter|yesno" value="true" />
-		    <param name="filter|confcol" value="18" />
+		    <param name="filter|confcol" value="17" />
 		    <param name="filter|conflvl" value="0.01" />
 		    <param name="filter|confbet" value="lower" />
-		    <param name="isobaric" value="true" />
+		    <param name="isobaric|yesno" value="true" />
+		    <param name="isobaric|ratios|yesno" value="true" />
+		    <param name="isobaric|ratios|minint" value="0.1" />
+		    <param name="isobaric|ratios|isobpattern" value="tmt10plex" />
+		    <param name="isobaric|ratios|denompatterns" value="_126" />
 		    <param name="precursorquant" value="true" />
 		    <param name="genes" value="true" />
 		    <param name="proteingroup" value="true" />
 		    <output name="output" value="fullpsmtable.txt" />
-		    <output name="lookupoutput" value="proteingrouped_ensemblpsms.sql" />
 	    </test>
 	    <test>
 		    <param name="psms|multiple" value="false" />
-		    <param name="psms|psmtable" value="psmtable.txt" />
+		    <param name="psms|psmtable" value="psmtable1.txt" />
 		    <param name="speccol" value="1" />
-		    <param name="dbase" value="db.fasta" />
+		    <param name="dbase" value="ens85_small.fasta" />
+		    <param name="lookup" value="spectra_quant.sql" />
 		    <param name="decoy" value="false" />
-		    <param name="percolator|yesno" value="true" />
-			    <!-- FIXME correct mzid name! -->
-		    <param name="percolator|mzidentmls" value="psms.mzid" />
+		    <param name="psms|percolator|yesno" value="true" />
+		    <param name="psms|percolator|mzidentmls" value="mzid_perco1.xml" />
 		    <param name="filter|yesno" value="false" />
-		    <param name="isobaric" value="false" />
+		    <param name="isobaric|yesno" value="false" />
 		    <param name="precursorquant" value="false" />
 		    <param name="genes" value="false" />
 		    <param name="proteingroup" value="false" />
 		    <output name="output" value="minimal_psmtable_perco.txt" />
-		    <output name="lookupoutput" value="minimal_psms_perco.sql" />
 	    </test>
 	    <test>
 		    <param name="psms|multiple" value="false" />
-		    <param name="psms|psmtable" value="psmtable.txt" />
+		    <param name="psms|psmtable" value="psmtable1.txt" />
 		    <param name="speccol" value="1" />
-		    <param name="dbase" value="db.fasta" />
+		    <param name="dbase" value="ens85_small.fasta" />
+		    <param name="lookup" value="spectra_quant.sql" />
 		    <param name="decoy" value="false" />
 		    <param name="percolator|yesno" value="false" />
 		    <param name="filter|yesno" value="false" />
-		    <param name="isobaric" value="false" />
+		    <param name="isobaric|yesno" value="false" />
 		    <param name="precursorquant" value="false" />
 		    <param name="genes" value="false" />
 		    <param name="proteingroup" value="false" />
 		    <output name="output" value="minimal_psmtable.txt" />
-		    <output name="lookupoutput" value="minimal_psms.sql" />
 	    </test>
 	    <test>
 		    <param name="psms|multiple" value="true" />
 		    <param name="psms|psmtables">
 			    <collection type="list">
-				    <element name="psmtable1" value="psmtable.txt" />
-				    <element name="psmtable2" value="psmtable.txt" />
+				    <element name="psmtable1" value="psmtable1.txt" />
+				    <element name="psmtable2" value="psmtable2.txt" />
 			   </collection>
 		    </param>
 		    <param name="speccol" value="1" />
-		    <param name="dbase" value="db.fasta" />
+		    <param name="dbase" value="ens85_small.fasta" />
+		    <param name="lookup" value="spectra_quant.sql" />
 		    <param name="decoy" value="false" />
 		    <param name="percolator|yesno" value="false" />
 		    <param name="filter|yesno" value="false" />
-		    <param name="isobaric" value="false" />
+		    <param name="isobaric|yesno" value="false" />
 		    <param name="precursorquant" value="false" />
 		    <param name="genes" value="false" />
 		    <param name="proteingroup" value="false" />
-		    <output name="output" value="minimal_psmtable.txt" />
-		    <output name="lookupoutput" value="minimal_psms.sql" />
+		    <output name="output" value="minimal_psmtable_merged.txt" />
 	    </test>
 	    <test>
 		    <param name="psms|multiple" value="false" />
-		    <param name="psms|psmtable" value="psmtable.txt" />
+		    <param name="psms|psmtable" value="psmtable3.txt" />
 		    <param name="speccol" value="1" />
 		    <param name="dbase" value="genefield_db.fasta" />
-		    <param name="fastadelim" value=";" />
+		    <param name="lookup" value="spectra_quant.sql" />
+		    <param name="fastadelim" value="pipe" />
 		    <param name="genefield" value="2" />
 		    <param name="decoy" value="false" />
 		    <param name="percolator|yesno" value="false" />
 		    <param name="filter|yesno" value="false" />
-		    <param name="isobaric" value="false" />
+		    <param name="isobaric|yesno" value="false" />
 		    <param name="precursorquant" value="false" />
-		    <param name="genes" value="false" />
+		    <param name="genes" value="true" />
 		    <param name="proteingroup" value="false" />
-		    <output name="output" value="minimal_psmtable.txt" />
-		    <output name="lookupoutput" value="minimal_psms.sql" />
+		    <output name="output" value="psmtable_genes_field.txt" />
 	    </test>
     </tests>
     <help>
