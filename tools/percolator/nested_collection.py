@@ -44,7 +44,7 @@ def main():
     for batchcount, (pool_id, batch) in enumerate(get_batches_of_galaxyfiles(
             args.realnames, args.batchsize, args.poolids)):
         for fncount, batchfile in enumerate([args.galaxyfiles[index] for index in batch]):
-            dsetname = '{}_batch{}___inputfn{}.mzid'.format(pool_id, batchcount, fncount)
+            dsetname = '{}_batch{}___inputfn{}.data'.format(pool_id, batchcount, fncount)
             print('producing', dsetname)
             os.symlink(batchfile, dsetname)
 
