@@ -24,8 +24,8 @@ def main():
                           args.fdrcutoff, args.picutoff)
     binarray = get_bin_array(args.fr_amount, args.fr_width, args.intercept,
                              args.tolerance, pishift)
-    write_fractions(args.tmpdir, args.pipeps, args.fr_amount, args.prefix,
-                    binarray, locfun)
+    write_fractions(args.pipeps, args.fr_amount, args.prefix,
+                    binarray, locfun, args.minlen, args.maxlen)
 
 
 def locatefraction(pep_pi, bins):
@@ -87,7 +87,10 @@ def parse_commandline():
                         help='pI Intercept of strip', type=float)
     parser.add_argument('--width', dest='fr_width',
                         help='Strip fraction width in pI', type=float)
-    parser.add_argument('--tmpdir', dest='tmpdir', help='Use this tmpdir')
+    parser.add_argument('--minlen', dest='minlen', help='Minimal peptide length', 
+                        type=int)
+    parser.add_argument('--maxlen', dest='maxlen', help='Maximal peptide length',
+                        type=int, default=False)
     return parser.parse_args(sys.argv[1:])
 
 
@@ -128,12 +131,8 @@ def get_bin_array(amount_fractions, fr_width, intercept, tolerance, pi_shift):
     return bin_array
 
 
-def write_fractions(tmpdir, pi_peptides_fn, amount_fractions, out_prefix,
-                    bin_array, locate_function):
-    if tmpdir is not None:
-        realdir = os.getcwd()
-        tmpdirname = TemporaryDirectory(dir=tmpdir)
-        os.chdir(tmpdirname.name)
+def write_fractions(pi_peptides_fn, amount_fractions, out_prefix,
+                    bin_array, locate_function, minlen, maxlen):
     amountpad = len(str(amount_fractions))
     with ExitStack() as stack:
         target_out_fp = {frnr: ([], stack.enter_context(
@@ -149,7 +148,9 @@ def write_fractions(tmpdir, pi_peptides_fn, amount_fractions, out_prefix,
         for line in input_fp:
             accs, pep, pi = line.strip().split("\t")
             pi = float(pi)
-            if len(pep) in range(8, 31):
+            if maxlen and len(pep) > maxlen:
+                continue 
+            elif len(pep) >= minlen:
                 pepcount += 1
                 if pep[-1] in {'K', 'R'}:
                     rev_pep = pep[::-1][1:] + pep[-1]
@@ -172,9 +173,6 @@ def write_fractions(tmpdir, pi_peptides_fn, amount_fractions, out_prefix,
                                 for fr, pep_fp in decoy_out_fp.items()}
         [fp.write(''.join(peps)) for peps, fp in target_out_fp.values()]
         [fp.write(''.join(peps)) for peps, fp in decoy_out_fp.values()]
-    if tmpdir is not None:
-        for fn in os.listdir(tmpdirname.name):
-            shutil.move(fn, realdir)
 
 
 if __name__ == '__main__':
