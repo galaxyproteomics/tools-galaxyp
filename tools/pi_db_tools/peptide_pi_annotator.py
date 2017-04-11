@@ -35,7 +35,7 @@ def annotate_peptable(predicted_peps_fn, peptable, seqcol, frac_col, stripcol,
     with open(predicted_peps_fn) as fp:
         for line in fp:
             line = line.strip('\n').split('\t')
-            predicted_peps[line[1]] = line[2]
+            predicted_peps[line[0]] = line[1]
     not_predicted_count, predicted_count = 0, 0
     with open(peptable) as fp:
         header = next(fp).strip('\n').split('\t')
