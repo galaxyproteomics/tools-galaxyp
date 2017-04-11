@@ -18,6 +18,7 @@ def main():
                                          args.stripcol, strips,
                                          args.ignoremods):
             fp.write('\t'.join([str(x) for x in outline]))
+            fp.write('\n')
 
 
 def get_first_matching_pattern(patterns, string):
@@ -42,18 +43,18 @@ def annotate_peptable(predicted_peps_fn, peptable, seqcol, frac_col, stripcol,
         yield header + ['Experimental pI', 'Predicted pI', 'Delta pI']
         for line in fp:
             line = line.strip('\n').split('\t')
-            line[0] = '\n{}'.format(line[0])
             strip = strips[get_first_matching_pattern(strips.keys(),
                                                       line[stripcol - 1])]
             exp_pi = (strip['fr_width'] * int(line[frac_col]) +
                       strip['intercept'])
 
+            sequence = line[seqcol - 1]
             for weight in ignoremods:
                 if weight == '*':
                     regex = '[+-]\d*\.\d*'
                 else:
                     regex = '[+-]{}'.format(weight)
-                sequence = re.sub(regex, '', line[seqcol - 1])
+                sequence = re.sub(regex, '', sequence)
             try:
                 pred_pi = float(predicted_peps[sequence])
             except KeyError:
@@ -87,7 +88,7 @@ def parse_commandline():
                         type=int)
     parser.add_argument('--ignoremods', dest='ignoremods', help='Regex to '
                         'identify modification weights to be ignored.',
-                        default=False, nargs='+', type=str)
+                        default=[], nargs='+', type=str)
     parser.add_argument('--stripcol', dest='stripcol', help='Strip name '
                         'column number in peptide table. Will be used to '
                         'detect strips if multiple are present using pattern '
