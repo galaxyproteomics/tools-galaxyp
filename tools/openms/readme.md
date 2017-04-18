@@ -39,10 +39,10 @@ Generating OpenMS wrappers
  * clone or install CTD2Galaxy
 
     ```bash
-    git clone https://github.com/blankclemens/CTD2Galaxy.git
+    git clone https://github.com/WorkflowConversion/CTD2Galaxy.git
     ```
     
- * If you have CTDopts and CTD2Galaxy installed you are ready to generate Galaxy Tools from CTD definitions. Change the following command according to your needs, especially the `/PATH/TO` parts. 
+ * If you have CTDopts and CTD2Galaxy installed you are ready to generate Galaxy Tools from CTD definitions. Change the following command according to your needs, especially the `/PATH/TO` parts. The default files are provided in this repository.
 
     ```bash
     python generator.py \ 
@@ -102,13 +102,6 @@ Generating OpenMS wrappers
     [...]
     ]]>
     ```
- * In `PeakPickerHiRes.xml`, the parameter `report_FWHM_unit` has to be put in quotation marks. Look for the following line
- 
-        -algorithm:report_FWHM_unit $param_algorithm_report_FWHM_unit
-     
-   and change it to
-   
-        -algorithm:report_FWHM_unit "$param_algorithm_report_FWHM_unit"
 
  * In `FileConverter.xml` add `auto_format="true"` to the output, e.g.:
  
