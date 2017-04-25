@@ -1,4 +1,4 @@
-<tool id="dbbuilder" name="Protein Database Downloader" version="0.2.0">
+<tool id="dbbuilder" name="Protein Database Downloader" version="0.3.0">
     <description></description>
     <requirements>
         <requirement type="binary">wget</requirement>
@@ -11,28 +11,63 @@
         <!-- Add NCBI and maxquant contaminants. -->
         <!-- http://maxquant.org/contaminants.zip -->
         <!-- ftp://ftp.ncbi.nih.gov/refseq/H_sapiens/mRNA_Prot/human.protein.faa.gz-->
+        <!--
+            HUMAN GUT METAPROTEOME:
+             ftp://public.genomics.org.cn/BGI/gutmeta/UniSet/UniGene.pep.gz
+             http://www.bork.embl.de/~arumugam/Qin_et_al_2010/frequent_microbe_proteins.fasta.gz
+             http://www.nature.com/ismej/journal/v3/n2/full/ismej2008108a.html#tbl1
+             http://compbio.ornl.gov/human_gut_microbial_metaproteome/databases/
+            MOUSE GUT MICROBIOTA:
+             http://gigadb.org/dataset/view/id/100114/token/mZlMYJIF04LshpgP
+            MOUSE INTESTINAL BACTERIAL COLLECTION:
+             https://www.dsmz.de/catalogues/dzif-sammlung-der-dsmz/maus-mikrobiomliste.html
+             http://www.nature.com/articles/nmicrobiol2016131
+             https://www.ncbi.nlm.nih.gov/bioproject/?term=PRJEB10572
+        -->
     <command>
 <![CDATA[
         #if $source.from == "uniprot"
-            #set $url = "http://www.uniprot.org/uniprot/?query=taxonomy%3a%22" + str($source.taxon) + "%22" + str($source.set) + str($source.reviewed) + "&amp;force=yes&amp;format=fasta" + str($source.include_isoform)
+            #set $url = 'http://www.uniprot.org/uniprot/?query=taxonomy:"' + str($source.taxon) + '"' + str($source.set) + str($source.reviewed) + '&force=yes&format=fasta' + str($source.include_isoform)
             #set $type = "direct"
         #elif $source.from == "cRAP"
             #set $url = "ftp://ftp.thegpm.org/fasta/cRAP/crap.fasta"
             #set $type = "direct"
+        #elif $source.from == "HMP"
+            #set $url = 'http://downloads.hmpdacc.org/data/reference_genomes/body_sites/' + str($source.site) + '.pep.fsa'
+            #set $type = "direct"
+        #elif $source.from == "HOMD"
+            #set $url = 'ftp://ftp.homd.org/human_oral_microbial_genomic_sequences/current/' + str($source.annotation)
+            #if str($source.annotation).endswith('.tar.gz'):
+                #set $type = "tgz" 
+            #elif str($source.annotation).endswith('.zip'):
+                #set $type = "zip" 
+            #end if 
+        #elif $source.from == 'EBI Metagenomics'
+            #set $url = 'https://www.ebi.ac.uk/metagenomics/projects/' + str($source.ebi_project) + '/samples/' + str($source.ebi_sample) + '/runs/' + str($source.ebi_run) + '/results/versions/' + str($source.ebi_version) + '/sequences/' + str($source.ebi_annotation) + '/chunks/1'
+            #set $type = "gzip"
         #elif $source.from == "url"
             #set $url = $source.url
             #set $type = "direct"
         #end if
         #if $type =="direct"
             wget -nv '$url' -O '${output_database}'
+        #elif $type =="tgz"
+            wget -nv '$url' -O tmp.tar.gz && tar zxfO tmp.tar.gz > '${output_database}'
+        #elif $type =="zip"
+            wget -nv '$url' -O tmp.zip && zcat tmp.zip > '${output_database}'
+        #elif $type =="gzip"
+            wget -nv '$url' -O tmp.gz --no-check-certificate && zcat tmp.gz > '${output_database}'
         #end if
 ]]>
     </command>
     <inputs>
         <conditional name="source">
-            <param name="from" type="select" label="Download from" help="Select database source. cRAP acts as a database for common MS contaminants. UniProtKB is a corss species collection of functional protein databases">
+            <param name="from" type="select" label="Download from" help="Select database source. cRAP acts as a database for common MS contaminants. UniProtKB is a cross species collection of functional protein databases">
                 <option value="uniprot">UniProtKB</option>
                 <option value="cRAP">cRAP (contaminants)</option>
+                <option value="HMP">Human Microbiome Project body sites</option>
+                <option value="EBI Metagenomics">EBI Metagenomics</option>
+                <option value="HOMD">Human Oral Microbiome Database (HOMD)</option>
                 <option value="url">Custom URL</option>
             </param>
             <when value="uniprot">
@@ -66,6 +101,38 @@
                 <param name="include_isoform" type="boolean" truevalue="&amp;include=yes" falsevalue="" label="Include isoform data" help="several different forms of a given protein are incorporated into database" />
             </when>
             <when value="cRAP" />
+            <when value="HMP">
+                <param name="site" type="select" label="Proteome for body site">
+                    <option value="Airways">HMP airways</option>
+                    <option value="Blood">HMP Blood</option>
+                    <option value="Gastrointestinal_tract">HMP Gastro-intestinal tract</option>
+                    <option value="Oral">HMP Oral</option>
+                    <option value="Skin">HMP Skin</option>
+                    <option value="Urogenital_tract">HMP urogenital Tract</option>
+                </param>
+            </when>
+            <when value="EBI Metagenomics">
+                <param name="ebi_project" value="" type="text" label="EBI Metagenomics Project (e.g. DRP003095)">
+                <help><![CDATA[
+Look up EBI Metagenomics at https://www.ebi.ac.uk/metagenomics/search 
+                ]]></help>
+                </param>
+                <param name="ebi_sample" value="" type="text" label="EBI Metagenomics Sample (e.g. DRS029200)">
+                </param>
+                <param name="ebi_run" value="" type="text" label="EBI Metagenomics Run (e.g. DRR033743)">
+                </param>
+                <param name="ebi_version" value="" type="text" label="EBI Metagenomics Pipeline Version (e.g. 3.0)">
+                </param>
+                <param name="ebi_annotation" type="boolean" label="With Annotation" checked="true" 
+                      truevalue="PredictedCDSWithAnnotation" falsevalue="PredictedCDSWithioutAnnotation"/>
+                      
+            </when>
+            <when value="HOMD">
+                <param name="annotation" type="select" label="Human Oral Microbiome Proteome">
+                    <option value="oral_microbiome_dynamic.aa.zip">HOMD with dynamic annotation</option>
+                    <option value="oral_microbiome.aa.tar.gz">HOMD with static annotation</option>
+                </param>
+            </when>
             <when value="url">
                 <param name="url" value="" type="text" label="URL (http, ftp)">
                     <sanitizer>
@@ -78,7 +145,7 @@
         </conditional>
     </inputs>
     <outputs>
-        <data format="fasta" name="output_database" label="Protein Database" />
+        <data format="fasta" name="output_database" label="Protein Database ${source.from}" />
     </outputs>
     <help>
 <![CDATA[
