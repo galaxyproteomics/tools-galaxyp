@@ -42,10 +42,18 @@ def main():
     parser.add_argument('--galaxy-files', dest='galaxyfiles', nargs='+')
     parser.add_argument('--pool-ids', dest='poolids', nargs='+', default=False)
     args = parser.parse_args()
-    for batchcount, (pool_id, batch, in_pool_indices) in enumerate(get_batches_of_galaxyfiles(
-            args.realnames, args.batchsize, args.poolids)):
+    batches = [x for x in get_batches_of_galaxyfiles(args.realnames, args.batchsize, args.poolids)]
+    batchdigits = len(str(len(batches)))
+    if args.poolids:
+        pooldigits = {pid: [] for pid in args.poolids}
+        for batchdata in batches:
+            pooldigits[batchdata[0]].append(len(batchdata[1]))
+        pooldigits = {pid: len(str(sum(batchlengths))) for pid, batchlengths in pooldigits.items()}
+    else:
+        pooldigits = {'pool0': len(str(len(args.galaxyfiles)))}
+    for batchcount, (pool_id, batch, in_pool_indices) in enumerate(batches):
         for fnindex, in_pool_index in zip(batch, in_pool_indices):
-            dsetname = '{}_batch{}___inputfn{}_{}.data'.format(pool_id, batchcount, in_pool_index, args.realnames[fnindex])
+            dsetname = '{pid}_batch{bi:0{bd}d}___inputfn{fi:0{pd}d}_{real}.data'.format(pid=pool_id, bi=batchcount, bd=batchdigits, fi=in_pool_index, pd=pooldigits[pool_id], real=args.realnames[fnindex])
             print('producing', dsetname)
             os.symlink(args.galaxyfiles[fnindex], dsetname)
 
