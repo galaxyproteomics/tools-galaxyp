@@ -102,10 +102,32 @@ Generating OpenMS wrappers
     [...]
     ]]>
     ```
-
- * In `FileConverter.xml` add `auto_format="true"` to the output, e.g.:
+    
+ * In `IDFileConverter.xml` the following is needed in the command section at the beginning (check your file to know what to copy where):
  
-        <data name="param_out" metadata_source="param_in" auto_format="true"/>
+   ```
+    <command><![CDATA[
+   
+      ## check input file type
+      #set $in_type = $param_in.ext
+
+      ## create the symlinks to set the proper file extension, since IDFileConverter uses them to choose how to handle the input files
+      ln -s '$param_in' 'param_in.${in_type}' &&
+
+      IDFileConverter
+
+      #if $param_in:
+        -in 'param_in.${in_type}'
+      #end if
+
+        [...]
+        ]]>
+    ```
+
+ * In `IDFileConverter.xml` and `FileConverter.xml` add `auto_format="true"` to the output, e.g.:
+ 
+   - `<data name="param_out" auto_format="true"/>`
+   - `<data name="param_out" metadata_source="param_in" auto_format="true"/>`
         
  * To add an example test case to `DecoyDatabase.xml` add the following after the output section. If standard settings change you might have to adjust the options and/or the test files.
  
