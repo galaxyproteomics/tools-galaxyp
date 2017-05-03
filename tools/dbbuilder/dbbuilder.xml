@@ -1,4 +1,4 @@
-<tool id="dbbuilder" name="Protein Database Downloader" version="0.2.1">
+<tool id="dbbuilder" name="Protein Database Downloader" version="0.3.0">
     <description></description>
     <requirements>
         <requirement type="package">gnu-wget</requirement>
@@ -20,20 +20,46 @@
             ##set $url = "ftp://ftp.thegpm.org/fasta/cRAP/crap.fasta"
             #set $url = "https://raw.githubusercontent.com/pravs3683/cRAP/master/cRAP_protein_database.fasta"
             #set $type = "direct"
+        #elif $source.from == "HMP"
+            #set $url = 'http://downloads.hmpdacc.org/data/reference_genomes/body_sites/' + str($source.site) + '.pep.fsa'
+            #set $type = "direct"
+        #elif $source.from == "HOMD"
+            #set $url = 'ftp://ftp.homd.org/human_oral_microbial_genomic_sequences/current/' + str($source.annotation)
+            #if str($source.annotation).endswith('.tar.gz'):
+                #set $type = "tgz" 
+            #elif str($source.annotation).endswith('.zip'):
+                #set $type = "zip" 
+            #end if 
+        #elif $source.from == 'EBI Metagenomics'
+            #set $url = 'https://www.ebi.ac.uk/metagenomics/projects/' + str($source.ebi_project) + '/samples/' + str($source.ebi_sample) + '/runs/' + str($source.ebi_run) + '/results/versions/' + str($source.ebi_version) + '/sequences/' + str($source.ebi_annotation) + '/chunks/1'
+            #set $type = "gzip"
         #elif $source.from == "url"
             #set $url = $source.url
-            #set $type = "direct"
+            #set $type = $source.archive_type
         #end if
         #if $type =="direct"
-            wget -nv '$url' -O '${output_database}'
+            wget -nv '$url' -O '${output_database}' --no-check-certificate
+        #elif $type =="zip"
+            wget -nv '$url' -O tmp.zip --no-check-certificate && zcat -c tmp.zip > '${output_database}'
+        #elif $type =="gzip"
+            wget -nv '$url' -O tmp.gz --no-check-certificate && (if `command -v gzcat > /dev/null`;  then gzcat tmp.gz; else zcat tmp.gz ; fi) > '${output_database}'
+        #elif $type =="bzip2"
+            wget -nv '$url' -O tmp.bz2 --no-check-certificate && bzcat tmp.bz2 > '${output_database}'
+        #elif $type =="tgz"
+            wget -nv '$url' -O tmp.tar.gz && tar zxfO tmp.tar.gz > '${output_database}'
+        #elif $type =="tbz"
+            wget -nv '$url' -O tmp.tar.bz && tar jxfO tmp.tar.bz > '${output_database}'
         #end if
 ]]>
     </command>
     <inputs>
         <conditional name="source">
-            <param name="from" type="select" label="Download from" help="Select database source. cRAP acts as a database for common MS contaminants. UniProtKB is a corss species collection of functional protein databases">
+            <param name="from" type="select" label="Download from" help="Select database source. cRAP acts as a database for common MS contaminants. UniProtKB is a cross species collection of functional protein databases">
                 <option value="uniprot">UniProtKB</option>
                 <option value="cRAP">cRAP (contaminants)</option>
+                <option value="HMP">Human Microbiome Project body sites</option>
+                <option value="EBI Metagenomics">EBI Metagenomics</option>
+                <option value="HOMD">Human Oral Microbiome Database (HOMD)</option>
                 <option value="url">Custom URL</option>
             </param>
             <when value="uniprot">
@@ -67,19 +93,60 @@
                 <param name="include_isoform" type="boolean" truevalue="&amp;include=yes" falsevalue="" label="Include isoform data" help="several different forms of a given protein are incorporated into database" />
             </when>
             <when value="cRAP" />
+            <when value="HMP">
+                <param name="site" type="select" label="Proteome for body site">
+                    <option value="Airways">HMP airways</option>
+                    <option value="Blood">HMP Blood</option>
+                    <option value="Gastrointestinal_tract">HMP Gastro-intestinal tract</option>
+                    <option value="Oral">HMP Oral</option>
+                    <option value="Skin">HMP Skin</option>
+                    <option value="Urogenital_tract">HMP urogenital Tract</option>
+                </param>
+            </when>
+            <when value="EBI Metagenomics">
+                <param name="ebi_project" value="" type="text" label="EBI Metagenomics Project (e.g. DRP003095)">
+                <help><![CDATA[
+Look up EBI Metagenomics at https://www.ebi.ac.uk/metagenomics/search 
+                ]]></help>
+                </param>
+                <param name="ebi_sample" value="" type="text" label="EBI Metagenomics Sample (e.g. DRS029200)">
+                </param>
+                <param name="ebi_run" value="" type="text" label="EBI Metagenomics Run (e.g. DRR033743)">
+                </param>
+                <param name="ebi_version" value="" type="text" label="EBI Metagenomics Pipeline Version (e.g. 3.0)">
+                </param>
+                <param name="ebi_annotation" type="boolean" label="With Annotation" checked="true" 
+                      truevalue="PredictedCDSWithAnnotation" falsevalue="PredictedCDSWithioutAnnotation"/>
+                      
+            </when>
+            <when value="HOMD">
+                <param name="annotation" type="select" label="Human Oral Microbiome Proteome">
+                    <option value="oral_microbiome_dynamic.aa.zip">HOMD with dynamic annotation</option>
+                    <option value="oral_microbiome.aa.tar.gz">HOMD with static annotation</option>
+                </param>
+            </when>
             <when value="url">
-                <param name="url" value="" type="text" label="URL (http, ftp)">
+                <param name="url" value="" type="text" label="URL (http, ftp) of Fasta sequences">
                     <sanitizer>
                         <valid>
                             <add value="%"/>
+                            <add value="~"/>
                         </valid>
                     </sanitizer>
+                </param>
+                <param name="archive_type" type="select" label="Fasta source compression type">
+                    <option value="direct" selected="true">fasta file (uncompressed)</option>
+                    <option value="gzip">fasta.gz (gzip compressed)</option>
+                    <option value="bzip2">fasta.bz2 (bzip2 compressed)</option>
+                    <option value="zip">fasta.zip or fasta.Z (Zip compressed)</option>
+                    <option value="tgz">fasta.tgz or fasta.tar.gz (tar archive gzip compressed)</option>
+                    <option value="tbz">fasta.tbz or fasta.tar.bz (tar archive bzip2 compressed)</option>
                 </param>
             </when>
         </conditional>
     </inputs>
     <outputs>
-        <data format="fasta" name="output_database" label="Protein Database" />
+        <data format="fasta" name="output_database" label="Protein Database ${source.from}" />
     </outputs>
     <tests>
         <test>
@@ -87,6 +154,28 @@
             <output name="output_database">
                 <assert_contents>
                     <has_text text="KKA1_ECOLX" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="from" value="url" />
+            <param name="url" value="https://raw.githubusercontent.com/pravs3683/cRAP/master/cRAP_protein_database.fasta" />
+            <param name="archive_type" value="direct" />
+            <output name="output_database">
+                <assert_contents>
+                    <has_text text="KKA1_ECOLX" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="from" value="EBI Metagenomics" />
+            <param name="ebi_project" value="DRP003095" />
+            <param name="ebi_sample" value="DRS029200" />
+            <param name="ebi_run" value="DRR033743" />
+            <param name="ebi_version" value="3.0" />
+            <output name="output_database">
+                <assert_contents>
+                    <has_text text="DRR033743" />
                 </assert_contents>
             </output>
         </test>
@@ -99,11 +188,36 @@ Creates a FASTA file of specified protein sequences for comparison with experime
 
 **External Links**
 
-_Galaxy-P 101 shows usage Protein Database Downloader tool in the creation of a workflow
-.. _Galaxy-P 101: http://msi-galaxy-p.readthedocs.org/en/latest/sections/galaxyp_101.html
-_UniProtKB provides additional information about the UniProt Knowledgebase
+  - Galaxy-P_101_ shows usage Protein Database Downloader tool in the creation of a workflow
+  - UniProtKB_ provides additional information about the UniProt Knowledgebase
+
+
+.. _Galaxy-P_101: http://msi-galaxy-p.readthedocs.org/en/latest/sections/galaxyp_101.html
 .. _UniProtKB: http://www.uniprot.org/help/uniprotkb
+
+
+**Additional Protein Fasta URLs**
+
+  *HUMAN GUT METAPROTEOME:*
+
+    * 512MB gzip ftp://public.genomics.org.cn/BGI/gutmeta/UniSet/UniGene.pep.gz
+    *  61MB gzip http://www.bork.embl.de/~arumugam/Qin_et_al_2010/frequent_microbe_proteins.fasta.gz
+
+
+  *MOUSE GUT MICROBIOTA:*
+
+    * 417MB gzip ftp://climb.genomics.cn/pub/10.5524/100001_101000/100114/Genecatalog/184sample_2.6M.GeneSet.pep.gz
+    * See: http://gigadb.org/dataset/view/id/100114/token/mZlMYJIF04LshpgP
+
+
 ]]>
     </help>
+    <citations>
+        <citation type="doi">10.1093/nar/gkw1099</citation>
+        <citation type="doi">10.1093/nar/gkv1195 </citation>
+        <citation type="doi">10.1093/database/baq013</citation>
+        <citation type="doi">10.1038/nature11209</citation>
+        <citation type="doi">10.1038/nature11234</citation>
+    </citations>
 </tool>
 
