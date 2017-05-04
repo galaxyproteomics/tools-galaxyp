@@ -48,7 +48,6 @@ Authors
 Authors and contributors:
 
 * Matt Chambers <matt.chambers42@gmail.com>
-  Vanderbilt University Medical Center
 
-* Xiaojing Wang
-  Vanderbilt University Medical Center
+* Xiaojing Wang <xiaojing.wang@bcm.edu>
+  Baylor Medical College
