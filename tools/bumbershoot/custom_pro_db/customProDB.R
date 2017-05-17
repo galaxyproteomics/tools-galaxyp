@@ -99,11 +99,6 @@ customProDB <- function(
     file.symlink(bam_file, bamLink)
     file.symlink(bai_file, paste(bamLink, ".bai", sep=""))
 
-    # load from GitHub until conda package is available
-    download.file("https://github.com/ggrothendieck/sqldf/archive/master.zip", "sqldf.zip", quiet=TRUE)
-    unzip("sqldf.zip")
-    devtools::load_all("sqldf-master")
-
     # load customProDB from GitHub (NOTE: downloading the zip is faster than cloning the repo with git2r or devtools::install_github)
     download.file("https://github.com/chambm/customProDB/archive/master.zip", "customProDB.zip", quiet=TRUE)
     unzip("customProDB.zip")
