@@ -1,4 +1,4 @@
-# => python3.3 required!
+#!/usr/bin/env python
 import sys
 import argparse
 from numpy import median
