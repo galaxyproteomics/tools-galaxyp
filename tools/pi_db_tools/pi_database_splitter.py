@@ -3,9 +3,6 @@ import sys
 import argparse
 from numpy import median
 from contextlib import ExitStack
-from tempfile import TemporaryDirectory
-import os
-import shutil
 
 
 def main():
