@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python
 
 import re
 import sys
@@ -9,9 +9,10 @@ def main():
     if sys.argv[1:] == []:
         sys.argv.append('-h')
     args = parse_commandline()
-    strips = {strip: {'intercept': args.intercepts[i],
-                      'fr_width': args.fr_width[i]}
-              for i, strip in enumerate(args.pipatterns)}
+    strips = {}
+    for i, strip in enumerate(args.pipatterns):
+        strips[strip] = {'intercept': args.intercepts[i],
+                         'fr_width': args.fr_width[i]}
     with open(args.outpeptable, 'w') as fp:
         for outline in annotate_peptable(args.pipeps, args.peptable,
                                          args.pepcol, args.frac_col,
