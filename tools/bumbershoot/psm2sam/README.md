@@ -1,19 +1,24 @@
-GalaxyP - CustomProDB
+GalaxyP - PSM2SAM
 ===================
 
 * Home: <https://github.com/galaxyproteomics/tools-galaxyp/>
-* Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/customProDB>
-* Tool ID: `customProDB`
+* Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/psm_to_sam>
+* Tool ID: `psm_to_sam`
 
 
 Description
 -----------
 
-Generate customized FASTA files based on the transcriptome or exome sequencing of an individual sample.
+The interpretation of proteomics data is significantly enhanced by genomic annotation. 
+Using proBAMr, peptide-spectrum-matches can be easily reannotated using user-specified gene annotation 
+schemes and assembled into both protein and gene identifications. Using the genome as a common reference, 
+proBAMr facilitates seamless proteomics and proteogenomics data integration. ProBAM files can be readily 
+visualized in genome browsers and thus bring proteomics data analysis to a general audience beyond the 
+proteomics community.
 
 See:
 
-* <https://www.bioconductor.org/packages/release/bioc/html/customProDB.html>
+* <https://www.bioconductor.org/packages/release/bioc/html/proBAMr.html>
 
 
 GalaxyP Community
@@ -27,7 +32,7 @@ Current governing community policies for [GalaxyP](https://github.com/galaxyprot
 License
 -------
 
-Copyright (c) 2016 Vanderbilt University and Authors listed below.
+Copyright (c) 2017 Authors listed below.
 
 To the extent possible under law, the author(s) have dedicated all copyright and related and neighboring rights to this software to the public domain worldwide. This software is distributed without any warranty.
 
