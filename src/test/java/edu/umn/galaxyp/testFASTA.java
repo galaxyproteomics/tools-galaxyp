@@ -1,7 +1,6 @@
 package edu.umn.galaxyp;
 
 import org.junit.Test;
-
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -10,24 +9,21 @@ import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-
-import static java.nio.file.Files.newBufferedWriter;
 import static org.junit.Assert.*;
 
 /**
  * Created by caleb on 6/21/17.
  *
  * Testing FastaInput method by comparing
- * a copied-and-pasted FASTA file made into a HashMap (copied-and-pasted from localFastaTEST.txt)
- * to the same file read in by the FastaInput method of the localFasta class
+ * a copied-and-pasted FASTA file made into a HashMap (copied-and-pasted from testFASTA.txt)
+ * to the same file read in by the FastaInput method of the FASTA class
  */
-public class localFastaTest {
+public class testFASTA {
 
     @Test
     public void testFastaInput() {
-        Path testpath = Paths.get("/home/caleb/IdeaProjects/FastaHeader/src/test/java/localFastaTEST.txt");
-        localFasta testFASTA = new localFasta(testpath);
-        System.out.println(testFASTA.toString());
+        Path testpath = Paths.get("./src/test/java/edu/umn/galaxyp/testFASTA.txt");
+        FASTA testFASTA = new FASTA(testpath);
         Map<String, String> expectedMap= new HashMap<>();
         expectedMap.put(">MCHU - Calmodulin - Human, rabbit, bovine, rat, and chicken\n", "ADQLTEEQIAEFKEAFSLFDKDGDGTITTKELGTVMRSLGQNPTEAELQDMINEVDADGNGTID\n" +
                 "FPEFLTMMARKMKDTDSEEEIREAFRVFDKDGNGYISAAELRHVMTNLGEKLTDEEVDEMIREA\n" +
@@ -37,7 +33,7 @@ public class localFastaTest {
                 "LLILILLLLLLALLSPDMLGDPDNHMPADPLNTPLHIKPEWYFLFAYAILRSVPNKLGGVLALFLSIVIL\n" +
                 "GLMPFLHTSKHRSMMLRPLSQALFWTLTMDLLTLTWIGSQPVEYPYTIIGQMASILYFSIILAFLPIAGX\n" +
                 "IENY\n");
-        Path writeOut = Paths.get("/home/caleb/IdeaProjects/FastaHeader/src/test/java/localFastaTEST_OUT.txt");
+        Path writeOut = Paths.get("./src/test/java/edu/umn/galaxyp/testFASTA_OUT.txt");
         try(BufferedWriter bw = Files.newBufferedWriter(writeOut);){
             Iterator it = expectedMap.entrySet().iterator();
             while (it.hasNext()){
@@ -52,5 +48,15 @@ public class localFastaTest {
         }
 
         assertTrue(expectedMap.equals(testFASTA.getFastaHeaderMap()));
+    }
+
+    @Test
+    public void testFastaHeaderCheck(){
+        Path testpath = Paths.get("./src/test/java/edu/umn/galaxyp/fastaFilteringTest_IN.txt");
+        String badHeader = ">gi||||5524211gbAAD44166.1 cytochrome b [Elephas maximus maximus]";
+        String goodHeader = ">gi|5524211|gb|AAD44166.1 cytochrome b [Elephas maximus maximus]";
+
+        assertTrue(!FASTA.isValidFastaHeader(badHeader));
+        assertTrue(FASTA.isValidFastaHeader(goodHeader));
     }
 }
