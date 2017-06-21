@@ -1,48 +1,29 @@
 package edu.umn.galaxyp;
-import com.compomics.util.experiment.identification.protein_sequences.SequenceFactory;
 
-import java.io.*;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
-import java.sql.SQLException;
-
-import static java.nio.file.StandardCopyOption.*;
-
+import java.util.Map;
+import java.util.logging.Logger;
 
 //import org.apache.log4j.*;
 
 public class ValidateFasta {
 
-    //private static Logger logger = Logger.getLogger(ValidateFasta.class.getName());
+    private static Logger logger = Logger.getLogger(ValidateFasta.class.getName());
 
-    public static void main(String[] args) throws IOException, IllegalArgumentException,ClassNotFoundException, SQLException, InterruptedException{
+    public static void main(String[] args) {
 
-        // read testFasta text file, using SequenceFactory methods
-        File fastaFile = new File(args[0]);
-
-        // for copying using NIO
+        // input path
         Path fastaPath = Paths.get(args[0]);
 
-        // create SequenceFactory
-        SequenceFactory seq = SequenceFactory.getInstance();
+        // load fasta file
+        FASTA fasta = new FASTA(fastaPath);
 
-        // load fasta file and index it - will throw an error if the header is wrong
-        // if correct, will copy file to new filename
-        try {
-            seq.loadFastaFile(fastaFile);
-            // write copy same file to different output if it passes
-            Files.copy(fastaPath, Paths.get(args[1]), StandardCopyOption.REPLACE_EXISTING);
-
-        } catch(IllegalArgumentException e) {
-            System.err.println(e.getMessage());
-        } finally {
-//            // remove .cui file, which is the fasta index
-            Path fastaIndexPath = Paths.get(args[0] + ".cui");
-            Files.deleteIfExists(fastaIndexPath);
-        }
-
-
+        // performs filtering, I/O, and returns a count of good and bad sequences
+        Map<String, Integer> countSequences = fasta.sortFastaByHeader(Paths.get(args[1]), Paths.get(args[2]));
+        String prettyPrintMap = "Sequences Passed: " + countSequences.get("Passed").toString() + "\n" +
+                "Sequences Failed: " + countSequences.get("Failed").toString();
+        // iterate through header strings and write to separate file streams
+        System.out.print(prettyPrintMap);
     }
 }
