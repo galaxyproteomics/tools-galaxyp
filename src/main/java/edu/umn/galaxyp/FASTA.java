@@ -72,7 +72,7 @@ public class FASTA {
 
     /* direct good and bad FASTA sequences into different text files
      */
-    public Map<String, Integer> sortFastaByHeader(Path goodFASTA, Path badFASTA){
+    public Map<String, Integer> sortFastaByHeader(Path goodFASTA, Path badFASTA, Boolean crash_if_invalid){
         Iterator fastaMapIterator = this.fastaHeaderMap.entrySet().iterator();
         Map<String, Integer> countSequences = new HashMap<>();
         countSequences.put("Passed", 0);
@@ -86,7 +86,7 @@ public class FASTA {
                     String sequence = (String) pair.getValue();
 
 
-                    if (isValidFastaHeader(header)) {
+                    if (isValidFastaHeader(header, crash_if_invalid)) {
                         bwGood.write(header, 0, header.length());
                         bwGood.write(sequence, 0, sequence.length());
                         countSequences.put("Passed", countSequences.get("Passed")+1);
@@ -118,7 +118,7 @@ public class FASTA {
 
     // checks FASTA header for validity, using compomics method `Header.parseFromFASTA()`
     // Returns true if header is valid
-    public static boolean isValidFastaHeader(String aFastaHeader){
+    public static boolean isValidFastaHeader(String aFastaHeader, boolean crash_if_invalid){
         Header header = null;
         try {
             // set out to dummy stream for Header method
@@ -130,7 +130,13 @@ public class FASTA {
             // return to regular system out
             System.setOut(originalStream);
         } catch(IllegalArgumentException iae){
-            System.err.print("");
+            // return exit code of 1 (abnormal termination)
+            if (crash_if_invalid) {
+                System.err.println("Invalid FASTA headers detected. Exit requested by user. ");
+                System.exit(1);
+            }
+            // else, print nothing
+            iae.getMessage();
         }
         if (header == null){
             return false;

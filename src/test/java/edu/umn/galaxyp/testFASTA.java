@@ -56,7 +56,7 @@ public class testFASTA {
         String badHeader = ">gi||||5524211gbAAD44166.1 cytochrome b [Elephas maximus maximus]";
         String goodHeader = ">gi|5524211|gb|AAD44166.1 cytochrome b [Elephas maximus maximus]";
 
-        assertTrue(!FASTA.isValidFastaHeader(badHeader));
-        assertTrue(FASTA.isValidFastaHeader(goodHeader));
+        assertTrue(!FASTA.isValidFastaHeader(badHeader, false));
+        assertTrue(FASTA.isValidFastaHeader(goodHeader, false));
     }
 }

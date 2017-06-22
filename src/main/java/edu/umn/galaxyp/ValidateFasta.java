@@ -19,11 +19,18 @@ public class ValidateFasta {
         // load fasta file
         FASTA fasta = new FASTA(fastaPath);
 
+        // if true, the presence of any invalid sequences triggers an exit code of 1
+        boolean crash_if_invalid = false;
+
+        // optional boolean
+        if (args.length == 4){
+            crash_if_invalid = Boolean.valueOf(args[3]);
+        }
+
         // performs filtering, I/O, and returns a count of good and bad sequences
-        Map<String, Integer> countSequences = fasta.sortFastaByHeader(Paths.get(args[1]), Paths.get(args[2]));
+        Map<String, Integer> countSequences = fasta.sortFastaByHeader(Paths.get(args[1]), Paths.get(args[2]), crash_if_invalid);
         String prettyPrintMap = "Sequences Passed: " + countSequences.get("Passed").toString() + "\n" +
                 "Sequences Failed: " + countSequences.get("Failed").toString();
-        // iterate through header strings and write to separate file streams
         System.out.print(prettyPrintMap);
     }
 }
