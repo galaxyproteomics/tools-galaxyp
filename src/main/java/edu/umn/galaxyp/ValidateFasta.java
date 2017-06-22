@@ -28,15 +28,11 @@ public class ValidateFasta {
         // load fasta file
         FASTA fasta = new FASTA(fastaPath, crash_if_invalid);
 
-
-
         // performs filtering, I/O, and returns a count of good and bad sequences
         fasta.writeFilteredFastaToFile(Paths.get(args[1]), Paths.get(args[2]));
 
         MultiSet<Header.DatabaseType> databaseTypes = fasta.getDatabaseTypes();
-
-//        String prettyPrintMap = "Sequences Passed: " + countSequences.get("Passed").toString() + "\n" +
-//                "Sequences Failed: " + countSequences.get("Failed").toString();
-//        System.out.print(databaseTypes.toString());
+        System.out.println("Database Types");
+        System.out.println(databaseTypes.toString());
     }
 }

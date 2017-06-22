@@ -147,8 +147,8 @@ public class FASTA {
 
             // attempt to parse the header
             header = Header.parseFromFASTA(aFastaHeader);
-//            logger.info(header.toString());
-//            databaseTypes.add(header.getDatabaseType());
+            Header.DatabaseType dbType = header.getDatabaseType();
+            databaseTypes.add(dbType);
             // return to regular system out
             System.setOut(originalStream);
         } catch(IllegalArgumentException iae){

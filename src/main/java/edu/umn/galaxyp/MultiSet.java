@@ -1,6 +1,11 @@
 package edu.umn.galaxyp;
 
+import com.compomics.util.protein.Header;
+
+import java.util.Formatter;
 import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
 
 /**
  * Created by caleb on 6/22/17.
@@ -12,6 +17,7 @@ public class MultiSet<T> {
     private HashMap<T, Integer> setOfObjects;
 
     public MultiSet(){
+        setOfObjects = new HashMap<>();
     }
 
     public MultiSet(T[] objects){
@@ -24,6 +30,9 @@ public class MultiSet<T> {
     }
 
     public void add(T value){
+        if (setOfObjects == null){
+            setOfObjects = new HashMap<>();
+        }
         if (setOfObjects.containsKey(value)){
             int currentNumber = setOfObjects.get(value);
             setOfObjects.put(value, currentNumber + 1);
@@ -48,6 +57,13 @@ public class MultiSet<T> {
 
     @Override
     public String toString() {
-        return setOfObjects.toString();
+        StringBuilder prettyPrint = new StringBuilder();
+        Formatter formatter = new Formatter(prettyPrint, Locale.US);
+        for (Map.Entry<T, Integer> entry : setOfObjects.entrySet()){
+            T key = entry.getKey();
+            Integer value = entry.getValue();
+            formatter.format("%1$-15s %2$s %n", key.toString() + ":", value.toString());
+        }
+        return prettyPrint.toString();
     }
 }
