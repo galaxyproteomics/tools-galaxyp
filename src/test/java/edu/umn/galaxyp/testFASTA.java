@@ -23,7 +23,7 @@ public class testFASTA {
     @Test
     public void testFastaInput() {
         Path testpath = Paths.get("./src/test/java/edu/umn/galaxyp/testFASTA.txt");
-        FASTA testFASTA = new FASTA(testpath);
+        FASTA testFASTA = new FASTA(testpath, false);
         Map<String, String> expectedMap= new HashMap<>();
         expectedMap.put(">MCHU - Calmodulin - Human, rabbit, bovine, rat, and chicken\n", "ADQLTEEQIAEFKEAFSLFDKDGDGTITTKELGTVMRSLGQNPTEAELQDMINEVDADGNGTID\n" +
                 "FPEFLTMMARKMKDTDSEEEIREAFRVFDKDGNGYISAAELRHVMTNLGEKLTDEEVDEMIREA\n" +
@@ -52,11 +52,28 @@ public class testFASTA {
 
     @Test
     public void testFastaHeaderCheck(){
-        Path testpath = Paths.get("./src/test/java/edu/umn/galaxyp/fastaFilteringTest_IN.txt");
-        String badHeader = ">gi||||5524211gbAAD44166.1 cytochrome b [Elephas maximus maximus]";
-        String goodHeader = ">gi|5524211|gb|AAD44166.1 cytochrome b [Elephas maximus maximus]";
+        Path goodPath = Paths.get("./src/test/java/edu/umn/galaxyp/goodFasta.fasta");
+        Path badPath = Paths.get("./src/test/java/edu/umn/galaxyp/badFasta.fasta");
+        FASTA badHeaderFASTA = new FASTA(badPath, false);
+        FASTA goodHeaderFASTA = new FASTA(goodPath, false);
 
-        assertTrue(!FASTA.isValidFastaHeader(badHeader, false));
-        assertTrue(FASTA.isValidFastaHeader(goodHeader, false));
+        Map<String, String> goodHeaderExpected = new HashMap<>();
+        goodHeaderExpected.put(">sp|Q62CE3|1A1D_BURMA 1-aminocyclopropane-1-carboxylate deaminase OS=Burkholderia mallei (strain ATCC 23344) GN=acdS PE=3 SV=1\n",
+                        "MNLQKFSRYPLTFGPTPIQPLKRLSAHLGGKVELYAKRDDCNSGLAFGGNKTRKLEYLIP\n" +
+                        "DALAQGCDTLVSIGGIQSNQTRQVAAVAAHLGMKCVLVQENWVNYHDAVYDRVGNIQMSR\n" +
+                        "MMGADVRLVPDGFDIGFRKSWEDALADVRARGGKPYAIPAGCSDHPLGGLGFVGFAEEVR\n" +
+                        "AQEAELGFQFDYVVVCSVTGSTQAGMVVGFAADGRADRVIGVDASAKPAQTREQILRIAK\n" +
+                        "HTADRVELGRDITSADVVLDERFGGPEYGLPNEGTLEAIRLCAKLEGVLTDPVYEGKSMH\n" +
+                        "GMIEKVRLGEFPAGSKVLYAHLGGVPALNAYSFLFRDG\n");
+        assertTrue(goodHeaderFASTA.getGoodFastaHeaderMap().equals(goodHeaderExpected));
+
+        Map<String, String> badHeaderExpected = new HashMap<>();
+        badHeaderExpected.put(">gi||||5524211gbAAD44166.1 cytochrome b [Elephas maximus maximus]\n",
+                        "LCLYTHIGRNIYYGSYLYSETWNTGIMLLLITMATAFMGYVLPWGQMSFWGATVITNLFSAIPYIGTNLV\n" +
+                        "EWIWGGFSVDKATLNRFFAFHFILPFTMVALAGVHLTFLHETGSNNPLGLTSDSDKIPFHPYYTIKDFLG\n" +
+                        "LLILILLLLLLALLSPDMLGDPDNHMPADPLNTPLHIKPEWYFLFAYAILRSVPNKLGGVLALFLSIVIL\n" +
+                        "GLMPFLHTSKHRSMMLRPLSQALFWTLTMDLLTLTWIGSQPVEYPYTIIGQMASILYFSIILAFLPIAGX\n" +
+                        "IENY\n");
+        assertTrue(badHeaderFASTA.getBadFastaHeaderMap().equals(badHeaderExpected));
     }
 }

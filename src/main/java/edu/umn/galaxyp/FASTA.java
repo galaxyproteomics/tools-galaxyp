@@ -5,7 +5,6 @@ import com.compomics.util.protein.Header;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -20,15 +19,17 @@ import java.util.logging.Logger;
  */
 public class FASTA {
     private Map<String, String> fastaHeaderMap;
+    private Map<String, String> badFastaHeaderMap;
+    private Map<String, String> goodFastaHeaderMap;
     private static final Logger logger = Logger.getLogger(FASTA.class.getName());
-
-    // default constructor
-    public FASTA(){
-    }
+    private MultiSet<Header.DatabaseType> databaseTypes;
 
     // constructor that takes the path of the FASTA file
-    public FASTA(Path path){
-
+    public FASTA(Path path, boolean crash_if_invalid){
+        // initialize variables
+        goodFastaHeaderMap = new LinkedHashMap<>();
+        badFastaHeaderMap = new LinkedHashMap<>();
+        databaseTypes = new MultiSet<>();
         // LinkedHashMap will (probably) result in the same ordering of the FASTA file
         fastaHeaderMap = new LinkedHashMap<>();
         StringBuilder sequence = new StringBuilder(); // allows us to append all sequences of line
@@ -60,8 +61,12 @@ public class FASTA {
         } catch(IOException e) {
             logger.severe("FASTA file not found: " + e.toString());
         }
+
+        // fill good and bad Maps
+        sortFastaByHeader(crash_if_invalid);
     }
 
+    // GETTERS AND SETTERS
     public Map<String, String> getFastaHeaderMap() {
         return fastaHeaderMap;
     }
@@ -70,36 +75,52 @@ public class FASTA {
         this.fastaHeaderMap = fastaHeaderMap;
     }
 
-    /* direct good and bad FASTA sequences into different text files
-     */
-    public Map<String, Integer> sortFastaByHeader(Path goodFASTA, Path badFASTA, Boolean crash_if_invalid){
-        Iterator fastaMapIterator = this.fastaHeaderMap.entrySet().iterator();
-        Map<String, Integer> countSequences = new HashMap<>();
-        countSequences.put("Passed", 0);
-        countSequences.put("Failed", 0);
+    public MultiSet<Header.DatabaseType> getDatabaseTypes(){
+        return this.databaseTypes;
+    }
 
+    public Map<String, String> getBadFastaHeaderMap() {
+        return badFastaHeaderMap;
+    }
+
+    public Map<String, String> getGoodFastaHeaderMap() {
+        return goodFastaHeaderMap;
+    }
+
+    public void sortFastaByHeader(boolean crash_if_invalid){
+        Iterator fastaMapIterator = this.fastaHeaderMap.entrySet().iterator();
+        while (fastaMapIterator.hasNext()) {
+            Map.Entry pair = (Map.Entry) fastaMapIterator.next();
+            String header = (String) pair.getKey();
+            String sequence = (String) pair.getValue();
+            if (isValidFastaHeader(header, crash_if_invalid)) {
+                this.goodFastaHeaderMap.put(header, sequence);
+            } else {
+                this.badFastaHeaderMap.put(header,sequence);
+            }
+        }
+    }
+
+    /* write out good and bad FASTA sequences into different text files
+     */
+    public void writeFilteredFastaToFile(Path goodFASTA, Path badFASTA){
         try (BufferedWriter bwGood = Files.newBufferedWriter(goodFASTA);
              BufferedWriter bwBad = Files.newBufferedWriter(badFASTA)){
-                while (fastaMapIterator.hasNext()) {
-                    Map.Entry pair = (Map.Entry) fastaMapIterator.next();
-                    String header = (String) pair.getKey();
-                    String sequence = (String) pair.getValue();
-
-
-                    if (isValidFastaHeader(header, crash_if_invalid)) {
-                        bwGood.write(header, 0, header.length());
-                        bwGood.write(sequence, 0, sequence.length());
-                        countSequences.put("Passed", countSequences.get("Passed")+1);
-                    } else {
-                        bwBad.write(header, 0, header.length());
-                        bwBad.write(sequence, 0, sequence.length());
-                        countSequences.put("Failed", countSequences.get("Failed")+1);
-                    }
+                for (Map.Entry<String, String> entry : goodFastaHeaderMap.entrySet()){
+                    String header = entry.getKey();
+                    String sequence = entry.getValue();
+                    bwGood.write(header, 0, header.length());
+                    bwGood.write(sequence, 0, sequence.length());
                 }
+                for (Map.Entry<String, String> entry : badFastaHeaderMap.entrySet()){
+                    String header = entry.getKey();
+                    String sequence = entry.getValue();
+                    bwBad.write(header, 0, header.length());
+                    bwBad.write(sequence, 0, sequence.length());
+                    }
             } catch(IOException e) {
                      e.printStackTrace();
         }
-        return countSequences;
     }
 
     /***
@@ -118,7 +139,7 @@ public class FASTA {
 
     // checks FASTA header for validity, using compomics method `Header.parseFromFASTA()`
     // Returns true if header is valid
-    public static boolean isValidFastaHeader(String aFastaHeader, boolean crash_if_invalid){
+    private boolean isValidFastaHeader(String aFastaHeader, boolean crash_if_invalid){
         Header header = null;
         try {
             // set out to dummy stream for Header method
@@ -126,7 +147,8 @@ public class FASTA {
 
             // attempt to parse the header
             header = Header.parseFromFASTA(aFastaHeader);
-
+//            logger.info(header.toString());
+//            databaseTypes.add(header.getDatabaseType());
             // return to regular system out
             System.setOut(originalStream);
         } catch(IllegalArgumentException iae){

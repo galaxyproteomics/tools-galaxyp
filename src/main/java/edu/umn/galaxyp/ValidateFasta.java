@@ -1,8 +1,9 @@
 package edu.umn.galaxyp;
 
+import com.compomics.util.protein.Header;
+
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Map;
 import java.util.logging.Logger;
 
 //import org.apache.log4j.*;
@@ -16,9 +17,6 @@ public class ValidateFasta {
         // input path
         Path fastaPath = Paths.get(args[0]);
 
-        // load fasta file
-        FASTA fasta = new FASTA(fastaPath);
-
         // if true, the presence of any invalid sequences triggers an exit code of 1
         boolean crash_if_invalid = false;
 
@@ -27,10 +25,18 @@ public class ValidateFasta {
             crash_if_invalid = Boolean.valueOf(args[3]);
         }
 
+        // load fasta file
+        FASTA fasta = new FASTA(fastaPath, crash_if_invalid);
+
+
+
         // performs filtering, I/O, and returns a count of good and bad sequences
-        Map<String, Integer> countSequences = fasta.sortFastaByHeader(Paths.get(args[1]), Paths.get(args[2]), crash_if_invalid);
-        String prettyPrintMap = "Sequences Passed: " + countSequences.get("Passed").toString() + "\n" +
-                "Sequences Failed: " + countSequences.get("Failed").toString();
-        System.out.print(prettyPrintMap);
+        fasta.writeFilteredFastaToFile(Paths.get(args[1]), Paths.get(args[2]));
+
+        MultiSet<Header.DatabaseType> databaseTypes = fasta.getDatabaseTypes();
+
+//        String prettyPrintMap = "Sequences Passed: " + countSequences.get("Passed").toString() + "\n" +
+//                "Sequences Failed: " + countSequences.get("Failed").toString();
+//        System.out.print(databaseTypes.toString());
     }
 }
