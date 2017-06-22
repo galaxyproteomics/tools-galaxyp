@@ -11,20 +11,36 @@ import java.util.Map;
 import java.util.logging.Logger;
 
 /**
- * Created by caleb on 6/21/17.
+ *
+ * The main data contained in FASTA is a HashMap of FASTA headers (in String form) and sequences. *
+ *
+ * @author caleb
  *
  *
- * a HashMap of headers (in String form) and sequences
+ *
  *
  */
 public class FASTA {
-    private Map<String, String> fastaHeaderMap;
-    private Map<String, String> badFastaHeaderMap;
-    private Map<String, String> goodFastaHeaderMap;
     private static final Logger logger = Logger.getLogger(FASTA.class.getName());
+
+    // map of all headers (key) with sequences (value)
+    private Map<String, String> fastaHeaderMap;
+
+    // map of FASTA entries that caused Header.parseFromFasta() to fail
+    private Map<String, String> badFastaHeaderMap;
+
+    // map of FASTA entries that passed Header.parseFromFasta()
+    private Map<String, String> goodFastaHeaderMap;
+
+    // Multiset of databases (i.e., UniProt) assigned by Header.parseFromFasta()
     private MultiSet<Header.DatabaseType> databaseTypes;
 
-    // constructor that takes the path of the FASTA file
+    /**
+     * constructor that takes the path of the FASTA file
+     *
+     *  @param path  path to FASTA file to be read in(NIO Path object)
+     *  @param crash_if_invalid  if true, a badly formatted header (the first) will immediately cause a System.exit(1)
+     */
     public FASTA(Path path, boolean crash_if_invalid){
         // initialize variables
         goodFastaHeaderMap = new LinkedHashMap<>();
@@ -87,6 +103,12 @@ public class FASTA {
         return goodFastaHeaderMap;
     }
 
+    /**
+     * Sorts loaded FASTA database into well- and poorly- formatted entries,
+     * which are stored in this.goodFastaHeaderMap and this.badFastaHeaderMap, respectively.
+     *
+     * @param crash_if_invalid  if yes, a poorly formatted header immediately triggers a System.exit(1)
+     */
     public void sortFastaByHeader(boolean crash_if_invalid){
         Iterator fastaMapIterator = this.fastaHeaderMap.entrySet().iterator();
         while (fastaMapIterator.hasNext()) {
@@ -101,7 +123,10 @@ public class FASTA {
         }
     }
 
-    /* write out good and bad FASTA sequences into different text files
+    /** write out good and bad FASTA sequences into different text files
+     *
+     * @param goodFASTA  an NIO Path object for the FASTA entries that are well formatted
+     * @param badFASTA  Path object for poorly formatted FASTA entries
      */
     public void writeFilteredFastaToFile(Path goodFASTA, Path badFASTA){
         try (BufferedWriter bwGood = Files.newBufferedWriter(goodFASTA);
@@ -137,8 +162,14 @@ public class FASTA {
         }
     });
 
-    // checks FASTA header for validity, using compomics method `Header.parseFromFASTA()`
-    // Returns true if header is valid
+    /**
+     * checks FASTA header for validity, using compomics method `Header.parseFromFASTA()`
+     *
+     * @param aFastaHeader  the first line of a FASTA entry (starts with ``>``)
+     * @param crash_if_invalid  if true, a poorly formatted FASTA header (the first) causes an immediate System.exit(1)
+     * @return  boolean true if header is valid, false otherwise
+     */
+
     private boolean isValidFastaHeader(String aFastaHeader, boolean crash_if_invalid){
         Header header = null;
         try {
