@@ -1,6 +1,5 @@
 package edu.umn.galaxyp;
 
-import it.unimi.dsi.fastutil.Hash;
 import org.junit.Test;
 
 import java.util.HashMap;

@@ -1,6 +1,6 @@
 package edu.umn.galaxyp;
 
-import com.compomics.util.protein.Header;
+//import com.compomics.util.protein.Header;
 
 import java.io.*;
 import java.nio.file.Files;
@@ -173,10 +173,11 @@ public class FASTA {
     private boolean isValidFastaHeader(String aFastaHeader, boolean crash_if_invalid){
         Header header = null;
         try {
-            // set out to dummy stream for Header method
-            System.setOut(dummyStream);
+
 
             // attempt to parse the header
+            // set out to dummy stream for Header method
+            System.setOut(dummyStream);
             header = Header.parseFromFASTA(aFastaHeader);
             Header.DatabaseType dbType = header.getDatabaseType();
             databaseTypes.add(dbType);

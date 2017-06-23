@@ -1,6 +1,6 @@
 package edu.umn.galaxyp;
 
-import com.compomics.util.protein.Header;
+//import com.compomics.util.protein.Header;
 
 import java.util.Formatter;
 import java.util.HashMap;
