@@ -33,7 +33,7 @@ public class ValidateFasta {
 //        MultiSet<Header.DatabaseType> databaseTypes = fasta.getDatabaseTypes();
 
         MultiSet<Header.DatabaseType> databaseTypes = FASTA.readFASTAHeader(fastaPath, crash_if_invalid,
-                outGoodFASTA, outBadFASTA);
+                outGoodFASTA, outBadFASTA, false, false, 0);
         System.out.println("Database Types");
         System.out.println(databaseTypes.toString());
     }

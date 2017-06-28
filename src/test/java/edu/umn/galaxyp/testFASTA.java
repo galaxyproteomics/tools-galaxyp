@@ -1,14 +1,12 @@
 package edu.umn.galaxyp;
 
 import org.junit.Test;
-import java.io.BufferedWriter;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
+
 import static org.junit.Assert.*;
 
 /**
@@ -33,7 +31,7 @@ public class testFASTA {
 
         MultiSet<Header.DatabaseType> databaseTypes =
                 FASTA.readFASTAHeader(inPath, false,
-                    outPathGood, outPathBad);
+                    outPathGood, outPathBad, false, false, 0);
 
         // read in files
         try {
@@ -47,5 +45,16 @@ public class testFASTA {
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    @Test
+    public void testDNAorRNA() {
+        String dnaSeq = "ACTGAACTGAATG";
+        String rnaSeq = "ACUGAAUGACUAUUUUUUUACUACUG";
+        String protSeq = "EWIWGGFSVDKATLNRFFAFHFILPFTMVALAGVHLTFLHETGSNNPLGLTSDSDKIPFHPYYTIKDFLG";
+
+        assertTrue(FASTA.isDnaOrRnaSequence(dnaSeq));
+        assertTrue(FASTA.isDnaOrRnaSequence(rnaSeq));
+        assertFalse(FASTA.isDnaOrRnaSequence(protSeq));
     }
 }

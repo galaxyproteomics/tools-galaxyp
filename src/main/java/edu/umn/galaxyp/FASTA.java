@@ -5,12 +5,9 @@ package edu.umn.galaxyp;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.OpenOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.*;
 import java.util.logging.Logger;
 
 /**
@@ -30,12 +27,18 @@ public class FASTA {
     }
     /**
      * takes path to header, reads in FASTA file, and writes out sorted FASTA
-     *
-     *  @param inPath  path to FASTA file to be read in(NIO Path object)
+     * @param inPath  path to FASTA file to be read in(NIO Path object)
      *  @param crash_if_invalid  if true, a badly formatted header (the first) will immediately cause a System.exit(1)
+     * @param checkLength
+     * @param minimumLength
      */
-    public static MultiSet<Header.DatabaseType> readFASTAHeader(Path inPath, boolean crash_if_invalid,
-                                           Path outPathGood, Path outPathBad){
+    public static MultiSet<Header.DatabaseType> readFASTAHeader(Path inPath,
+                                                                boolean crash_if_invalid,
+                                                                Path outPathGood,
+                                                                Path outPathBad,
+                                                                boolean checkIsProtein,
+                                                                boolean checkLength,
+                                                                int minimumLength){
         MultiSet<Header.DatabaseType> databaseTypesCount = new MultiSet<>();
         Header headerParsed = null;
         StringBuilder sequence = new StringBuilder(); // allows us to append all sequences of line
@@ -71,7 +74,6 @@ public class FASTA {
                         databaseTypesCount.add(dbType);
                         // return to regular system out
                         System.setOut(originalStream);
-
                         isValidHeader = true;
                     } catch(IllegalArgumentException iae){
                         // return exit code of 1 (abnormal termination)
@@ -84,11 +86,23 @@ public class FASTA {
                     }
 
                     // TODO run extra checks on sequence
-                    // check that it's not a genetic sequence
+
+                    // check that is not a DNA or RNA sequence, if requested
+                    boolean isDnaOrRna = false;
+                    if (checkIsProtein) {
+                        isDnaOrRna = isDnaOrRnaSequence(sequence.toString());
+                    }
+
                     // check that it has a minimum length
+                    boolean isBelowMinimumLength = false;
+                    if (checkLength) {
+                        isBelowMinimumLength = sequence.length() < minimumLength;
+                    }
 
                     // Write to file
-                    if (isValidHeader) {
+                    // isDnaOrRna can only be true if checkIsProtein is true
+                    // same for checkLength
+                    if (isValidHeader && !isDnaOrRna && !isBelowMinimumLength) {
                         bwGood.write(header, 0, header.length());
                         bwGood.write(sequence.toString(), 0, sequence.length());
                     } else {
@@ -107,6 +121,28 @@ public class FASTA {
         return databaseTypesCount;
     }
 
+    /**
+     * checks if a sequence is a DNA or RNA sequence. assumes
+     * that if a sequence contains only ACTG, is DNA, and if only
+     * contains ACUG, is RNA
+     *
+     * @param sequence (supposed) amino acid sequence from FASTA file
+     * @return true if only letters in sequence are A, C, T, and G OR A, C, U, and G
+     */
+    public static boolean isDnaOrRnaSequence(String sequence){
+        Set<String> lettersInSeq = new HashSet<String>();
+        for (int i = 0; i < sequence.length(); i++){
+            lettersInSeq.add(sequence.substring(i, i + 1));
+        }
+
+        Set<String> nucleotides = new HashSet<>();
+        nucleotides.addAll(Arrays.asList("A", "C", "T", "G"));
+
+        Set<String> nucleotidesRNA = new HashSet<>();
+        nucleotidesRNA.addAll(Arrays.asList("A", "C", "U", "G"));
+
+        return (nucleotides.equals(lettersInSeq) || nucleotidesRNA.equals(lettersInSeq)) ;
+    }
     /***
      *
      *hide system output from compomics methods
