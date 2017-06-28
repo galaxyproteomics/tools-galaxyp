@@ -136,12 +136,12 @@ public class FASTA {
         }
 
         Set<String> nucleotides = new HashSet<>();
-        nucleotides.addAll(Arrays.asList("A", "C", "T", "G"));
+        nucleotides.addAll(Arrays.asList("A", "C", "T", "G", "\n", " "));
 
         Set<String> nucleotidesRNA = new HashSet<>();
-        nucleotidesRNA.addAll(Arrays.asList("A", "C", "U", "G"));
+        nucleotidesRNA.addAll(Arrays.asList("A", "C", "U", "G", "\n", " "));
 
-        return (nucleotides.equals(lettersInSeq) || nucleotidesRNA.equals(lettersInSeq)) ;
+        return (nucleotides.containsAll(lettersInSeq) || nucleotidesRNA.containsAll(lettersInSeq)) ;
     }
     /***
      *
