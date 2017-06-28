@@ -32,4 +32,15 @@ public class MultiSetTest {
         assertTrue(compareHashMap.equals(multi.getMap()));
     }
 
+    @Test
+    public void testVoidsMultiSet() throws Exception {
+        MultiSet<String> multi = new MultiSet<>();
+
+        // when try to remove a null value, returns null
+        assertNull(multi.remove(null));
+
+        // when try to remove a value not in the set, returns -1
+        assertEquals(-1, multi.remove("bessie").intValue());
+    }
+
 }

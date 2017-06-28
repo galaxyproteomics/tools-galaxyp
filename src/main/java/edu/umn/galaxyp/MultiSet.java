@@ -33,7 +33,9 @@ public class MultiSet<T> {
         if (setOfObjects == null){
             setOfObjects = new HashMap<>();
         }
-        if (setOfObjects.containsKey(value)){
+        if (value == null){
+            // do nothing
+        } else if (setOfObjects.containsKey(value)){
             int currentNumber = setOfObjects.get(value);
             setOfObjects.put(value, currentNumber + 1);
         } else {
@@ -41,18 +43,28 @@ public class MultiSet<T> {
         }
     }
 
-    public int remove(T value){
-        int currentNumber = setOfObjects.get(value);
-        if (currentNumber == 0){
-            setOfObjects.remove(value);
+    /**
+     *
+     * @param value
+     * @return A positive integer indicates the number of @param value left in the set. A return value of null indicates that value is null.
+     * A return value of -1 indicates that the object doesn't exist in the set.
+     */
+    public Integer remove(T value){
+        if (value == null){
+            return null;
+        }
+        Integer currentNumber = setOfObjects.get(value);
+
+        if (currentNumber != null) {
+            int newNumber = setOfObjects.get(value) - 1;
+            setOfObjects.put(value, newNumber);
+            if (newNumber == 0){
+                setOfObjects.remove(value);
+            }
+            return newNumber;
+        } else {
             return -1;
         }
-        int newNumber = setOfObjects.get(value) - 1;
-        setOfObjects.put(value, newNumber);
-        if (newNumber == 0){
-            setOfObjects.remove(value);
-        }
-        return newNumber;
     }
 
     @Override
@@ -62,7 +74,7 @@ public class MultiSet<T> {
         for (Map.Entry<T, Integer> entry : setOfObjects.entrySet()){
             T key = entry.getKey();
             Integer value = entry.getValue();
-            formatter.format("%1$-15s %2$s %n", key.toString() + ":", value.toString());
+            formatter.format("%1$-25s %2$s %n", key.toString() + ":", value.toString());
         }
         return prettyPrint.toString();
     }

@@ -19,6 +19,8 @@ public class testFASTA {
 
     @Test
     public void testInOutFASTA() {
+        ValidateFastaDatabase vfd = new ValidateFastaDatabase();
+
         Path inPath = Paths.get("./src/test/java/edu/umn/galaxyp/goodAndBadFasta.fasta");
 
         // files actually obtained from method
@@ -29,9 +31,13 @@ public class testFASTA {
         Path outPathGoodExpected = Paths.get("./src/test/java/edu/umn/galaxyp/goodFasta.fasta");
         Path outPathBadExpected = Paths.get("./src/test/java/edu/umn/galaxyp/badFasta.fasta");
 
-        MultiSet<Header.DatabaseType> databaseTypes =
-                FASTA.readFASTAHeader(inPath, false,
-                    outPathGood, outPathBad, false, false, 0);
+        vfd.readFASTAHeader(inPath,
+                false,
+                outPathGood,
+                outPathBad,
+                false,
+                false,
+                0);
 
         // read in files
         try {
@@ -49,12 +55,12 @@ public class testFASTA {
 
     @Test
     public void testDNAorRNA() {
-        String dnaSeq = "ACTGAACTGAATG";
-        String rnaSeq = "ACUGAAUGACUAUUUUUUUACUACUG";
-        String protSeq = "EWIWGGFSVDKATLNRFFAFHFILPFTMVALAGVHLTFLHETGSNNPLGLTSDSDKIPFHPYYTIKDFLG";
+        fastaRecord dnaSeq = new fastaRecord("ACTGAACTGAATG");
+        fastaRecord rnaSeq = new fastaRecord("ACUGAAUGACUAUUUUUUUACUACUG");
+        fastaRecord protSeq = new fastaRecord("EWIWGGFSVDKATLNRFFAFHFILPFTMVALAGVHLTFLHETGSNNPLGLTSDSDKIPFHPYYTIKDFLG");
 
-        assertTrue(FASTA.isDnaOrRnaSequence(dnaSeq));
-        assertTrue(FASTA.isDnaOrRnaSequence(rnaSeq));
-        assertFalse(FASTA.isDnaOrRnaSequence(protSeq));
+        assertTrue(dnaSeq.isDnaSequence());
+        assertTrue(rnaSeq.isRnaSequence());
+        assertFalse(protSeq.isRnaSequence() || protSeq.isDnaSequence());
     }
 }
