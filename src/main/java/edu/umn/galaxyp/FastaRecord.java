@@ -9,8 +9,8 @@ import java.util.logging.Logger;
  * Created by caleb on 6/28/17.
  */
 
-public class fastaRecord {
-    private static final Logger logger = Logger.getLogger(fastaRecord.class.getName());
+public class FastaRecord {
+    private static final Logger logger = Logger.getLogger(FastaRecord.class.getName());
     private String header;
     private String sequence;
     private boolean isDnaSequence;
@@ -21,7 +21,7 @@ public class fastaRecord {
     private int sequenceLength;
 
     // default constructor
-    public fastaRecord(){
+    public FastaRecord(){
     }
 
     /**
@@ -30,7 +30,7 @@ public class fastaRecord {
      * @param header
      * @param sequence
      */
-    public fastaRecord(String header,
+    public FastaRecord(String header,
                        String sequence) {
         this.header = header;
         this.sequence = sequence;
@@ -79,7 +79,7 @@ public class fastaRecord {
      *
      * @param sequence
      */
-    public fastaRecord(String sequence) {;
+    public FastaRecord(String sequence) {;
         this.sequence = sequence;
         this.sequenceLength = sequence.length();
 

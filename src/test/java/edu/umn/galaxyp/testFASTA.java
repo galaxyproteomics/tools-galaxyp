@@ -55,9 +55,9 @@ public class testFASTA {
 
     @Test
     public void testDNAorRNA() {
-        fastaRecord dnaSeq = new fastaRecord("ACTGAACTGAATG");
-        fastaRecord rnaSeq = new fastaRecord("ACUGAAUGACUAUUUUUUUACUACUG");
-        fastaRecord protSeq = new fastaRecord("EWIWGGFSVDKATLNRFFAFHFILPFTMVALAGVHLTFLHETGSNNPLGLTSDSDKIPFHPYYTIKDFLG");
+        FastaRecord dnaSeq = new FastaRecord("ACTGAACTGAATG");
+        FastaRecord rnaSeq = new FastaRecord("ACUGAAUGACUAUUUUUUUACUACUG");
+        FastaRecord protSeq = new FastaRecord("EWIWGGFSVDKATLNRFFAFHFILPFTMVALAGVHLTFLHETGSNNPLGLTSDSDKIPFHPYYTIKDFLG");
 
         assertTrue(dnaSeq.isDnaSequence());
         assertTrue(rnaSeq.isRnaSequence());

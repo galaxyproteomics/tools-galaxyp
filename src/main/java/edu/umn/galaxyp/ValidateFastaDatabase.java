@@ -3,14 +3,9 @@ package edu.umn.galaxyp;
 //import com.compomics.util.protein.Header;
 
 import java.io.*;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.logging.Logger;
 
 //import org.apache.log4j.*;
@@ -112,7 +107,7 @@ public class ValidateFastaDatabase {
                     }
 
                     // record that is sequentially updated
-                    fastaRecord current_record = new fastaRecord(header, sequence.toString());
+                    FastaRecord current_record = new FastaRecord(header, sequence.toString());
                     this.addDatabaseType(current_record.getDatabaseType());
 
                     // write FASTA header and sequence to either good or bad file
