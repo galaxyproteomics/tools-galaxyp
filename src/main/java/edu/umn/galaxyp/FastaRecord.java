@@ -16,6 +16,8 @@ public class FastaRecord {
     private boolean isDnaSequence;
     private boolean isRnaSequence;
     private boolean isValidFastaHeader;
+    private String accession;
+    private boolean hasAccession;
     private Header.DatabaseType databaseType;
     private Set<String> sequenceSet;
     private int sequenceLength;
@@ -30,11 +32,14 @@ public class FastaRecord {
      * @param header
      * @param sequence
      */
+
     public FastaRecord(String header,
                        String sequence) {
         this.header = header;
         this.sequence = sequence;
-        this.sequenceLength = sequence.length();
+
+        // strip any newline characters off for length measurement
+        this.sequenceLength = sequence.replaceAll("\n", "").length();
 
         // create set that contains all symbols in sequence
         this.sequenceSet = new HashSet<String>();
@@ -59,6 +64,10 @@ public class FastaRecord {
             // if try succeeds, then this is a valid header
             this.isValidFastaHeader = true;
 
+            // test for presence of accession number
+            this.accession = headerParsed.getAccession();
+            this.hasAccession = checkAccession(accession);
+
         } catch(IllegalArgumentException iae){
 
             // if fails, then this is an invalid header
@@ -74,6 +83,7 @@ public class FastaRecord {
     }
 
 
+
     /**
      * Gathering data on sequence alone. used for testing DNA and RNA checks
      *
@@ -82,6 +92,8 @@ public class FastaRecord {
     public FastaRecord(String sequence) {;
         this.sequence = sequence;
         this.sequenceLength = sequence.length();
+
+        this.sequenceSet = new HashSet<>();
 
         // create set that contains all symbols in sequence
         Set<String> lettersInSeq = new HashSet<String>();
@@ -94,7 +106,15 @@ public class FastaRecord {
         this.isRnaSequence = isRNA();
     }
 
-
+    private boolean checkAccession(String accession){
+        if (accession == null) {
+            return false;
+        } else if (accession.equals("") || accession.equals(" ")){
+            return false;
+        } else {
+            return true;
+        }
+    }
     /**
      * checks if a sequence is a DNA or RNA sequence. assumes
      * that if a sequence contains only ACTG, is DNA, and if only
@@ -104,7 +124,7 @@ public class FastaRecord {
      */
     private boolean isDNA(){
         Set<String> nucleotidesRNA = new HashSet<>();
-        nucleotidesRNA.addAll(Arrays.asList("A", "C", "U", "G", "\n", " "));
+        nucleotidesRNA.addAll(Arrays.asList("A", "C", "T", "G", "\n", " "));
 
         return (nucleotidesRNA.containsAll(sequenceSet)) ;
     }
@@ -189,4 +209,11 @@ public class FastaRecord {
         this.sequenceLength = sequenceLength;
     }
 
+    public String getAccession() { return accession; }
+
+    public void setAccession(String accession) { this.accession = accession; }
+
+    public boolean getHasAccession() { return hasAccession;    }
+
+    public void setHasAccession(boolean hasAccession) { this.hasAccession = hasAccession;  }
 }

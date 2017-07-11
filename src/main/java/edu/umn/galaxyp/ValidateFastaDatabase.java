@@ -50,12 +50,15 @@ public class ValidateFastaDatabase {
         // if true, checks that is not a DNA or RNA sequence
         boolean checkIsProtein = Boolean.valueOf(args[4]);
 
+        // if true, only outputs FASTA entries with an accession number
+        boolean checkHasAccession = Boolean.valueOf(args[5]);
+
         // if true, checks that is greater than a minimum length
-        boolean checkLength = Boolean.valueOf(args[5]);
+        boolean checkLength = Boolean.valueOf(args[6]);
 
         int minimumLength = 0;
         if (checkLength){
-            minimumLength = Integer.valueOf(args[6]);
+            minimumLength = Integer.valueOf(args[7]);
         }
 
         vfd.readFASTAHeader(fastaPath,
@@ -64,7 +67,8 @@ public class ValidateFastaDatabase {
                 outBadFASTA,
                 checkIsProtein,
                 checkLength,
-                minimumLength);
+                minimumLength,
+                checkHasAccession);
 
         System.out.println("Database Types");
         System.out.println(vfd.getDatabaseTypeMultiSet().toString());
@@ -76,6 +80,7 @@ public class ValidateFastaDatabase {
      *  @param crash_if_invalid  if true, a badly formatted header (the first) will immediately cause a System.exit(1)
      * @param checkLength
      * @param minimumLength
+     * @param checkHasAccession
      */
     public void readFASTAHeader(Path inPath,
                                 boolean crash_if_invalid,
@@ -83,7 +88,8 @@ public class ValidateFastaDatabase {
                                 Path outPathBad,
                                 boolean checkIsProtein,
                                 boolean checkLength,
-                                int minimumLength){
+                                int minimumLength,
+                                boolean checkHasAccession){
 
         Header headerParsed = null;
         StringBuilder sequence = new StringBuilder(); // allows us to append all sequences of line
@@ -110,11 +116,43 @@ public class ValidateFastaDatabase {
                     FastaRecord current_record = new FastaRecord(header, sequence.toString());
                     this.addDatabaseType(current_record.getDatabaseType());
 
+                    // isDnaOrRna
+                    boolean passDnaOrRna;
+
+                    // if checkIsProtein is false, then passDnaOrRna should always be true
+                    if (!checkIsProtein) {
+                        passDnaOrRna = true;
+                    } else {
+                        // is the sequence dna or rna?
+                        passDnaOrRna = current_record.isDnaSequence() || current_record.isRnaSequence();
+                    }
+
+                    // Length checking
+                    boolean passBelowMinimumLength;
+
+                    // if checkLength is false, then passBelowMinimumLength should always be true
+                    if (!checkLength) {
+                        passBelowMinimumLength = true;
+                    } else {
+                        passBelowMinimumLength = current_record.getSequenceLength() < minimumLength;
+                    }
+
+                    // accession checking
+                    boolean passAccession;
+
+                    // if checkHasAccession is false, then passAccession should always be true
+                    if (!checkHasAccession) {
+                        passAccession = true;
+                    } else {
+                        passAccession = current_record.getHasAccession();
+                    }
+
                     // write FASTA header and sequence to either good or bad file
                     writeFasta(sequence, bwGood, bwBad, header,
                             current_record.isValidFastaHeader(),
-                            current_record.isDnaSequence() || current_record.isRnaSequence(),
-                            current_record.getSequenceLength() < minimumLength);
+                            passDnaOrRna,
+                            passBelowMinimumLength,
+                            passAccession);
 
                     // empty the sequence builder to allow for appending the next sequence
                     sequence.setLength(0);
@@ -131,12 +169,13 @@ public class ValidateFastaDatabase {
                                    BufferedWriter bwBad,
                                    String header,
                                    boolean isValidHeader,
-                                   boolean isDnaOrRna,
-                                   boolean isBelowMinimumLength) throws IOException {
+                                   boolean passDnaOrRna,
+                                   boolean passBelowMinimumLength,
+                                   boolean passAccession) throws IOException {
         // Write to file
         // isDnaOrRna can only be true if checkIsProtein is true
         // same for checkLength
-        if (isValidHeader && !isDnaOrRna && !isBelowMinimumLength) {
+        if (isValidHeader && passDnaOrRna && passBelowMinimumLength && passAccession) {
             bwGood.write(header, 0, header.length());
             bwGood.write(sequence.toString(), 0, sequence.length());
         } else {

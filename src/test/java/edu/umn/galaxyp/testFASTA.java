@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.logging.Logger;
 
 import static org.junit.Assert.*;
 
@@ -37,7 +38,8 @@ public class testFASTA {
                 outPathBad,
                 false,
                 false,
-                0);
+                0,
+                false);
 
         // read in files
         try {
@@ -62,5 +64,21 @@ public class testFASTA {
         assertTrue(dnaSeq.isDnaSequence());
         assertTrue(rnaSeq.isRnaSequence());
         assertFalse(protSeq.isRnaSequence() || protSeq.isDnaSequence());
+    }
+
+    @Test
+    public void testAccessions() {
+        Logger logger = Logger.getLogger("testAccessions");
+
+        FastaRecord hasNotAccession = new FastaRecord(">generic||01",
+                "MNLQKFSRYPLTFGPTPIQPLKRLSAHLGGKVELYAKRDDCNSGLAFGGNKTRKLEYLIP");
+        FastaRecord differentBadAccession = new FastaRecord(">generic| |01",
+                "MNLQKFSRYPLTFGPTPIQPLKRLSAHLGGKVELYAKRDDCNSGLAFGGNKTRKLEYLIP");
+        FastaRecord hasAccession = new FastaRecord(">generic|AB0001",
+                "MNLQKFSRYPLTFGPTPIQPLKRLSAHLGGKVELYAKRDDCNSGLAFGGNKTRKLEYLIP");
+
+        assertTrue(hasAccession.getHasAccession());
+        assertFalse(hasNotAccession.getHasAccession());
+        assertFalse(differentBadAccession.getHasAccession());
     }
 }
