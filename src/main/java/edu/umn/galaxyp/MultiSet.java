@@ -9,7 +9,7 @@ import java.util.Map;
 
 /**
  * MultiSet, implemented with a backing HashMap
- * <br> The keys may be of any type. 
+ * <br> The keys may be of any type.
  * @author Caleb Easterly
  */
 
