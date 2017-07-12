@@ -100,6 +100,8 @@
       </script>
   </head>
 
+
+
   <body>
 
     <div class="outer-frame">
@@ -158,5 +160,8 @@
       </div>
     </div>
   </body>
-
+  <footer>
+  Visualizations use the Unipept stand-alone visualizations package, with code available
+  <a href="https://github.com/unipept/unipept-visualizations" target = "_blank">here</a>
+  </footer>
 </html>
