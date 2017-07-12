@@ -6,6 +6,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.logging.Logger;
 
 import static org.junit.Assert.*;
@@ -121,4 +124,17 @@ public class testFASTA {
         assertTrue(valid.isValidFastaHeader());
         assertFalse(invalid.isValidFastaHeader());
     }
+
+    @Test
+    public void testSequenceSetCreation() {
+        Logger logger = Logger.getLogger("testSequenceSetCreation");
+
+        String sequence = "MMNLQATTY\n\r\t ";
+        FastaRecord testSet = new FastaRecord(sequence);
+
+        // expected set does not have \n, \r, \t or space
+        Set<String> expectedSet = new HashSet<>(Arrays.asList("M", "N", "L", "Q", "A", "T", "Y"));
+        assertTrue(testSet.getSequenceSet().equals(expectedSet));
+    }
 }
+
