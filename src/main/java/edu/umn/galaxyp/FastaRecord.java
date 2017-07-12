@@ -14,6 +14,7 @@ public class FastaRecord {
 
     private String header;
     private String sequence;
+    private String sequenceTrimmed;
     private boolean isDnaSequence;
     private boolean isRnaSequence;
     private boolean isValidFastaHeader;
@@ -36,21 +37,12 @@ public class FastaRecord {
 
     public FastaRecord(String header,
                        String sequence) {
+
         this.header = header;
-        this.sequence = sequence;
 
-        // strip any newline characters off for length measurement
-        this.sequenceLength = sequence.replaceAll("\n", "").length();
+        // populates sequence, sequenceTrimmed, isDna/RnaSequence, sequenceSet, and sequenceLength
+        initializeSequenceData(sequence);
 
-        // create set that contains all symbols in sequence
-        this.sequenceSet = new HashSet<>();
-        for (int i = 0; i < this.sequence.length(); i++){
-            this.sequenceSet.add(this.sequence.substring(i, i + 1));
-        }
-
-        // protein vs. dna or rna
-        this.isDnaSequence = isDNA();
-        this.isRnaSequence = isRNA();
 
         // check if is valid header
         Header headerParsed;
@@ -83,29 +75,41 @@ public class FastaRecord {
 
     }
 
-
-
     /**
      * Gathering data on sequence alone. used for testing DNA and RNA checks
      *
-     * @param sequence
+     * @param sequence raw sequence from FASTA file
      */
     public FastaRecord(String sequence) {
+        initializeSequenceData(sequence);
+    }
+
+    private void initializeSequenceData(String sequence) {
         this.sequence = sequence;
-        this.sequenceLength = sequence.length();
-
-        this.sequenceSet = new HashSet<>();
-
-        // create set that contains all symbols in sequence
-        Set<String> lettersInSeq = new HashSet<String>();
-        for (int i = 0; i < this.sequence.length(); i++){
-            this.sequenceSet.add(this.sequence.substring(i, i + 1));
-        }
+        this.sequenceTrimmed = trimSequence();
+        this.sequenceLength = this.sequenceTrimmed.length();
+        this.sequenceSet = createSequenceSet();
 
         // protein vs. dna or rna
         this.isDnaSequence = isDNA();
         this.isRnaSequence = isRNA();
     }
+
+    private String trimSequence() {
+        // remove newline character, windows carriage return doohickey, tabs, and spaces
+        // will remove spaces at end of lines, which is the only place they could be at all
+        return this.sequence.replaceAll("[\n\r\t ]", "");
+    }
+
+    private Set<String> createSequenceSet(){
+        // create set that contains all symbols in sequence
+        Set<String> localSequenceSet = new HashSet<>();
+        for (int i = 0; i < this.sequenceTrimmed.length(); i++) {
+            localSequenceSet.add(this.sequenceTrimmed.substring(i, i + 1));
+        }
+        return localSequenceSet;
+    }
+
 
     private boolean checkAccession(String accession){
         if (accession == null) {
@@ -125,7 +129,7 @@ public class FastaRecord {
      */
     private boolean isDNA(){
         Set<String> nucleotidesRNA = new HashSet<>();
-        nucleotidesRNA.addAll(Arrays.asList("A", "C", "T", "G", "\n", " "));
+        nucleotidesRNA.addAll(Arrays.asList("A", "C", "T", "G"));
 
         return (nucleotidesRNA.containsAll(sequenceSet)) ;
     }
@@ -140,9 +144,23 @@ public class FastaRecord {
     private boolean isRNA(){
 
         Set<String> nucleotidesRNA = new HashSet<>();
-        nucleotidesRNA.addAll(Arrays.asList("A", "C", "U", "G", "\n", " "));
+        nucleotidesRNA.addAll(Arrays.asList("A", "C", "U", "G"));
 
         return (nucleotidesRNA.containsAll(sequenceSet)) ;
+    }
+
+    private boolean isPeptide(){
+        Set<String> aminoAcids = new HashSet<>();
+        aminoAcids.addAll(Arrays.asList(
+                "A", "I", "L", "V",  // aliphatic, hydrophobic side chain
+                "F", "W", "Y", // aromatic, hydrophobic side chain
+                "N", "C", "Q", "M", "S", "T", // polar neutral side chain
+                "D", "E", // charged side chain, acidic
+                "R", "H", "K", // charged side chain, basic
+                "G", "P" // unique aas
+                ));
+
+        return (aminoAcids.containsAll(sequenceSet)) ;
     }
 
 
