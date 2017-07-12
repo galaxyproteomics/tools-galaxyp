@@ -1,37 +1,33 @@
 package edu.umn.galaxyp;
 
-//import com.compomics.util.protein.Header;
-
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.logging.Logger;
 
-//import org.apache.log4j.*;
-
 public class ValidateFastaDatabase {
 
     private static Logger logger = Logger.getLogger(ValidateFastaDatabase.class.getName());
 
+    // custom HashMap that contains list of databases and the number of times
+    // they appear in the FASTA file
     private MultiSet<Header.DatabaseType> databaseTypeMultiSet;
 
     public MultiSet<Header.DatabaseType> getDatabaseTypeMultiSet() {
         return databaseTypeMultiSet;
     }
 
-    public void setDatabaseTypeMultiSet(MultiSet<Header.DatabaseType> databaseTypeMultiSet) {
-        this.databaseTypeMultiSet = databaseTypeMultiSet;
-    }
-
     public void addDatabaseType(Header.DatabaseType value){
         this.databaseTypeMultiSet.add(value);
     }
 
+    // constructor
     public ValidateFastaDatabase(){
-        this.databaseTypeMultiSet = new MultiSet<Header.DatabaseType>();
+        this.databaseTypeMultiSet = new MultiSet<>();
     }
 
+    // runs checks on supplied FASTA database
     public static void main(String[] args) {
 
         // construct empty instance of ValidateFastaDatabase, to record database types
@@ -61,7 +57,7 @@ public class ValidateFastaDatabase {
             minimumLength = Integer.valueOf(args[7]);
         }
 
-        vfd.readFASTAHeader(fastaPath,
+        vfd.readAndWriteFASTAHeader(fastaPath,
                 crash_if_invalid,
                 outGoodFASTA,
                 outBadFASTA,
@@ -82,14 +78,14 @@ public class ValidateFastaDatabase {
      * @param minimumLength
      * @param checkHasAccession
      */
-    public void readFASTAHeader(Path inPath,
-                                boolean crash_if_invalid,
-                                Path outPathGood,
-                                Path outPathBad,
-                                boolean checkIsProtein,
-                                boolean checkLength,
-                                int minimumLength,
-                                boolean checkHasAccession){
+    public void readAndWriteFASTAHeader(Path inPath,
+                                        boolean crash_if_invalid,
+                                        Path outPathGood,
+                                        Path outPathBad,
+                                        boolean checkIsProtein,
+                                        boolean checkLength,
+                                        int minimumLength,
+                                        boolean checkHasAccession){
 
         Header headerParsed = null;
         StringBuilder sequence = new StringBuilder(); // allows us to append all sequences of line
@@ -117,35 +113,13 @@ public class ValidateFastaDatabase {
                     this.addDatabaseType(current_record.getDatabaseType());
 
                     // isDnaOrRna
-                    boolean passDnaOrRna;
-
-                    // if checkIsProtein is false, then passDnaOrRna should always be true
-                    if (!checkIsProtein) {
-                        passDnaOrRna = true;
-                    } else {
-                        // is the sequence dna or rna?
-                        passDnaOrRna = current_record.isDnaSequence() || current_record.isRnaSequence();
-                    }
+                    boolean passDnaOrRna = passDnaOrRna(checkIsProtein, current_record);
 
                     // Length checking
-                    boolean passBelowMinimumLength;
-
-                    // if checkLength is false, then passBelowMinimumLength should always be true
-                    if (!checkLength) {
-                        passBelowMinimumLength = true;
-                    } else {
-                        passBelowMinimumLength = current_record.getSequenceLength() < minimumLength;
-                    }
+                    boolean passBelowMinimumLength = passBelowMinimumLength(checkLength, minimumLength, current_record);
 
                     // accession checking
-                    boolean passAccession;
-
-                    // if checkHasAccession is false, then passAccession should always be true
-                    if (!checkHasAccession) {
-                        passAccession = true;
-                    } else {
-                        passAccession = current_record.getHasAccession();
-                    }
+                    boolean passAccession = passAccession(checkHasAccession, current_record);
 
                     // write FASTA header and sequence to either good or bad file
                     writeFasta(sequence, bwGood, bwBad, header,
@@ -164,6 +138,69 @@ public class ValidateFastaDatabase {
         }
     }
 
+    /**
+     * checks if we should filter out FASTA database entries without accession numbers
+     * @param checkHasAccession true if checking for a successful accession number parsing
+     * @param current_record FASTA database entry currently in memory
+     * @return true either if 1) we don't want to check for a valid accession number or
+     *  2) sequence has a valid accession number
+     */
+    public boolean passAccession(boolean checkHasAccession, FastaRecord current_record) {
+        boolean passAccession;// if checkHasAccession is false, then passAccession should always be true
+        if (!checkHasAccession) {
+            passAccession = true;
+        } else {
+            passAccession = current_record.getHasAccession();
+        }
+        return passAccession;
+    }
+
+    /**
+     * checks if we should check for length, and if so, checks length
+     * @param checkLength true if running length check
+     * @param minimumLength if running length check, length of sequence is compared to this number
+     * @param current_record FASTA database entry currently in memory
+     * @return true either if 1) we don't want to check for length, or 2) sequence is above minimum length
+     */
+    public boolean passBelowMinimumLength(boolean checkLength, int minimumLength, FastaRecord current_record) {
+        boolean passBelowMinimumLength;// if checkLength is false, then passBelowMinimumLength should always be true
+        if (!checkLength) {
+            passBelowMinimumLength = true;
+        } else {
+            passBelowMinimumLength = current_record.getSequenceLength() > minimumLength;
+        }
+        return passBelowMinimumLength;
+    }
+
+    /**
+     * should we check if the sequence is a valid protein sequence?
+     * @param checkIsProtein if true, run check against DNA and RNA alphabets
+     * @param current_record FASTA database entry currently in memory
+     * @return true either if 1) we don't want to check if sequence is valid, or 2) sequence is a valid AA sequence
+     */
+    public boolean passDnaOrRna(boolean checkIsProtein, FastaRecord current_record) {
+        boolean passDnaOrRna;// if checkIsProtein is false, then passDnaOrRna should always be true
+        if (!checkIsProtein) {
+            passDnaOrRna = true;
+        } else {
+            // is the sequence dna or rna?
+            passDnaOrRna = current_record.isDnaSequence() || current_record.isRnaSequence();
+        }
+        return passDnaOrRna;
+    }
+
+    /**
+     * write given (raw) header and sequence to specified fasta file
+     * @param sequence raw FASTA sequence from file. May include end of line characters
+     * @param bwGood  buffered writer object pointing to good output file
+     * @param bwBad buffered writer object pointing to bad output file
+     * @param header raw FASTA header from file. May contain end of line characters, etc
+     * @param isValidHeader true if header passed the Compomics parse
+     * @param passDnaOrRna true if 1) we are not checking for valid AA sequence, or 2) is a valid AA sequence
+     * @param passBelowMinimumLength true if 1) we are not checking for length, or 2) is above minimum length
+     * @param passAccession true if 1) we are not excluding database entries w/o headers, or 2) an accession number was successfully extracted
+     * @throws IOException if invalid paths are given for good and bad output databases.
+     */
     private static void writeFasta(StringBuilder sequence,
                                    BufferedWriter bwGood,
                                    BufferedWriter bwBad,
@@ -184,69 +221,4 @@ public class ValidateFastaDatabase {
         }
     }
 
-//    /**
-//     * check if header is valid, according to Compomics schema
-//     *
-//     * @param crash_if_invalid If true, program with System.exit(1) on first occurence of bad FASTA header
-//     * @param header
-//     * @return
-//     */
-//    public boolean isValidHeader(boolean crash_if_invalid, String header) {
-//        Header headerParsed;
-//        boolean isValidHeader = false;
-//        try {
-//            // attempt to parse the header
-//            headerParsed = Header.parseFromFASTA(header);
-//
-//            // add database record to databaseTypeMultiset
-//            this.addDatabaseType(headerParsed.getDatabaseType());
-//
-//            isValidHeader = true;
-//        } catch(IllegalArgumentException iae){
-//            // return exit code of 1 (abnormal termination)
-//            if (crash_if_invalid) {
-//                System.err.println("Invalid FASTA headers detected. Exit requested by user. ");
-//                System.exit(1);
-//            }
-//            // else, print nothing
-//            iae.getMessage();
-//        }
-//        return isValidHeader;
-//    }
-//
-//    /**
-//     * checks if a sequence is a DNA or RNA sequence. assumes
-//     * that if a sequence contains only ACTG, is DNA, and if only
-//     * contains ACUG, is RNA
-//     *
-//     * @param sequence (supposed) amino acid sequence from FASTA file
-//     * @return true if only letters in sequence are A, C, T, and G OR A, C, U, and G
-//     */
-//    public static boolean isDnaOrRnaSequence(String sequence){
-//        Set<String> lettersInSeq = new HashSet<String>();
-//        for (int i = 0; i < sequence.length(); i++){
-//            lettersInSeq.add(sequence.substring(i, i + 1));
-//        }
-//
-//        Set<String> nucleotides = new HashSet<>();
-//        nucleotides.addAll(Arrays.asList("A", "C", "T", "G", "\n", " "));
-//
-//        Set<String> nucleotidesRNA = new HashSet<>();
-//        nucleotidesRNA.addAll(Arrays.asList("A", "C", "U", "G", "\n", " "));
-//
-//        return (nucleotides.containsAll(lettersInSeq) || nucleotidesRNA.containsAll(lettersInSeq)) ;
-//    }
-//    /***
-//     *
-//     *hide system output from compomics methods
-//     *(for very large FASTA, compomics output may overflow
-//     *standard output in Galaxy)
-//     *idea from https://stackoverflow.com/questions/8363493/hiding-system-out-print-calls-of-a-class
-//     */
-////    private static PrintStream originalStream = System.out;
-////    private static PrintStream dummyStream = new PrintStream(new OutputStream() {
-////        @Override
-////        public void write(int i) throws IOException {
-////        }
-////    });
 }

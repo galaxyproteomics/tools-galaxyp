@@ -18,6 +18,8 @@ import static org.junit.Assert.*;
  */
 public class testFASTA {
 
+    // test that the reading and writing process works
+    // does not crash if invalid, does not check for protein or length or accession
     @Test
     public void testInOutFASTA() {
         ValidateFastaDatabase vfd = new ValidateFastaDatabase();
@@ -32,7 +34,7 @@ public class testFASTA {
         Path outPathGoodExpected = Paths.get("./src/test/java/edu/umn/galaxyp/goodFasta.fasta");
         Path outPathBadExpected = Paths.get("./src/test/java/edu/umn/galaxyp/badFasta.fasta");
 
-        vfd.readFASTAHeader(inPath,
+        vfd.readAndWriteFASTAHeader(inPath,
                 false,
                 outPathGood,
                 outPathBad,
@@ -55,6 +57,10 @@ public class testFASTA {
         }
     }
 
+
+    // checks that the DNA check identifies DNA sequences,
+    // the RNA identifies RNA sequences,
+    // and that neither identify a protein sequence
     @Test
     public void testDNAorRNA() {
         FastaRecord dnaSeq = new FastaRecord("ACTGAACTGAATG");
@@ -66,19 +72,56 @@ public class testFASTA {
         assertFalse(protSeq.isRnaSequence() || protSeq.isDnaSequence());
     }
 
+    // confirm that FastaRecord constructor will identify valid accessions but not
+    // invalid accessions
     @Test
     public void testAccessions() {
         Logger logger = Logger.getLogger("testAccessions");
 
-        FastaRecord hasNotAccession = new FastaRecord(">generic||01",
+        FastaRecord hasNotAccession = new FastaRecord(">generic||1",
                 "MNLQKFSRYPLTFGPTPIQPLKRLSAHLGGKVELYAKRDDCNSGLAFGGNKTRKLEYLIP");
         FastaRecord differentBadAccession = new FastaRecord(">generic| |01",
                 "MNLQKFSRYPLTFGPTPIQPLKRLSAHLGGKVELYAKRDDCNSGLAFGGNKTRKLEYLIP");
-        FastaRecord hasAccession = new FastaRecord(">generic|AB0001",
+        FastaRecord thirdBadAccession = new FastaRecord(">MCHU - Calmodulin - Human, rabbit, bovine, rat, and chicken",
                 "MNLQKFSRYPLTFGPTPIQPLKRLSAHLGGKVELYAKRDDCNSGLAFGGNKTRKLEYLIP");
 
+        FastaRecord hasAccession = new FastaRecord(
+                ">sp|Q62CE3|1A1D_BURMA 1-aminocyclopropane-1-carboxylate deaminase OS=Burkholderia mallei (strain ATCC 23344) GN=acdS PE=3 SV=1",
+                "MNLQKFSRYPLTFGPTPIQPLKRLSAHLGGKVELYAKRDDCNSGLAFGGNKTRKLEYLIP");
+
+        // good accession
         assertTrue(hasAccession.getHasAccession());
+
+        // bad accessions
         assertFalse(hasNotAccession.getHasAccession());
         assertFalse(differentBadAccession.getHasAccession());
+        assertFalse(thirdBadAccession.getHasAccession());
+    }
+
+    @Test
+    public void testLengthCheck() {
+        Logger logger = Logger.getLogger("testLengthCheck");
+
+        // create fasta database object
+        ValidateFastaDatabase vfd = new ValidateFastaDatabase();
+
+        FastaRecord tooShort = new FastaRecord("MNLQ");
+        FastaRecord longEnough = new FastaRecord("MNLQAA");
+        FastaRecord nullSeq = new FastaRecord("");
+
+        assertFalse(vfd.passBelowMinimumLength(true, 5, tooShort));
+        assertTrue(vfd.passBelowMinimumLength(true, 5, longEnough));
+        assertFalse(vfd.passBelowMinimumLength(true, 5, nullSeq));
+    }
+
+    @Test
+    public void testValidFastaHeader() {
+        Logger logger = Logger.getLogger("testValidFastaHeader");
+
+        FastaRecord valid = new FastaRecord(">generic|001", "MMAATK");
+        FastaRecord invalid = new FastaRecord(">generic001", "MMATK");
+
+        assertTrue(valid.isValidFastaHeader());
+        assertFalse(invalid.isValidFastaHeader());
     }
 }

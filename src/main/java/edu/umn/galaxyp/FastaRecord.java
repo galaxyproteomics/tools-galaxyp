@@ -42,7 +42,7 @@ public class FastaRecord {
         this.sequenceLength = sequence.replaceAll("\n", "").length();
 
         // create set that contains all symbols in sequence
-        this.sequenceSet = new HashSet<String>();
+        this.sequenceSet = new HashSet<>();
         for (int i = 0; i < this.sequence.length(); i++){
             this.sequenceSet.add(this.sequence.substring(i, i + 1));
         }
@@ -68,7 +68,7 @@ public class FastaRecord {
             this.accession = headerParsed.getAccession();
             this.hasAccession = checkAccession(accession);
 
-        } catch(IllegalArgumentException iae){
+        } catch(Exception e){
 
             // if fails, then this is an invalid header
             this.isValidFastaHeader = false;
@@ -77,7 +77,7 @@ public class FastaRecord {
             this.setDatabaseType(null);
 
             // print nothing (isValidFastaHeader = false will cause Sys.exit(1) above)
-            iae.getMessage();
+            e.getMessage();
         }
 
     }
@@ -89,7 +89,7 @@ public class FastaRecord {
      *
      * @param sequence
      */
-    public FastaRecord(String sequence) {;
+    public FastaRecord(String sequence) {
         this.sequence = sequence;
         this.sequenceLength = sequence.length();
 
