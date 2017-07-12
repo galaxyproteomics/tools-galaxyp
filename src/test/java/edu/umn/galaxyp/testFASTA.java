@@ -11,10 +11,7 @@ import java.util.logging.Logger;
 import static org.junit.Assert.*;
 
 /**
- * Created by caleb on 6/21/17.
- *
- * Testing FastaInput method by comparing
- * to the same file read in by the FastaInput method of the FASTA class
+ * Runs several JUnit tests on the individual FASTA database validations
  */
 public class testFASTA {
 

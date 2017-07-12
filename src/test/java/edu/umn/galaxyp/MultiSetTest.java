@@ -7,7 +7,8 @@ import java.util.HashMap;
 import static org.junit.Assert.*;
 
 /**
- * Created by caleb on 6/22/17.
+ * Ensures appropriate behavior of MultiSet class
+ * @author Caleb Easterly
  */
 public class MultiSetTest {
 

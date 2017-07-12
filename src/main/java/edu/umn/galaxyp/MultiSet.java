@@ -8,9 +8,9 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Created by caleb on 6/22/17.
- *
- * MultiSet, implemented with a backing map
+ * MultiSet, implemented with a backing HashMap
+ * <br> The keys may be of any type. 
+ * @author Caleb Easterly
  */
 
 public class MultiSet<T> {

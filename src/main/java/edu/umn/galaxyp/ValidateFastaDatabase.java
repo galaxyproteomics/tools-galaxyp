@@ -6,6 +6,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.logging.Logger;
 
+/**
+ * Utility class to run checks on FASTA database. Main entry point to program.
+ */
 public class ValidateFastaDatabase {
 
     private static Logger logger = Logger.getLogger(ValidateFastaDatabase.class.getName());

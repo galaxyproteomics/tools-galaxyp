@@ -6,11 +6,12 @@ import java.util.Set;
 import java.util.logging.Logger;
 
 /**
- * Created by caleb on 6/28/17.
+ * Contains a single FASTA database entry
  */
 
 public class FastaRecord {
     private static final Logger logger = Logger.getLogger(FastaRecord.class.getName());
+
     private String header;
     private String sequence;
     private boolean isDnaSequence;
@@ -29,8 +30,8 @@ public class FastaRecord {
     /**
      * For gathering data on one FASTA record (header followed by sequence). Sets all variables.
      *
-     * @param header
-     * @param sequence
+     * @param header raw FASTA header from file - should still start with '>'
+     * @param sequence raw FASTA sequence from file - may contain newline characters
      */
 
     public FastaRecord(String header,

@@ -10,6 +10,7 @@
  * Date: 7-okt-02
  * Time: 13:43:28
  */
+
 //package com.compomics.util.protein;
 package edu.umn.galaxyp;
 
