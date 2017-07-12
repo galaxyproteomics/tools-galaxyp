@@ -1,6 +1,8 @@
 package edu.umn.galaxyp;
 
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.contrib.java.lang.system.ExpectedSystemExit;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -17,6 +19,35 @@ import static org.junit.Assert.*;
  * Runs several JUnit tests on the individual FASTA database validations
  */
 public class testFASTA {
+    @Rule
+    public final ExpectedSystemExit exit = ExpectedSystemExit.none();
+
+
+    // test System.exit(1) on bad header
+    @Test
+    public void testExit() {
+        ValidateFastaDatabase vfd = new ValidateFastaDatabase();
+
+        Path inPath = Paths.get("./src/test/java/edu/umn/galaxyp/goodAndBadFasta.fasta");
+
+        // files actually obtained from method
+        Path outPathGood = Paths.get("./src/test/java/edu/umn/galaxyp/fastaFilteringTest_obtained_GOOD.fasta");
+        Path outPathBad = Paths.get("./src/test/java/edu/umn/galaxyp/fastaFilteringTest_obtained_BAD.fasta");
+
+        // expected files
+        Path outPathGoodExpected = Paths.get("./src/test/java/edu/umn/galaxyp/goodFasta.fasta");
+        Path outPathBadExpected = Paths.get("./src/test/java/edu/umn/galaxyp/badFasta.fasta");
+        exit.expectSystemExitWithStatus(1);
+        vfd.readAndWriteFASTAHeader(inPath,
+                true,
+                outPathGood,
+                outPathBad,
+                false,
+                false,
+                0,
+                false,
+                "");
+    }
 
     // test that the reading and writing process works
     // does not crash if invalid, does not check for protein or length or accession
@@ -41,7 +72,8 @@ public class testFASTA {
                 false,
                 false,
                 0,
-                false);
+                false,
+                "");
 
         // read in files
         try {
@@ -62,14 +94,15 @@ public class testFASTA {
     // the RNA identifies RNA sequences,
     // and that neither identify a protein sequence
     @Test
-    public void testDNAorRNA() {
-        FastaRecord dnaSeq = new FastaRecord("ACTGAACTGAATG");
+    public void testDNAorRNAorAA() {
+        // test kind of ugly sequences, with escape characters
+        FastaRecord dnaSeq = new FastaRecord("ACTGAACTGAATG\t\r ");
         FastaRecord rnaSeq = new FastaRecord("ACUGAAUGACUAUUUUUUUACUACUG");
-        FastaRecord protSeq = new FastaRecord("EWIWGGFSVDKATLNRFFAFHFILPFTMVALAGVHLTFLHETGSNNPLGLTSDSDKIPFHPYYTIKDFLG");
+        FastaRecord protSeq = new FastaRecord("EWIWGGFSVDKATLNRFFAFHFILPFTMVALAGVHLTFLHETGSNNPLGLTSDSDKIPFHPYYTIKDFLG\n");
 
         assertTrue(dnaSeq.isDnaSequence());
         assertTrue(rnaSeq.isRnaSequence());
-        assertFalse(protSeq.isRnaSequence() || protSeq.isDnaSequence());
+        assertTrue(protSeq.getIsAASequence());
     }
 
     // confirm that FastaRecord constructor will identify valid accessions but not
@@ -79,15 +112,15 @@ public class testFASTA {
         Logger logger = Logger.getLogger("testAccessions");
 
         FastaRecord hasNotAccession = new FastaRecord(">generic||1",
-                "MNLQKFSRYPLTFGPTPIQPLKRLSAHLGGKVELYAKRDDCNSGLAFGGNKTRKLEYLIP");
+                "MNLQKFSRYPLTFGPTPIQPLKRLSAHLGGKVELYAKRDDCNSGLAFGGNKTRKLEYLIP", "");
         FastaRecord differentBadAccession = new FastaRecord(">generic| |01",
-                "MNLQKFSRYPLTFGPTPIQPLKRLSAHLGGKVELYAKRDDCNSGLAFGGNKTRKLEYLIP");
+                "MNLQKFSRYPLTFGPTPIQPLKRLSAHLGGKVELYAKRDDCNSGLAFGGNKTRKLEYLIP", "");
         FastaRecord thirdBadAccession = new FastaRecord(">MCHU - Calmodulin - Human, rabbit, bovine, rat, and chicken",
-                "MNLQKFSRYPLTFGPTPIQPLKRLSAHLGGKVELYAKRDDCNSGLAFGGNKTRKLEYLIP");
+                "MNLQKFSRYPLTFGPTPIQPLKRLSAHLGGKVELYAKRDDCNSGLAFGGNKTRKLEYLIP", "");
 
         FastaRecord hasAccession = new FastaRecord(
                 ">sp|Q62CE3|1A1D_BURMA 1-aminocyclopropane-1-carboxylate deaminase OS=Burkholderia mallei (strain ATCC 23344) GN=acdS PE=3 SV=1",
-                "MNLQKFSRYPLTFGPTPIQPLKRLSAHLGGKVELYAKRDDCNSGLAFGGNKTRKLEYLIP");
+                "MNLQKFSRYPLTFGPTPIQPLKRLSAHLGGKVELYAKRDDCNSGLAFGGNKTRKLEYLIP", "");
 
         // good accession
         assertTrue(hasAccession.getHasAccession());
@@ -118,8 +151,8 @@ public class testFASTA {
     public void testValidFastaHeader() {
         Logger logger = Logger.getLogger("testValidFastaHeader");
 
-        FastaRecord valid = new FastaRecord(">generic|001", "MMAATK");
-        FastaRecord invalid = new FastaRecord(">generic001", "MMATK");
+        FastaRecord valid = new FastaRecord(">generic|001", "MMAATK", "");
+        FastaRecord invalid = new FastaRecord(">generic001", "MMATK", "");
 
         assertTrue(valid.isValidFastaHeader());
         assertFalse(invalid.isValidFastaHeader());

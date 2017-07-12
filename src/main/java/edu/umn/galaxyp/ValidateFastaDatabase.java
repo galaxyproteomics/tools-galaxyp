@@ -30,7 +30,23 @@ public class ValidateFastaDatabase {
         this.databaseTypeMultiSet = new MultiSet<>();
     }
 
-    // runs checks on supplied FASTA database
+    /**
+     * runs checks on supplied FASTA database
+     * @param args array of command line arguments in the following order:
+     *             <ol>
+     *             <li> path to input FASTA database </li>
+     *             <li> path to output valid FASTA entries </li>
+     *             <li> path to output invalid FASTA entries </li>
+     *             <li> boolean; if true, crash if any entries have invalid headers. default is false </li>
+     *             <li> boolean; if true, check that each entry is a amino acid sequence. default is true. </li>
+     *             <li> boolean; if true, add characters to AA alphabet. default is false. </li>
+     *             <li> string: if 6) is true, characters to add to AA alphabet. default is "" (empty string) </li>
+     *             <li> boolean; if true, check that each entry is associated with an accession number. default is false </li>
+     *             <li> boolean; if true, check that each entry's sequence is above a minimum length. default is false. </li>
+     *             <li> int; if 9) is true, will filter out any sequences with lengths below this length. default is 0 </li>
+     *             </ol>
+     *
+     */
     public static void main(String[] args) {
 
         // construct empty instance of ValidateFastaDatabase, to record database types
@@ -49,16 +65,22 @@ public class ValidateFastaDatabase {
         // if true, checks that is not a DNA or RNA sequence
         boolean checkIsProtein = Boolean.valueOf(args[4]);
 
+        // add additional characters to alphabet?
+        boolean useCustomAlphabet = Boolean.valueOf(args[5]);
+
+        // if (useCustomAlphabet == true), these are the custom letters
+        // ignore all but uppercase letters
+        String customLetters = args[6].replaceAll("[^A-Z]", "");
+
         // if true, only outputs FASTA entries with an accession number
-        boolean checkHasAccession = Boolean.valueOf(args[5]);
+        boolean checkHasAccession = Boolean.valueOf(args[7]);
 
         // if true, checks that is greater than a minimum length
-        boolean checkLength = Boolean.valueOf(args[6]);
+        boolean checkLength = Boolean.valueOf(args[8]);
 
-        int minimumLength = 0;
-        if (checkLength){
-            minimumLength = Integer.valueOf(args[7]);
-        }
+        // minimum length, only checked if args[8] is true
+        int minimumLength = Integer.valueOf(args[9]);
+
 
         vfd.readAndWriteFASTAHeader(fastaPath,
                 crash_if_invalid,
@@ -67,7 +89,8 @@ public class ValidateFastaDatabase {
                 checkIsProtein,
                 checkLength,
                 minimumLength,
-                checkHasAccession);
+                checkHasAccession,
+                customLetters);
 
         System.out.println("Database Types");
         System.out.println(vfd.getDatabaseTypeMultiSet().toString());
@@ -80,6 +103,7 @@ public class ValidateFastaDatabase {
      * @param checkLength
      * @param minimumLength
      * @param checkHasAccession
+     * @param customLetters
      */
     public void readAndWriteFASTAHeader(Path inPath,
                                         boolean crash_if_invalid,
@@ -88,7 +112,8 @@ public class ValidateFastaDatabase {
                                         boolean checkIsProtein,
                                         boolean checkLength,
                                         int minimumLength,
-                                        boolean checkHasAccession){
+                                        boolean checkHasAccession,
+                                        String customLetters){
 
         Header headerParsed = null;
         StringBuilder sequence = new StringBuilder(); // allows us to append all sequences of line
@@ -112,7 +137,7 @@ public class ValidateFastaDatabase {
                     }
 
                     // record that is sequentially updated
-                    FastaRecord current_record = new FastaRecord(header, sequence.toString());
+                    FastaRecord current_record = new FastaRecord(header, sequence.toString(), "");
                     this.addDatabaseType(current_record.getDatabaseType());
 
                     // isDnaOrRna
@@ -123,6 +148,12 @@ public class ValidateFastaDatabase {
 
                     // accession checking
                     boolean passAccession = passAccession(checkHasAccession, current_record);
+
+                    // if is invalid FASTA header and was asked to fail, exit with status 1
+                    if (!current_record.isValidFastaHeader() && crash_if_invalid) {
+                        System.out.println("Invalid header detected. Exiting per user request.");
+                        System.exit(1);
+                    }
 
                     // write FASTA header and sequence to either good or bad file
                     writeFasta(sequence, bwGood, bwBad, header,
