@@ -17,9 +17,7 @@ public class ValidateFastaDatabase {
     // they appear in the FASTA file
     private MultiSet<Header.DatabaseType> databaseTypeMultiSet;
 
-    public MultiSet<Header.DatabaseType> getDatabaseTypeMultiSet() {
-        return databaseTypeMultiSet;
-    }
+    public MultiSet<Header.DatabaseType> getDatabaseTypeMultiSet() { return databaseTypeMultiSet; }
 
     public void addDatabaseType(Header.DatabaseType value){
         this.databaseTypeMultiSet.add(value);
@@ -105,6 +103,7 @@ public class ValidateFastaDatabase {
      * @param checkHasAccession
      * @param customLetters
      */
+
     public void readAndWriteFASTAHeader(Path inPath,
                                         boolean crash_if_invalid,
                                         Path outPathGood,

@@ -19,6 +19,7 @@ import static org.junit.Assert.*;
  * Runs several JUnit tests on the individual FASTA database validations
  */
 public class testFASTA {
+
     @Rule
     public final ExpectedSystemExit exit = ExpectedSystemExit.none();
 
@@ -97,12 +98,23 @@ public class testFASTA {
     public void testDNAorRNAorAA() {
         // test kind of ugly sequences, with escape characters
         FastaRecord dnaSeq = new FastaRecord("ACTGAACTGAATG\t\r ");
-        FastaRecord rnaSeq = new FastaRecord("ACUGAAUGACUAUUUUUUUACUACUG");
-        FastaRecord protSeq = new FastaRecord("EWIWGGFSVDKATLNRFFAFHFILPFTMVALAGVHLTFLHETGSNNPLGLTSDSDKIPFHPYYTIKDFLG\n");
-
         assertTrue(dnaSeq.isDnaSequence());
+
+        FastaRecord rnaSeq = new FastaRecord("ACUGAAUGACUAUUUUUUUACUACUG");
         assertTrue(rnaSeq.isRnaSequence());
+
+        FastaRecord protSeq = new FastaRecord("EWIWGGFSVDKATLNRFFAFHFILPFTMVALAG"+
+                "VHLTFLHETGSNNPLGLTSDSDKIPFHPYYTIKDFLG\n");
         assertTrue(protSeq.getIsAASequence());
+
+        // another prot seq, with non-standard letters
+        FastaRecord nonStandardProt = new FastaRecord("EXXYMM", "XY");
+        assertTrue(nonStandardProt.getIsAASequence());
+
+
+        // same sequence, don't add custom letters
+        FastaRecord nonStandardProtFail = new FastaRecord("EXXYMM");
+        assertFalse(nonStandardProtFail.getIsAASequence());
     }
 
     // confirm that FastaRecord constructor will identify valid accessions but not
@@ -169,5 +181,30 @@ public class testFASTA {
         Set<String> expectedSet = new HashSet<>(Arrays.asList("M", "N", "L", "Q", "A", "T", "Y"));
         assertTrue(testSet.getSequenceSet().equals(expectedSet));
     }
+
+    @Test
+    public void testAddLettersToAminoAcids() {
+        Logger logger = Logger.getLogger("testAddLetters");
+
+        String sequence = "MMNLQATTY";
+        String customLetters = "XYZ";
+        FastaRecord testSet = new FastaRecord(sequence, customLetters);
+
+        //comparison
+        Set<String> aminoAcids = new HashSet<>();
+
+        aminoAcids.addAll(Arrays.asList(
+                "A", "I", "L", "V",  // aliphatic, hydrophobic side chain
+                "F", "W", "Y", // aromatic, hydrophobic side chain
+                "N", "C", "Q", "M", "S", "T", // polar neutral side chain
+                "D", "E", // charged side chain, acidic
+                "R", "H", "K", // charged side chain, basic
+                "G", "P", // unique aas
+                "X", "Y", "Z" //new letters
+        ));
+
+        assertEquals(aminoAcids, testSet.getAminoAcids());
+    }
+
 }
 

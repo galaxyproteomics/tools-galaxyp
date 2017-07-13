@@ -47,7 +47,7 @@ public class FastaRecord {
      * For gathering data on one FASTA record (header followed by sequence). Sets all variables.
      * @param header raw FASTA header from file - should still start with '>'
      * @param sequence raw FASTA sequence from file - may contain newline characters
-     * @param customLetters
+     * @param customLetters a string containing a set of custom AA letters. Only [A-Z] allowed
      */
 
     public FastaRecord(String header,
@@ -57,8 +57,7 @@ public class FastaRecord {
         this.header = header;
 
         // populates sequence, sequenceTrimmed, isDna/RnaSequence, isPeptide, sequenceSet, and sequenceLength
-        initializeSequenceData(sequence);
-
+        initializeSequenceData(sequence, customLetters);
 
         // check if is valid header
         Header headerParsed;
@@ -85,7 +84,7 @@ public class FastaRecord {
             // still set database type
             this.setDatabaseType(null);
 
-            // print nothing (isValidFastaHeader = false will cause Sys.exit(1) above)
+            // print nothing (isValidFastaHeader = false will cause Sys.exit(1) above, if requested)
             e.getMessage();
         }
 
@@ -97,20 +96,34 @@ public class FastaRecord {
      * @param sequence raw sequence from FASTA file
      */
     public FastaRecord(String sequence) {
-        initializeSequenceData(sequence);
+        initializeSequenceData(sequence, "");
     }
+
+    /**
+     * Gathering data on sequence alone. used for testing DNA and RNA checks
+     *
+     * @param sequence raw sequence from FASTA file
+     */
+    public FastaRecord(String sequence, String customLetters) {
+        initializeSequenceData(sequence, customLetters);
+    }
+
 
     private void addCustomLettersToAA(String letters) {
         for (int i = 0; i < letters.length(); i++){
-            aminoAcids.add(letters.substring(i, i+1));
+            this.aminoAcids.add(letters.substring(i, i+1));
         }
     }
 
-    private void initializeSequenceData(String sequence) {
+    private void initializeSequenceData(String sequence,
+                                        String customLetters) {
         this.sequence = sequence;
         this.sequenceTrimmed = trimSequence();
         this.sequenceLength = this.sequenceTrimmed.length();
         this.sequenceSet = createSequenceSet();
+
+        // add any custom letters to amino acid set to compare
+        addCustomLettersToAA(customLetters);
 
         // protein vs. dna or rna
         this.isDnaSequence = isDNA();
@@ -175,7 +188,6 @@ public class FastaRecord {
     private boolean isAASequence(){
         return (this.aminoAcids.containsAll(sequenceSet)) ;
     }
-
 
     /*********** Getters and Setters **************/
 
@@ -254,4 +266,8 @@ public class FastaRecord {
     public void setIsAASequence(boolean isAA) { this.isAASequence = isAA;  }
 
     public boolean getIsAASequence() { return this.isAASequence;  }
+
+    public Set<String> getAminoAcids() { return aminoAcids; }
+
+    public void setAminoAcids(Set<String> aminoAcids) { this.aminoAcids = aminoAcids; }
 }
