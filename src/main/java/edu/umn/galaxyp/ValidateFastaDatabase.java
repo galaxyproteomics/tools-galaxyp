@@ -7,7 +7,10 @@ import java.nio.file.Paths;
 import java.util.logging.Logger;
 
 /**
- * Utility class to run checks on FASTA database. Main entry point to program.
+ * Main entry point to program. Utility class to run checks on FASTA database.
+ *
+ * @TODO Refactor so that all of the assignments in main() are instead class variables? Would reduce the amount of passing variables around.
+ *
  */
 public class ValidateFastaDatabase {
 
@@ -87,9 +90,9 @@ public class ValidateFastaDatabase {
      * takes path to header, reads in FASTA file, and writes out sorted FASTA
      * @param inPath  path to FASTA file to be read in(NIO Path object)
      *  @param crash_if_invalid  if true, a badly formatted header (the first) will immediately cause a System.exit(1)
-     * @param customLetters
-     * @param checkHasAccession
-     * @param minimumLength
+     * @param customLetters a string of only [A-Z] characters that contains any desired non-standard amino acids
+     * @param checkHasAccession boolean; true indicates that only FASTA entries with accessions will pass
+     * @param minimumLength integer; sequence must be strictly less than this value to pass.
      */
 
     public void readAndWriteFASTAHeader(Path inPath,
@@ -164,8 +167,8 @@ public class ValidateFastaDatabase {
      * @return true either if 1) we don't want to check for a valid accession number or
      *  2) sequence has a valid accession number
      */
-    public boolean passAccession(boolean checkHasAccession, FastaRecord current_record) {
-        boolean passAccession;// if checkHasAccession is false, then passAccession should always be true
+    private boolean passAccession(boolean checkHasAccession, FastaRecord current_record) {
+        boolean passAccession; // if checkHasAccession is false, then passAccession should always be true
         if (!checkHasAccession) {
             passAccession = true;
         } else {
@@ -190,7 +193,7 @@ public class ValidateFastaDatabase {
      * @param current_record FASTA database entry currently in memory
      * @return true either if 1) we don't want to check if sequence is valid, or 2) sequence is a valid AA sequence
      */
-    public boolean passDnaOrRna(boolean checkIsProtein, FastaRecord current_record) {
+    private boolean passDnaOrRna(boolean checkIsProtein, FastaRecord current_record) {
         boolean passDnaOrRna;// if checkIsProtein is false, then passDnaOrRna should always be true
         if (!checkIsProtein) {
             passDnaOrRna = true;
