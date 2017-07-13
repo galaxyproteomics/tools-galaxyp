@@ -17,6 +17,7 @@ public class ValidateFastaDatabase {
     // they appear in the FASTA file
     private MultiSet<Header.DatabaseType> databaseTypeMultiSet;
 
+    // getters and setters
     public MultiSet<Header.DatabaseType> getDatabaseTypeMultiSet() { return databaseTypeMultiSet; }
 
     public void addDatabaseType(Header.DatabaseType value){
@@ -37,11 +38,9 @@ public class ValidateFastaDatabase {
      *             <li> path to output invalid FASTA entries </li>
      *             <li> boolean; if true, crash if any entries have invalid headers. default is false </li>
      *             <li> boolean; if true, check that each entry is a amino acid sequence. default is true. </li>
-     *             <li> boolean; if true, add characters to AA alphabet. default is false. </li>
-     *             <li> string: if 6) is true, characters to add to AA alphabet. default is "" (empty string) </li>
+     *             <li> string: characters to add to AA alphabet. default is "" (empty string) </li>
      *             <li> boolean; if true, check that each entry is associated with an accession number. default is false </li>
-     *             <li> boolean; if true, check that each entry's sequence is above a minimum length. default is false. </li>
-     *             <li> int; if 9) is true, will filter out any sequences with lengths below this length. default is 0 </li>
+     *             <li> int; will filter out any sequences with length strictly less than this length. default is 0 </li>
      *             </ol>
      *
      */
@@ -63,32 +62,22 @@ public class ValidateFastaDatabase {
         // if true, checks that is not a DNA or RNA sequence
         boolean checkIsProtein = Boolean.valueOf(args[4]);
 
-        // add additional characters to alphabet?
-        boolean useCustomAlphabet = Boolean.valueOf(args[5]);
-
-        // if (useCustomAlphabet == true), these are the custom letters
+        // add additional characters to alphabet
         // ignore all but uppercase letters
-        String customLetters = args[6].replaceAll("[^A-Z]", "");
+        String customLetters = args[5].replaceAll("[^A-Z]", "");
 
         // if true, only outputs FASTA entries with an accession number
-        boolean checkHasAccession = Boolean.valueOf(args[7]);
+        boolean checkHasAccession = Boolean.valueOf(args[6]);
 
-        // if true, checks that is greater than a minimum length
-        boolean checkLength = Boolean.valueOf(args[8]);
-
-        // minimum length, only checked if args[8] is true
-        int minimumLength = Integer.valueOf(args[9]);
+        // minimum length, default 0
+        int minimumLength = Integer.valueOf(args[7]);
 
 
         vfd.readAndWriteFASTAHeader(fastaPath,
-                crash_if_invalid,
-                outGoodFASTA,
-                outBadFASTA,
+                outGoodFASTA, outBadFASTA, crash_if_invalid,
                 checkIsProtein,
-                checkLength,
-                minimumLength,
-                checkHasAccession,
-                customLetters);
+                customLetters, checkHasAccession, minimumLength
+        );
 
         System.out.println("Database Types");
         System.out.println(vfd.getDatabaseTypeMultiSet().toString());
@@ -98,23 +87,20 @@ public class ValidateFastaDatabase {
      * takes path to header, reads in FASTA file, and writes out sorted FASTA
      * @param inPath  path to FASTA file to be read in(NIO Path object)
      *  @param crash_if_invalid  if true, a badly formatted header (the first) will immediately cause a System.exit(1)
-     * @param checkLength
-     * @param minimumLength
-     * @param checkHasAccession
      * @param customLetters
+     * @param checkHasAccession
+     * @param minimumLength
      */
 
     public void readAndWriteFASTAHeader(Path inPath,
-                                        boolean crash_if_invalid,
                                         Path outPathGood,
                                         Path outPathBad,
+                                        boolean crash_if_invalid,
                                         boolean checkIsProtein,
-                                        boolean checkLength,
-                                        int minimumLength,
+                                        String customLetters,
                                         boolean checkHasAccession,
-                                        String customLetters){
+                                        int minimumLength){
 
-        Header headerParsed = null;
         StringBuilder sequence = new StringBuilder(); // allows us to append all sequences of line
 
         try (BufferedWriter bwGood =
@@ -136,14 +122,14 @@ public class ValidateFastaDatabase {
                     }
 
                     // record that is sequentially updated
-                    FastaRecord current_record = new FastaRecord(header, sequence.toString(), "");
+                    FastaRecord current_record = new FastaRecord(header, sequence.toString(), customLetters);
                     this.addDatabaseType(current_record.getDatabaseType());
 
                     // isDnaOrRna
                     boolean passDnaOrRna = passDnaOrRna(checkIsProtein, current_record);
 
                     // Length checking
-                    boolean passBelowMinimumLength = passBelowMinimumLength(checkLength, minimumLength, current_record);
+                    boolean passBelowMinimumLength = passBelowMinimumLength(minimumLength, current_record);
 
                     // accession checking
                     boolean passAccession = passAccession(checkHasAccession, current_record);
@@ -190,19 +176,12 @@ public class ValidateFastaDatabase {
 
     /**
      * checks if we should check for length, and if so, checks length
-     * @param checkLength true if running length check
-     * @param minimumLength if running length check, length of sequence is compared to this number
+     * @param minimumLength if running length check, sequence length must be greater than or equal to this number
      * @param current_record FASTA database entry currently in memory
      * @return true either if 1) we don't want to check for length, or 2) sequence is above minimum length
      */
-    public boolean passBelowMinimumLength(boolean checkLength, int minimumLength, FastaRecord current_record) {
-        boolean passBelowMinimumLength;// if checkLength is false, then passBelowMinimumLength should always be true
-        if (!checkLength) {
-            passBelowMinimumLength = true;
-        } else {
-            passBelowMinimumLength = current_record.getSequenceLength() > minimumLength;
-        }
-        return passBelowMinimumLength;
+    public boolean passBelowMinimumLength(int minimumLength, FastaRecord current_record) {
+        return current_record.getSequenceLength() >= minimumLength;
     }
 
     /**
@@ -216,8 +195,9 @@ public class ValidateFastaDatabase {
         if (!checkIsProtein) {
             passDnaOrRna = true;
         } else {
-            // is the sequence dna or rna?
-            passDnaOrRna = current_record.isDnaSequence() || current_record.isRnaSequence();
+            // is the sequence not dna and not rna and is valid AA sequence?
+            passDnaOrRna = !current_record.isDnaSequence() && !current_record.isRnaSequence() &&
+                current_record.getIsAASequence();
         }
         return passDnaOrRna;
     }

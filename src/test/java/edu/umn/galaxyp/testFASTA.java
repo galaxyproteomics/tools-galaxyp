@@ -40,14 +40,13 @@ public class testFASTA {
         Path outPathBadExpected = Paths.get("./src/test/java/edu/umn/galaxyp/badFasta.fasta");
         exit.expectSystemExitWithStatus(1);
         vfd.readAndWriteFASTAHeader(inPath,
-                true,
                 outPathGood,
                 outPathBad,
+                true,
                 false,
+                "",
                 false,
-                0,
-                false,
-                "");
+                0);
     }
 
     // test that the reading and writing process works
@@ -67,14 +66,13 @@ public class testFASTA {
         Path outPathBadExpected = Paths.get("./src/test/java/edu/umn/galaxyp/badFasta.fasta");
 
         vfd.readAndWriteFASTAHeader(inPath,
-                false,
                 outPathGood,
                 outPathBad,
                 false,
                 false,
-                0,
+                "",
                 false,
-                "");
+                0);
 
         // read in files
         try {
@@ -154,9 +152,9 @@ public class testFASTA {
         FastaRecord longEnough = new FastaRecord("MNLQAA");
         FastaRecord nullSeq = new FastaRecord("");
 
-        assertFalse(vfd.passBelowMinimumLength(true, 5, tooShort));
-        assertTrue(vfd.passBelowMinimumLength(true, 5, longEnough));
-        assertFalse(vfd.passBelowMinimumLength(true, 5, nullSeq));
+        assertFalse(vfd.passBelowMinimumLength(5, tooShort));
+        assertTrue(vfd.passBelowMinimumLength(5, longEnough));
+        assertFalse(vfd.passBelowMinimumLength(5, nullSeq));
     }
 
     @Test
