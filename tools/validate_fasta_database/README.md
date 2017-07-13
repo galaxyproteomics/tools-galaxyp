@@ -1,4 +1,5 @@
 # Validate Fasta Database tool
 
-* to build, clone the `tools-galaxyp` repository and run `mvn install` from `tools-galaxyp/tools/validate_fasta_database` 
+* to build, clone the `tools-galaxyp` repository and run `mvn install`
+(<a href=https://maven.apache.org/>Maven</a> is required) from `tools-galaxyp/tools/validate_fasta_database` 
 * the output jar and all the galaxy wrapper files will then be in validate_fasta_database_build
