@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.logging.Logger;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Main entry point to program. Utility class to run checks on FASTA database.
@@ -107,9 +108,9 @@ public class ValidateFastaDatabase {
         StringBuilder sequence = new StringBuilder(); // allows us to append all sequences of line
 
         try (BufferedWriter bwGood =
-                     Files.newBufferedWriter(outPathGood);
-             BufferedWriter bwBad = Files.newBufferedWriter(outPathBad);
-             BufferedReader br = Files.newBufferedReader(inPath)){
+                     Files.newBufferedWriter(outPathGood, StandardCharsets.UTF_8);
+             BufferedWriter bwBad = Files.newBufferedWriter(outPathBad, StandardCharsets.UTF_8);
+             BufferedReader br = Files.newBufferedReader(inPath, StandardCharsets.UTF_8)){
 
             String line = br.readLine();
 

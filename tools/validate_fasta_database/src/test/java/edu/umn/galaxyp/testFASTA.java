@@ -203,6 +203,5 @@ public class testFASTA {
 
         assertEquals(aminoAcids, testSet.getAminoAcids());
     }
-
 }
 
