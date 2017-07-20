@@ -10,13 +10,34 @@ def main():
         sys.argv.append('-h')
     args = parse_commandline()
     strips = {}
+    if args.frac_col > 0:
+        frac_col = args.frac_col - 1
+    elif args.frac_col:
+        frac_col = args.frac_col
+    elif args.frac_colpattern:
+        frac_col = get_col_by_pattern(args.peptable, args.frac_colpattern)
+    else:
+        raise RuntimeError('Must define fraction column')
+    if args.stripcol > 0:
+        stripcol = args.stripcol - 1
+    elif args.stripcol:
+        stripcol = args.stripcol
+    elif args.stripcolpattern:
+        stripcol = get_col_by_pattern(args.peptable, args.stripcolpattern)
+    else:
+        raise RuntimeError('Must define strip column')
+    if args.pepcol:
+        pepcol = args.pepcol - 1
+    elif args.pepcolpattern:
+        pepcol = get_col_by_pattern(args.peptable, args.pepcolpattern)
+    else:
+        raise RuntimeError('Must define peptide sequence column')
     for i, strip in enumerate(args.pipatterns):
         strips[strip] = {'intercept': args.intercepts[i],
                          'fr_width': args.fr_width[i]}
     with open(args.outpeptable, 'w') as fp:
-        for outline in annotate_peptable(args.pipeps, args.peptable,
-                                         args.pepcol, args.frac_col,
-                                         args.stripcol, strips,
+        for outline in annotate_peptable(args.pipeps, args.peptable, pepcol,
+                                         frac_col, stripcol, strips,
                                          args.ignoremods):
             fp.write('\t'.join([str(x) for x in outline]))
             fp.write('\n')
@@ -29,10 +50,16 @@ def get_first_matching_pattern(patterns, string):
     return False
 
 
+def get_col_by_pattern(peptable, colpattern):
+    with open(peptable) as fp:
+        header = next(fp).strip('\n').split('\t')
+    for ix, field in enumerate(header):
+        if colpattern in field:
+            return ix
+
+
 def annotate_peptable(predicted_peps_fn, peptable, seqcol, frac_col, stripcol,
                       strips, ignoremods):
-    if frac_col > 0:
-        frac_col -= 1
     predicted_peps = {}
     with open(predicted_peps_fn) as fp:
         for line in fp:
@@ -45,11 +72,11 @@ def annotate_peptable(predicted_peps_fn, peptable, seqcol, frac_col, stripcol,
         for line in fp:
             line = line.strip('\n').split('\t')
             strip = strips[get_first_matching_pattern(strips.keys(),
-                                                      line[stripcol - 1])]
+                                                      line[stripcol])]
             exp_pi = (strip['fr_width'] * int(line[frac_col]) +
                       strip['intercept'])
 
-            sequence = line[seqcol - 1]
+            sequence = line[seqcol]
             for weight in ignoremods:
                 if weight == '*':
                     regex = '[+-]\d*\.\d*'
@@ -81,15 +108,24 @@ def parse_commandline():
                         'pI shift.')
     parser.add_argument('-i', dest='pipeps', help='A tab-separated txt file '
                         'with peptide seq, pI value')
+    parser.add_argument('--pepcolpattern', dest='pepcolpattern',
+                        help='Peptide sequence column pattern in peptide '
+                        'table.', default=False, type=str)
     parser.add_argument('--pepcol', dest='pepcol', help='Peptide sequence '
                         'column number in peptide table. First column is 1.',
                         default=False, type=int)
+    parser.add_argument('--fraccolpattern', dest='frac_colpattern',
+                        help='Fraction number column pattern in peptide '
+                        'table.', default=False, type=str)
     parser.add_argument('--fraccol', dest='frac_col', help='Fraction number '
                         'column number in peptide table. First column is 1.',
-                        type=int)
+                        default=False, type=int)
     parser.add_argument('--ignoremods', dest='ignoremods', help='Regex to '
                         'identify modification weights to be ignored.',
                         default=[], nargs='+', type=str)
+    parser.add_argument('--stripcolpattern', dest='stripcolpattern',
+                        help='Strip name column pattern in peptide '
+                        'table.', type=str, default=False)
     parser.add_argument('--stripcol', dest='stripcol', help='Strip name '
                         'column number in peptide table. Will be used to '
                         'detect strips if multiple are present using pattern '
