@@ -1,4 +1,4 @@
-GalaxyP - Percolator
+GalaxyP - HiRIEF tools
 =======================
 
 - Home: <https://github.com/galaxyproteomics/tools-galaxyp/>
