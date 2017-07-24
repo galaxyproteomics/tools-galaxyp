@@ -4,6 +4,8 @@ import argparse
 from numpy import median
 from contextlib import ExitStack
 
+from peptide_pi_annotator import get_col_by_pattern
+
 
 def main():
     if sys.argv[1:] == []:
@@ -14,10 +16,23 @@ def main():
     # Column nrs should start from 0
     # If negative, -1 is last item in list, etc
     if args.fdrcol > 0:
-        args.fdrcol -= 1
+        fdrcol = args.fdrcol - 1
+    elif args.fdrcol:
+        fdrcol = args.fdrcol
+    elif args.fdrcolpattern:
+        fdrcol = get_col_by_pattern(args.train_peptable, args.fdrcolpattern)
+    else:
+        fdrcol = False
     if args.deltapicol > 0:
-        args.deltapicol -= 1
-    pishift = get_pishift(args.train_peptable, args.fdrcol, args.deltapicol,
+        deltapicol = args.deltapicol - 1
+    elif args.deltapicol:
+        deltapicol = args.deltapicol
+    elif args.deltapicolpattern:
+        deltapicol = get_col_by_pattern(args.train_peptable,
+                                        args.deltapicolpattern)
+    else:
+        deltapicol = False
+    pishift = get_pishift(args.train_peptable, fdrcol, deltapicol,
                           args.fdrcutoff, args.picutoff)
     binarray = get_bin_array(args.fr_amount, args.fr_width, args.intercept,
                              args.tolerance, pishift)
@@ -60,9 +75,15 @@ def parse_commandline():
                         ' number in peptide table. First column is nr. 1. '
                         'Negative number for counting from last col '
                         '(-1 is last).', default=False, type=int)
+    parser.add_argument('--deltacolpattern', dest='deltapicolpattern',
+                        help='Delta pI column header pattern in peptide '
+                        'table.', default=False, type=str)
     parser.add_argument('--picutoff', dest='picutoff',
                         help='delta pI value to filter experimental peptides'
                         ' when calculating pi shift.', default=0.2, type=float)
+    parser.add_argument('--fdrcolpattern', dest='fdrcolpattern',
+                        help='FDR column header pattern in peptide table.',
+                        default=False, type=str)
     parser.add_argument('--fdrcol', dest='fdrcol', help='FDR column number in '
                         'peptide table. First column is nr. 1. Empty includes '
                         'all peptides', default=False, type=int)
@@ -84,7 +105,7 @@ def parse_commandline():
                         help='pI Intercept of strip', type=float)
     parser.add_argument('--width', dest='fr_width',
                         help='Strip fraction width in pI', type=float)
-    parser.add_argument('--minlen', dest='minlen', help='Minimal peptide length', 
+    parser.add_argument('--minlen', dest='minlen', help='Minimal peptide length',
                         type=int)
     parser.add_argument('--maxlen', dest='maxlen', help='Maximal peptide length',
                         type=int, default=False)
@@ -146,7 +167,7 @@ def write_fractions(pi_peptides_fn, amount_fractions, out_prefix,
             accs, pep, pi = line.strip().split("\t")
             pi = float(pi)
             if maxlen and len(pep) > maxlen:
-                continue 
+                continue
             elif len(pep) >= minlen:
                 pepcount += 1
                 if pep[-1] in {'K', 'R'}:
