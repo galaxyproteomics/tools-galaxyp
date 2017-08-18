@@ -69,6 +69,7 @@ Generating OpenMS wrappers
      omssa_executable pepnovo_executable \
      xtandem_executable param_model_directory \
      java_executable java_memory java_permgen \
+     r_executable rt_concat_trafo_out \
     -f /PATH/TO/filetypes.txt -m /PATH/TO/macros.xml \
     -s PATH/TO/SKIP_TOOLS_FILES.txt
     ```
@@ -117,6 +118,14 @@ Generating OpenMS wrappers
     ]]>
     ```
     
+ * In `MetaProSIP.xml` add `R` as a requirement:
+ 
+   ```
+   <expand macro="requirements">
+       <requirement type="package" version="3.3.1">r-base</requirement>
+   </expand>
+   ```
+   
  * In `IDFileConverter.xml` the following is needed in the command section at the beginning (check your file to know what to copy where):
  
    ```
