@@ -13,7 +13,7 @@ Bumbershoot MyriMatch.
 
 See:
 
-* <http://fenchurch.mc.vanderbilt.edu/>
+* <https://www.ncbi.nlm.nih.gov/pubmed/17269722>
 
 
 GalaxyP Community
@@ -48,7 +48,6 @@ Authors
 Authors and contributors:
 
 * Matt Chambers <matt.chambers42@gmail.com>
-  Vanderbilt University Medical Center
 
 * John Chilton <jmchilton@gmail.com>
   Minnesota Supercomputing Institute, Univeristy of Minnesota
