@@ -15,7 +15,6 @@ def create_spectra_maps(specfiles, dbfiles, frregex, firstfr):
     {'fr04': 'fr04', 'fr04b': 'fr04'}  # rerun fraction, rerun may also be pool
     """
     specrange = get_fn_fractionmap(specfiles, frregex)
-    print('specrange', specrange)
     to_pool = []
     poolmap, rerun_map, normal_fns = {}, [], set()
     for i in range(0, len(dbfiles)):
@@ -35,16 +34,12 @@ def create_spectra_maps(specfiles, dbfiles, frregex, firstfr):
     for num in sorted(specrange.keys()):
         if len(specrange[num]) > 1:
             rerun_map.append(specrange[num])
-    print('poolmap', poolmap)
-    print('normal', normal_fns)
-    print('reruns', rerun_map)
     return normal_fns, rerun_map, poolmap
 
 
 def get_fn_fractionmap(files, frregex):
     fnfrmap = {}
     for f_ix, fn in enumerate(files):
-        print(fn)
         fnum = int(re.sub(frregex, '\\1', fn))
         try:
             fnfrmap[fnum].append(f_ix)
@@ -58,7 +53,6 @@ def pool_fasta_files(poolfiles):
     for fr in poolfiles:
         for seq in SeqIO.parse(fr, 'fasta'):
             sequence = str(seq.seq.upper())
-            print(acc_seq, sequence, seq.id)
             try:
                 if sequence in acc_seq[seq.id]:
                     continue
