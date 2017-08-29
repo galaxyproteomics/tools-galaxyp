@@ -114,8 +114,7 @@ def parse_commandline():
                         'Test data example illustrates reruns (fr03b, 09b) and'
                         ' pooled samples (fr05-09 are inside fr09 and fr09b).',
                         required=True)
-    parser.add_argument('--dbfiles', dest='dbfiles', help='FASTA db files with'
-                        ' fractions named "fr01, fr02, fr03, fr04, fr05". ',
+    parser.add_argument('--dbfiles', dest='dbfiles', help='FASTA db files',
                         nargs='+', required=True)
     parser.add_argument('--frspec', dest='frspecregex', help='Fraction regex '
                         'to detect spectra fraction numbers', required=True)
