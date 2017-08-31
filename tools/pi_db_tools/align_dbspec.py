@@ -72,8 +72,8 @@ def write_pooled_fasta(poolmap, specnames, dbfiles):
         print('Pooling FASTA files {} - {} into: {}'.format(
             dbfiles[infrs[0]], dbfiles[infrs[-1]], outfn))
         with open(outfn, 'w') as fp:
-            SeqIO.write([seq for seq in pool_fasta_files([
-                dbfiles[x] for x in infrs])], fp, 'fasta')
+            SeqIO.write(pool_fasta_files([dbfiles[x] for x in infrs]), fp,
+                        'fasta')
 
 
 def write_nonpooled_fasta(fractions):
