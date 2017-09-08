@@ -43,10 +43,10 @@ def main():
             fp.write('\n')
 
 
-def get_first_matching_pattern(patterns, string):
-    for pattern in patterns:
+def get_strip(strips, string):
+    for pattern in strips.keys():
         if re.search(pattern, string):
-            return pattern
+            return strips[pattern]
     return False
 
 
@@ -71,11 +71,6 @@ def annotate_peptable(predicted_peps_fn, peptable, seqcol, frac_col, stripcol,
         yield header + ['Experimental pI', 'Predicted pI', 'Delta pI']
         for line in fp:
             line = line.strip('\n').split('\t')
-            strip = strips[get_first_matching_pattern(strips.keys(),
-                                                      line[stripcol])]
-            exp_pi = (strip['fr_width'] * int(line[frac_col]) +
-                      strip['intercept'])
-
             sequence = line[seqcol]
             for weight in ignoremods:
                 if weight == '*':
@@ -90,12 +85,26 @@ def annotate_peptable(predicted_peps_fn, peptable, seqcol, frac_col, stripcol,
                 not_predicted_count += 1
                 pred_pi, delta_pi = 'NA', 'NA'
             else:
-                delta_pi = exp_pi - pred_pi
                 predicted_count += 1
+            strip = get_strip(strips, line[stripcol])
+            if not strip:
+                exp_pi, delta_pi = 'NA', 'NA'
+            else:
+                try:
+                    exp_pi = (strip['fr_width'] * int(line[frac_col]) +
+                              strip['intercept'])
+                except ValueError:
+                    print('Cannot detect fraction for PSM {}'.format(sequence))
+                    exp_pi, delta_pi = 'NA', 'NA'
+                else:
+                    if pred_pi != 'NA':
+                        delta_pi = exp_pi - pred_pi
+                    else:
+                        delta_pi = 'NA'
             yield line + [exp_pi, pred_pi, delta_pi]
     print('Number of peptides without pI prediction: {}\n'
-          'Number of peptides with predicion: {}\n'.format(not_predicted_count,
-                                                           predicted_count))
+          'Number of peptides predicted: {}\n'.format(not_predicted_count,
+                                                      predicted_count))
 
 
 def parse_commandline():
