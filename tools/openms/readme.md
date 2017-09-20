@@ -78,8 +78,8 @@ Generating OpenMS wrappers
  * As last step you need to change manually the binary names of all external binaries you want to use in OpenMS. For example:
 
     ```
-    sed -i '13 a\-fido_executable fido' wrappers/FidoAdapter.xml
-    sed -i '13 a\-fidocp_executable fido_choose_parameters' wrappers/FidoAdapter.xml
+    sed -i '13 a\-fido_executable Fido' wrappers/FidoAdapter.xml
+    sed -i '13 a\-fidocp_executable FidoChooseParameters' wrappers/FidoAdapter.xml
     sed -i '13 a\-myrimatch_executable myrimatch' wrappers/MyriMatchAdapter.xml
     sed -i '13 a\-omssa_executable omssa' wrappers/OMSSAAdapter.xml
     sed -i '13 a\-xtandem_executable xtandem' wrappers/XTandemAdapter.xml
