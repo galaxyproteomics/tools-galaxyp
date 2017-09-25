@@ -53,14 +53,14 @@ psm2sam <- function(
     }
 
     # load customProDB from GitHub (NOTE: downloading the zip is faster than cloning the repo with git2r or devtools::install_github)
-    download.file("https://github.com/chambm/customProDB/archive/master.zip", "customProDB.zip", quiet=TRUE)
+    download.file("https://github.com/chambm/customProDB/archive/c57e5498392197bc598a18c26acb70d7530a921c.zip", "customProDB.zip", quiet=TRUE)
     unzip("customProDB.zip")
-    devtools::load_all("customProDB-master")
+    devtools::load_all("customProDB-c57e5498392197bc598a18c26acb70d7530a921c")
 
     # load proBAMr from GitHub
-    download.file("https://github.com/chambm/proBAMr/archive/master.zip", "proBAMr.zip", quiet=TRUE)
+    download.file("https://github.com/chambm/proBAMr/archive/a03edf68f51215be40717c5374f39ce67bd2e68b.zip", "proBAMr.zip", quiet=TRUE)
     unzip("proBAMr.zip")
-    devtools::load_all("proBAMr-master")
+    devtools::load_all("proBAMr-a03edf68f51215be40717c5374f39ce67bd2e68b")
     
     psmInputLength = length(idpDB_file)+length(pepXmlTab_file)+length(peptideShakerPsmReport_file)
     if (psmInputLength == 0)
