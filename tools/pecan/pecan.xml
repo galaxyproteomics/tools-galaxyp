@@ -1,0 +1,286 @@
+<tool id="pecan" name="PECAN" version="0.1.0">
+    <description>detect peptides directly from DIA Mass Spec</description>
+    <requirements>
+        <requirement type="package" version="0.9.9.3">pecan</requirement>
+    </requirements>
+    <stdio>
+        <exit_code range="1:" />
+    </stdio>
+    <version_command>pecan --VERSION</version_command>
+    <command><![CDATA[
+        ## ln mzML file
+        #if $isolation.isolationsrc == 'entered':
+            #set $isolationfile = $isolationSheme
+        #else
+            #set $isolationfile = $isolation.isolation_windows
+        #end if
+        #set $outputRoot = 'test'
+        awk 'NF>1 && $1 ~ /^[0-9]+(\.[0-9]*)?$/{print \$1; print \$2; print "$outputRoot"}' $isolationfile | 
+        xargs -n3 -P\${GALAXY_SLOTS} 
+        pecan 
+        #if $backgroundProteome:
+            --backgroundProteome='$backgroundProteome'
+        #end if
+            --bgDecoyNumber=$bgDecoyNumber
+        #if $decoyTag and str($decoyTag):
+            --decoyTag=$decoyTag
+        #end if
+        --ionTypes=$--ionTypes
+        --minElution=$minElution
+        --maxElution=$maxElution
+        --overlap=$advanced_options.overlap 
+        #if $advanced_options.ms1.ms1Unit == 'ppm':
+            --ms1Unit=ppm
+            --ms1Tolerance=$advanced_options.ms1.ms1Tolerance
+        #elif $advanced_options.ms1.ms1Unit == 'mz':
+            --ms1Unit=mz
+            --ms1Tolerance=$advanced_options.ms1.ms1Tolerance
+        #end if
+        #if $advanced_options.ms2.ms2Unit == 'ppm':
+            --ms2Unit=ppm
+            --ms2Tolerance=$advanced_options.ms2.ms2Tolerance
+        #elif $advanced_options.ms2.ms2Unit == 'mz':
+            --ms2Unit=mz
+            --ms2Tolerance=$advanced_options.ms2.ms2Tolerance
+        #end if
+        --minCharge=$advanced_options.minCharge
+        --maxCharge=$advanced_options.maxCharge
+        #if $advanced_options.ms2Boundaries.specify == 'specify':
+            --ms2Boundaries="$advanced_options.ms2Boundaries.ms2BoundariesMin,$advanced_options.ms2Boundaries.ms2BoundariesMax"
+        #end if
+        --alpha=$advanced_options.alpha
+        --beta=$advanced_options.beta
+        --idotp=$advanced_options.idotp
+        --topX=$advanced_options.topX
+        #if $advanced_options.fixedMod and str($advanced_options.fixedMod):
+            --fixedMod='$advanced_options.fixedMod'
+        #end if
+        $input $peptides  2>1 > run.log
+        && cat "$outputRoot"*.log > '$log_file'   
+        && cat "$outputRoot"*.td.feature | awk 'NR==1{print $0};!/peakCalibratedScore/{print $0}' > '$feature_file'
+    ]]></command>
+    
+    <configfiles>
+        <configfile name="isolationSheme">#slurp
+#import re
+#if $isolation.isolationsrc == 'entered':
+#echo $re.sub(r'(\d+[.]\d+)\s+(\d+[.]\d)\s*',r'\1\t\2\n',$isolation.isolation_windows.strip())
+#end if
+  #slurp</configfile>
+    </configfiles>
+    <inputs>
+        <param name="input" type="data" format="mzml" label="centroided mzML file"/>
+        <param name="sciex" type="boolean" truevalue="--sciex" falsevalue="" checked="false" 
+            label="mzML files were generated from AB SCIEX MS Data Converter"/>
+        <param name="peptides" type="data" format="tabular" multiple="true" label="target peptides"/>
+
+        <conditional name="isolation">
+            <param name="isolationsrc" type="select" label="isolation windows">
+                <option value="entered">Enter isolation windows</option>  
+                <option value="history">Read isolation windows from a history dataset</option>  
+            </param>
+            <when value="entered">
+                <param name="isolation_windows" type="text" area="true" size="20x20" value="" label="isolation windows">
+                    <validator type="regex" message="enter pairs of window boudaries, e.g.:400.0 420.0">^(?ms)(\d+[.]\d+\s\d+[.]\d)(\s\d+[.]\d+\s\d+[.]\d)*$</validator>
+                </param>
+            </when>
+            <when value="history">
+                <param name="isolation_windows" type="data" format="tabular" label="isolation windows"/>
+            </when>
+        </conditional>
+
+        <!-- species - default proteomes for (ecoli/yeast/mouse/human) -->
+        <param name="backgroundProteome" type="data" format="tabular" optional="true" label="BackgroundProteome" 
+            help="Peptide list file name of background proteome. Recommended if querying for a small number of peptides."/>
+        <param name="bgDecoyNumber" type="integer" value="2000" min="0" label="Number of decoys used for background estimation" 
+            optional="True" help="(-n) Default= 2000" />
+        <param name="decoyTag" type="text" value="decoy" optional="true" label="Tag for decoy sequences in the database"/>
+
+        <param name="ionTypes" type="select" label="Fragment ion types" help="suggested HCD: y, reCID: by">
+            <option value="by">by</option>
+            <option value="y">y</option>
+            <option value="b">b</option>
+        </param>
+        
+        <param name="minElution" type="integer" value="12" min="1" label="Minimum time in seconds a peptide is expected to elute" 
+            optional="True" help="(-m) Default= 12 seconds" />
+        <param name="maxElution" type="integer" value="30" min="1" label="Maximum time in seconds a peptide is expected to elute" 
+            optional="True" help="(-x) Default= 30 seconds" />
+
+        <section name="advanced_options" expanded="false" title="Advanced Options">
+            <param name="overlap" type="integer" value="0" min="0" max="100" label="Overlap percentage of isolation window"/>
+            <conditional name="ms1">
+                <param name="ms1Unit" type="select" label="Unit for precursor ion extraction tolerance">
+                    <option value="ppm">ppm</option>
+                    <option value="mz">mz</option>
+                </param>
+                <when value="ppm">
+                    <param name="ms1Tolerance" type="integer" value="10" min="0" label="ms1Tolerance" 
+                        help="Mass error for precursor ion extracting"/>
+                </when>
+                <when value="mz">
+                    <param name="ms1Tolerance" type="float" value="10" min="0" label="ms1Tolerance" 
+                        help="Mass error for precursor ion extracting"/>
+                </when>
+            </conditional>
+            <conditional name="ms2">
+                <param name="ms2Unit" type="select" label="Unit for fragment ion extraction tolerance">
+                    <option value="ppm">ppm</option>
+                    <option value="mz">mz</option>
+                </param>
+                <when value="ppm">
+                    <param name="ms2Tolerance" type="integer" value="10" min="0" label="ms2Tolerance" 
+                        help="Mass error for precursor ion extracting"/>
+                </when>
+                <when value="mz">
+                    <param name="ms2Tolerance" type="float" value="10" min="0" label="ms2Tolerance" 
+                        help="Mass error for precursor ion extracting"/>
+                </when>
+            </conditional>
+            <param name="minCharge" type="integer" value="2" min="1" label="Minimum charge state searched"/>
+            <param name="maxCharge" type="integer" value="3" min="1" label="Maximum charge state searched"/>
+            <conditional name="ms2Boundaries">
+                <param name="specify" type="select" label="Unit for fragment ion extraction tolerance">
+                    <option value="calculate">Let PECAN calculate MS2 Boundaries</option>
+                    <option value="specify">Specify MS2 Boundaries</option>
+                </param>
+                <when value="calculate"/>
+                <when value="specify">
+                    <param name="ms2BoundariesMin"  type="float" value="" label="Specify the MS2 scan lower m/z limit for the target window"/>
+                    <param name="ms2BoundariesMax"  type="float" value="" label="Specify the MS2 scan upper m/z limit for the target window"/>
+                </when>
+            </conditional>
+            <param name="alpha" type="float" value="1.8" min="0.0" label="Alpha hyperparameter to set score threshold for cIons" />
+            <param name="beta" type="float" value="0.4" min="0.0" max="1.0" label="Beta hyperparameter to set score threshold for cIons" />
+            <param name="idotp" type="float" value="0.0" min="0.0" label="MS1 idotp threshold used for peak picking" />
+            <param name="topX" type="integer" value="1" min="1" label="Reporting top x peaks per charged peptide"/>
+            
+            <param name="fixedMod" type="text" value="" optional="true" label="Fixed modifications in the sample">
+                <help><![CDATA[
+                    Fixed modifications in the sample. For example, default C[+57.021] will treat every Cys
+                    in the query sequences and background proteome as C[+57.021] while overwriting any
+                    specific modifications on individual Cys
+                    If multiple fixed modifications are desired use "," to separate each fixedMod tag
+                    (e.g. C[+57.021],M[+15.995])
+                ]]></help>
+                <validator type="regex" message="C[+57.021],M[+15.995]">^([A-Z]\[[+-]\d+[.]\d+\](,[A-Z]\[[+-]\d+[.]\d+\])*)*$</validator>
+                <sanitizer sanitize="False"/>
+            </param>
+        </section>
+        <!--
+        verbosity#Verbosity level for file logging (WARNING/INFO/DEBUG) Default=INFO
+        -->
+    </inputs>
+    <outputs>
+        <data name="log_file" format="txt" label="" />
+        <data name="feature_file" format="percin" label="" />
+    </outputs>
+    <help><![CDATA[
+**PECAN**
+
+PECAN (PEptide-Centric ANalysis) is a tool for peptide detection directly from DIA data without the need of a spectral library. PECAN takes a list of peptide sequences and query each peptide against the DIA data (in centroid mzML format) and reports the best evidence of detection for each peptide. The PECAN report is designed for Percolator to separate correct from incorrect matches with false discovery rate (FDR) control.
+
+usage: pecan [-h] [-d DECOYTAG] [--ms1Unit MS1UNIT] [--ms2Unit MS2UNIT]
+             [-p MS1TOLERANCE] [-q MS2TOLERANCE] [-m MINELUTION]
+             [-x MAXELUTION] [-b BACKGROUNDPROTEOME] [-n BGDECOYNUMBER]
+             [-i IDOTP] [-v VERBOSITY] [-t TOPX] [--minCharge MINCHARGE]
+             [--maxCharge MAXCHARGE] [-s IONTYPES] [--overlap OVERLAP]
+             [--SCIEX] [--VERSION] [--ms2Boundaries MS2BOUNDARIES]
+             [--alpha ALPHA] [--beta BETA] [--fixedMod FIXEDMOD]
+             mzMLFileName peptideListFileName isolationStart isolationEnd
+             outputRoot
+
+        
+
+positional arguments:
+  mzMLFileName          path to the centroid .mzML file
+  peptideListFileName   path to the query peptide list
+  isolationStart        precursor m/z of isolation start
+  isolationEnd          precursor m/z of isolation end
+  outputRoot            name base of the output files
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -d DECOYTAG, --decoyTag DECOYTAG
+                        Tag for decoy sequences in the database
+                        Default= decoy
+                        
+  --ms1Unit MS1UNIT     Unit (ppm/mz) for precursor ion extraction tolerance
+                        Used with -p
+                        Default=ppm 
+                        
+  --ms2Unit MS2UNIT     Unit (ppm/mz) for fragment ion extraction tolerance
+                        Used with -q
+                        Default=ppm 
+                        
+  -p MS1TOLERANCE, --ms1Tolerance MS1TOLERANCE
+                        Mass error for precursor ion extracting
+                        Default=10 
+                        
+  -q MS2TOLERANCE, --ms2Tolerance MS2TOLERANCE
+                        Mass error for fragment ion extracting
+                        Default=10 
+                        
+  -m MINELUTION, --minElution MINELUTION
+                        Minimum time in seconds a peptide is expected to elute
+                        Default= 12 seconds
+                        
+  -x MAXELUTION, --maxElution MAXELUTION
+                        Maximum time in seconds a peptide is expected to elute
+                        Default= 30 seconds
+                        
+  -b BACKGROUNDPROTEOME, --backgroundProteome BACKGROUNDPROTEOME
+                        Peptide list file name of background proteome
+                        Recommended if querying for a small number of peptides
+                        Default=None
+                        
+  -n BGDECOYNUMBER, --bgDecoyNumber BGDECOYNUMBER
+                        Number of decoys used for background estimation
+                        Default=2000
+                        
+  -i IDOTP, --idotp IDOTP
+                        MS1 idotp threshold used for peak picking
+                        Default=0.000000
+                        
+  -v VERBOSITY, --verbosity VERBOSITY
+                        Verbosity level for file logging (WARNING/INFO/DEBUG)
+                        Default=INFO
+                        
+  -t TOPX, --topX TOPX  Reporting top x peaks per charged peptide
+                        Default=1
+                        
+  --minCharge MINCHARGE
+                        Minimum charge state searched
+                        Default=2
+                        
+  --maxCharge MAXCHARGE
+                        Maximum charge state searched
+                        Default=3
+                        
+  -s IONTYPES, --ionTypes IONTYPES
+                        == To be added == Fragment ion types (b, y, or by)
+                        Default=by
+                        
+  --overlap OVERLAP     Overlap percentage of isolation window
+                        Default=0 
+                        
+  --SCIEX               Flag if mzML is generated from AB Sciex converter
+  --VERSION             Show current PECAN version
+                        
+  --ms2Boundaries MS2BOUNDARIES
+                        Specify the MS2 scan lower and upper m/z limit such as 200,2000 for the target window
+                        If not specify pecan will determine it with a function
+                        
+  --alpha ALPHA         Alpha hyperparameter to set score threshold for cIons
+                        
+  --beta BETA           Beta hyperparameter to set cutoff for number of cIons
+                        
+  --fixedMod FIXEDMOD   Fixed modifications in the sample. For example, default C[+57.021] will treat every Cys
+                        in the query sequences and background proteome as C[+57.021] while overwriting any
+                        specific modifications on individual Cys
+                        If multiple fixed modifications are desired use "," to separate each fixedMod tag
+                        (e.g. C[+57.021],M[+15.995])
+                        
+
+    ]]></help>
+</tool>
