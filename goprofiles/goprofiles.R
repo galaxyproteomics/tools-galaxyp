@@ -28,7 +28,7 @@ readfile = function(filename, header) {
 #test = readfile(filename)
 #str(test)
 #str(test$Gene.names)
-getprofile = function(prot_ids, level) {
+getprofile = function(ids, id_type, level) {
   
   # Check if level is number
   if (! as.numeric(level) %% 1 == 0) {
@@ -39,15 +39,24 @@ getprofile = function(prot_ids, level) {
   }
   #genes = as.vector(file[,ncol])
   
+  # Extract Gene Entrez ID
+  if (id_type == "Entrez") {
+    id = select(org.Hs.eg.db, ids, "ENTREZID", multiVals = "first")
+    genes_ids = id$ENTREZID[which( ! is.na(id$ENTREZID))]
+  }
+  else {
+    genes_ids = c()
+    id = select(org.Hs.eg.db, ids, "ENTREZID", "UNIPROT", multiVals = "first")
+    #print(id[[1]][1])
+    genes_ids = id$ENTREZID[which( ! is.na(id$ENTREZID))]
+    # IDs that have NA ENTREZID
+    NAs = id$UNIPROT[which(is.na(id$ENTREZID))]
+    print("IDs unable to convert to ENTREZID: ")
+    print(NAs)
+  }
+  #print(genes_ids)
   # Convert Protein IDs into entrez ids
-  genes_ids = c()
-  id = select(org.Hs.eg.db, prot_ids, "ENTREZID", "UNIPROT", multiVals = "first")
-  #print(id[[1]][1])
-  genes_ids = id$ENTREZID[which( ! is.na(id$ENTREZID))]
-  # IDs that have NA ENTREZID
-  NAs = id$UNIPROT[which(is.na(id$ENTREZID))]
-  print("IDs unable to convert to ENTREZID: ")
-  print(NAs)
+  
   # for (i in 1:length(id$UNIPROT)) {
   #   print(i)
   #   if (is.na(id[[2]][i])) {
@@ -152,11 +161,11 @@ plotPDF = function(profile.CC = NULL, profile.BP = NULL, profile.MF = NULL, prof
   }
 }
 
-goooo = function() {
+goprofiles = function() {
   args = commandArgs(trailingOnly = TRUE)
-  print(args)
+  #print(args)
   # arguments: filename.R inputfile ncol "CC,MF,BP,ALL" "PNG,JPEG,PDF" level "TRUE"(percentage) "Title"
-  if (length(args) != 7) {
+  if (length(args) != 8) {
     stop("Not enough/Too many arguments", call. = FALSE)
   }
   else {
@@ -179,19 +188,20 @@ goooo = function() {
       file = readfile(filename, header)
       # Extract Protein IDs list
       input = c()
-      for (row in file[,ncol]) {
-      input = c(input, strsplit(row, ";")[[1]][1])
+      for (row in as.character(file[,ncol])) {
+        input = c(input, strsplit(row, ";")[[1]][1])
       }
     }
-    ontoopt = strsplit(args[3], ",")[[1]]
+    id_type = args[3]
+    ontoopt = strsplit(args[4], ",")[[1]]
     #print(ontoopt)
     #plotopt = strsplit(args[3], ",")
-    plotopt = args[4]
-    level = args[5]
-    per = as.logical(args[6])
-    title = args[7]
+    plotopt = args[5]
+    level = args[6]
+    per = as.logical(args[7])
+    title = args[8]
 
-    profiles = getprofile(input, level)
+    profiles = getprofile(input, id_type, level)
     profile.CC = profiles[1]
     #print(profile.CC)
     profile.MF = profiles[2]
@@ -248,6 +258,6 @@ goooo = function() {
   
 }
 
-goooo()
+goprofiles()
 
 #Rscript go.R ../proteinGroups_Maud.txt "1" "CC" "PDF" 2 "TRUE" "Title"
