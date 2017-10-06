@@ -1,15 +1,15 @@
-GalaxyP - idpQuery
+GalaxyP - Bumbershoot
 ====================
 
 * Home: <https://github.com/galaxyproteomics/tools-galaxyp/>
-* Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/idpquery>
-* Tool ID: `idpquery`
+* Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp>
+* Tool IDs: `myrimatch`, `idpqonvert`, `idpQonvertEmbedder`, `idpassemble`, `idpquery`
 
 
 Description
 -----------
 
-Bumbershoot idpQuery, a part of Bumbershoot IDPicker.
+Bumbershoot is a suite of tools for proteomics analysis originally developed in the Tabb Lab at Vanderbilt University.
 
 See:
 
