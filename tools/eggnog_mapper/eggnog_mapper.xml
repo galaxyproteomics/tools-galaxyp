@@ -1,24 +1,23 @@
 <tool id="eggnog_mapper" name="eggNOG Mapper" version="0.1.0">
     <description>functional sequence annotation by orthology</description>
-    <requirements>
+    <!--<requirements>
         <requirement type="package" version="0.99.2">eggnog-mapper</requirement>
-    </requirements>
+    </requirements>-->
     <stdio>
         <exit_code range="1:" />
     </stdio>
     <version_command>python emapper.py --version</version_command>
     <command><![CDATA[
-        ### Load on demand - with changes to download_eggnog_data.py
-        ## #if $db.mode == 'hmmer':
-        ##     download_eggnog_data.py -y -q --data_dir ~/src/eggnog-mapper/data $db.database && 
-        ## #else
-        ##     download_eggnog_data.py -y -q --data_dir ~/src/eggnog-mapper/data $db.database && 
-        ## #end if
-        emapper.py  
+        python '$__tool_directory__/eggnog-mapper/emapper.py'
         --data_dir '$eggnog_data.fields.data_dir'
-        -m $db.mode $translate
-        #if $db.mode == 'hmmer':
-            --database=$db.database
+        -m $db.mode 
+        $translate
+        #if ($db.mode == 'hmmer'):
+            #if ($test):
+                --database=$db.database.fields.data_dir
+            #else
+                --database=$db.database
+            #end if
             #if $db.hmm_options.hmm_settings == 'specified':
                 --hmm_maxhits=$db.hmm_options.hmm_maxhits
                 --hmm_evalue=$db.hmm_options.hmm_evalue
@@ -29,13 +28,14 @@
                 #end if
                 --Z=$db.hmm_options.Z
             #end if
-        #elif $db.mode == 'diamond':
-            ## $db.sensitive
-            ## $db.more_sensitive
-            --matrix '$db.matrix'
-            --gapopen '$db.gapopen'
-            --gapextend '$db.gapextend'
-            ## --seg '$db.seg'
+        #elif ($db.mode == 'diamond'):
+            #if $db.sensitivity == "1":
+                --sensitive
+            #else if $db.sensitivity == "2":
+                --more-sensitive
+            #end if
+            --matrix '$db.matrix_gapcosts.matrix'
+            $db.matrix_gapcosts.gap_costs
         #end if
         #if $annotation_options.tax_scope:
             --tax_scope=$annotation_options.tax_scope
@@ -49,73 +49,191 @@
         #if $seed_ortholog_options.seed_ortholog_evalue:
             --seed_ortholog_evalue=$seed_ortholog_options.seed_ortholog_evalue 
         #end if
-        #if $seed_ortholog_options.seed_ortholog_score:
+        #if str($seed_ortholog_options.seed_ortholog_score):
             --seed_ortholog_score=$seed_ortholog_options.seed_ortholog_score 
         #end if
-        $output_options.file_comments
+        $output_options.no_file_comments
         $output_options.no_annot
         $output_options.report_orthologs
         --output='results'
         -i '${input}'
     ]]></command>
-    <inputs>
-        <param name="input" type="data" format="fasta" label="Fasta sequences to annotate"/>
-        <param name="translate" type="boolean" truevalue="--translate" falsevalue="" checked="false" 
-            label="Are these CDS sequences that need to be translated"/>
-        <param name="eggnog_data" type="select" label="Eggnog Data">
-            <options from_data_table="eggnog_mapper" >
-                <filter type="static_value" name="type" value="data" column="2"/>
-                <validator type="no_options" message="No cached eggnog data is available" />
-            </options>
-        </param>
-        <conditional name="db">
+        <inputs>
+            <!-- used for testing -->
+            <param name="test" type="hidden" value="false"/>
+            <param name="input" type="data" format="fasta" label="Fasta sequences to annotate"/>
+            <param name="eggnog_data" type="select" label="Version of eggNOG Database" optional="true">
+                <options from_data_table="eggnog_mapper">
+                    <filter type="static_value" name="type" value="data" column="2"/>
+                </options>
+            </param>
+            <param name="translate" type="boolean" truevalue="--translate" falsevalue="" checked="false"
+                label="Are these coding DNA sequences that need to be translated?"/>
+            <conditional name="db">
             <param name="mode" type="select" label="Annotation Type">
                 <option value="hmmer">HMM</option>
                 <option value="diamond">DIAMOND</option>
             </param>
             <when value="hmmer">
-                <param name="database" type="select" multiple="true" min="1" label="HMM target database">
-                    <options from_data_table="eggnog_mapper" >
-                        <!--
-                        -->
-                        <filter type="param_value" ref="eggnog_data" column="3" />
+                <param name="database" type="select" label="HMM target database" optional="true">
+                    <options from_data_table="eggnog_mapper">
                         <filter type="static_value" name="type" value="hmmer" column="2"/>
-                        <validator type="no_options" message="No HMM DBs are available, request from your galaxy admin" />
+                        <validator type="no_options" message="No HMM databases are available; request installation from your Galaxy admin." />
                     </options>
                 </param>
                 <conditional name="hmm_options">
-                    <param name="hmm_settings" type="select" label="HMM Search Options">
-                         <option value="default">Use defaults</option>
-                         <option value="specified">Set HMM Search Options</option>
-                    </param>
-                    <when value="default"/>
-                    <when value="specified">
-                        <param name="hmm_maxhits" type="integer" value="1" label="Max number of hits to report. Default=1" />
-                        <param name="hmm_evalue" type="float" value="0.001" label="E-value threshold. Default=0.001" />
-                        <param name="hmm_score" type="integer" value="20" label="Bit score threshold. Default=20" />
-                        <param name="hmm_maxseqlen" type="integer" value="5000" label="Ignore query sequences larger than `maxseqlen`.  Default=5000" />
-                        <param name="hmm_qcov" type="float" value="" min="0." max="1." optional="true" label="min query coverage (from 0 to 1). Default=(disabled)" />
-                        <param name="Z" type="integer" value="" label="Fixed database size used in phmmer/hmmscan (allows comparing e-values among databases).  Default=40,000,000" />
-                    </when>
+                        <param name="hmm_settings" type="select" label="HMM Search Options">
+                            <option value="default">Use defaults</option>
+                            <option value="specified">Set HMM Search Options</option>
+                        </param>
+                        <when value="default"/>
+                        <when value="specified">
+                            <param name="hmm_maxhits" type="integer" value="1" label="Max number of hits to report per query sequence"/>
+                            <param name="hmm_evalue" type="float" min="0" value="0.001" label="E-value threshold" />
+                            <param name="hmm_score" type="integer" min="0" value="20" label="Bit score threshold" />
+                            <param name="hmm_maxseqlen" type="integer" value="5000" label="Ignore query sequences larger than `maxseqlen`.  Default=5000" />
+                            <param name="hmm_qcov" type="float" value="" min="0." max="1." optional="true" label="min query coverage (from 0 to 1). Default=(disabled)" />
+                            <param name="Z" type="integer" value="40000000" min="0" label="Fixed database size used in phmmer/hmmscan (allows comparing e-values among databases).  Default=40,000,000" />
+                        </when>
                 </conditional>
-            </when>
-            <when value="diamond">
-                <param name="database" type="hidden" value="diamond"/>
-                <param argument="--sensitive" type="boolean" truevalue="--sensitive" falsevalue="" checked="false" label="Trigger the sensitive alignment mode with a 16x9 seed shape configuration?" help=""/>
-                <param name="more_sensitive" argument="--more-sensitive" type="boolean" truevalue="--more-sensitive" falsevalue="" checked="false" label="Trigger the more sensitive mode?" help="This mode provides some additional sensitivity compared to the sensitive mode."/>
-                <param argument="--seg" type="boolean" truevalue="yes" falsevalue="no" checked="true" label="Enable SEG masking of low complexity segments in the query?" help=""/>
-                <param argument="--matrix" type="select" label="Scoring matrix" help="In brackets are the supported values for (gap open)/(gap extend)">
-                    <option value="BLOSUM45">BLOSUM45 ((10-13)/3; (12-16)/2; (16-19)/1)</option>
-                    <option value="BLOSUM50">BLOSUM50 ((9-13)/3; (12-16)/2; (15-19)/1)</option>
-                    <option value="BLOSUM62" selected="True">BLOSUM62 ((6-11)/2; (9-13)/1)</option>
-                    <option value="BLOSUM80">BLOSUM80 ((6-9)/2; 13/2; 25/2; (9-11)/1)</option>
-                    <option value="BLOSUM90">BLOSUM90 ((6-9)/2; (9-11)/1)</option>
-                    <option value="PAM250">PAM250 ((11-15)/3; (13-17)/2; (17-21)/1)</option>
-                    <option value="PAM70">PAM70 ((6-8)/2; (9-11)/1)</option>
-                    <option value="PAM30">PAM30 ((5-7)/2; (8-10)/1)</option>
-                </param>
-                <param argument="--gapopen" type="integer" value="11" label="Gap open penalty" help="" />
-                <param argument="--gapextend" type="integer" value="1" label="Gap extension penalty" help="" />
+                </when>
+                <when value="diamond">
+                    <!-- db.database is used in diamond mode only to name outputs -->
+                    <param name="database" type="hidden" value="diamond"/>
+                    <param name="sensitivity" type="select" label="Sensitivity Mode"
+                        help="Choose one of the sensitivity modes.
+                        More sensitivity may increase computation time">
+                        <option value="0" selected="true">Default</option>
+                        <option value="1">Sensitive</option>
+                        <option value="2">More Sensitive</option>
+                    </param>
+                    <conditional name="matrix_gapcosts">
+                        <param argument="--matrix" type="select" label="Scoring matrix and gap costs">
+                            <option value="BLOSUM90">BLOSUM90</option>
+                            <option value="BLOSUM80">BLOSUM80</option>
+                            <option value="BLOSUM62" selected="true">BLOSUM62</option>
+                            <option value="BLOSUM50">BLOSUM50</option>
+                            <option value="BLOSUM45">BLOSUM45</option>
+                            <option value="PAM250">PAM250</option>
+                            <option value="PAM70">PAM70</option>
+                            <option value="PAM30">PAM30</option>
+                        </param>
+                        <when value="BLOSUM90">
+                            <param name="gap_costs" type="select" label="Gap Costs">
+                                <option value="--gapopen 9 --gapextend 2">Existence: 9  Extension: 2</option>
+                                <option value="--gapopen 8 --gapextend 2">Existence: 8  Extension: 2</option>
+                                <option value="--gapopen 7 --gapextend 2">Existence: 7  Extension: 2</option>
+                                <option value="--gapopen 6 --gapextend 2">Existence: 6  Extension: 2</option>
+                                <option value="--gapopen 11 --gapextend 1">Existence: 11  Extension: 1</option>
+                                <option value="--gapopen 10 --gapextend 1" selected="true">Existence: 10  Extension: 1</option>
+                                <option value="--gapopen 9 --gapextend 1">Existence: 9  Extension: 1</option>
+                            </param>
+                        </when>
+                        <when value="BLOSUM80">
+                            <param name="gap_costs" type="select" label="Gap Costs">
+                                <option value="--gapopen 8 --gapextend 2">Existence: 8  Extension: 2</option>
+                                <option value="--gapopen 7 --gapextend 2">Existence: 7  Extension: 2</option>
+                                <option value="--gapopen 6 --gapextend 2">Existence: 6  Extension: 2</option>
+                                <option value="--gapopen 11 --gapextend 1">Existence: 11  Extension: 1</option>
+                                <option value="--gapopen 10 --gapextend 1" selected="true">Existence: 10  Extension: 1</option>
+                                <option value="--gapopen 9 --gapextend 1">Existence: 9  Extension: 1</option>
+                            </param>
+                     </when>
+                     <when value="BLOSUM62">
+                         <param name="gap_costs" type="select" label="Gap Costs">
+                             <option value="--gapopen 11 --gapextend 2">Existence: 11  Extension: 2</option>
+                             <option value="--gapopen 10 --gapextend 2">Existence: 10  Extension: 2</option>
+                             <option value="--gapopen 9 --gapextend 2">Existence: 9  Extension: 2</option>
+                             <option value="--gapopen 8 --gapextend 2">Existence: 8  Extension: 2</option>
+                             <option value="--gapopen 7 --gapextend 2">Existence: 7  Extension: 2</option>
+                             <option value="--gapopen 6 --gapextend 2">Existence: 6  Extension: 2</option>
+                             <option value="--gapopen 13 --gapextend 1">Existence: 13  Extension: 1</option>
+                             <option value="--gapopen 12 --gapextend 1">Existence: 12  Extension: 1</option>
+                             <option value="--gapopen 11 --gapextend 1" selected="true">Existence: 11  Extension: 1</option>
+                             <option value="--gapopen 10 --gapextend 1">Existence: 10  Extension: 1</option>
+                             <option value="--gapopen 9 --gapextend 1">Existence: 9  Extension: 1</option>
+                         </param>
+                     </when>
+                     <when value="BLOSUM50">
+                         <param name="gap_costs" type="select" label="Gap Costs">
+                             <option value="--gapopen 13 --gapextend 3">Existence: 13  Extension: 3</option>
+                             <option value="--gapopen 12 --gapextend 3">Existence: 12  Extension: 3</option>
+                             <option value="--gapopen 11 --gapextend 3">Existence: 11  Extension: 3</option>
+                             <option value="--gapopen 10 --gapextend 3">Existence: 10  Extension: 3</option>
+                             <option value="--gapopen 9 --gapextend 3">Existence: 9  Extension: 3</option>
+                             <option value="--gapopen 16 --gapextend 2">Existence: 16  Extension: 2</option>
+                             <option value="--gapopen 15 --gapextend 2">Existence: 15  Extension: 2</option>
+                             <option value="--gapopen 14 --gapextend 2">Existence: 14  Extension: 2</option>
+                             <option value="--gapopen 13 --gapextend 2" selected="true">Existence: 13  Extension: 2</option>
+                             <option value="--gapopen 12 --gapextend 2">Existence: 12  Extension: 2</option>
+                             <option value="--gapopen 19 --gapextend 1">Existence: 19  Extension: 1</option>
+                             <option value="--gapopen 18 --gapextend 1">Existence: 18  Extension: 1</option>
+                             <option value="--gapopen 17 --gapextend 1">Existence: 17  Extension: 1</option>
+                             <option value="--gapopen 16 --gapextend 1">Existence: 16  Extension: 1</option>
+                             <option value="--gapopen 15 --gapextend 1">Existence: 15  Extension: 1</option>
+                         </param>
+                     </when>
+                     <when value="BLOSUM45">
+                         <param name="gap_costs" type="select" label="Gap Costs">
+                             <option value="--gapopen 13 --gapextend 3">Existence: 13  Extension: 3</option>
+                             <option value="--gapopen 12 --gapextend 3">Existence: 12  Extension: 3</option>
+                             <option value="--gapopen 11 --gapextend 3">Existence: 11  Extension: 3</option>
+                             <option value="--gapopen 10 --gapextend 3">Existence: 10  Extension: 3</option>
+                             <option value="--gapopen 15 --gapextend 2" selected="true">Existence: 15  Extension: 2</option>
+                             <option value="--gapopen 14 --gapextend 2">Existence: 14  Extension: 2</option>
+                             <option value="--gapopen 13 --gapextend 2">Existence: 13  Extension: 2</option>
+                             <option value="--gapopen 12 --gapextend 2">Existence: 12  Extension: 2</option>
+                             <option value="--gapopen 19 --gapextend 1">Existence: 19  Extension: 1</option>
+                             <option value="--gapopen 18 --gapextend 1">Existence: 18  Extension: 1</option>
+                             <option value="--gapopen 17 --gapextend 1">Existence: 17  Extension: 1</option>
+                             <option value="--gapopen 16 --gapextend 1">Existence: 16  Extension: 1</option>
+                         </param>
+                     </when>
+                     <when value="PAM250">
+                         <param name="gap_costs" type="select" label="Gap Costs">
+                             <option value="--gapopen 15 --gapextend 3">Existence: 15  Extension: 3</option>
+                             <option value="--gapopen 14 --gapextend 3">Existence: 14  Extension: 3</option>
+                             <option value="--gapopen 13 --gapextend 3">Existence: 13  Extension: 3</option>
+                             <option value="--gapopen 12 --gapextend 3">Existence: 12  Extension: 3</option>
+                             <option value="--gapopen 17 --gapextend 2">Existence: 17  Extension: 2</option>
+                             <option value="--gapopen 16 --gapextend 2">Existence: 16  Extension: 2</option>
+                             <option value="--gapopen 15 --gapextend 2">Existence: 15  Extension: 2</option>
+                             <option value="--gapopen 14 --gapextend 2" selected="true">Existence: 14  Extension: 2</option>
+                             <option value="--gapopen 13 --gapextend 2">Existence: 13  Extension: 2</option>
+                             <option value="--gapopen 21 --gapextend 1">Existence: 21  Extension: 1</option>
+                             <option value="--gapopen 20 --gapextend 1">Existence: 20  Extension: 1</option>
+                             <option value="--gapopen 19 --gapextend 1">Existence: 19  Extension: 1</option>
+                             <option value="--gapopen 18 --gapextend 1">Existence: 18  Extension: 1</option>
+                             <option value="--gapopen 17 --gapextend 1">Existence: 17  Extension: 1</option>
+                         </param>
+                     </when>
+                     <when value="PAM70">
+                         <param name="gap_costs" type="select" label="Gap Costs">
+                             <option value="--gapopen 12 --gapextend 3">Existence: 12 Extension: 3</option>
+                             <option value="--gapopen 11 --gapextend 2">Existence: 11 Extension: 2</option>
+                             <option value="--gapopen 8 --gapextend 2">Existence: 8  Extension: 2</option>
+                             <option value="--gapopen 7 --gapextend 2">Existence: 7  Extension: 2</option>
+                             <option value="--gapopen 6 --gapextend 2">Existence: 6  Extension: 2</option>
+                             <option value="--gapopen 11 --gapextend 1">Existence: 11  Extension: 1</option>
+                             <option value="--gapopen 10 --gapextend 1" selected="true">Existence: 10  Extension: 1</option>
+                             <option value="--gapopen 9 --gapextend 1">Existence: 9  Extension: 1</option>
+                         </param>
+                     </when>
+                     <when value="PAM30">
+                         <param name="gap_costs" type="select" label="Gap Costs">
+                             <option value="--gapopen 15 --gapextend 3">Existence: 15 Extension: 3</option>
+                             <option value="--gapopen 13 --gapextend 3">Existence: 13 Extension: 3</option>
+                             <option value="--gapopen 14 --gapextend 2">Existence: 14 Extension: 2</option>
+                             <option value="--gapopen 7 --gapextend 2">Existence: 7  Extension: 2</option>
+                             <option value="--gapopen 6 --gapextend 2">Existence: 6  Extension: 2</option>
+                             <option value="--gapopen 5 --gapextend 2">Existence: 5  Extension: 2</option>
+                             <option value="--gapopen 14 --gapextend 1">Existence: 14 Extension: 1</option>
+                             <option value="--gapopen 10 --gapextend 1">Existence: 10  Extension: 1</option>
+                             <option value="--gapopen 9 --gapextend 1" selected="true">Existence: 9  Extension: 1</option>
+                             <option value="--gapopen 8 --gapextend 1">Existence: 8  Extension: 1</option>
+                         </param>
+                     </when>
+                </conditional>
             </when>
         </conditional>
         <section name="annotation_options" expanded="false" title="Annotation Options">
@@ -241,25 +359,25 @@
             </param>
         </section>
         <section name="seed_ortholog_options" expanded="false" title="Seed Ortholog Search Options">
-            <param name="seed_ortholog_evalue" type="float" value="0.001" optional="true" label="Min E-value threshold. Default=0.001">
+            <param name="seed_ortholog_evalue" type="float" value="0.001" label="Min E-value threshold">
                 <help>
                 Min E-value expected when searching for seed eggNOG ortholog. Applies to phmmer/diamond searches. 
                 Queries not having a significant seed orthologs will not be annotated.
                 </help>
             </param>
-            <param name="seed_ortholog_score" type="integer" value="60" optional="true" label="Bit score threshold. Default=60">
+            <param name="seed_ortholog_score" type="integer" value="60" label="Minimum bit score threshold">
                 <help>
-                Min bit score expected when searching for seed eggNOG ortholog.  Applies to phmmer/diamond searches.
-                Queries not having a significant seed orthologs will not be annotated. Default=60
+                Min bit score expected when searching for seed eggNOG ortholog. 
+                Queries not having a significant seed orthologs will not be annotated.
                 </help>
             </param>
         </section>
         <section name="output_options" expanded="false" title="Output Options">
-            <param name="file_comments" type="boolean" truevalue="--no_file_comments" falsevalue="" checked="false" 
+            <param name="no_file_comments" type="boolean" truevalue="--no_file_comments" falsevalue="" checked="true"
                 label="Exclude header lines and stats from output files"/>
-            <param name="no_annot" type="boolean" truevalue="--no_annot" falsevalue="" checked="false" 
+            <param name="no_annot" type="boolean" truevalue="--no_annot" falsevalue="" checked="false"
                 label="Skip functional annotation, reporting only hits"/>
-            <param name="report_orthologs" type="boolean" truevalue="--report_orthologs" falsevalue="" checked="false" 
+            <param name="report_orthologs" type="boolean" truevalue="--report_orthologs" falsevalue="" checked="false"
                 label="Output a file with the list of orthologs for each hits"/>
         </section>
     </inputs>
@@ -288,98 +406,82 @@
             </actions>
         </data>
     </outputs>
+    <tests>
+        <test>
+            <param name="input" value="nlim_fragment.fasta" ftype="fasta"/>
+            <param name="test" value="true"/>
+            <param name="database" value="ENOG411CB2I"/>
+            <param name="mode" value="hmmer"/>
+            <param name="eggnog_data" value="eggNOG_4.5"/>
+            <param name="no_annot" value="true"/>
+            <param name="no_file_comments" value="true"/>
+            <output name="hmm_hits" file="HMM_nlim.emapper.hmm_hits" ftype="tabular"/>
+        </test>
+        <test>
+            <param name="input" value="nlim_fragment.fasta" ftype="fasta"/>
+            <param name="eggnog_data" value="eggNOG_4.5"/> <!-- not passed in test, but required for test to work -->
+            <param name="no_annot" value="true"/>
+            <param name="mode" value="diamond"/>
+            <output name="seed_orthologs" file="DIA_nlim.emapper.seed_orthologs" ftype="tabular"/>
+        </test>
+    </tests>
     <help><![CDATA[
 
 eggnog-mapper
+=============
+Overview
+--------
 
-optional arguments:
-  -h, --help            show this help message and exit
-  --version
+``eggnog-mapper`` is a tool for fast functional annotation of novel sequences (genes or proteins) using precomputed eggNOG-based orthology assignments. 
+Obvious examples include the annotation of novel genomes, transcriptomes or even metagenomic gene catalogs. 
+The use of orthology predictions for functional annotation is considered more precise than traditional homology searches, 
+as it avoids transferring annotations from paralogs (duplicate genes with a higher chance of being involved in functional divergence).
 
-Target HMM Database Options:
-  --guessdb             guess eggnog db based on the provided taxid
-  --database , -d       specify the target database for sequence searches.
-                        Choose among: euk,bact,arch, host:port, or a local
-                        hmmpressed database
-  --dbtype {hmmdb,seqdb}
-  --qtype {hmm,seq}
+EggNOG-mapper is also available as a public online resource:  `<http://beta-eggnogdb.embl.de/#/app/emapper>`_.
 
-Annotation Options:
-  --tax_scope           Fix the taxonomic scope used for annotation, so only
-                        orthologs from a particular clade are used for
-                        functional transfer. By default, this is automatically
-                        adjusted for every query sequence.
-  --target_orthologs {one2one,many2one,one2many,many2many,all}
-                        defines what type of orthologs should be used for
-                        functional transfer
-  --excluded_taxa       (for debugging and benchmark purposes)
-  --go_evidence {experimental,non-electronic}
-                        Defines what type of GO terms should be used for
-                        annotation:experimental = Use only terms inferred from
-                        experimental evidencenon-electronic = Use only non-
-                        electronically curated terms
+Options
+-------
 
-HMM search_options:
-  --hmm_maxhits         Max number of hits to report. Default=1
-  --hmm_evalue          E-value threshold. Default=0.001
-  --hmm_score           Bit score threshold. Default=20
-  --hmm_maxseqlen       Ignore query sequences larger than `maxseqlen`.
-                        Default=5000
-  --hmm_qcov            min query coverage (from 0 to 1). Default=(disabled)
-  --Z                   Fixed database size used in phmmer/hmmscan (allows
-                        comparing e-values among databases).
-                        Default=40,000,000
+``eggnog-mapper`` can use two search algorithms: `HMMER <http://hmmer.org/>`_ and `DIAMOND <https://github.com/bbuchfink/diamond>`_. 
+HMMER is more sensitive, while DIAMOND is faster and useful for larger sets of query sequences. 
 
-Seed ortholog search option:
-  --seed_ortholog_evalue 
-                        Min E-value expected when searching for seed eggNOG
-                        ortholog. Applies to phmmer/diamond searches. Queries
-                        not having a significant seed orthologs will not be
-                        annotated. Default=0.001
-  --seed_ortholog_score 
-                        Min bit score expected when searching for seed eggNOG
-                        ortholog. Applies to phmmer/diamond searches. Queries
-                        not having a significant seed orthologs will not be
-                        annotated. Default=60
 
-Output options:
-  --output , -o         base name for output files
-  --resume              Resumes a previous execution skipping reported hits in
-                        the output file.
-  --override            Overwrites output files if they exist.
-  --no_refine           Skip hit refinement, reporting only HMM hits.
-  --no_annot            Skip functional annotation, reporting only hits
-  --no_search           Skip HMM search mapping. Use existing hits file
-  --report_orthologs    The list of orthologs used for functional transferred
-                        are dumped into a separate file
-  --scratch_dir         Write output files in a temporary scratch dir, move
-                        them to final the final output dir when finished.
-                        Speed up large computations using network file
-                        systems.
-  --output_dir          Where output files should be written
-  --temp_dir            Where temporary files are created. Better if this is a
-                        local disk.
-  --no_file_comments    No header lines nor stats are included in the output
-                        files
-  --keep_mapping_files  Do not delete temporary mapping files used for
-                        annotation (i.e. HMMER and DIAMOND search outputs)
+Outputs
+-------
 
-Execution options:
-  -m {hmmer,diamond}    Default:hmmer
-  -i                    Computes annotations for the provided FASTA file
-  --translate           Assume sequences are genes instead of proteins
-  --servermode          Loads target database in memory and keeps running in
-                        server mode, so another instance of eggnog-mapper can
-                        connect to this sever. Auto turns on the --usemem flag
-  --usemem              If a local hmmpressed database is provided as target
-                        using --db, this flag will allocate the whole database
-                        in memory using hmmpgmd. Database will be unloaded
-                        after execution.
-  --cpu 
-  --annotate_hits_table 
-                        Annotatate TSV formatted table of query->hits. 4
-                        fields required: query, hit, evalue, score. Implies
-                        --no_search and --no_refine.
+**hmm_hits**
+
+For each query sequence, a list of significant 
+hits to eggNOG Orthologous Groups (OGs) is reported. 
+Each line in the file represents a hit, where evalue, bit-score, 
+query-coverage and the sequence coordinates of the match are reported. 
+If multiple hits exist for a given query, results are sorted by e-value.
+Only returned when using HMMER mode. 
+
+**seed_orthologs**
+
+each line in the file provides the best match of each query within the best Orthologous Group (OG) 
+reported in the [project].hmm_hits file, obtained running PHMMER against all sequences within the best OG. 
+The seed ortholog is used to fetch fine-grained orthology relationships from eggNOG. 
+If using the diamond search mode, seed orthologs are directly 
+obtained from the best matching sequences by running DIAMOND against the whole eggNOG protein space.
+
+**annotations**
+
+This file provides final annotations of each query. Tab-delimited columns in the file are:
+
+- ``query_name``: query sequence name
+- ``seed_eggNOG_ortholog``: best protein match in eggNOG
+- ``seed_ortholog_evalue``: best protein match (e-value)
+- ``seed_ortholog_score``: best protein match (bit-score)
+- ``predicted_gene_name``: Predicted gene name for query sequences
+- ``GO_terms``: Comma delimited list of predicted Gene Ontology terms
+- ``KEGG_pathways``: Comma delimited list of predicted KEGG pathways
+- ``Annotation_tax_scope``: The taxonomic scope used to annotate this query sequence
+- ``Matching_OGs``: Comma delimited list of matching eggNOG Orthologous Groups
+- ``best_OG|evalue|score``: Best matching Orthologous Groups (only in HMM mode)
+- ``COG functional categories``: COG functional category inferred from best matching OG
+- ``eggNOG_HMM_model_annotation``: eggNOG functional description inferred from best matching OG
 
     ]]></help>
     <citations>
