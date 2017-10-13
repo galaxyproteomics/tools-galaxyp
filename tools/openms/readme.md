@@ -14,15 +14,29 @@ More informations are available at:
 Generating OpenMS wrappers
 ==========================
 
- * install OpenMS (you can do this automatically through the Tool Shed)
+ * install OpenMS (you can do this automatically through Conda)
  * create a folder called CTD
- * inside of your new installed openms/bin folder, execute the following command:
+ * if you installed openms as a binary in a specific directory, execute the following command in the `openms/bin` directory:
     
     ```bash
     for binary in `ls`; do ./$binary -write_ctd /PATH/TO/YOUR/CTD; done;
     ```
     
- * `MetaProSIP.ctd` includes a not supported character: To use it, search for `²` and replace it (e.g. with `^2`).
+ * if there is no binary release (e.g. as with version 2.2), download and unpack the Conda package, find the `bin` folder and create a list of the tools as follow:
+ 
+    ```bash
+    ls >> tools.txt
+    ```
+    
+ * search for the `bin` folder of your conda environment containing OpenMS and do:
+ 
+    ```bash
+    while read p; do
+        ./PATH/TO/BIN/$p -write_ctd /PATH/TO/YOUR/CTD;
+    done <tools.txt
+    ```
+    
+ * You should have all CTD files now. `MetaProSIP.ctd` includes a not supported character: To use it, search for `²` and replace it (e.g. with `^2`).
 
  * clone or install CTDopts
 
@@ -39,10 +53,10 @@ Generating OpenMS wrappers
  * clone or install CTD2Galaxy
 
     ```bash
-    git clone https://github.com/blankclemens/CTD2Galaxy.git
+    git clone https://github.com/WorkflowConversion/CTD2Galaxy.git
     ```
     
- * If you have CTDopts and CTD2Galaxy installed you are ready to generate Galaxy Tools from CTD definitions. Change the following command according to your needs, especially the `/PATH/TO` parts. 
+ * If you have CTDopts and CTD2Galaxy installed you are ready to generate Galaxy Tools from CTD definitions. Change the following command according to your needs, especially the `/PATH/TO` parts. The default files are provided in this repository. You might have to install `libxslt` and `lxml` to run it.
 
     ```bash
     python generator.py \ 
@@ -55,6 +69,7 @@ Generating OpenMS wrappers
      omssa_executable pepnovo_executable \
      xtandem_executable param_model_directory \
      java_executable java_memory java_permgen \
+     r_executable rt_concat_trafo_out \
     -f /PATH/TO/filetypes.txt -m /PATH/TO/macros.xml \
     -s PATH/TO/SKIP_TOOLS_FILES.txt
     ```
@@ -63,8 +78,8 @@ Generating OpenMS wrappers
  * As last step you need to change manually the binary names of all external binaries you want to use in OpenMS. For example:
 
     ```
-    sed -i '13 a\-fido_executable fido' wrappers/FidoAdapter.xml
-    sed -i '13 a\-fidocp_executable fido_choose_parameters' wrappers/FidoAdapter.xml
+    sed -i '13 a\-fido_executable Fido' wrappers/FidoAdapter.xml
+    sed -i '13 a\-fidocp_executable FidoChooseParameters' wrappers/FidoAdapter.xml
     sed -i '13 a\-myrimatch_executable myrimatch' wrappers/MyriMatchAdapter.xml
     sed -i '13 a\-omssa_executable omssa' wrappers/OMSSAAdapter.xml
     sed -i '13 a\-xtandem_executable xtandem' wrappers/XTandemAdapter.xml
@@ -102,17 +117,40 @@ Generating OpenMS wrappers
     [...]
     ]]>
     ```
- * In `PeakPickerHiRes.xml`, the parameter `report_FWHM_unit` has to be put in quotation marks. Look for the following line
+    
+ * In `MetaProSIP.xml` add `R` as a requirement:
  
-        -algorithm:report_FWHM_unit $param_algorithm_report_FWHM_unit
-     
-   and change it to
+   ```
+   <expand macro="requirements">
+       <requirement type="package" version="3.3.1">r-base</requirement>
+   </expand>
+   ```
    
-        -algorithm:report_FWHM_unit "$param_algorithm_report_FWHM_unit"
-
- * In `FileConverter.xml` add `auto_format="true"` to the output, e.g.:
+ * In `IDFileConverter.xml` the following is needed in the command section at the beginning (check your file to know what to copy where):
  
-        <data name="param_out" metadata_source="param_in" auto_format="true"/>
+   ```
+    <command><![CDATA[
+   
+      ## check input file type
+      #set $in_type = $param_in.ext
+
+      ## create the symlinks to set the proper file extension, since IDFileConverter uses them to choose how to handle the input files
+      ln -s '$param_in' 'param_in.${in_type}' &&
+
+      IDFileConverter
+
+      #if $param_in:
+        -in 'param_in.${in_type}'
+      #end if
+
+        [...]
+        ]]>
+    ```
+
+ * In `IDFileConverter.xml` and `FileConverter.xml` add `auto_format="true"` to the output, e.g.:
+ 
+   - `<data name="param_out" auto_format="true"/>`
+   - `<data name="param_out" metadata_source="param_in" auto_format="true"/>`
         
  * To add an example test case to `DecoyDatabase.xml` add the following after the output section. If standard settings change you might have to adjust the options and/or the test files.
  
