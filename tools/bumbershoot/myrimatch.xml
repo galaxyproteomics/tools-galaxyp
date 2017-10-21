@@ -1,0 +1,239 @@
+<tool id="myrimatch" version="@VERSION@.0" name="MyriMatch">
+    <description>Identify peptides in tandem mass spectra.</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements" />
+    <stdio>
+        <exit_code range="1:" level="fatal" description="Job Failed" />
+        <regex match="^Could not find the default configuration file.*$"
+          source="both"
+          level="warning" />
+    </stdio>
+    <command>
+<![CDATA[
+        #set $db_name = $ProteinDatabase.display_name.replace(".fasta", "") + ".fasta"
+        #if $OutputFormat.value == "mzIdentML"
+            #set $output_ext="mzid"
+        #else
+            #set $output_ext="pepXML"
+        #end if
+        #set $input_name = $input.display_name
+        #set $output_name = $input_name.split(".")[0] + "." + $output_ext
+
+        #set $static_mods_str = ""
+        #for $static_mod in $StaticMods
+          #set $static_mods_str = $static_mods_str + " " + str($static_mod.aa) + " " + str($static_mod.mass)
+        #end for
+        #set $static_mods_str = $static_mods_str.lstrip()
+
+        #set $dynamic_mods_str = ""
+        #for $dynamic_mod in $DynamicMods
+            #set $dynamic_mods_str = $dynamic_mods_str + " " + str($dynamic_mod.motif) + " * " + str($dynamic_mod.mass)
+        #end for
+        #set $dynamic_mods_str = $dynamic_mods_str.lstrip()
+
+        ln -s '$input' '${input_name}' &&
+        ln -s '$ProteinDatabase' '${db_name}' &&
+        myrimatch -DecoyPrefix '${DecoyPrefix}' -cpus \${GALAXY_SLOTS:-1}
+        -ProteinDatabase '${db_name}'
+        -OutputFormat '${OutputFormat}'
+        '${input_name}'
+        -StaticMods '${static_mods_str}'
+        -DynamicMods '${dynamic_mods_str}'
+        -MaxDynamicMods $MaxDynamicMods
+        -CleavageRules '${CleavageRules}'
+        -MinTerminiCleavages $MinTerminiCleavages
+        -MaxMissedCleavages $MaxMissedCleavages
+        #set $precursor_type = $tolerance_options.precursor_tolerance.PrecursorMzToleranceRule
+        -PrecursorMzToleranceRule '${tolerance_options.precursor_tolerance.PrecursorMzToleranceRule}'
+        #if $tolerance_options.precursor_tolerance.PrecursorMzToleranceRule == "auto" or $tolerance_options.precursor_tolerance.PrecursorMzToleranceRule == "mono"
+          -MonoPrecursorMzTolerance '${tolerance_options.precursor_tolerance.MonoPrecursorMzTolerance}${tolerance_options.precursor_tolerance.mono_precursor_mz_tolerance_units}'
+        #end if
+        #if $tolerance_options.precursor_tolerance.PrecursorMzToleranceRule == "auto" or $tolerance_options.precursor_tolerance.PrecursorMzToleranceRule == "avg"
+          -AvgPrecursorMzTolerance '${tolerance_options.precursor_tolerance.AvgPrecursorMzTolerance}${tolerance_options.precursor_tolerance.avg_precursor_mz_tolerance_units}'
+        #end if
+        -FragmentMzTolerance '${tolerance_options.FragmentMzTolerance}${tolerance_options.fragment_mz_tolerance_units}'
+        -UseSmartPlusThreeModel $advanced.UseSmartPlusThreeModel
+        -MinPeptideLength $advanced.MinPeptideLength
+        -MaxPeptideLength $advanced.MaxPeptideLength
+        -NumChargeStates $advanced.NumChargeStates
+        -MaxResultRank $advanced.MaxResultRank
+        #set $set = str($advanced.MonoisotopeAdjustmentSet).replace("[[", "[").replace("]]","]")
+        -MonoisotopeAdjustmentSet '$set'
+        #if $advanced.MaxPeakCount
+          -MaxPeakCount $advanced.MaxPeakCount
+        #end if
+        #if $advanced.fragmentation_rule.FragmentationAutoRule
+          -FragmentationAutoRule false -FragmentationRule 'manual:${advanced.fragmentation_rule.FragmentationRule}'
+        #end if
+        &&
+        mv '$output_name' output
+]]>
+    </command>
+    <inputs>
+          <param name="input" type="data" format="mzml,mzxml,mgf,ms2,mz5" label="Input Raw MS File(s)"/>
+          <param argument="-OutputFormat" type="select" label="Output Type" help="The file format to use for results of the search.">
+              <option value="pepXML">pepXML</option>
+              <option value="mzIdentML">mzIdentML</option>
+          </param>
+          <param argument="-ProteinDatabase" format="fasta" type="data" label="Protein Database" help="The FASTA protein database to search against. Only amino-acid type FASTA is supported." />
+          <param argument="-DecoyPrefix" type="text" label="Decoy Prefix" value="rev_" help="If the protein database contains accessions prefixed with this string, those proteins will be considered decoys. If there are no decoy protein, this prefix will be used to generate an automatic decoy for each target protein. Set this to an empty string to disable automatic decoys." />
+          <param argument="-CleavageRules" type="select" label="Cleavage Agent" help="The cleavage agent to generate in silico peptides from the protein database." >
+               <option value="Trypsin/P">Trypsin/P (allows for cut after K or R)</option>
+               <option value="Trypsin">Trypsin (normal trypsin cut, disallows cutting when the site is before a proline)</option>
+               <option value="Chymotrypsin">Chymotrypsin (allows cut after F,Y,W,L. Disallows cutting before proline)</option>
+               <option value="TrypChymo">TrypChymo (combines "Trypsin/P" and "Chymotrypsin" cleavage rules)</option>
+               <option value="Lys-C">Lys-C</option>
+               <option value="Lys-C/P">Lys-C/P (Lys-C, disallowing cutting before proline)</option>
+               <option value="Asp-N">Asp-N</option>
+               <option value="PepsinA">PepsinA (cuts right after F, L)</option>
+               <option value="CNBr">CNBr (cyanogen bromide)</option>
+               <option value="Formic_acid">Formic acid</option>
+          </param>
+          <param argument="-MinTerminiCleavages" type="select" label="Cleavage Specificity" help="Controls which peptide termini must match the cleavage rules.">
+              <option value="2">Fully specific (both termini match cleavage rules)</option>
+              <option value="1" selected="true">Semi-specific (at least one terminus must match cleavage rules)</option>
+              <option value="0">Non-specific (neither terminus is required to match cleavage rules)</option>
+          </param>
+          <param argument="-MaxMissedCleavages" type="integer" min="0" value="2" label="Maximum Missed Cleavages" help="Candidate peptides with more than this number of uncleaved cleavage sites will be skipped." />
+          <repeat name="StaticMods" title="Static Modifications" help="Modifications that are always applied to an amino acid. (-StaticMods)">
+              <param name="aa" type="text" label="Amino Acid">
+                  <sanitizer><valid initial="string.ascii_uppercase"><remove value="B"/><remove value="J"/><remove value="O"/><remove value="Z"/></valid></sanitizer>
+              </param>
+              <param name="mass" type="float" label="Mass" value="0" />
+          </repeat>
+          <repeat name="DynamicMods" title="Dynamic Modifications" help="Modifications that can either be present or absent on an amino acid. (-DynamicMods)">
+              <param name="motif" type="text" label="Amino Acid Motif">
+                  <sanitizer>
+                      <valid initial="string.ascii_uppercase">
+                          <remove value="B"/><remove value="J"/><remove value="O"/><remove value="Z"/>
+                          <add value="["/><add value="]"/>
+                          <add value="("/><add value=")"/>
+                          <add value="{"/><add value="}"/>
+                          <add value="."/>
+                          <add value="!"/>
+                      </valid>
+                  </sanitizer>
+              </param>
+              <param name="mass" type="float" label="Mass" value="0" />
+          </repeat>
+          <param argument="-MaxDynamicMods" type="integer" min="0" value="4" label="Maximum Dynamic Mods" help="Candidate peptides with more than this number of dynamic modifications will be skipped." />
+          <section name="tolerance_options" title="M/Z Tolerance Options" expanded="True">
+              <conditional name="precursor_tolerance">
+                  <param argument="-PrecursorMzToleranceRule" type="select" label="Precursor Mass Type" help="For data from Thermo instruments, using the 'auto' setting on a will automatically choose monoisotopic or average mass values, for other instruments monoisotopic or average should be chosen.">
+                      <option value="auto">Auto</option>
+                      <option value="avg">Average</option>
+                      <option value="mono">Monoisotopic</option>
+                  </param>
+                  <when value="auto">
+                      <param argument="-MonoPrecursorMzTolerance" type="float" min="0.000001" value="10" label="Monoisotopic Precursor m/z Tolerance" help="This tolerance will be used for spectra that are determined to have monoisotopic precursors. MonoisotopeAdjustmentSet is applied to these." />
+                      <param name="mono_precursor_mz_tolerance_units" type="select" label="Monoisotopic Precursor m/z Tolerance Units">
+                          <option value="ppm">Parts per million</option>
+                          <option value="daltons">Daltons</option>
+                      </param>
+                      <param argument="-AvgPrecursorMzTolerance" type="float" min="0.000001" value="1.25" label="Average Precursor m/z Tolerance" help="This tolerance will be used for spectra that are determined to have average mass precursors. MonoisotopeAdjustmentSet is not applied to these." />
+                      <param name="avg_precursor_mz_tolerance_units" type="select" label="Average Precursor m/z Tolerance Units">
+                          <option value="ppm">Parts per million</option>
+                          <option value="daltons" selected="true">Daltons</option>
+                      </param>
+                  </when>
+                  <when value="avg">
+                      <param argument="-AvgPrecursorMzTolerance" type="float" min="0.000001" value="1.25" label="Average Precursor m/z Tolerance" help="This tolerance will be used for all spectra, but MonoisotopeAdjustmentSet will never be applied." />
+                      <param name="avg_precursor_mz_tolerance_units" type="select" label="Average Precursor m/z Tolerance Units">
+                          <option value="ppm">Parts per million</option>
+                          <option value="daltons" selected="true">Daltons</option>
+                      </param>
+                  </when>
+                  <when value="mono">
+                      <param argument="-MonoPrecursorMzTolerance" type="float" min="0.000001" value="10" label="Monoisotopic Precursor m/z Tolerance" help="This tolerance will be used for all spectra, and MonoisotopeAdjustmentSet is likewise applied to all spectra." />
+                      <param name="mono_precursor_mz_tolerance_units" type="select" label="Monoisotopic Precursor m/z Tolerance Units">
+                          <option value="ppm">Parts per million</option>
+                          <option value="daltons">Daltons</option>
+                      </param>
+                  </when>
+              </conditional>
+              <param argument="-FragmentMzTolerance" type="float" min="0.000001" value="0.5" label="Fragment m/z Tolerance" help="This tolerance is used for matching to fragment ions." />
+              <param name="fragment_mz_tolerance_units" type="select" label="Fragment m/z Tolerance Units">
+                  <option value="ppm">Parts per million</option>
+                  <option value="daltons" selected="true">Daltons</option>
+              </param>
+          </section>
+          <section name="advanced" title="Advanced Options" expanded="False">
+              <param argument="-MaxPeakCount" type="integer" min="10" value="" optional="true" label="Use Max Peaks" help="Filter out all but the specified number of peaks, keep empty to use all peaks." />
+              <conditional name="fragmentation_rule">
+                  <param argument="-FragmentationAutoRule" type="boolean" label="Override Fragmentation Rule (Ion Series)" help="If the input file provides mass analyzer information (mzML, mzXML, mz5), MyriMatch can automatically choose the ion series to search on a scan-by-scan basis." />
+                  <when value="false" />
+                  <when value="true">
+                      <param argument="-FragmentationRule" type="text" label="Fragmentation Rule" help="Specify as a comma-separated list of a, b, c, x, y, z, or z* (z+1), e.g. 'b,y,z'" />
+                  </when>
+              </conditional>
+              <param argument="-MinPeptideLength" type="integer" min="3" value="5" label="Minimum Peptide Length" help="Candidate peptides shorter than this will not be compared against any spectrum." />
+              <param argument="-MaxPeptideLength" type="integer" min="3" value="75" label="Maximum Peptide Length" help="Candidate peptides longer than this will not be compared against any spectrum." />
+              <param argument="-UseSmartPlusThreeModel" type="boolean" truevalue="true" falsevalue="false" label="Use Smart Plus 3 Model" help="For +3 and higher precursors, the fragment ions predicted depend on the way this parameter is set. When this parameter is true, then for each peptide bond, an internal calculation is done to estimate the basicity of the b and y fragment sequence. When this parameter is false, however, ALL possible charge distributions for the fragment ions are generated for every peptide bond." checked="true" />
+              <param argument="-NumChargeStates" type="integer" min="1" value="3" label="Number of Charge States" help="For spectra with an ambiguous multiple charge state, it will be treated as any charge in the range: [+2,NumChargeStates]." />
+              <param argument="-MaxResultRank" type="integer" min="1" value="2" label="Maximum Result Rank" help="The maximum rank of a search result (results with the same score occupy the same rank)." />
+              <param argument="-MonoisotopeAdjustmentSet" type="text" value="[-1,2]" label="Monoisotope Adjustment Set" help="For monoisotopic precursors where the monoisotope may have been incorrectly assigned to a nearby isotope, this range of adjustments will be considered. Instead of trying a wide precursor tolerance for a spectrum, this tries multiple tight tolerances.">
+                  <sanitizer invalid_char=""><valid initial="string.digits"><add value="["/><add value="]"/><add value=","/><add value="-"/></valid><mapping initial="none"></mapping></sanitizer>
+              </param>
+          </section>
+    </inputs>
+    <outputs>
+        <data format="raw_pepxml" name="output" from_work_dir="output">
+            <change_format>
+                <when input="OutputFormat" value="mzIdentML" format="mzid" />
+            </change_format>
+        </data>
+    </outputs>
+    <tests>
+        <test>
+            <param name="input" value="input/201208-378803.mzML" />
+            <param name="ProteinDatabase" value="input/cow.protein.PRG2012-subset.fasta" />
+            <param name="DecoyPrefix" value="XXX_" />
+            <param name="StaticMods_0|aa" value="C" />
+            <param name="StaticMods_0|mass" value="58.00548" />
+            <param name="DynamicMods_0|motif" value="M" />
+            <param name="DynamicMods_0|mass" value="15.9949" />
+            <param name="DynamicMods_1|motif" value="(Q" />
+            <param name="DynamicMods_1|mass" value="-17.026" />
+            <param name="DynamicMods_2|motif" value="[QN]" />
+            <param name="DynamicMods_2|mass" value="0.984016" />
+            <param name="PrecursorMzToleranceRule" value="mono" />
+            <param name="MonoPrecursorMzTolerance" value="50" />
+            <param name="MinTerminiCleavages" value="1" />
+            <param name="MaxMissedCleavages" value="2" />
+            <param name="MaxDynamicMods" value="2" />
+            <param name="NumChargeStates" value="5" />
+            <param name="MaxResultRank" value="3" />
+            <param name="MonoisotopeAdjustmentSet" value="[-1,2]" />
+            <param name="UseSmartPlusThreeModel" value="false" />
+            <output name="output" file="201208-378803-mm.pepXML" lines_diff="14" />
+        </test>
+        <test>
+            <param name="input" value="input/201208-378803.mzML" />
+            <param name="ProteinDatabase" value="input/cow.protein.PRG2012-subset.fasta" />
+            <param name="CleavageRules" value="Trypsin" />
+            <param name="DecoyPrefix" value="XXX_" />
+            <param name="PrecursorMzToleranceRule" value="mono" />
+            <param name="MonoPrecursorMzTolerance" value="15" />
+            <param name="MinTerminiCleavages" value="2" />
+            <param name="MaxMissedCleavages" value="4" />
+            <param name="NumChargeStates" value="3" />
+            <param name="MaxResultRank" value="1" />
+            <param name="MonoisotopeAdjustmentSet" value="0" />
+            <output name="output" file="201208-378803-mm-15ppm-fully-tryptic.pepXML" lines_diff="14" />
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+**What it does**
+
+Performs protein identification via database search using MyriMatch.
+]]>
+    </help>
+    <citations>
+        <citation type="doi">10.1021/pr0604054</citation>
+        <citation type="bibtex">@misc{toolsGalaxyP, author = {Chilton, J, Chambers MC, et al.}, title = {Galaxy Proteomics Tools}, publisher = {GitHub}, journal = {GitHub repository},
+                                      year = {2015}, url = {https://github.com/galaxyproteomics/tools-galaxyp}}</citation> <!-- TODO: fix substitution of commit ", commit = {$sha1$}" -->
+    </citations>
+</tool>

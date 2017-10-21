@@ -1,25 +1,82 @@
-<tool id="fasta_merge_files_and_filter_unique_sequences" name="FASTA Merge Files and Filter Unique Sequences" version="1.1">
+<tool id="fasta_merge_files_and_filter_unique_sequences" name="FASTA Merge Files and Filter Unique Sequences" version="1.2.0">
     <description>Concatenate FASTA database files together</description>
     <requirements>
         <requirement type="package" version="2.7.12">python</requirement>
     </requirements>
     <command>
         python '$__tool_directory__/fasta_merge_files_and_filter_unique_sequences.py'
-        '$output'
-        #for $input in $inputs:
-            '$input'
-        #end for
+        '$output' $uniqueness_criterion '$accession_parser'
+
+        #if $batchmode.processmode == 'merge':
+          #for $input in $batchmode.input_fastas:
+              '$input'
+          #end for
+        #else:
+          #for $input in $batchmode.input_fastas:
+              '$input.input_fasta'
+          #end for
+        #end if
     </command>
     <inputs>
-        <param name="inputs" format="fasta" multiple="True" type="data" label="Input FASTA files"/>
+        <conditional name="batchmode">
+            <param name="processmode" type="select" label="Run in batch mode?" help="The 'merge all' mode produces one output FASTA for all input FASTA files. The individual mode generates one FASTA file for each set of input FASTAs. For example, if the tool is given 2 collections of 10 FASTAs, it will merge the collections pairwise to create an output collection of 10 FASTAs." display="radio">
+                <option value="individual" selected="True">Merge individual FASTAs (output collection if input is collection)</option>
+                <option value="merge">Merge all FASTAs (always output a single FASTA)</option>
+            </param>
+            <when value="individual">
+              <repeat name="input_fastas" title="Input FASTA File(s)">
+                <param name="input_fasta" format="fasta" type="data" label="FASTA File"/>
+              </repeat>
+            </when>
+            <when value="merge">
+                <param name="input_fastas" type="data" format="fasta" multiple="True" label="FASTA file" />
+            </when>
+        </conditional>
+        <param name="uniqueness_criterion" type="select" label="How are sequences judged to be unique?">
+            <option value="sequence" selected="true">Accession and Sequence</option>
+            <option value="accession">Accession Only</option>
+        </param>
+        <param name="accession_parser" type="text" label="Accession Parsing Regex" value="^&gt;([^ ]+).*$" help="Regular expression with 1 capture group; the capture group is the accession (which must be unique)">
+          <sanitizer>
+            <valid>
+              <add preset="string.printable"/>
+              <remove value="&#92;" />
+              <remove value="&apos;" />
+            </valid>
+            <mapping initial="none">
+              <add source="&#92;" target="__backslash__" />
+              <add source="&apos;" target="__sq__"/>
+            </mapping>
+          </sanitizer>
+        </param>
     </inputs>
     <outputs>
         <data format="fasta" name="output" label="Merged and Filtered FASTA from ${on_string}"/>
     </outputs>
     <tests>
         <test>
-          <param name="inputs" value="1.fa,2.fa" ftype="fasta" />
-          <output name="output" file="res.fa" ftype="fasta" />
+          <param name="input_fastas" value="1.fa,2.fa" ftype="fasta" />
+          <param name="processmode" value="merge" />
+          <param name="uniqueness_criterion" value="sequence" />
+          <param name="accession_parser" value="^&gt;([^ |]+).*$" />
+          <output name="output" file="res-sequence.fa" ftype="fasta" />
+          <assert_stdout>
+            <has_line line="Skipping protein '&gt;one_2' with duplicate sequence (first seen as '&gt;one')" />
+            <has_line line="Skipping protein '&gt;two_2' with duplicate sequence (first seen as '&gt;two')" />
+            <has_line line="Skipping protein '&gt;three_2|456' with duplicate accession" />
+            <has_line line="Skipping protein '&gt;three_2 789' with duplicate accession" />
+          </assert_stdout>
+        </test>
+        <test>
+          <param name="input_fastas" value="1.fa,2.fa" ftype="fasta" />
+          <param name="processmode" value="merge" />
+          <param name="uniqueness_criterion" value="accession" />
+          <param name="accession_parser" value="^&gt;([^ |]+).*$" />
+          <output name="output" file="res-accession.fa" ftype="fasta" />
+          <assert_stdout>
+            <has_line line="Skipping protein '&gt;three_2|456' with duplicate accession" />
+            <has_line line="Skipping protein '&gt;three_2 789' with duplicate accession" />
+          </assert_stdout>
         </test>
     </tests>
     <help>
@@ -27,7 +84,11 @@
 **What it does**
 
 Concatenate FASTA database files together.
-Only first appearence of each unique sequence will appear in output.
+
+If the uniqueness criterion is "Accession and Sequence", only the first appearence of each unique sequence will appear in the output.
+Otherwise, duplicate sequences are allowed, but only the first appearance of each accession will appear in the output.
+
+The default accession parser will treat everything in the header before the first space as the accession.
 
 ------
 
