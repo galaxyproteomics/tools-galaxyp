@@ -208,7 +208,7 @@ roundValues = function(values){
   return(values)
 }
 
-createDotPlot = function(data){
+createDotPlot = function(data, onto){
   
 	values  = deleteInfChar(data$pvalues)
   values = roundValues(values)
@@ -218,14 +218,15 @@ createDotPlot = function(data){
 	goTerms = data$Term
 	count = data$Significant
   
+	labely = paste("GO terms",onto,sep=" ")
 	png(filename="dotplot.png",res=300, width = 3200, height = 3200, units = "px")
-	sp1 = ggplot(data,aes(x=geneRatio,y=goTerms,xlabel ="Ratio" ,ylabel = "GO terms", color=values,size=count)) +geom_point() + scale_colour_gradientn(colours=c("red","violet","blue")) + labs(color="p-values\n") 
+	sp1 = ggplot(data,aes(x=geneRatio,y=goTerms, color=values,size=count)) +geom_point() + scale_colour_gradientn(colours=c("red","violet","blue")) + xlab("Gene Ratio") + ylab(labely) + labs(color="p-values\n") 
 
 	plot(sp1)
 	dev.off()
 }
 
-createBarPlot = function(data){
+createBarPlot = function(data, onto){
 
   
 	values  = deleteInfChar(data$pvalues)
@@ -236,14 +237,15 @@ createBarPlot = function(data){
 	count = data$Significant
 	png(filename="barplot.png",res=300, width = 3200, height = 3200, units = "px")
 	
-  p<-ggplot(data, aes(x=goTerms, y=count,fill=values)) + geom_bar(stat="identity") + scale_fill_gradientn(colours=c("red","violet","blue")) + coord_flip() + labs(fill="p-values\n") 
+	labely = paste("GO terms",onto,sep=" ")
+  p<-ggplot(data, aes(x=goTerms, y=count,fill=values)) + ylab("Gene count") + xlab(labely) +geom_bar(stat="identity") + scale_fill_gradientn(colours=c("red","violet","blue")) + coord_flip() + labs(fill="p-values\n") 
 	plot(p)
 	dev.off()
 }
 
 
 # Produce the different outputs
-createOutputs = function(result, cut_result,text, barplot,dotplot){
+createOutputs = function(result, cut_result,text, barplot, dotplot, onto){
 
 
   if (is.null(result)){
@@ -313,12 +315,12 @@ createOutputs = function(result, cut_result,text, barplot,dotplot){
 	
 	if (barplot=="TRUE"){
 	
-		createBarPlot(cut_result)
+		createBarPlot(cut_result, onto)
 	}
 	
 	if (dotplot=="TRUE"){
 	
-		createDotPlot(cut_result)
+		createDotPlot(cut_result, onto)
 	}
   return(TRUE)
 }
@@ -344,5 +346,5 @@ if (!is.null(result)){
 }
 
 
-createOutputs(result, cut_result,text, barplot,dotplot)
+createOutputs(result, cut_result,text, barplot, dotplot, onto)
 
