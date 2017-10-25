@@ -1,13 +1,11 @@
-
-
-# Read file and return file content as data.frame?
+# Read file and return file content as data.frame
 readfile = function(filename, header) {
   if (header == "true") {
     # Read only first line of the file as header:
     headers <- read.table(filename, nrows = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
-    #Read the data of the files (skipping the first row):
+    #Read the data of the files (skipping the first row)
     file <- read.table(filename, skip = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
-    #And assign the header to the data:
+    #And assign the header to the data
     names(file) <- headers
   }
   else {
@@ -48,6 +46,7 @@ mapping = function() {
     uniprot_map_file = args[6]
     np_uniprot_file = args[7]
     
+    # Extract ID maps
     uniprot_map = read.table(uniprot_map_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
     np_uniprot = read.table(np_uniprot_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
     
@@ -57,7 +56,6 @@ mapping = function() {
     }
     else if (list_id_input_type == "file") {
       filename = as.character(strsplit(list_id, ",")[[1]][1])
-      #print(filename)
       column_number = as.numeric(gsub("c", "" ,strsplit(list_id, ",")[[1]][2]))
       header = strsplit(list_id, ",")[[1]][3]
       file_all = readfile(filename, header)
@@ -66,11 +64,12 @@ mapping = function() {
     }
     names = c()
     
-    # Map
+    # Map IDs
     res = matrix(nrow=length(list_id), ncol=0)
     
     for (opt in options) {
       names = c(names, opt)
+      # Map to neXtProt ID
       if (opt == "neXtProt_ID") {
         if (input_id_type == "UNIPROT_AC") {
           mapped = sapply(strsplit(np_uniprot[match(list_id, np_uniprot$Uniprot_AC),]$neXtProt_ID, ";"), "[", 1)
@@ -83,14 +82,16 @@ mapping = function() {
           mapped = sapply(strsplit(np_uniprot[match(uniprot, np_uniprot$Uniprot_AC),]$neXtProt_ID, ";"), "[", 1)
         }
       }
-      
+      # Map to other ID types
       else {
         if (input_id_type == "neXtProt_ID") {
           uniprot = sapply(strsplit(np_uniprot[match(list_id, np_uniprot$neXtProt_ID),]$Uniprot_AC, ";"), "[", 1)
-          mapped = sapply(strsplit(uniprot_map[match(uniprot, uniprot_map$UNIPROT_AC),][opt][,], ";"), "[", 1)
+          #mapped = sapply(strsplit(uniprot_map[match(uniprot, uniprot_map$UNIPROT_AC),][opt][,], ";"), "[", 1)
+          mapped = uniprot_map[match(uniprot, uniprot_map$UNIPROT_AC),][opt][,]
         }
         else {
-          mapped = sapply(strsplit(uniprot_map[match(list_id, uniprot_map[input_id_type][,]),][opt][,], ";"), "[", 1)
+          #mapped = sapply(strsplit(uniprot_map[match(list_id, uniprot_map[input_id_type][,]),][opt][,], ";"), "[", 1)
+          mapped = uniprot_map[match(list_id, uniprot_map[input_id_type][,]),][opt][,]
         }
       }
       res = cbind(res, matrix(mapped))
