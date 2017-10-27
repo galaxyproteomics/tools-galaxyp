@@ -1,7 +1,8 @@
 #!/bin/bash
-base_path=/opt/galaxy/galaxy-app/tools/tools-galaxyp/tools/eggnog_mapper
 
-$base_path/eggnog-mapper/emapper.py \
+base_path=$1
+
+emapper.py \
     -i $base_path/test-data/nlim_fragment.fasta \
     --output HMM_nlim \
     --output_dir $base_path/test-data \
@@ -12,7 +13,7 @@ $base_path/eggnog-mapper/emapper.py \
     --no_annot \
     --no_file_comments
 
-$base_path/eggnog-mapper/emapper.py \
+emapper.py \
     -i $base_path/test-data/nlim_fragment.fasta \
     --output DIA_nlim \
     --output_dir $base_path/test-data \
