@@ -69,7 +69,7 @@ Generating OpenMS wrappers
      omssa_executable pepnovo_executable \
      xtandem_executable param_model_directory \
      java_executable java_memory java_permgen \
-     r_executable rt_concat_trafo_out \
+     r_executable rt_concat_trafo_out param_id_pool \
     -f /PATH/TO/filetypes.txt -m /PATH/TO/macros.xml \
     -s PATH/TO/SKIP_TOOLS_FILES.txt
     ```
