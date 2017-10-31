@@ -1,0 +1,340 @@
+<tool id="Mass_spectrometry_imaging_preprocessing" name="MSI preprocessing" version="1.7.0">
+    <description>
+        mass spectrometry imaging preprocessing
+    </description>
+    <requirements>
+        <requirement type="package" version="1.7.0">bioconductor-cardinal</requirement>
+    </requirements>
+    <command detect_errors="exit_code">
+    <![CDATA[
+
+        #if $infile.ext == 'imzml'
+            cp '${infile.extra_files_path}/imzml' infile.imzML &&
+            cp '${infile.extra_files_path}/ibd' infile.ibd &&
+        #elif $infile.ext == 'analyze75'
+            cp '${infile.extra_files_path}/hdr' infile.hdr &&
+            cp '${infile.extra_files_path}/img' infile.img &&
+            cp '${infile.extra_files_path}/t2m' infile.t2m &&
+        #else
+            ln -s '$infile' infile.RData &&
+        #end if
+        cat '${cardinal_preprocessing}' &&
+        Rscript '${cardinal_preprocessing}'
+
+    ]]>
+    </command>
+    <configfiles>
+        <configfile name="cardinal_preprocessing"><![CDATA[
+library(Cardinal)
+
+#if $infile.ext == 'imzml'
+    msidata <- readMSIData('infile.imzML')
+#elif $infile.ext == 'analyze75'
+    msidata <- readMSIData('infile.hdr')
+#else
+    load('infile.RData')
+#end if
+
+maxpixel = length(pixels(msidata)) 
+pixelnumber = c(1:maxpixel)
+
+#for $method in $methods:
+    #if str( $method.methods_conditional.preprocessing_method ) == 'Normalization':
+        print('Normalization')
+        ##normalization
+        msidata <- normalize(msidata, pixel=pixelnumber, method="tic")
+
+    #elif str( $method.methods_conditional.preprocessing_method ) == 'Baseline_reduction':
+        print('Baseline_reduction')
+        ##baseline reduction
+        msidata = reduceBaseline(msidata, pixel=pixelnumber, method="median", blocks=$method.methods_conditional.blocks_baseline)
+
+    #elif str( $method.methods_conditional.preprocessing_method ) == 'Smoothing':
+        print('Smoothing')
+        ## Smoothing
+
+        #if str( $method.methods_conditional.methods_for_smoothing.smoothing_method) == 'gaussian':
+            print('gaussian smoothing')
+            msidata <- smoothSignal(msidata, method="$method.methods_conditional.methods_for_smoothing.smoothing_method", window=$method.methods_conditional.window_smoothing, sd = $method.methods_conditional.methods_for_smoothing.sd_gaussian)
+        #elif str( $method.methods_conditional.methods_for_smoothing.smoothing_method) == 'sgolay':
+            print('sgolay smoothing')
+            msidata <- smoothSignal(msidata, method="$method.methods_conditional.methods_for_smoothing.smoothing_method", window=$method.methods_conditional.window_smoothing, order = $method.methods_conditional.methods_for_smoothing.order_of_filters)
+        #elif str($method.methods_conditional.methods_for_smoothing.smoothing_method) == 'ma':
+            print('sgolay smoothing')
+            msidata <- smoothSignal(msidata, method="$method.methods_conditional.methods_for_smoothing.smoothing_method", window=$method.methods_conditional.window_smoothing, coef = $method.methods_conditional.methods_for_smoothing.coefficients_ma_filter)
+        #end if
+
+    #elif str( $method.methods_conditional.preprocessing_method) == 'Peak_picking':
+        print('Peak_picking')
+        ## Peakpicking
+
+        #if str( $method.methods_conditional.methods_for_picking.picking_method) == 'adaptive':
+            print('adaptive peakpicking')
+            msidata = peakPick(msidata, pixel=pixelnumber, window = $method.methods_conditional.window_picking, blocks = $method.methods_conditional.blocks_picking, method='$method.methods_conditional.methods_for_picking.picking_method', SNR=$method.methods_conditional.SNR_picking_method, spar=$method.methods_conditional.methods_for_picking.spar_picking)
+
+        #elif str( $method.methods_conditional.methods_for_picking.picking_method) == 'limpic':
+            print('limpic peakpicking')
+            msidata = peakPick(msidata, pixel=pixelnumber, window = $method.methods_conditional.window_picking, blocks = $method.methods_conditional.blocks_picking, method='$method.methods_conditional.methods_for_picking.picking_method', SNR=$method.methods_conditional.SNR_picking_method, thresh=$method.methods_conditional.methods_for_picking.tresh_picking)
+
+        #elif str( $method.methods_conditional.methods_for_picking.picking_method) == 'simple':
+            print('simple peakpicking')
+            msidata = peakPick(msidata, pixel=pixelnumber, window = $method.methods_conditional.window_picking, blocks = $method.methods_conditional.blocks_picking, method='$method.methods_conditional.methods_for_picking.picking_method', SNR=$method.methods_conditional.SNR_picking_method)
+        #end if
+
+    #elif str( $method.methods_conditional.preprocessing_method ) == 'Peak_alignment':
+        print('Peak_alignment')
+        ## Peakalignment
+
+        #if str( $method.methods_conditional.methods_for_alignment.alignment_method) == 'diff':
+            print('diff peaklignment')
+            msidata = peakAlign(msidata, method='$method.methods_conditional.methods_for_alignment.alignment_method',diff.max =$method.methods_conditional.methods_for_alignment.value_diffalignment, units = "$method.methods_conditional.methods_for_alignment.units_diffalignment")
+
+       #elif str( $method.methods_conditional.methods_for_alignment.alignment_method) == 'DP':
+            print('DPpeaklignment')
+        msidata = peakAlign(msidata, method='$method.methods_conditional.methods_for_alignment.alignment_method',gap = $method.methods_conditional.methods_for_alignment.gap_DPalignment )
+       #end if
+
+    #elif str( $method.methods_conditional.preprocessing_method) == 'Peak_filtering':
+        print('Peak_filtering')
+        msidata = peakFilter(msidata, method='freq', freq.min = $method.methods_conditional.frequ_filtering)
+    #end if
+#end for
+
+## save as as (.RData)
+save(msidata, file="$msidata_preprocessed")
+
+## save as intensity matrix (.csv)
+csvmatrix = spectra(msidata)
+rownames(csvmatrix) = mz(msidata)
+newmatrix = rbind(pixels(msidata), csvmatrix)
+write.csv(newmatrix[2:nrow(newmatrix),], file="$preprocessed_intensity_matrix")
+
+    ]]></configfile>
+    </configfiles>
+    <inputs>
+        <param name="infile" type="data" format="imzml,rdata,analyze75"
+               label="MSI rawdata as imzml or Cardinal MSImageSet saved as RData"
+               help="load imzml and ibd file by uploading composite datatype imzml"/>
+
+        <repeat name="methods" title="Preprocessing" min="1" max="50">
+            <conditional name="methods_conditional">
+                <param name="preprocessing_method" type="select" label="Select the preprocessing methods you want to apply">
+                    <option value="Normalization" selected="True">Normalization to TIC</option>
+                    <option value="Baseline_reduction">Baseline Reduction</option>
+                    <option value="Smoothing">Peak smoothing</option>
+                    <option value="Peak_picking">Peak picking</option>
+                    <option value="Peak_alignment">Peak alignment</option>
+                    <option value="Peak_filtering">Peak filtering</option>
+                </param>
+                <when value="Normalization"/>
+                <when value="Baseline_reduction">
+                    <param name="blocks_baseline" type="integer" value="50"
+                        label="blocks"/>
+                </when>
+                <when value="Smoothing">
+                    <conditional name="methods_for_smoothing">
+                        <param name="smoothing_method" type="select" label="Smoothing method">
+                            <option value="gaussian" selected="True">gaussian</option>
+                            <option value="sgolay">Savitsky-Golay</option>
+                            <option value="ma">moving average</option>
+                        </param>
+                        <when value="gaussian">
+                            <param name="sd_gaussian" type="float" value="4"
+                                   label="The standard deviation for the Gaussian kernel (window/sd)"/>
+                        </when>
+                        <when value="sgolay">
+                            <param name="order_of_filters" type="integer" value="3"
+                                   label="The order of the smoothing filter"/>
+                        </when>
+                        <when value="ma">
+                            <param name="coefficients_ma_filter" type="integer" value="1"
+                                   label="The coefficients for the moving average filter"/>
+                        </when>
+                    </conditional>
+                    <param name="window_smoothing" type="integer" value="9"
+                                label="Window size"/>
+                </when>
+                <when value="Peak_picking">
+                    <param name="SNR_picking_method" type="integer" value="3"
+                        label="Signal to noise ratio"
+                        help="The minimal signal to noise ratio for peaks to be considered as a valid peak."/>
+                    <param name="blocks_picking" type="integer" value="100" label = "number of blocks"
+                        help="Number of blocks in which to divide mass spectrum to calculate noise"/>
+                    <param name="window_picking" type="integer" value="5" label= "window size" help="Window width for seeking local maxima"/>
+                    <conditional name="methods_for_picking">
+                        <param name="picking_method" type="select" label="Peak picking method" help = "only simple works for processed imzML files">
+                            <option value="adaptive" selected="True">adaptive</option>
+                            <option value="limpic">limpic</option>
+                            <option value="simple">simple</option>
+                        </param>
+                        <when value="adaptive">
+                            <param name="spar_picking" type="float" value="1.0"
+                                label="spar value" 
+                                help = "Smoothing parameter for the spline smoothing 
+                                  applied to the spectrum in order to decide the cutoffs 
+                                  for throwing away false noise spikes that might occur inside peaks"/>
+                        </when>
+                        <when value="limpic">
+                            <param name="tresh_picking" type="float" value="0.75"
+                                label="thresh value" help = "The thresholding quantile to use when comparing slopes in order to throw away peaks that are too flat"/>
+                        </when> 
+                        <when value="simple"/>
+                    </conditional>
+                </when>
+                <when value="Peak_alignment">
+                    <conditional name="methods_for_alignment">
+                        <param name="alignment_method" type="select" label="Alignment method">
+                            <option value="diff" selected="True">diff</option>
+                            <option value="DP">DP</option>
+                        </param>
+                        <when value="diff">
+                            <param name="value_diffalignment" type="integer" value="200"
+                                   label="diff.max" help="Peaks that differ less than this value will be aligned together"/>
+                            <param name="units_diffalignment" type="select" display = "radio" optional = "False"
+                                   label="units" help= "The coefficients for the moving average filter">
+                                    <option value="ppm" selected="True">ppm</option>
+                                    <option value="Da">Da</option>
+                            </param>
+                        </when>
+                        <when value="DP">
+                            <param name="gap_DPalignment" type="integer" value="0"
+                                   label="gap" help = "The gap penalty for the dynamic programming sequence alignment"/>
+                        </when>
+                    </conditional>
+                </when>
+                <when value="Peak_filtering">
+                    <param name="frequ_filtering" type="float" value="1"
+                        label="freq.min" help = "Peaks that occur in the dataset fewer times than this will be removed"/>
+                </when>
+            </conditional>
+        </repeat>
+    </inputs>
+    <outputs>
+        <data format="rdata" name="msidata_preprocessed" label="Preprocessed_output"/>
+        <data format="csv" name="preprocessed_intensity_matrix" label="preprocessed intensity matrix" />
+    </outputs>
+    <tests>
+        <test>
+            <param name="infile" value="" ftype="imzml">
+                <composite_data value="Example_Continuous.imzML" ftype="imzml"/>
+                <composite_data value="Example_Continuous.ibd" ftype="ibd"/>
+            </param>
+            <repeat name="methods">
+                <conditional name="methods_conditional">
+                    <param name="preprocessing_method" value="Normalization" />
+                </conditional>
+            </repeat>
+            <repeat name="methods">
+                <conditional name="methods_conditional">
+                    <param name="preprocessing_method" value="Smoothing" />
+                    <conditional name="methods_for_smoothing">
+                        <param name="smoothing_method" value="sgolay" />
+                    </conditional>
+                </conditional>
+            </repeat>
+            <repeat name="methods">
+                <conditional name="methods_conditional">
+                    <param name="preprocessing_method" value="Peak_picking" />
+                    <conditional name="methods_for_picking">
+                        <param name="picking_method" value="adaptive" />
+                    </conditional>
+                    <param name="blocks_picking" value="3" />
+                    <param name="window_picking" value="3" />
+                </conditional>
+            </repeat>
+            <repeat name="methods">
+                <conditional name="methods_conditional">
+                    <param name="preprocessing_method" value="Peak_alignment" />
+                    <conditional name="methods_for_alignment">
+                        <param name="alignment_method" value="DP" />
+                    </conditional>
+                </conditional>
+            </repeat>
+            <repeat name="methods">
+                <conditional name="methods_conditional">
+                    <param name="preprocessing_method" value="Peak_filtering" />
+                </conditional>
+            </repeat>
+            <output name="msidata_preprocessed" file="preprocessing_results1.RData" compare="sim_size" />
+            <output name="preprocessed_intensity_matrix" file="preprocessing_results1.csv" />
+        </test>
+        <test>
+            <param name="infile" value="LM5_first68pixel.RData" ftype="rdata"/>
+            <repeat name="methods">
+                <conditional name="methods_conditional">
+                    <param name="preprocessing_method" value="Baseline_reduction" />
+                    <param name="blocks_baseline" value="50" />
+                </conditional>
+            </repeat>
+            <repeat name="methods">
+                <conditional name="methods_conditional">
+                    <param name="preprocessing_method" value="Peak_picking" />
+                    <param name="blocks_picking" value="3" />
+                    <param name="window_picking" value="5" />
+                    <param name="methods_for_picking" value="simple" />
+                </conditional>
+            </repeat>
+            <repeat name="methods">
+                <conditional name="methods_conditional">
+                    <param name="preprocessing_method" value="Peak_alignment" />
+                    <param name="methods_for_alignment" value="DP" />
+                </conditional>
+            </repeat>
+            <output name="msidata_preprocessed" file="preprocessing_results2.RData" compare="sim_size" />
+            <output name="preprocessed_intensity_matrix" file="preprocessing_results2.csv" />
+        </test>
+        <test>
+            <param name="infile" value="" ftype="analyze75">
+                <composite_data value="Analyze75.hdr" ftype="hdr"/>
+                <composite_data value="Analyze75.img" ftype="img"/>
+                <composite_data value="Analyze75.t2m" ftype="t2m"/>
+            </param>
+            <repeat name="methods">
+                <conditional name="methods_conditional">
+                    <param name="preprocessing_method" value="Normalization" />
+                </conditional>
+            </repeat>
+            <repeat name="methods">
+                <conditional name="methods_conditional">
+                    <param name="preprocessing_method" value="Smoothing" />
+                    <conditional name="methods_for_smoothing">
+                        <param name="smoothing_method" value="gaussian" />
+                    </conditional>
+                </conditional>
+            </repeat>
+            <repeat name="methods">
+                <conditional name="methods_conditional">
+                    <param name="preprocessing_method" value="Peak_picking" />
+                    <param name="blocks_picking" value="3" />
+                    <param name="window_picking" value="5" />
+                    <param name="methods_for_picking" value="limpic" />
+                </conditional>
+            </repeat>
+            <repeat name="methods">
+                <conditional name="methods_conditional">
+                    <param name="preprocessing_method" value="Peak_alignment" />
+                    <param name="methods_for_alignment" value="diff" />
+                </conditional>
+            </repeat>
+            <output name="msidata_preprocessed" file="preprocessing_results3.RData" compare="sim_size" />
+            <output name="preprocessed_intensity_matrix" file="preprocessing_results3.csv" />
+        </test>
+    </tests>
+    <help>
+    <![CDATA[
+Cardinal is an R package that implements statistical & computational tools for analyzing mass spectrometry imaging datasets.
+
+**Preprocessing steps:**
+
+- Smoothening: Smoothing of the mass peaks reduces noise and improves peak detection
+- Normalization: Normalization of intensities to total ion current (TIC)
+- Baseline reduction: Baseline  reduction removes backgroundintensity generated by chemical noise (common in MALDI datasets)
+- Peak picking: relevant peaks are picked while noise-peaks are removed
+- Peak alignment: mz inaccuracies are removed by alignment of same peaks to a common mz value
+- Peak filtering: removes peaks that occur infrequently, such as those which only occur in a small proportion of pixels
+        ]]>
+    </help>
+    <citations>
+        <citation type="doi">10.1093/bioinformatics/btv146</citation>
+    </citations>
+</tool>
