@@ -90,9 +90,9 @@ customProDB_annotation <- function(
     })
 
     # load customProDB from GitHub (NOTE: downloading the zip is faster than cloning the repo with git2r or devtools::install_github)
-    download.file("https://github.com/chambm/customProDB/archive/c57e5498392197bc598a18c26acb70d7530a921c.zip", "customProDB.zip", quiet=TRUE)
+    download.file("https://github.com/chambm/customProDB/archive/9db2223ef9932e50124b92d1bc49206af1f40fb3.zip", "customProDB.zip", quiet=TRUE)
     unzip("customProDB.zip")
-    devtools::load_all("customProDB-c57e5498392197bc598a18c26acb70d7530a921c")
+    devtools::load_all("customProDB-9db2223ef9932e50124b92d1bc49206af1f40fb3")
 
     #suppressPackageStartupMessages(library(customProDB))
     options(timeout=3600)
