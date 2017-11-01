@@ -53,9 +53,9 @@ psm2sam <- function(
     }
 
     # load customProDB from GitHub (NOTE: downloading the zip is faster than cloning the repo with git2r or devtools::install_github)
-    download.file("https://github.com/chambm/customProDB/archive/c57e5498392197bc598a18c26acb70d7530a921c.zip", "customProDB.zip", quiet=TRUE)
+    download.file("https://github.com/chambm/customProDB/archive/9db2223ef9932e50124b92d1bc49206af1f40fb3.zip", "customProDB.zip", quiet=TRUE)
     unzip("customProDB.zip")
-    devtools::load_all("customProDB-c57e5498392197bc598a18c26acb70d7530a921c")
+    devtools::load_all("customProDB-9db2223ef9932e50124b92d1bc49206af1f40fb3")
 
     # load proBAMr from GitHub
     download.file("https://github.com/chambm/proBAMr/archive/a03edf68f51215be40717c5374f39ce67bd2e68b.zip", "proBAMr.zip", quiet=TRUE)
