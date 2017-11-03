@@ -6,6 +6,9 @@ import argparse
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def id_valid(identifiers):
+    """
+    Validate IDs if they contain special characters
+    """
     res = []
     remove = []
     for id in identifiers:
@@ -17,6 +20,9 @@ def id_valid(identifiers):
     return res, remove
     
 def isnumber(format, n):
+    """
+    Check if an variable is numeric
+    """
     float_format = re.compile("^[\-]?[1-9][0-9]*\.?[0-9]+$")
     int_format = re.compile("^[\-]?[1-9][0-9]*$")
     test = ""
@@ -30,6 +36,10 @@ def isnumber(format, n):
         return False
 
 def data_json(identifiers):
+    """
+    Submit IDs list to Reactome and return results in json format
+    Return error in HTML format if web service is not available
+    """
     trash = []
     if identifiers[1] == "list":
         ids = "\n".join(id_valid(identifiers[0].split())[0])
@@ -38,15 +48,7 @@ def data_json(identifiers):
         json_string = os.popen("curl -H \"Content-Type: text/plain\" -d \"$(printf '%s')\" -X POST --url www.reactome.org/AnalysisService/identifiers/projection/\?pageSize\=1\&page\=1" % ids).read()
         if len(id_valid(identifiers[0].split())[1]) > 0:
             trash = id_valid(identifiers[0].split())[1]
-    #elif identifiers[1] == "file":
-        #file = open(identifiers[0]).readlines()
-        #ids = "\n".join(id_valid(file)[0])
-        #print(ids)
-        #print("curl -H \"Content-Type: text/plain\" -d \"$(printf '%s')\" -X POST --url www.reactome.org/AnalysisService/identifiers/projection/\?pageSize\=1\&page\=1" % ids)
-        #json_string = os.popen("curl -H \"Content-Type: text/plain\" -d \"$(printf '%s')\" -X POST --url www.reactome.org/AnalysisService/identifiers/projection/\?pageSize\=1\&page\=1" % ids).read()
-        #if len(id_valid(file)[1]) > 0:
-            #trash = id_valid(file)[1]
-    elif identifiers[1] == "mq_file":
+    elif identifiers[1] == "file":
         header = identifiers[2]
         mq = open(identifiers[0]).readlines()
         if isnumber("int", identifiers[3].replace("c", "")):
@@ -64,12 +66,18 @@ def data_json(identifiers):
     return json_string, trash
 
 def write_output(filename, json_string, trash_file, trash):
+    """
+    Replace json result in template and print to output
+    """
     template = open(os.path.join(CURRENT_DIR, "template.html"))
     output = open(filename, "w")
-    for line in template:
-        if "{token}" in line:
-            line = line.replace("{token}", json.loads(json_string)["summary"]["token"])
-        output.write(line)
+    try: 
+        for line in template:
+            if "{token}" in line:
+                line = line.replace("{token}", json.loads(json_string)["summary"]["token"])
+            output.write(line)
+    except ValueError:
+        output.write("An error occurred due to unavailability of Reactome web service. Please return later.")
     template.close()
     output.close()
     
