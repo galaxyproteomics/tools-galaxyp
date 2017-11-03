@@ -5,13 +5,13 @@
 # UniProt2Reactome.txt --header FALSE
 
 
+
 import argparse
 import numpy as np
 import re
 import json
 import pandas as pd
 
-print pd.__file__
 
 parser = argparse.ArgumentParser(description="Map a list of uniprot Accession IDs on a given interactome")
 parser.add_argument('--inputtype',action='store', dest='inputtype')
@@ -31,16 +31,20 @@ args = parser.parse_args()
 
 if args.inputtype=="copypaste":
     inputids = args.input
+    inputids = inputids[0].split(" ")
     inputids = pd.DataFrame(inputids)
+
     inputids = inputids.iloc[:,0]
+
 else:
+	
     if args.header=="FALSE":
         inputfile = pd.read_csv(args.input[0],delimiter="\t",header=None)
     else:
         inputfile = pd.read_csv(args.input[0],delimiter="\t")
     column = int(re.sub("c","",args.column))-1
-    inputids = inputfile.iloc[:,column]
-
+    inputids = pd.DataFrame(inputfile)
+    inputids = inputids.iloc[:,column]
 # Open the interactome file
 interactome = pd.read_csv(args.interactome, delimiter="\t",comment="#")
 interactome = pd.DataFrame(interactome)
@@ -75,21 +79,37 @@ def getProtPPIs(inputids,interactome,interactometype):
     return ppis
 
 def getNodesAttributes(inputids,interactome,ppis,interactometype,addReactome,reactomeFile):
-    # get all unique interactants
+    # get all unique interactants from the ppis dataframe created before
     allinteractants = pd.DataFrame(pd.unique(ppis.iloc[:,[0,1]].values.ravel()))
-    inputids = inputids.as_matrix()
-    # get if there were originally from the user input
-    origins = allinteractants.isin(inputids)
-    
+    inputids = pd.DataFrame(inputids)
+    # some ids given by the user may not be present in the interactome
+    # these ids will be added to the nodes'list dataframe and their respective lines in the column "Found in interactome" will be filled with the FALSE value 
+    in_interactome = inputids.iloc[:,0].isin(allinteractants.iloc[:,0]) 
+    ids_not_in_interactome = inputids.loc[~in_interactome,:]
+ 
+    if len(ids_not_in_interactome)!=0:
+    	ids_not_in_interactome = ids_not_in_interactome.iloc[:,0].tolist() 
+    	allinteractants = allinteractants.append(ids_not_in_interactome)
+
+    # get if the ids were originally from the user input
+    origins = allinteractants.iloc[:,0].isin(inputids.iloc[:,0])
     # concatenate the two
     data = pd.concat([allinteractants,origins],axis=1)
-    data.columns = ["Protein","From user input"]
+   
 
-    # get if needed the pathway info 
+    # add a column TRUE/FALSE to determine if the id was found in the interactome   
+    
+    found_in_interactome = data.iloc[:,0].isin(pd.unique(ppis.iloc[:,[0,1]].values.ravel())) 
+    
+    data = pd.concat([data,found_in_interactome],axis=1)
+    # rename columns   
+    data.columns = ["Protein","From user input","Found in interactome"]
+
+    # add if needed the pathway info 
     if addReactome=="TRUE":
         reactome = pd.read_csv(reactomeFile,header=None, delimiter="\t")
         reactome = pd.DataFrame(reactome)
-        lines = reactome.iloc[:,0].isin(allinteractants.iloc[:,0])
+        lines = reactome.iloc[:,0].isin(data.iloc[:,0])
         reactomedata = reactome.loc[lines.values,:]
         reactomedata = reactomedata.iloc[:,[0,3]]
         reactomedata.columns = ["ProteinR","Pathway"]
@@ -100,26 +120,6 @@ def getNodesAttributes(inputids,interactome,ppis,interactometype,addReactome,rea
         data = data.merge(reactomedata,how='left',left_on='Protein',right_on='ProteinR')
         del data['ProteinR']
 
-
-    if interactometype=="bioplex":
-        # if the interactome is bioplex then we have to select the columns
-        # 3 and 4 for the interactants and column 9 for the scores 
-       colstokeep = [2,3,8] # columns in panda dataframe begin at 0 and not 1
-    
-    # add protein that were not found in the interactome
-    
-    inputids = pd.DataFrame(inputids)
-    prot_found = inputids.iloc[:,0].isin(data.iloc[:,0]) 
-    prot_not_found = inputids.loc[~prot_found,:]
-
-    if len(prot_not_found)!=0:
-        nb_col = len(data.columns)
-        for i in range(0,len(prot_not_found.iloc[:])):
-            row = ["Protein not found in interactome"]*nb_col
-            row[0] = prot_not_found.iloc[i,0]
-            # These proteins are always input from the user 
-            row[1] = True
-            data.loc[len(data.iloc[:,0])] = row
     
     return data
 
