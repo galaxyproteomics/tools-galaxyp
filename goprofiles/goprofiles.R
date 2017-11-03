@@ -28,7 +28,14 @@ readfile = function(filename, header) {
 #test = readfile(filename)
 #str(test)
 #str(test$Gene.names)
-getprofile = function(ids, id_type, level) {
+getprofile = function(ids, id_type, level, duplicate) {
+  ####################################################################
+  # Arguments
+  #   - ids: list of input IDs
+  #   - id_type: type of input IDs (UniProt/ENTREZID)
+  #   - level
+  #   - duplicate: if the duplicated IDs should be removed or not (TRUE/FALSE)
+  ####################################################################
   
   # Check if level is number
   if (! as.numeric(level) %% 1 == 0) {
@@ -47,7 +54,10 @@ getprofile = function(ids, id_type, level) {
   else {
     genes_ids = c()
     id = select(org.Hs.eg.db, ids, "ENTREZID", "UNIPROT", multiVals = "first")
-    #print(id[[1]][1])
+    if (duplicate == "TRUE") {
+      id = unique(id)
+    }
+    print(id[[1]])
     genes_ids = id$ENTREZID[which( ! is.na(id$ENTREZID))]
     # IDs that have NA ENTREZID
     NAs = id$UNIPROT[which(is.na(id$ENTREZID))]
@@ -165,7 +175,7 @@ goprofiles = function() {
   args = commandArgs(trailingOnly = TRUE)
   #print(args)
   # arguments: filename.R inputfile ncol "CC,MF,BP,ALL" "PNG,JPEG,PDF" level "TRUE"(percentage) "Title"
-  if (length(args) != 8) {
+  if (length(args) != 9) {
     stop("Not enough/Too many arguments", call. = FALSE)
   }
   else {
@@ -200,8 +210,9 @@ goprofiles = function() {
     level = args[6]
     per = as.logical(args[7])
     title = args[8]
+    duplicate = args[9]
 
-    profiles = getprofile(input, id_type, level)
+    profiles = getprofile(input, id_type, level, duplicate)
     profile.CC = profiles[1]
     #print(profile.CC)
     profile.MF = profiles[2]
