@@ -8,6 +8,7 @@ Philippe Bardou, Jérôme Mariette, Frédéric Escudié, Christophe Djemiel and 
 **Galaxy integration**
 
 T.P. Lien Nguyen, Florence Combes, Yves Vandenbrouck CEA, INSERM, CNRS, Grenoble-Alpes University, BIG Institute, FR
+
 Sandra Dérozier, Olivier Rué, Christophe Caron, Valentin Loux INRA, Paris-Saclay University, MAIAGE Unit,Migale Bioinformatics platform
 
 Contact support@proteore.org for any questions or concerns about the Galaxy implementation of this tool.
