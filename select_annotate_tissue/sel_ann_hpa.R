@@ -55,10 +55,11 @@ annot.HPAnorm<-function(input, HPA_normal_tissue, tissue, level, reliability) {
   # if (reliability=="all") { 
   #   res.Rel<-subset(res.Level, Reliability %in% c("Uncertain", "Supported", "Approved") ) 
   # }
-  
-  if (length(setdiff(input, unique(dat$Gene)))>0) {
-    not.mapped <- matrix(ncol = ncol(HPA_normal_tissue) - 1, nrow = length(setdiff(input, unique(dat$Gene))))
-    not.mapped <- cbind(setdiff(input, unique(dat$Gene)), not.mapped)
+  print(setdiff(input, unique(res.Rel$Gene)))
+  print(intersect(input, unique(res.Rel$Gene)))
+  if (length(setdiff(input, unique(res.Rel$Gene)))>0) {
+    not.mapped <- matrix(ncol = ncol(HPA_normal_tissue) - 1, nrow = length(setdiff(input, unique(res.Rel$Gene))))
+    not.mapped <- cbind(setdiff(input, unique(res.Rel$Gene)), not.mapped)
     colnames(not.mapped) <- colnames(HPA_normal_tissue)
     #print(not.mapped)
     res<-rbind(res.Rel, not.mapped)
@@ -133,4 +134,4 @@ main <- function() {
 
 main()
 
-# Rscript sel_ann_hpa.R --input_type="file" --input="./test-data/ENSG.txt" --ref_file="/Users/LinCun/Documents/ProteoRE/usecase1/normal_tissue.csv" --tissue="lung" --level="Not Detected,Medium,High,Low" --reliability="Approved,Supported,Uncertain" --column_number="c2" --header="FALSE" --output="./test-data/ENSG_tissue_output.txt"
+# Rscript sel_ann_hpa.R --input_type="file" --input="./test-data/ENSGid.txt" --ref_file="/Users/LinCun/Documents/ProteoRE/usecase1/normal_tissue.csv" --tissue="lung" --level="Not Detected,Medium,High,Low" --reliability="Approved,Supported,Uncertain" --column_number="c1" --header="true" --output="./test-data/ENSG_tissue_output.txt"
