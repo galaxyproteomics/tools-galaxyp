@@ -20,7 +20,7 @@ readfile = function(filename, header) {
 # tissue is one of unique(HPA.normal.tissue$Tissue)
 # level is one, or several, or 0 (=ALL) of "Not Detected", "Medium", "High", "Low"
 # reliability is one, or several, or 0 (=ALL) of "Approved", "Supported", "Uncertain"
-annot.HPAnorm<-function(input, HPA_normal_tissue, tissue, level, reliability) {
+annot.HPAnorm<-function(input, HPA_normal_tissue, tissue, level, reliability, not_mapped_option) {
   
   #print(HPA_normal_tissue[1:10,]$Gene)
   #print("ENSG00000211638" %in% HPA_normal_tissue$Gene)
@@ -40,37 +40,42 @@ annot.HPAnorm<-function(input, HPA_normal_tissue, tissue, level, reliability) {
     res.Level<-subset(res.Tissue, Level==level) 
   }
   if (length(level)>1)  { 
+    print(level)
     res.Level<-subset(res.Tissue, Level %in% level) 
   }
-  # if (level=="all") {
-  #   res.Level<-subset(res.Tissue, Level %in% c("Not detected", "Medium", "High","Low")) 
-  # }
   
   if (length(reliability)==1) { 
     res.Rel<-subset(res.Level, Reliability==reliability) 
   }
   if (length(reliability)>1)  {
+    print(reliability)
     res.Rel<-subset(res.Level, Reliability %in% reliability) 
   }
-  # if (reliability=="all") { 
-  #   res.Rel<-subset(res.Level, Reliability %in% c("Uncertain", "Supported", "Approved") ) 
-  # }
-  #print(matrix(setdiff(input, unique(dat$Gene))))
+  
+  #print(res.Rel)
   #print(matrix(setdiff(intersect(input, unique(dat$Gene)), unique(res.Rel$Gene))))
-  if (length(setdiff(input, unique(res.Rel$Gene)))>0) {
-    not_match_IDs <- matrix(setdiff(intersect(input, unique(dat$Gene)), unique(res.Rel$Gene)), ncol = 1, nrow = length(setdiff(intersect(input, unique(dat$Gene)), unique(res.Rel$Gene))))
-    not.match <- matrix("not match", ncol = ncol(HPA_normal_tissue) - 1, nrow = length(not_match_IDs))
-    not.match <- cbind(not_match_IDs, unname(not.match))
-    not.mapped <- matrix(ncol = ncol(HPA_normal_tissue) - 1, nrow = length(setdiff(input, unique(dat$Gene))))
-    not.mapped <- cbind(matrix(setdiff(input, unique(dat$Gene)), ncol = 1, nrow = length(setdiff(input, unique(dat$Gene)))), unname(not.mapped))
-    not.mapped <- rbind(not.match, not.mapped)
-    colnames(not.mapped) <- colnames(HPA_normal_tissue)
-    #print(not.mapped)
-    res<-rbind(res.Rel, not.mapped)
+  if (not_mapped_option == "true") {
+    if (length(setdiff(intersect(input, unique(dat$Gene)), unique(res.Rel$Gene)))>0) {
+      not_match_IDs <- matrix(setdiff(intersect(input, unique(dat$Gene)), unique(res.Rel$Gene)), ncol = 1, nrow = length(setdiff(intersect(input, unique(dat$Gene)), unique(res.Rel$Gene))))
+      not.match <- matrix("not match", ncol = ncol(HPA_normal_tissue) - 1, nrow = length(not_match_IDs))
+      not.match <- cbind(not_match_IDs, unname(not.match))
+      colnames(not.match) <- colnames(HPA_normal_tissue)
+      res <- rbind(res.Rel, not.match)
+    }
+    else {
+      res <- res.Rel
+    }
+    if (length(setdiff(input, unique(dat$Gene)))>0) {
+      not.mapped <- matrix(ncol = ncol(HPA_normal_tissue) - 1, nrow = length(setdiff(input, unique(dat$Gene))))
+      not.mapped <- cbind(matrix(setdiff(input, unique(dat$Gene)), ncol = 1, nrow = length(setdiff(input, unique(dat$Gene)))), unname(not.mapped))
+      colnames(not.mapped) <- colnames(HPA_normal_tissue)
+      res <- rbind(res, not.mapped)
+    }
   }
   else {
-    res<-list(res.Rel)
+    res <- res.Rel
   }
+  
   
   #print(res)
   return(res)
@@ -91,10 +96,11 @@ main <- function() {
         --input_type: type of input (list of id or filename)
         --input: input
         --column_number: the column number which you would like to apply...
-        --header: TRUE/FALSE if your file contains a header
+        --header: true/false if your file contains a header
         --tissue: list of tissues
-        --level: level
-        --reliability: ...
+        --level: Not detected, Low, Medium, High
+        --reliability: Supportive, Uncertain
+        --not_mapped: true/false if your output file should contain not-mapped and not-match IDs 
         --output: output filename \n")
     q(save="no")
   }
@@ -126,11 +132,12 @@ main <- function() {
   tissue = strsplit(args$tissue, ",")[[1]]
   level = strsplit(args$level, ",")[[1]]
   reliability = strsplit(args$reliability, ",")[[1]]
+  not_mapped_option = args$not_mapped
   output = args$output
   
   # Calculation
   HPA_normal_tissue = read.table(args$ref_file, header = TRUE, sep = ",", stringsAsFactors = FALSE, fill = TRUE)
-  res = annot.HPAnorm(input, HPA_normal_tissue, tissue, level, reliability)
+  res = annot.HPAnorm(input, HPA_normal_tissue, tissue, level, reliability, not_mapped_option)
   
   # Write output
   write.table(res, output, sep = "\t", quote = FALSE, row.names = FALSE)
@@ -138,4 +145,5 @@ main <- function() {
 
 main()
 
-# Rscript sel_ann_hpa.R --input_type="file" --input="./test-data/ENSGid.txt" --ref_file="/Users/LinCun/Documents/ProteoRE/usecase1/normal_tissue.csv" --tissue="lung" --level="Not Detected,Medium,High,Low" --reliability="Approved,Supported,Uncertain" --column_number="c1" --header="true" --output="./test-data/ENSG_tissue_output.txt"
+# Rscript sel_ann_hpa.R --input_type="file" --input="./test-data/ENSGid.txt" --ref_file="/Users/LinCun/Documents/ProteoRE/usecase1/normal_tissue.csv" --tissue="lung" --level="Not detected,Medium,High,Low" --reliability="Approved,Supportive,Uncertain" --column_number="c1" --header="true" --not_mapped="false" --output="./test-data/ENSG_tissue_output.txt"
+# Rscript sel_ann_hpa.R --input_type="file" --input="./test-data/ENSG_no_not_match.txt" --ref_file="/Users/LinCun/Documents/ProteoRE/usecase1/normal_tissue.csv" --tissue="lung" --level="Not detected,Medium,High,Low" --reliability="Approved,Supportive,Uncertain" --column_number="c1" --header="true" --output="./test-data/ENSG_tissue_output2.txt"
