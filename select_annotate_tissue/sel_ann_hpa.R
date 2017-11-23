@@ -60,7 +60,7 @@ annot.HPAnorm<-function(input, HPA_normal_tissue, tissue, level, reliability) {
   if (length(setdiff(input, unique(res.Rel$Gene)))>0) {
     not_match_IDs <- matrix(setdiff(intersect(input, unique(dat$Gene)), unique(res.Rel$Gene)), ncol = 1, nrow = length(setdiff(intersect(input, unique(dat$Gene)), unique(res.Rel$Gene))))
     not.match <- matrix("not match", ncol = ncol(HPA_normal_tissue) - 1, nrow = length(not_match_IDs))
-    not.match <- cbind(intersect(input, unique(res.Rel$Gene)), unname(not.match))
+    not.match <- cbind(not_match_IDs, unname(not.match))
     not.mapped <- matrix(ncol = ncol(HPA_normal_tissue) - 1, nrow = length(setdiff(input, unique(dat$Gene))))
     not.mapped <- cbind(matrix(setdiff(input, unique(dat$Gene)), ncol = 1, nrow = length(setdiff(input, unique(dat$Gene)))), unname(not.mapped))
     not.mapped <- rbind(not.match, not.mapped)
