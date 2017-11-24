@@ -18,7 +18,7 @@ readfile = function(filename, header) {
 
 # input has to be a list of ID in ENSG format
 # tissue is one of unique(HPA.normal.tissue$Tissue)
-# level is one, or several, or 0 (=ALL) of "Not Detected", "Medium", "High", "Low"
+# level is one, or several, or 0 (=ALL) of "Not detected", "Medium", "High", "Low"
 # reliability is one, or several, or 0 (=ALL) of "Approved", "Supported", "Uncertain"
 annot.HPAnorm<-function(input, HPA_normal_tissue, tissue, level, reliability, not_mapped_option) {
   
@@ -136,7 +136,7 @@ main <- function() {
   output = args$output
   
   # Calculation
-  HPA_normal_tissue = read.table(args$ref_file, header = TRUE, sep = ",", stringsAsFactors = FALSE, fill = TRUE)
+  HPA_normal_tissue = read.table(args$ref_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
   res = annot.HPAnorm(input, HPA_normal_tissue, tissue, level, reliability, not_mapped_option)
   
   # Write output
@@ -145,5 +145,5 @@ main <- function() {
 
 main()
 
-# Rscript sel_ann_hpa.R --input_type="file" --input="./test-data/ENSGid.txt" --ref_file="/Users/LinCun/Documents/ProteoRE/usecase1/normal_tissue.csv" --tissue="lung" --level="Not detected,Medium,High,Low" --reliability="Approved,Supportive,Uncertain" --column_number="c1" --header="true" --not_mapped="false" --output="./test-data/ENSG_tissue_output.txt"
+# Rscript sel_ann_hpa.R --input_type="file" --input="./test-data/ENSGid.txt" --ref_file="./normal_tissue.tsv" --tissue="lung" --level="Not detected,Medium,High,Low" --reliability="Approved,Supported,Uncertain" --column_number="c1" --header="true" --not_mapped="false" --output="./test-data/ENSG_tissue_output.txt"
 # Rscript sel_ann_hpa.R --input_type="file" --input="./test-data/ENSG_no_not_match.txt" --ref_file="/Users/LinCun/Documents/ProteoRE/usecase1/normal_tissue.csv" --tissue="lung" --level="Not detected,Medium,High,Low" --reliability="Approved,Supportive,Uncertain" --column_number="c1" --header="true" --output="./test-data/ENSG_tissue_output2.txt"
