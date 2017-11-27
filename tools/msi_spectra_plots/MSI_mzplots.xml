@@ -1,0 +1,410 @@
+<tool id="Mass_spectrometry_imaging_mzplots" name="MSI massspectra" version="1.7.0">
+    <description>
+        mass spectrometry imaging mass spectra plots
+    </description>
+    <requirements>
+        <requirement type="package" version="1.7.0">bioconductor-cardinal</requirement>
+        <requirement type="package" version="2.2.1">r-gridextra</requirement>
+        <requirement type="package" version="2.23-15">r-kernsmooth</requirement>
+    </requirements>
+    <stdio>
+        <exit_code range="1:" />
+    </stdio>
+    <command>
+    <![CDATA[
+
+        #if $infile.ext == 'imzml'
+            cp '${infile.extra_files_path}/imzml' infile.imzML &&
+            cp '${infile.extra_files_path}/ibd' infile.ibd &&
+        #elif $infile.ext == 'analyze75'
+            cp '${infile.extra_files_path}/hdr' infile.hdr &&
+            cp '${infile.extra_files_path}/img' infile.img &&
+            cp '${infile.extra_files_path}/t2m' infile.t2m &&
+        #else
+            ln -s $infile infile.RData &&
+        #end if
+        cat '${MSI_mzplots}' &&
+        echo ${MSI_mzplots} &&
+        pwd &&
+        Rscript '${MSI_mzplots}'
+
+
+
+    ]]>
+    </command>
+    <configfiles>
+        <configfile name="MSI_mzplots"><![CDATA[
+
+
+################################# load libraries and read file #########################
+
+library(Cardinal)
+library(gridExtra)
+library(KernSmooth)
+
+## Read MALDI Imaging dataset
+
+#if $infile.ext == 'imzml'
+    msidata <- readMSIData('infile.imzML')
+#elif $infile.ext == 'analyze75'
+    msidata <- readMSIData('infile.hdr')
+#else
+    load('infile.RData')
+#end if
+
+
+
+###################################### file properties in numbers ######################
+
+## Number of features (mz)
+maxfeatures = length(features(msidata))
+## Range mz
+minmz = round(min(mz(msidata)), digits=2)
+maxmz = round(max(mz(msidata)), digits=2)
+## Number of spectra (pixels)
+pixelcount = length(pixels(msidata))
+## Range x coordinates
+minimumx = min(coord(msidata)[,1])
+maximumx = max(coord(msidata)[,1])
+## Range y coordinates
+minimumy = min(coord(msidata)[,2])
+maximumy = max(coord(msidata)[,2])
+## Range of intensities
+minint = round(min(spectra(msidata)[]), digits=2)
+maxint = round(max(spectra(msidata)[]), digits=2)
+medint = round(median(spectra(msidata)[]), digits=2)
+## Number of intensities > 0
+npeaks= sum(spectra(msidata)[]>0)
+## Spectra multiplied with mz (potential number of peaks)
+numpeaks = ncol(spectra(msidata)[])*nrow(spectra(msidata)[])
+## Percentage of intensities > 0
+percpeaks = round(npeaks/numpeaks*100, digits=2)
+## Number of empty TICs
+TICs = colSums(spectra(msidata)[]) 
+NumemptyTIC = sum(TICs == 0)
+
+
+## Processing informations
+processinginfo = processingData(msidata)
+centroidedinfo = processinginfo@centroided # TRUE or FALSE
+
+## if TRUE write processinginfo if no write FALSE
+
+## normalization
+if (length(processinginfo@normalization) == 0) {
+  normalizationinfo='FALSE'
+} else {
+  normalizationinfo=processinginfo@normalization
+}
+## smoothing
+if (length(processinginfo@smoothing) == 0) {
+  smoothinginfo='FALSE'
+} else {
+  smoothinginfo=processinginfo@smoothing
+}
+## baseline
+if (length(processinginfo@baselineReduction) == 0) {
+  baselinereductioninfo='FALSE'
+} else {
+  baselinereductioninfo=processinginfo@baselineReduction
+}
+## peak picking
+if (length(processinginfo@peakPicking) == 0) {
+  peakpickinginfo='FALSE'
+} else {
+  peakpickinginfo=processinginfo@peakPicking
+}
+
+
+
+#############################################################################
+
+properties = c("Number of mz features",
+               "Range of mz values [Da]",
+               "Number of pixels", 
+               "Range of x coordinates", 
+               "Range of y coordinates",
+               "Range of intensities", 
+               "Median of intensities",
+               "Intensities > 0",
+               "Number of zero TICs",
+               "Preprocessing", 
+               "Normalization", 
+               "Smoothing",
+               "Baseline reduction",
+               "Peak picking",
+               "Centroided")
+
+values = c(paste0(maxfeatures), 
+           paste0(minmz, " - ", maxmz), 
+           paste0(pixelcount), 
+           paste0(minimumx, " - ", maximumx),  
+           paste0(minimumy, " - ", maximumy), 
+           paste0(minint, " - ", maxint), 
+           paste0(medint),
+           paste0(percpeaks, " %"), 
+           paste0(NumemptyTIC), 
+           paste0(" "),
+           paste0(normalizationinfo),
+           paste0(smoothinginfo),
+           paste0(baselinereductioninfo),
+           paste0(peakpickinginfo),
+           paste0(centroidedinfo))
+
+property_df = data.frame(properties, values)
+
+
+######################################## PDF #############################################
+##########################################################################################
+##########################################################################################
+
+
+pdf("mzplots.pdf", fonts = "Times", pointsize = 12)
+plot(0,type='n',axes=FALSE,ann=FALSE)
+
+title(main=paste0("Plotted mass spectra for file: \n\n", "$infile.display_name"))
+
+
+############################# I) numbers ####################################
+#############################################################################
+grid.table(property_df, rows= NULL)
+
+counting = 2
+
+    outputmatrix = matrix(mz(msidata), ncol=1, byrow=TRUE)
+    colnames(outputmatrix) = "m/z"
+
+if (npeaks > 0)
+{
+    pixeldf = data.frame(matrix(ncol = 2, nrow=0))
+
+    #for $chosenpixel in $repeatpixel: 
+
+
+        ### is x and y which was put in to define pixel valid coordinates? 
+        pixelisvalid = as.character($chosenpixel.inputx %in% coord(msidata)\$x & $chosenpixel.inputy %in% coord(msidata)\$y)
+        pixelname = paste0("x=", $chosenpixel.inputx,", ", "y=", $chosenpixel.inputy) 
+        pixeldf = rbind(pixeldf, cbind(pixelname, pixelisvalid))
+
+
+############################# II) control image #############################
+#############################################################################
+
+
+    if (pixelisvalid == "TRUE")
+    {
+
+
+        image(msidata, mz=$chosenpixel.inputmz, 
+              ylim = c(maximumy+(0.2*maximumy),minimumy-1),colorkey=FALSE, plusminus = $chosenpixel.plusminusinDalton, contrast.enhance = "histogram", 
+              main= paste0("x= ",$chosenpixel.inputx, ", y= ", $chosenpixel.inputy))
+
+        abline(v=$chosenpixel.inputx, col ="$chosenpixel.inputcolour", lty="$chosenpixel.inputtype", lwd=$chosenpixel.inputwidth)
+        abline(h=$chosenpixel.inputy, col ="$chosenpixel.inputcolour", lty="$chosenpixel.inputtype", lwd=$chosenpixel.inputwidth)
+
+
+        ##################### III) plot full mass spectrum ##########################
+        #############################################################################
+
+        plot(msidata, coord=list(x=$chosenpixel.inputx, y=$chosenpixel.inputy))
+
+
+
+            ##################### IV) plot zoom-in mass spectrum ##########################
+            #############################################################################
+
+        #if $chosenpixel.zoomedplot:
+            #for $token in $chosenpixel.zoomedplot:
+
+                minmasspixel = features(msidata, mz=$token.xlimmin)
+                maxmasspixel = features(msidata, mz=$token.xlimmax)
+
+                plot(msidata[minmasspixel:maxmasspixel,], coord=list(x=$chosenpixel.inputx, y=$chosenpixel.inputy), 
+                     xlim= c($token.xlimmin,$token.xlimmax))
+
+            #end for
+        #end if
+
+        ##################### V) Output with mz and intensities #####################
+        #############################################################################
+
+
+        ### for each repeat a new intensity column for the new pixel is added
+        outputmatrix = cbind(outputmatrix, spectra(msidata)[,pixels(msidata, coord=list(x=$chosenpixel.inputx, y=$chosenpixel.inputy))])
+        colnames(outputmatrix)[counting] = paste0("x= ",$chosenpixel.inputx, ", y= ", $chosenpixel.inputy, " intensity")
+        counting = counting+1
+
+    }else{
+        print("These pixel coordinates did not correspond to a real pixel")}
+
+
+#end for
+
+    colnames(pixeldf) = c("pixel coordinates", "coordinates were found in this file")
+    plot(0,type='n',axes=FALSE,ann=FALSE)
+    title(main=paste0("Overview of chosen pixel for file:\n", "$infile.display_name"))
+    grid.table(pixeldf, rows= NULL)
+
+    dev.off()
+
+        write.table(outputmatrix, file="$tabularmatrix", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+}else{
+    print("Inputfile has no intensities > 0")
+    dev.off()
+}
+
+
+
+
+    ]]></configfile>
+    </configfiles>
+    <inputs>
+        <param name="infile" type="data" format="imzml, rdata, analyze75" label="Inputfile as imzML, Analyze7.5 or Cardinal MSImageSet saved as RData"
+            help="Upload composite datatype imzml (ibd+imzML) or analyze75 (hdr+img+t2m) or regular upload .RData (Cardinal MSImageSet)"/>
+        <repeat name="repeatpixel" title="Plot mass spectra for pixel of interest" min="1" max="20">
+            <param name="inputx" type="integer" value="" label="x-coordinate of pixel of interest" help="x-value of the pixel of interest"/>
+            <param name="inputy" type="integer" value="" label="y-coordinate of pixel of interest" help="y-value of the pixel of interest"/>
+            <param name="inputmz" type="float" value="1296.7" label="Next parameters are to control heatmap image which will be plotted, here mz in Dalton" help="mz will be displayed as heatmap and the pixel of interest will be visualized by the intersection of two lines"/>
+            <param name="plusminusinDalton" value="0.25" type="float" label="mass range for this mz value" help="plusminus mass window in Dalton"/>
+            <param name="inputcolour" type="select" label="select the colour for the lines at x and y position">
+                <option value="white" selected="True">white</option>
+                <option value="black">black</option>
+                <option value="grey">grey</option>
+                <option value="blue">blue</option>
+                <option value="red">red</option>
+                <option value="green">green</option>
+            </param>
+            <param name="inputtype" type="select" label="select the line type for the lines at x and y position">
+                <option value="solid" selected="True">solid</option>
+                <option value="dashed">dashed</option>
+                <option value="dotted">dotted</option>
+                <option value="longdash">longdash</option>
+            </param>
+            <param name="inputwidth" type="integer" value="2" label="select the width of the lines at x and y position"/>
+
+            <repeat name="zoomedplot" title="Zoomed in plots with mz min and mz max to define the plot window" min="0" max="50">
+                <param name="xlimmin" type="integer" value="" label="lower boundary in Dalton for plotting window" help="minimum mz for zoomed in window"/>
+                <param name="xlimmax" type="integer" value="" label="upper boundary in Dalton for plotting window" help="maximum mz for zoomed in window"/>
+            </repeat>
+        </repeat>
+    </inputs>
+    <outputs>
+        <data format="pdf" name="plots" from_work_dir="mzplots.pdf" label = "${tool.name} on $infile.display_name"/>
+        <data format="tabular" name="tabularmatrix" label="${tool.name} on $infile.display_name" />
+    </outputs>
+
+    <tests>
+        <test>
+            <param name="infile" value="" ftype="imzml">
+                <composite_data value="Example_Continuous.imzML" ftype="imzml"/>
+                <composite_data value="Example_Continuous.ibd" ftype="ibd"/>
+            </param>
+            <repeat name="repeatpixel">
+                <param name="plusminusinDalton" value="0.25"/>
+                <param name="inputx" value="3"/>
+                <param name="inputy" value="3"/>
+                <repeat name="zoomedplot">
+                    <param name="xlimmin" value="550"/>
+                    <param name="xlimmax" value="555"/>
+                </repeat>
+                <repeat name="zoomedplot">
+                    <param name="xlimmin" value="750"/>
+                    <param name="xlimmax" value="800"/>
+                </repeat>
+                <repeat name="zoomedplot">
+                    <param name="xlimmin" value="400"/>
+                    <param name="xlimmax" value="420"/>
+                </repeat>
+            </repeat>
+            <repeat name="repeatpixel">
+                <param name="plusminusinDalton" value="0.25"/>
+                <param name="inputx" value="2"/>
+                <param name="inputy" value="2"/>
+            </repeat>
+            <repeat name="repeatpixel">
+                <param name="plusminusinDalton" value="0.25"/>
+                <param name="inputx" value="1"/>
+                <param name="inputy" value="1"/>
+            </repeat>
+            <output name="plots" file="Plot_imzml.pdf" compare="sim_size" delta="20000"/>
+            <output name="tabularmatrix" file="Matrix_imzml.txt"/>
+        </test>
+
+        <test>
+            <param name="infile" value="" ftype="analyze75">
+                <composite_data value="Analyze75.hdr" ftype="hdr"/>
+                <composite_data value="Analyze75.img" ftype="img"/>
+                <composite_data value="Analyze75.t2m" ftype="t2m"/>
+            </param>
+            <repeat name="repeatpixel">
+                <param name="plusminusinDalton" value="0.25"/>
+                <param name="inputx" value="5"/>
+                <param name="inputy" value="2"/>
+                <repeat name="zoomedplot">
+                    <param name="xlimmin" value="840"/>
+                    <param name="xlimmax" value="850"/>
+                </repeat>
+            </repeat>
+            <repeat name="repeatpixel">
+                <param name="plusminusinDalton" value="0.25"/>
+                <param name="inputx" value="2"/>
+                <param name="inputy" value="2"/>
+            </repeat>
+            <output name="plots" file="Plot_analyze75.pdf" compare="sim_size" delta="20000"/>
+            <output name="tabularmatrix" file="Matrix_analyze75.txt"/>
+        </test>
+
+        <test>
+            <param name="infile" value="preprocessing_results1.RData" ftype="rdata"/>
+            <repeat name="repeatpixel">
+                <param name="plusminusinDalton" value="0.25"/>
+                <param name="inputx" value="2"/>
+                <param name="inputy" value="2"/>
+                <repeat name="zoomedplot">
+                     <param name="xlimmin" value="222"/>
+                     <param name="xlimmax" value="244"/>
+                 </repeat>
+            </repeat>
+            <output name="plots" file="Plot_rdata.pdf" compare="sim_size" delta="20000"/>
+            <output name="tabularmatrix" file="Matrix_rdata.txt"/>
+        </test>
+        <test>
+            <param name="infile" value="LM8_file16.rdata" ftype="rdata"/>
+            <param name="plusminusinDalton" value="0.1"/>
+            <param name="inputx" value="1"/>
+            <param name="inputy" value="1"/>
+            <repeat name="repeatpixel">
+                <param name="plusminusinDalton" value="0.25"/>
+                <param name="inputx" value="2"/>
+                <param name="inputy" value="2"/>
+               <repeat name="zoomedplot">
+                    <param name="xlimmin" value="1000"/>
+                    <param name="xlimmax" value="1050"/>
+                </repeat>
+            </repeat>
+            <output name="plots" file="Plot_LM8_file16.pdf" compare="sim_size" delta="20000"/>
+            <output name="tabularmatrix" file="Matrix_LM8.txt"/>
+        </test>
+    </tests>
+    <help>
+        <![CDATA[
+
+Returns a full mass-spectrum plot and peaklist output with masses and intensities for the chosen pixel. Input needs the x and the y coordinates of the pixel of interest. 
+Additionally zoom into mass-spectra plots is possible by providing the minimum and maximum mz value to define the limits of the plot.  
+To have a visual control that the right pixel was chosen, a heatmap of a mass in Dalton which can be specified will be plotted and two intersecting lines will show where the chosen pixel is located in the ion image. 
+
+Input data: 3 types of input data can be used:
+
+- imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <http://ms-imaging.org/wp/introduction/>`_
+- Analyze7.5 (upload hdr, img and t2m file via the "composite" function)
+- Cardinal "MSImageSet" data (with variable name "msidata", saved as .RData)
+
+The output of this tool contains a heatmap of the mass of interest with two lines intersecting at the pixel of interest. Then the full mass-spectrum plot is obtained and if chosen also several zoomed in mass spectra. A peaklist with masses and intensities for this pixel is exported as tabular file. 
+
+        ]]>
+    </help>
+    <citations>
+        <citation type="doi">10.1093/bioinformatics/btv146</citation>
+    </citations>
+</tool>
+
