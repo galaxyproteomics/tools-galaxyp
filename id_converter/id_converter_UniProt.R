@@ -115,3 +115,5 @@ mapping = function() {
 }
 
 mapping()
+
+#Rscript id_converter_UniProt.R "UNIPROT_AC" "test-data/UnipIDs.txt,c1,false" "file" "Ensembl.ENSP,Ensembl.ENSG,neXtProt_ID" "test-data/output.txt" ID_mapping_Uniprot_HomoSapiens_20170809.txt Nextprot_Uniprot_id_mapping_file.txt
