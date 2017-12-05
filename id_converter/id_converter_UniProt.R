@@ -14,7 +14,11 @@ readfile = function(filename, header) {
   return(file)
 }
 
-# Mapping IDs using file built from Uniprot file source (ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/taxonomic_divisions/uniprot_sprot_human.dat.gz) 
+# Mapping IDs using file built from
+#   - HUMAN_9606_idmapping_selected.tab
+#     Tarball downloaded from ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/
+#   - nextprot_ac_list_all.txt 
+#     Downloaded from ftp://ftp.nextprot.org/pub/current_release/ac_lists/
 # Available databases: 
 #   UNIPROT_AC: Uniprot accession number (e.g. P31946)
 #   UNIPROT_ID: Uniprot identifiers (e.g 1433B_HUMAN)
@@ -34,7 +38,7 @@ mapping = function() {
   # Extract arguments
   args = commandArgs(trailingOnly = TRUE)
   #print(args)
-  if (length(args) != 7) {
+  if (length(args) != 6) {
     stop("Not enough/Too many arguments", call. = FALSE)
   }
   else {
@@ -43,12 +47,10 @@ mapping = function() {
     list_id_input_type = args[3]
     options = strsplit(args[4], ",")[[1]]
     output = args[5]
-    uniprot_map_file = args[6]
-    np_uniprot_file = args[7]
+    human_id_mapping_file = args[6]
     
     # Extract ID maps
-    uniprot_map = read.table(uniprot_map_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
-    np_uniprot = read.table(np_uniprot_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
+    human_id_map = read.table(human_id_mapping_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
     
     # Extract input IDs
     if (list_id_input_type == "list") {
@@ -66,36 +68,42 @@ mapping = function() {
     
     # Map IDs
     res = matrix(nrow=length(list_id), ncol=0)
-    
+
     for (opt in options) {
       names = c(names, opt)
-      # Map to neXtProt ID
-      if (opt == "neXtProt_ID") {
-        if (input_id_type == "UNIPROT_AC") {
-          mapped = sapply(strsplit(np_uniprot[match(list_id, np_uniprot$Uniprot_AC),]$neXtProt_ID, ";"), "[", 1)
-        }
-        else if (input_id_type == "neXtProt_ID") {
-          mapped = matrix(list_id)
-        }
-        else {
-          uniprot = sapply(strsplit(uniprot_map[match(list_id, uniprot_map[input_id_type][,]),]$UNIPROT_AC, ";"), "[", 1)
-          mapped = sapply(strsplit(np_uniprot[match(uniprot, np_uniprot$Uniprot_AC),]$neXtProt_ID, ";"), "[", 1)
-        }
-      }
-      # Map to other ID types
-      else {
-        if (input_id_type == "neXtProt_ID") {
-          uniprot = sapply(strsplit(np_uniprot[match(list_id, np_uniprot$neXtProt_ID),]$Uniprot_AC, ";"), "[", 1)
-          #mapped = sapply(strsplit(uniprot_map[match(uniprot, uniprot_map$UNIPROT_AC),][opt][,], ";"), "[", 1)
-          mapped = uniprot_map[match(uniprot, uniprot_map$UNIPROT_AC),][opt][,]
-        }
-        else {
-          #mapped = sapply(strsplit(uniprot_map[match(list_id, uniprot_map[input_id_type][,]),][opt][,], ";"), "[", 1)
-          mapped = uniprot_map[match(list_id, uniprot_map[input_id_type][,]),][opt][,]
-        }
-      }
+      mapped = human_id_map[match(list_id, human_id_map[input_id_type][,]),][opt][,]
       res = cbind(res, matrix(mapped))
     }
+    
+    # for (opt in options) {
+    #   names = c(names, opt)
+    #   # Map to neXtProt ID
+    #   if (opt == "neXtProt_ID") {
+    #     if (input_id_type == "UNIPROT_AC") {
+    #       mapped = sapply(strsplit(np_uniprot[match(list_id, np_uniprot$Uniprot_AC),]$neXtProt_ID, ";"), "[", 1)
+    #     }
+    #     else if (input_id_type == "neXtProt_ID") {
+    #       mapped = matrix(list_id)
+    #     }
+    #     else {
+    #       uniprot = sapply(strsplit(uniprot_map[match(list_id, uniprot_map[input_id_type][,]),]$UNIPROT_AC, ";"), "[", 1)
+    #       mapped = sapply(strsplit(np_uniprot[match(uniprot, np_uniprot$Uniprot_AC),]$neXtProt_ID, ";"), "[", 1)
+    #     }
+    #   }
+    #   # Map to other ID types
+    #   else {
+    #     if (input_id_type == "neXtProt_ID") {
+    #       uniprot = sapply(strsplit(np_uniprot[match(list_id, np_uniprot$neXtProt_ID),]$Uniprot_AC, ";"), "[", 1)
+    #       #mapped = sapply(strsplit(uniprot_map[match(uniprot, uniprot_map$UNIPROT_AC),][opt][,], ";"), "[", 1)
+    #       mapped = uniprot_map[match(uniprot, uniprot_map$UNIPROT_AC),][opt][,]
+    #     }
+    #     else {
+    #       #mapped = sapply(strsplit(uniprot_map[match(list_id, uniprot_map[input_id_type][,]),][opt][,], ";"), "[", 1)
+    #       mapped = uniprot_map[match(list_id, uniprot_map[input_id_type][,]),][opt][,]
+    #     }
+    #   }
+    #   res = cbind(res, matrix(mapped))
+    # }
     
     # Write output
     if (list_id_input_type == "list") {
@@ -116,4 +124,4 @@ mapping = function() {
 
 mapping()
 
-#Rscript id_converter_UniProt.R "UNIPROT_AC" "test-data/UnipIDs.txt,c1,false" "file" "Ensembl.ENSP,Ensembl.ENSG,neXtProt_ID" "test-data/output.txt" ID_mapping_Uniprot_HomoSapiens_20170809.txt Nextprot_Uniprot_id_mapping_file.txt
+#Rscript id_converter_UniProt.R "UniProt.AC" "test-data/UnipIDs.txt,c1,false" "file" "Ensembl_PRO,Ensembl,neXtProt_ID" "test-data/output.txt" ../../utils/mapping_file.txt

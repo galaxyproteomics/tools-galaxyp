@@ -51,3 +51,10 @@ If your input is a multiple-column file, the mapped IDs column(s) will be added 
 
 * Ensembl protein ID (e.g. ENSP00000300161; ENSP00000361930)
 
+This tool converts human IDs using file built from:
+
+* HUMAN_9606_idmapping_selected.tab
+    Tarball downloaded from ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/
+
+* nextprot_ac_list_all.txt 
+    Downloaded from ftp://ftp.nextprot.org/pub/current_release/ac_lists/
