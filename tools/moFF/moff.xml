@@ -1,0 +1,288 @@
+<tool id="proteomics_moff" name="moFF: A modest Feature Finder" version="0.1">
+    <description>extracts MS1 intensities from Thermo raw files</description>
+    <macros>
+        <!-- xml macros, used for shared Galaxy parameter inputs -->
+        <xml name="ident_input_macro" token_allow_multiple="true">
+        <!-- this is exactly the same across all three, except for allowing multiple in MBR and all but not in moff -->
+            <conditional name="ident_input">
+                    <param name="input_type_selector" type="select" label="Choose the format for the identification file:">
+                        <option value="ps">Peptide Shaker PSM report (standard, not extended)</option>
+                        <option value="generic">Another tabular identification file</option>
+                    </param>
+                    <when value="ps">
+                        <param name="psm_input" type="data" format="tabular" label="Peptide Shaker PSM report" multiple="@ALLOW_MULTIPLE@"/>
+                    </when>
+                    <when value="generic">
+                        <param name="generic_input" type="data" format="tabular" label="A general tabular format" multiple="@ALLOW_MULTIPLE@"
+                            help="Must have specific columns; see below to select these columns from your file. The file should not have a header line or comments."/>
+                        <param name="peptide"
+                            type="data_column"
+                            data_ref="generic_input"
+                            label="Column with peptide-spectrum-match sequence"/>
+                        <param name="prot"
+                            type="data_column"
+                            data_ref="generic_input"
+                            label="Column with protein ID"/>
+                        <param name="mod_peptide"
+                            type="data_column"
+                            data_ref="generic_input"
+                            label="Column with peptide-spectrum-match sequence that contains possible modifications"/>
+                        <param name="rt"
+                            type="data_column"
+                            data_ref="generic_input"
+                            label="Column with PSM retention time (in second)"/>
+                        <param name="mz"
+                            type="data_column"
+                            data_ref="generic_input"
+                            label="Column with m/z (mass over charge)"/>
+                        <param name="mass"
+                            type="data_column"
+                            data_ref="generic_input"
+                            label="Column with mass of the peptide"/>
+                        <param name="charge"
+                            type="data_column"
+                            data_ref="generic_input"
+                            label="Column with charge of ionized peptide"/>
+                    </when>
+            </conditional>
+        </xml>
+        <xml name="raw_input_macro" token_allow_multiple="true">
+            <conditional name="msms_input">
+                <param name="input_type_selector" type="select" label="Choose the format for the MS/MS file">
+                    <option value="raw">Thermo RAW file</option>
+                    <option value="mzml">mzML</option>
+                </param>
+                <when value="raw">
+                    <param argument="--inputraw" type="data" multiple="@ALLOW_MULTIPLE@" format="raw" label="RAW file(s)"
+                        help=""/>
+                </when>
+                <when value="mzml">
+                    <param argument="--inputraw" type="data" multiple="@ALLOW_MULTIPLE@" format="mzml" label="mzML file(s)"/>
+                </when>
+            </conditional>
+        </xml>
+        <!-- tokens (code snippets used in <command>) -->
+        <token name="@IDENT_INPUT_ARG_MULTIPLE@"><![CDATA[
+            ## this is where the ident input gets passed to moff/moff_all/moff_mbr
+            #if ($task.ident_input.input_type_selector == "ps"):
+                --inputtsv
+                #for $counter,$filename in enumerate($task.ident_input.psm_input):
+                    './ident_inputs/${filename.display_name}'
+            #end for
+            #else
+                --inputtsv
+                #for $counter,$filename in enumerate($task.ident_input.generic_input):
+                    './ident_inputs/${filename.display_name}'
+                #end for
+            #end if
+        ]]></token>
+        <token name="@IDENT_INPUT_ARG_SINGLE@"><![CDATA[
+            ## this is where the ident input gets passed to moff/moff_all/moff_mbr
+            #if ($task.ident_input.input_type_selector == "ps"):
+                --inputtsv './ident_inputs/${task.ident_input.psm_input.display_name}'
+            #else
+                --inputtsv './ident_inputs/${task.ident_input.generic_input.display_name}'
+            #end if
+        ]]></token>
+        <token name="@WRANGLE_IDENT_INPUT_SINGLE@"><![CDATA[
+            mkdir ./ident_inputs &&
+            #if ($task.ident_input.input_type_selector == "ps"):
+                ln -s '$task.ident_input.psm_input' './ident_inputs/$task.ident_input.psm_input.display_name' &&
+            #else
+                ## remove first line (add param for this later on!)
+                sed -i '1d' '$task.ident_input.generic_input' &&
+                ## header row with correct names: "peptide", "prot", "mod_peptide", "rt", "mz", "mass", and "charge"
+                echo -e "peptide\tprot\tmod_peptide\trt\tmz\tmass\tcharge" > tempfile.tab &&
+                awk 'BEGIN{OFS="\t";}{print \$pep,\$prot,\$mod,\$rt,\$mz,\$mass,\$charge}' pep="${task.ident_input.peptide}" prot="$task.ident_input.prot" mod="$task.ident_input.mod_peptide" rt="$task.ident_input.rt" mz="$task.ident_input.mz" mass="$task.ident_input.mass" charge="$task.ident_input.charge" '$task.ident_input.generic_input' >> tempfile.tab &&
+                mv tempfile.tab '$task.ident_input.generic_input' &&
+                ln -s '$task.ident_input.generic_input' './ident_inputs/$task.ident_input.generic_input.display_name' &&
+            #end if
+        ]]></token>
+        <token name="@WRANGLE_IDENT_INPUT_MULTIPLE@"><![CDATA[
+            mkdir ./ident_inputs &&
+            #if ($task.ident_input.input_type_selector == "ps"):
+                #for $counter,$filename in enumerate($task.ident_input.psm_input):
+                    ln -s '$filename' './ident_inputs/$filename.display_name' &&
+                #end for
+            #else
+                #for $counter,$filename in enumerate($task.ident_input.generic_input):
+                    ## remove first line (add param for this later on!)
+                    sed -i '1d' '$filename' &&
+                    ## header row with correct names: "peptide", "prot", "mod_peptide", "rt", "mz", "mass", and "charge"
+                    echo -e "peptide\tprot\tmod_peptide\trt\tmz\tmass\tcharge" > tempfile.tab &&
+                    awk 'BEGIN{OFS="\t";}{print \$pep,\$prot,\$mod,\$rt,\$mz,\$mass,\$charge}' pep="${task.ident_input.peptide}" prot="$task.ident_input.prot" mod="$task.ident_input.mod_peptide" rt="$task.ident_input.rt" mz="$task.ident_input.mz" mass="$task.ident_input.mass" charge="$task.ident_input.charge" '$filename' >> tempfile.tab &&
+                    mv tempfile.tab '$filename' &&
+                    ln -s '$filename' './ident_inputs/$filename.display_name' &&
+                #end for
+            #end if
+        ]]></token>
+        <token name="@RAW_INPUT_ARG_SINGLE@"><![CDATA[
+            --inputraw './raws/$task.msms_input.inputraw.display_name'
+        ]]></token>
+        <token name="@RAW_INPUT_ARG_MULTIPLE@"><![CDATA[
+            --inputraw
+            #for $counter,$filename in enumerate($task.msms_input.inputraw):
+                './raws/$filename.display_name'
+            #end for
+        ]]></token>
+        <token name="@WRANGLE_RAW_INPUT_SINGLE@"><![CDATA[
+            mkdir ./raws &&
+            ## for files, need to softlink the display name to the history item
+            ln -s '$task.msms_input.inputraw' './raws/$task.msms_input.inputraw.display_name' &&
+        ]]></token>
+        <token name="@WRANGLE_RAW_INPUT_MULTIPLE@"><![CDATA[
+            mkdir ./raws &&
+            ## for files, need to softlink the display name to the history item
+            #for $counter,$filename in enumerate($task.msms_input.inputraw):
+                ln -s '$filename' './raws/$filename.display_name' &&
+            #end for
+        ]]></token>
+    </macros>
+    <requirements>
+        <requirement type="package" version="0.21.0">pandas</requirement>
+		<requirement type="package" version="0.19.1">scikit-learn</requirement>
+        <requirement type="package" version="0.7.7">pymzml</requirement>
+        <requirement type="package" version="3.11.1">simplejson</requirement>
+        <requirement type="package" version="2.7.9">python</requirement>
+    </requirements>
+        <command detect_errors="aggressive"><![CDATA[
+        ## make output directories
+        mkdir output_results &&
+        mkdir output_logs &&
+        #if ($task.task_selector == "moff"):
+            @WRANGLE_IDENT_INPUT_SINGLE@
+            @WRANGLE_RAW_INPUT_SINGLE@
+            python $__tool_directory__/moFF/moff.py
+                @IDENT_INPUT_ARG_SINGLE@
+                @RAW_INPUT_ARG_SINGLE@
+                --tol $task.tol
+                --rt_w $task.rt_w
+                --rt_p $task.rt_p
+                --output_folder ./out
+                #if ($task.peptide_summary):
+                    --peptide_summary 1
+                #end if
+            &&
+            mv ./out/*moff_result.txt '$output_table'
+            &&
+            mv ./out/*.log '$output_logs'
+            &&
+            #if ($task.peptide_summary):
+                mv ./out/peptide_summary_intensity_moFF_run.tab '$output_peptide_summary'
+            #end if
+        #else if ($task.task_selector == "mbr"):
+            python $__tool_directory__/moFF/moff_mbr.py  
+                --ext tabular 
+        #else:
+            ## moff_all (mbr followed by apex)
+            @WRANGLE_IDENT_INPUT_MULTIPLE@
+            @WRANGLE_RAW_INPUT_MULTIPLE@
+            python $__tool_directory__/moFF/moff_all.py
+                @IDENT_INPUT_ARG_MULTIPLE@
+                @RAW_INPUT_ARG_MULTIPLE@
+                --tol $task.tol
+                --rt_w $task.rt_w
+                --rt_p $task.rt_p
+                --rt_p_match $task.rt_p_match
+                --output_folder ./out
+                --ext txt 
+                #if ($task.peptide_summary):
+                    --peptide_summary 1 
+                #end if
+            &&
+            #if ($task.peptide_summary):
+                mv ./out/peptide_summary_intensity_moFF_run.tab '$output_peptide_summary'
+            #end if
+        #end if
+    ]]></command>
+    <inputs>
+        <conditional name="task">
+            <param name="task_selector" type="select" label="Choose which module to run">
+                <option value="moff" selected="true">Quantitation</option>
+                <option value="mbr">Match between runs</option>
+                <option value="all">All (match-between-runs followed by quantitation)</option>
+            </param>
+            <when value = "moff">
+                <expand macro="ident_input_macro" allow_multiple="false"/>
+                <expand macro="raw_input_macro" allow_multiple="false"/>
+                <param argument="--tol" type="float" value="10" label="Tolerance parameter"
+                    help="Specify the tolerance parameter in ppm." />
+                <param argument="--rt_w" type="float" value="3.0" label="Retention time window"
+                    help="Specify rt window for xic in minutes." />
+                <param argument="--rt_p" type="float" value="1" label="Time window for the peak"
+                    help="Specify the time windows for the peak in minutes." />
+                <param argument="--rt_p_match" type="float" value="1.5" label="Time window for the matched peak"
+                    help="Specify the time windows for the matched peak in minutes." />
+                <param argument="--peptide_summary" type="boolean" value="true" label="Output the peptide summary?"/>
+            </when>
+            <when value="mbr">
+            </when>
+            <when value="all">
+                <expand macro="ident_input_macro" allow_multiple="true"/>
+                <expand macro="raw_input_macro" allow_multiple="true"/>
+                <param argument="--tol" type="float" value="10" label="Tolerance parameter"
+                    help="Specify the tolerance parameter in ppm." />
+                <param argument="--rt_w" type="float" value="3.0" label="Retention time window"
+                    help="Specify rt window for xic in minutes." />
+                <param argument="--rt_p" type="float" value="1" label="Time window for the peak"
+                    help="Specify the time windows for the peak in minutes." />
+                <param argument="--rt_p_match" type="float" value="1.2" label="Time window for the matched peak"
+                    help="Specify the time windows for the matched peak in minutes." />
+                <param argument="--peptide_summary" type="boolean" value="true" label="Output the peptide summary?"/>
+            </when>
+        </conditional> 
+    </inputs>
+    <outputs>
+        <data format="tabular" name="output_table">
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.txt" format="tabular" directory="out" visible="true"/>
+        </data>
+        <data format="txt" name="output_logs" >
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.log" format="txt" directory="out" visible="true"/>
+        </data>
+        <data format="tabular" name="output_peptide_summary">
+            <filter>task['peptide_summary']</filter>
+        </data>
+    </outputs>
+    <tests>
+        <!--<test>
+            <param name="task" value="moff"/>
+            <param name="input_type_selector" value="generic"/>
+            <param name="generic_input" value="sample_data/20080311_CPTAC6_07_6A005.txt" ftype="tabular"/>
+            <param name="peptide" value="5"/>
+            <param name="prot" value="12"/>
+            <param name="mod_peptide" value="6"/>
+            <param name="rt" value="10"/>
+            <param name="mz" value="11"/>
+            <param name="mass" value="8"/>
+            <param name="charge" value="4"/>
+            <param name="msms_input" value="mzml"/>
+            <param name="inputraw" value="sample_data/20080311_CPTAC6_07_6A005.mzML" ftype="mzml"/>
+            <param name="peptide_summary" value="true"/>
+            <output name="output_peptide_summary" ftype="tabular" file="sample_data/peptide_summary_intensity_moFF_run_0311.tab"/>
+        </test>-->
+        <test>
+            <param name="task_selector" value="all"/>
+            <param name="input_type_selector" value="generic"/>
+            <param name="generic_input" value="sample_data/20080311_CPTAC6_07_6A005.txt,sample_data/20080313_CPTAC6_07_6A005.txt" ftype="tabular"/>
+            <param name="peptide" value="5"/>
+            <param name="prot" value="12"/>
+            <param name="mod_peptide" value="6"/>
+            <param name="rt" value="10"/>
+            <param name="mz" value="11"/>
+            <param name="mass" value="8"/>
+            <param name="charge" value="4"/>
+            <param name="msms_input" value="mzml"/>
+            <param name="inputraw" value="sample_data/20080311_CPTAC6_07_6A005.mzML,sample_data/20080313_CPTAC6_07_6A005.mzML" ftype="mzml"/>
+            <param name="peptide_summary" value="true"/>
+            <output name="output_peptide_summary" ftype="tabular" file="sample_data/peptide_summary_intensity_moFF_run_03110313.tab"/>
+        </test>
+    </tests>
+    <help>
+    <![CDATA[
+**What it does**
+    ]]>
+    </help>
+    <citations>
+        <!--citation type="doi">10.1093/molbev/mst010</citation-->
+    </citations>
+</tool>
