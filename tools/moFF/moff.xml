@@ -14,7 +14,8 @@
                     </when>
                     <when value="generic">
                         <param name="generic_input" type="data" format="tabular" label="A general tabular format" multiple="@ALLOW_MULTIPLE@"
-                            help="Must have specific columns; see below to select these columns from your file. The file should not have a header line or comments."/>
+                            help="Must have specific columns; see below to select these columns from your file. The file should have at most one header line. "/>
+                        <param name="remove_header" type="boolean" value="false" label="Does the file have a header line?"/>
                         <param name="peptide"
                             type="data_column"
                             data_ref="generic_input"
@@ -89,8 +90,10 @@
             #if ($task.ident_input.input_type_selector == "ps"):
                 ln -s '$task.ident_input.psm_input' './ident_inputs/$task.ident_input.psm_input.display_name' &&
             #else
-                ## remove first line (add param for this later on!)
-                sed -i '1d' '$task.ident_input.generic_input' &&
+                ## optionally remove first line
+                #if ($task.ident_input.remove_header):
+                    sed -i '1d' '$task.ident_input.generic_input' &&
+                #end if
                 ## header row with correct names: "peptide", "prot", "mod_peptide", "rt", "mz", "mass", and "charge"
                 echo -e "peptide\tprot\tmod_peptide\trt\tmz\tmass\tcharge" > tempfile.tab &&
                 awk 'BEGIN{OFS="\t"; FS="\t"}{print \$pep,\$prot,\$mod,\$rt,\$mz,\$mass,\$charge}' pep="${task.ident_input.peptide}" prot="$task.ident_input.prot" mod="$task.ident_input.mod_peptide" rt="$task.ident_input.rt" mz="$task.ident_input.mz" mass="$task.ident_input.mass" charge="$task.ident_input.charge" '$task.ident_input.generic_input' >> tempfile.tab &&
@@ -107,7 +110,9 @@
             #else
                 #for $counter,$filename in enumerate($task.ident_input.generic_input):
                     ## remove first line (add param for this later on!)
-                    sed -i '1d' '$filename' &&
+                    #if ($task.ident_input.remove_header):
+                        sed -i '1d' '$filename' &&
+                    #end if
                     ## header row with correct names: "peptide", "prot", "mod_peptide", "rt", "mz", "mass", and "charge"
                     echo -e "peptide\tprot\tmod_peptide\trt\tmz\tmass\tcharge" > tempfile.tab &&
                     awk 'BEGIN{OFS="\t"; FS="\t"}{print \$pep,\$prot,\$mod,\$rt,\$mz,\$mass,\$charge}' pep="${task.ident_input.peptide}" prot="$task.ident_input.prot" mod="$task.ident_input.mod_peptide" rt="$task.ident_input.rt" mz="$task.ident_input.mz" mass="$task.ident_input.mass" charge="$task.ident_input.charge" '$filename' >> tempfile.tab &&
@@ -139,20 +144,14 @@
         ]]></token>
     </macros>
     <requirements>
-        <requirement type="package" version="2.7.9">python</requirement>
-        <requirement type="package" version="0.7.7">pymzml</requirement>
-        <requirement type="package" version="0.20.3">pandas</requirement>
-        <requirement type="package" version="1.13.3">numpy</requirement>
-		<requirement type="package" version="0.18">scikit-learn</requirement>
-        <requirement type="package" version="3.11.1">simplejson</requirement>
-        <requirement type="package" version="4.2.1">mono</requirement>
+        <requirement type="package" version="1.2">moff</requirement>
     </requirements>
     <command detect_errors="aggressive"><![CDATA[
         mkdir ./out &&
         #if ($task.task_selector == "moff"):
             @WRANGLE_IDENT_INPUT_SINGLE@
             @WRANGLE_RAW_INPUT_SINGLE@
-            $__tool_directory__/moFF/moff.py
+            moff.py
                 @IDENT_INPUT_ARG_SINGLE@
                 @RAW_INPUT_ARG_SINGLE@
                 --tol $task.tol
@@ -171,32 +170,32 @@
             mv ./out/*.log '$output_logs'
         #else if ($task.task_selector == "mbr"):
            @WRANGLE_IDENT_INPUT_MULTIPLE@
-           $__tool_directory__/moFF/moff_mbr.py  
+           moff_mbr.py
                 --inputF ./ident_inputs
-                --ext tabular 
+                --ext $task.ext
            && 
-           mv ./ident_inputs/mbr_output/* out
+           mv ./ident_inputs/mbr_output/* ./out
         #else:
-            ## moff_all (mbr followed by apex)
-            @WRANGLE_IDENT_INPUT_MULTIPLE@
-            @WRANGLE_RAW_INPUT_MULTIPLE@
-            $__tool_directory__/moFF/moff_all.py
-                @IDENT_INPUT_ARG_MULTIPLE@
-                @RAW_INPUT_ARG_MULTIPLE@
-                --tol $task.tol
-                --rt_w $task.rt_w
-                --rt_p $task.rt_p
-                --rt_p_match $task.rt_p_match
-                --output_folder ./out
-                --ext txt 
-                #if ($task.peptide_summary):
-                    --peptide_summary 1 
-                #end if
-            &&
-            #if ($task.peptide_summary):
-                mv ./out/peptide_summary_intensity_moFF_run.tab '$output_peptide_summary' &&
-            #end if
-            echo 'other results go here' 
+           ## moff_all (mbr followed by apex)
+           @WRANGLE_IDENT_INPUT_MULTIPLE@
+           @WRANGLE_RAW_INPUT_MULTIPLE@
+           moff_all.py
+               @IDENT_INPUT_ARG_MULTIPLE@
+               @RAW_INPUT_ARG_MULTIPLE@
+               --tol $task.tol
+               --rt_w $task.rt_w
+               --rt_p $task.rt_p
+               --rt_p_match $task.rt_p_match
+               --output_folder ./out
+               --ext txt
+               #if ($task.peptide_summary):
+                   --peptide_summary 1
+               #end if
+           &&
+           #if ($task.peptide_summary):
+               mv ./out/peptide_summary_intensity_moFF_run.tab '$output_peptide_summary' &&
+           #end if
+           echo 'other results go here'
         #end if
     ]]></command>
     <inputs>
@@ -220,6 +219,8 @@
                 <param argument="--peptide_summary" type="boolean" value="true" label="Output the peptide summary?"/>
             </when>
             <when value="mbr">
+                <expand macro="ident_input_macro" allow_multiple="true"/>
+                <param argument="--ext" type="text" size="30" value="tab" label="Provide the extension used in the display file name (without the period)"/>
             </when>
             <when value="all">
                 <expand macro="ident_input_macro" allow_multiple="true"/>
@@ -248,6 +249,7 @@
         </data>
     </outputs>
     <tests>
+        <!-- test moff_all -->
         <test>
             <param name="task_selector" value="all"/>
             <param name="input_type_selector" value="ps"/>
@@ -256,8 +258,9 @@
             <param name="peptide_summary" value="true"/>
             <output name="output_peptide_summary" ftype="tabular" file="output1/moff_mbr_test_pepsum.tab"/>
         </test>
+        <!-- test moff alone -->
         <test>
-            <param name="task" value="moff"/>
+            <param name="task_selector" value="moff"/>
             <param name="input_type_selector" value="ps"/>
             <param name="psm_input" value="input/test.tabular" ftype="tabular"/>
             <param name="msms_input" value="mzml"/>
@@ -265,10 +268,12 @@
             <param name="peptide_summary" value="true"/>
             <output name="output_peptide_summary" ftype="tabular" file="output2/moff_test_pepsum.tab"/>
         </test>
+        <!-- test the generic input -->
         <test>
-            <param name="task" value="moff"/>
+            <param name="task_selector" value="moff"/>
             <param name="input_type_selector" value="generic"/>
             <param name="generic_input" value="input/test.tabular" ftype="tabular"/>
+            <param name="remove_header" value="true"/>
             <param name="msms_input" value="mzml"/>
             <param name="inputraw" value="input/test.mzml" ftype="mzml"/>
             <param name="peptide" value="3"/>
@@ -280,6 +285,17 @@
             <param name="charge" value="15"/>
             <param name="peptide_summary" value="true"/>
             <output name="output_peptide_summary" ftype="tabular" file="output2/moff_test_pepsum.tab"/>
+        </test>
+        <!-- test mbr -->
+        <test>
+            <param name="task_selector" value="mbr"/>
+            <param name="input_type_selector" value="ps"/>
+            <param name="psm_input" value="input/mbr_test1.tabular,input/mbr_test2.tabular" ftype="tabular"/>
+            <param name="ext" value="tabular"/>
+            <output name="output_table">
+                <discovered_dataset designation="mbr_test1_match" file="input/mbr_output/mbr_test1_match.txt"/>
+                <discovered_dataset designation="mbr_test2_match" file="input/mbr_output/mbr_test2_match.txt"/>
+            </output>
         </test>
     </tests>
     <help>
