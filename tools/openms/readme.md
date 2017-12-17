@@ -117,7 +117,14 @@ Generating OpenMS wrappers
     [...]
     ]]>
     ```
-    
+ 
+ * In Xtandem Converter and probably in others:
+ 
+    ```
+    #if str($param_missed_cleavages) != '':
+    ```
+    This is because integers needs to be compared as string otherwise `0` becomes `false`.
+ 
  * In `MetaProSIP.xml` add `R` as a requirement:
  
    ```
