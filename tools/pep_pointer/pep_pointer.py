@@ -7,7 +7,6 @@
 # 
 
 import re
-import os
 
 
 def main():
@@ -160,11 +159,8 @@ def main():
         infh = open(inputFile[2], "r")
         # infh = open("Mouse_Data_All_peptides_withNewDBs.txt", "r")
         data = infh.readlines()
-        # change the output file - instead of classified, just append txt
-        #outfh = open(os.path.splitext(inputFile[2])[0] + "_classified.txt", "w")
+        # output file
         outfh = open(inputFile[3], 'w')
-
-
         # outfh = open("classified_1_Mouse_Data_All_peptides_withNewDBs.txt", "w")
     
         for each in data:
