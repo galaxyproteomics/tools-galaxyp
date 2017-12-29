@@ -1,5 +1,5 @@
-<tool id="proteomics_moff" name="moFF: A modest Feature Finder" version="@VERSION@">
-    <description>extracts MS1 intensities from Thermo raw files</description>
+<tool id="proteomics_moff" name="moFF" version="@VERSION@">
+    <description>extracts MS1 intensities from spectrum files</description>
     <macros>
         <token name="@VERSION@">1.2</token>
         <!-- xml macros, used for shared Galaxy parameter inputs -->
@@ -16,7 +16,7 @@
                     <when value="generic">
                         <param name="ident_input_file" type="@INPUT_TYPE@" format="tabular" label="A general tabular format" multiple="@ALLOW_MULTIPLE@"
                             help="Must have specific columns; see below to select these columns from your file. The file should have at most one header line. "/>
-                        <param name="remove_header" type="boolean" value="false" label="Does the file have a header line?"/>
+                        <param name="remove_header" type="boolean" value="false" label="Remove the header line?" help="This is necessary if the file has a line with column headers"/>
                         <param name="peptide"
                             type="data_column"
                             data_ref="ident_input_file"
@@ -163,11 +163,7 @@
                 --inputF ./ident_inputs
                 --ext $task.ext
            &&
-           ls ident_inputs/mbr_output
-           ##import glob
-           ##for $f,$key in zip(glob.glob("./ident_inputs/mbr_output/*.txt"),$ident_output.keys()):
-           ##     cat "$f" > "$ident_output[$key]";
-           ##end for
+           mv ./ident_inputs/mbr_output/* ./out
         #else:
            ## moff_all (mbr followed by apex)
            @WRANGLE_IDENT_INPUT_MULTIPLE@
@@ -188,7 +184,7 @@
            #if $task.peptide_summary:
                mv ./out/peptide_summary_intensity_moFF_run.tab '$output_peptide_summary' &&
            #end if
-           echo 'other results go here'
+           echo -ne
         #end if
     ]]></command>
     <inputs>
@@ -231,33 +227,48 @@
         </conditional> 
     </inputs>
     <outputs>
-        <data format="tabular" name="output_table">
+        <data format="tabular" name="output_table" label="${tool.name} quantification: ${on_string}">
             <filter>task['task_selector']=='moff'</filter>
         </data>
-        <data format="txt" name="output_logs" >
+        <data format="txt" name="output_logs" label="${tool.name} log: ${on_string}">
             <filter>task['task_selector']=='moff'</filter>
         </data>
-        <data format="tabular" name="output_peptide_summary">
+        <collection name="ident_output" type="list" label="${tool.name} quantification: ${on_string}">
+            <filter>task['task_selector']=='all' or task['task_selector']=='mbr'</filter>
+            <!--discover datasets method -->
+            <discover_datasets pattern="(?P&lt;designation&gt;.*)\.txt" directory="out" format="tabular"/>
+        </collection>
+        <collection name="log_output" type="list" label="${tool.name} logs: ${on_string}">
+            <filter>task['task_selector']=='all' or task['task_selector']=='mbr'</filter>
+            <discover_datasets pattern="(?P&lt;designation&gt;.*)\.log" directory="out" format="txt"/>
+        </collection>
+        <data format="tabular" name="output_peptide_summary" label="${tool.name} peptide summary: ${on_string}">
             <filter>task['peptide_summary']</filter>
         </data>
-        <collection name="ident_output" type="list">
-            <filter>task['task_selector'] == 'all' or task['task_selector']=='mbr'</filter>
-            <!--discover datasets method -->
-            <discover_datasets pattern="(?P&lt;designation&gt;.*)\.txt" directory="ident_inputs/mbr_output" visible="true"/>
-        </collection>
     </outputs>
     <tests>
         <!-- test moff_all -->
-        <!--<test>
+        <test>
             <param name="task_selector" value="all"/>
             <param name="input_type_selector" value="ps"/>
-            <param name="ident_input_file" value="input/mbr_test1.tabular,input/mbr_test2.tabular" ftype="tabular"/>
+            <param name="ident_input_file">
+                <collection type="list">
+                    <element name="mbr_test1" value="input/mbr_test1.tabular"/>
+                    <element name="mbr_test2" value="input/mbr_test2.tabular"/>
+                </collection>
+            </param>
             <param name="inputraw" value="input/mbr_test1.mzml,input/mbr_test2.mzml" ftype="mzml"/>
+            <param name="inputraw">
+                <collection type="list">
+                    <element name="mbr_test1" value="input/mbr_test1.mzml"/>
+                    <element name="mbr_test2" value="input/mbr_test2.mzml"/>
+                </collection>
+            </param>
             <param name="peptide_summary" value="true"/>
             <output name="output_peptide_summary" ftype="tabular" file="output1/moff_mbr_test_pepsum.tab"/>
-        </test>-->
+        </test>
         <!-- test moff alone -->
-        <!--<test>
+        <test>
             <param name="task_selector" value="moff"/>
             <param name="input_type_selector" value="ps"/>
             <param name="ident_input_file" value="input/test.tabular" ftype="tabular"/>
@@ -265,9 +276,9 @@
             <param name="inputraw" value="input/test.mzml" ftype="mzml"/>
             <param name="peptide_summary" value="true"/>
             <output name="output_peptide_summary" ftype="tabular" file="output2/moff_test_pepsum.tab"/>
-        </test>-->
+        </test>
         <!-- test the generic input -->
-        <!--<test>
+        <test>
             <param name="task_selector" value="moff"/>
             <param name="input_type_selector" value="generic"/>
             <param name="ident_input_file" value="input/test.tabular" ftype="tabular"/>
@@ -283,7 +294,7 @@
             <param name="charge" value="15"/>
             <param name="peptide_summary" value="true"/>
             <output name="output_peptide_summary" ftype="tabular" file="output2/moff_test_pepsum.tab"/>
-        </test>-->
+        </test>
         <!-- test mbr -->
         <test>
             <param name="task_selector" value="mbr"/>
@@ -305,41 +316,53 @@
     <![CDATA[
 **Description**
 
-moFF is an OS independent tool designed to extract 
-apex MS1 intensity using a set of identified MS2 peptides. 
-It currently uses a Go library to directly extract data from Thermo Raw spectrum files, 
-eliminating the need for conversions from other formats. 
-Moreover, moFF also allows to work directly with mzML files.
+moFF (a Modest Feature Finder) is an OS independent tool designed to extract
+apex MS1 intensity using a set of identified MS2 peptides.
+It currently uses a Go library to directly extract data from Thermo Raw spectrum files,
+eliminating the need for conversions from other formats.
+Moreover, moFF also allows one to work directly with mzML files.
 
 **Usage**
 
-Modules: 
+*Modules:*
 
 1. Apex Intensity: this is used for a single pair of files, one identification and one spectrum file. 
-2. Match between runs: for multiple identification files, share MS2 identified peptides between runs and predict the retention time. 
-3. All (match between runs followed by apex intensity): this is used for more than one pair of identification and spectrum files. 
+2. Match between runs (MBR): for multiple identification files, share MS2 identified peptides between runs and predict the retention time.
+3. All (match between runs followed by apex intensity): this is used for more than one pair of identification and spectrum files.
 
-If both match between runs and apex intensity are desired, it is best to run them both at once (run the 'All' module). 
+If both match between runs and apex intensity are desired, it is best to run them both at once (i.e., run the 'All' module).
+The MBR module is mainly useful for observing the intermediate steps of the algorithm - its outputs are not able to be used as inputs in moFF or in other tools.
 
 
-Inputs:
+*Inputs:*
 
 - Identification file: this can either be a generic tabular file or the standard PSM report from PeptideShaker.
-  If it is a generic tabular file, please select the columns corresponding to the required information. 
+  If it is a generic tabular file, please select the columns corresponding to the required information.
 
 - MS/MS file: this can either be a Thermo raw file or an mzML file.
 
-A given pair of files must have the *exact* same display name, not including the extension; 
+A given pair of files must have the *exact* same display name, not including the extension;
 e.g. ``example1.tabular`` and ``example1.mzml``.
-If the display names are different, simply change them in the history menu.  
+If the display names are different, simply change them in the history menu.
 
-Parameters: 
+For multiple files (the MBR or All modules), the identification and spectrum files must be provided as dataset collections.
+This allows for usage of the output dataset collections in workflows.
 
-All the parameters related to the the time windows (``rt_w``, ``rt_p``, ``rt_p_match``) are basically the 
+*Parameters:*
+
+All the parameters related to the the time windows (``rt_w``, ``rt_p``, ``rt_p_match``) are basically the
 half of the entire time windows where the apex peak is searched or the XIC is retrieved.
-For correct rt windows, we suggest you set the ``rt_p`` value equal to or slighly greater than the 
-dynamic exclusion duration set in your machine. We suggest also to set the 
-``rt_p_match`` always slightly bigger than tha values used for ``rt_p``. 
+For correct rt windows, we suggest you set the ``rt_p`` value equal to or slighly greater than the
+dynamic exclusion duration set in your machine. We suggest also to set the
+``rt_p_match`` always slightly bigger than tha values used for ``rt_p``.
+
+*Outputs:*
+
+When used in the single file mode ("Apex intensity" module), the outputs are 2 (or 3) files: a log file, a quantitation file,
+and (optionally) a peptide summary, with intensities aggregated across peptides. When used in the multiple file mode ("All"),
+the outputs are a dataset collection of log files (one per identification file), a dataset collection of quantification files, and (optionally) a peptide summary.
+
+If used with a generic tabular format, the only columns in the output file are the 7 columns selected while using moFF plus the columns that moFF adds. Other columns are discarded.
 
 **More Information**
 
