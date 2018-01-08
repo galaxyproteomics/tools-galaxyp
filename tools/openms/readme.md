@@ -171,7 +171,8 @@ Generating OpenMS wrappers
     ```
     
 
- * These tools have multiple outputs (number of inputs = number of outputs) which is not yet supported in Galaxy-stable and are therefore in `SKIP_TOOLS_FILES.txt`:
+ * These tools have multiple outputs (number of inputs = number of outputs) which is not yet supported in
+   by the automatic conversion step and are therefore in `SKIP_TOOLS_FILES.txt`:
     * SeedListGenerator
     * SpecLibSearcher
     * MapAlignerIdentification
