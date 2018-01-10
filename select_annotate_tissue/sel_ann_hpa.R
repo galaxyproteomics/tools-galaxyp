@@ -136,7 +136,7 @@ main <- function() {
   output = args$output
   
   # Calculation
-  HPA_normal_tissue = read.table(args$ref_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
+  HPA_normal_tissue = read.table(args$ref_file, header = TRUE, sep = ",", stringsAsFactors = FALSE, fill = TRUE)
   res = annot.HPAnorm(input, HPA_normal_tissue, tissue, level, reliability, not_mapped_option)
   
   # Write output
