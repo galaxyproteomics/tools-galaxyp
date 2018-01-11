@@ -54,7 +54,7 @@ mapping = function() {
     human_id_mapping_file = args[6]
     
     # Extract ID maps
-    human_id_map = read.table(human_id_mapping_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings = TRUE)
+    human_id_map = read.table(human_id_mapping_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings = "")
     
     # Extract input IDs
     if (list_id_input_type == "list") {
