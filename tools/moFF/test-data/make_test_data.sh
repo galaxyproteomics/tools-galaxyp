@@ -2,8 +2,8 @@
 
 #must be run within tools-galaxyp/tools/moFF/test-data
 
-conda create -n mofftestdata moff
-source activate mofftestdata
+conda create -y -n tempmoff moff=1.2.1
+source activate tempmoff
 
 moff_all.py --inputtsv input/mbr_test1.tabular input/mbr_test2.tabular \
     --inputraw input/mbr_test1.mzml input/mbr_test2.mzml \
@@ -39,3 +39,6 @@ rm output1/*.log output2/*.log
 
 # peptide summary for all
 rm output1/peptide_summary_intensity_moFF_run.tab
+
+source deactivate tempmoff
+conda env remove -y -n tempmoff
