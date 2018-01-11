@@ -5,11 +5,15 @@ readfile = function(filename, header) {
     headers <- read.table(filename, nrows = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
     #Read the data of the files (skipping the first row)
     file <- read.table(filename, skip = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
+    # Remove empty rows
+    file <- file[!apply(is.na(file) | file == "", 1, all),]
     #And assign the header to the data
     names(file) <- headers
   }
   else {
     file <- read.table(filename, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
+    # Remove empty rows
+    file <- file[!apply(is.na(file) | file == "", 1, all),]
   }
   return(file)
 }
@@ -50,7 +54,7 @@ mapping = function() {
     human_id_mapping_file = args[6]
     
     # Extract ID maps
-    human_id_map = read.table(human_id_mapping_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
+    human_id_map = read.table(human_id_mapping_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings = TRUE)
     
     # Extract input IDs
     if (list_id_input_type == "list") {
