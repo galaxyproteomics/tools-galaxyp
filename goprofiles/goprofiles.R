@@ -248,7 +248,7 @@ goprofiles = function() {
   #c(profile.ALL, profile.CC, profile.MF, profile.BP)
     
   if ("CC" %in% ontoopt) {
-    write.table(profile.CC, text_output, append = TRUE, sep="\t", quote=FALSE)
+    write.table(profile.CC, text_output, append = TRUE, sep="\t", row.names = FALSE, quote=FALSE)
     if (grepl("PNG", plotopt)) {
       plotPNG(profile.CC=profile.CC, per=per, title=title)
     }
@@ -260,7 +260,7 @@ goprofiles = function() {
     }
   }
   if ("MF" %in% ontoopt) {
-    write.table(profile.MF, text_output, append = TRUE, sep="\t", quote=FALSE)
+    write.table(profile.MF, text_output, append = TRUE, sep="\t", row.names = FALSE, quote=FALSE)
     if (grepl("PNG", plotopt)) {
       plotPNG(profile.MF = profile.MF, per=per, title=title)
     }
@@ -272,7 +272,7 @@ goprofiles = function() {
     }
   }
   if ("BP" %in% ontoopt) {
-    write.table(profile.BP, text_output, append = TRUE, sep="\t", quote=FALSE)
+    write.table(profile.BP, text_output, append = TRUE, sep="\t", row.names = FALSE, quote=FALSE)
     if (grepl("PNG", plotopt)) {
       plotPNG(profile.BP = profile.BP, per=per, title=title)
     }
