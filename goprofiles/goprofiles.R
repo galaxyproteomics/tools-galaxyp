@@ -171,6 +171,121 @@ plotPDF = function(profile.CC = NULL, profile.BP = NULL, profile.MF = NULL, prof
   }
 }
 
+main = function() {
+  args <- commandArgs(TRUE)
+  if(length(args)<1) {
+    args <- c("--help")
+  }
+  
+  # Help section
+  if("--help" %in% args) {
+    cat("Selection and Annotation HPA
+    Arguments:
+        --ref_file: HPA normal tissue file path
+        --input_type: type of input (list of id or filename)
+        --input: input
+        --column_number: the column number which you would like to apply...
+        --header: true/false if your file contains a header
+        --tissue: list of tissues
+        --level: Not detected, Low, Medium, High
+        --reliability: Supportive, Uncertain
+        --not_mapped: true/false if your output file should contain not-mapped and not-match IDs 
+        --output: output filename \n")
+    q(save="no")
+  }
+  
+  # Parse arguments
+  parseArgs <- function(x) strsplit(sub("^--", "", x), "=")
+  argsDF <- as.data.frame(do.call("rbind", parseArgs(args)))
+  args <- as.list(as.character(argsDF$V2))
+  names(args) <- argsDF$V1
+
+  input_type = args$input_type
+  if (input_type == "text") {
+    input = args$input
+  }
+  else if (input_type == "file") {
+    filename = args$input
+    ncol = args$ncol
+    # Check ncol
+    if (! as.numeric(gsub("c", "", ncol)) %% 1 == 0) {
+      stop("Please enter an integer for level")
+    }
+    else {
+      ncol = as.numeric(gsub("c", "", ncol))
+    }
+    header = args$header
+    # Get file content
+    file = readfile(filename, header)
+    # Extract Protein IDs list
+    input = c()
+    for (row in as.character(file[,ncol])) {
+      input = c(input, strsplit(row, ";")[[1]][1])
+    }
+  }
+  id_type = args$id_type
+  ontoopt = strsplit(args$onto_opt, ",")[[1]]
+  #print(ontoopt)
+  #plotopt = strsplit(args[3], ",")
+  plotopt = args$plot_opt
+  level = args$level
+  per = as.logical(args$per)
+  title = args$title
+  duplicate = args$duplicate
+  text_output = args$text_output
+
+  profiles = getprofile(input, id_type, level, duplicate)
+  profile.CC = profiles[1]
+  #print(profile.CC)
+  profile.MF = profiles[2]
+  #print(profile.MF)
+  profile.BP = profiles[3]
+  #print(profile.BP)
+  profile.ALL = profiles[-3:-1]
+  #print(profile.ALL)
+  #c(profile.ALL, profile.CC, profile.MF, profile.BP)
+    
+  if ("CC" %in% ontoopt) {
+    write.table("Profile CC", text_output, append = TRUE, sep="\t", quote=FALSE)
+    write.table(profile.CC, text_output, append = TRUE, sep="\t", quote=FALSE)
+    if (grepl("PNG", plotopt)) {
+      plotPNG(profile.CC=profile.CC, per=per, title=title)
+    }
+    if (grepl("JPEG", plotopt)) {
+      plotJPEG(profile.CC = profile.CC, per=per, title=title)
+    }
+    if (grepl("PDF", plotopt)) {
+      plotPDF(profile.CC = profile.CC, per=per, title=title)
+    }
+  }
+  if ("MF" %in% ontoopt) {
+    write.table("Profile MF", text_output, append = TRUE, sep="\t", quote=FALSE)
+    write.table(profile.MF, text_output, append = TRUE, sep="\t", quote=FALSE)
+    if (grepl("PNG", plotopt)) {
+      plotPNG(profile.MF = profile.MF, per=per, title=title)
+    }
+    if (grepl("JPEG", plotopt)) {
+      plotJPEG(profile.MF = profile.MF, per=per, title=title)
+    }
+    if (grepl("PDF", plotopt)) {
+      plotPDF(profile.MF = profile.MF, per=per, title=title)
+    }
+  }
+  if ("BP" %in% ontoopt) {
+    write.table("Profile BP", text_output, append = TRUE, sep="\t", quote=FALSE)
+    write.table(profile.BP, text_output, append = TRUE, sep="\t", quote=FALSE)
+    if (grepl("PNG", plotopt)) {
+      plotPNG(profile.BP = profile.BP, per=per, title=title)
+    }
+    if (grepl("JPEG", plotopt)) {
+      plotJPEG(profile.BP = profile.BP, per=per, title=title)
+    }
+    if (grepl("PDF", plotopt)) {
+      plotPDF(profile.BP = profile.BP, per=per, title=title)
+    }
+  }
+}
+
 goprofiles = function() {
   args = commandArgs(trailingOnly = TRUE)
   #print(args)
@@ -222,7 +337,9 @@ goprofiles = function() {
     profile.ALL = profiles[-3:-1]
     #print(profile.ALL)
     #c(profile.ALL, profile.CC, profile.MF, profile.BP)
+    
     if ("CC" %in% ontoopt) {
+      #write.table("Profile CC", )
       if (grepl("PNG", plotopt)) {
         plotPNG(profile.CC=profile.CC, per=per, title=title)
       }
@@ -255,20 +372,10 @@ goprofiles = function() {
         plotPDF(profile.BP = profile.BP, per=per, title=title)
       }
     }
-    
-    #if (grepl("PNG", plotopt)) {
-    # plotPNG(profile.ALL = profile.ALL, per=per, title=title)
-    #}
-    #if (grepl("JPEG", plotopt)) {
-    # plotJPEG(profile.ALL = profile.ALL, per=per, title=title)
-    #}
-    #if (grepl("PDF", plotopt)) {
-    # plotPDF(profile.ALL = profile.ALL, per=per, title=title)
-    #}
   }
-  
 }
 
-goprofiles()
+#goprofiles()
+main()
 
 #Rscript go.R ../proteinGroups_Maud.txt "1" "CC" "PDF" 2 "TRUE" "Title"
