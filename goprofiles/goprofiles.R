@@ -171,7 +171,7 @@ plotPDF = function(profile.CC = NULL, profile.BP = NULL, profile.MF = NULL, prof
   }
 }
 
-main = function() {
+goprofiles = function() {
   args <- commandArgs(TRUE)
   if(length(args)<1) {
     args <- c("--help")
@@ -181,16 +181,18 @@ main = function() {
   if("--help" %in% args) {
     cat("Selection and Annotation HPA
     Arguments:
-        --ref_file: HPA normal tissue file path
         --input_type: type of input (list of id or filename)
         --input: input
-        --column_number: the column number which you would like to apply...
+        --ncol: the column number which you would like to apply...
         --header: true/false if your file contains a header
-        --tissue: list of tissues
-        --level: Not detected, Low, Medium, High
-        --reliability: Supportive, Uncertain
-        --not_mapped: true/false if your output file should contain not-mapped and not-match IDs 
-        --output: output filename \n")
+        --id_type: the type of input IDs (UniProt/EntrezID)
+        --onto_opt: ontology options
+        --plot_opt: plot extension options (PDF/JPEG/PNG)
+        --level: 1-3
+        --per
+        --title: title of the plot
+        --duplicate: remove dupliate input IDs (true/false)
+        --text_output: text output filename \n")
     q(save="no")
   }
   
@@ -283,96 +285,4 @@ main = function() {
   }
 }
 
-goprofiles = function() {
-  args = commandArgs(trailingOnly = TRUE)
-  #print(args)
-  # arguments: filename.R inputfile ncol "CC,MF,BP,ALL" "PNG,JPEG,PDF" level "TRUE"(percentage) "Title"
-  if (length(args) != 9) {
-    stop("Not enough/Too many arguments", call. = FALSE)
-  }
-  else {
-    input_type = args[2]
-    if (input_type == "text") {
-      input = strsplit(args[1], "\\s+")[[1]]
-    }
-    else if (input_type == "file") {
-      filename = strsplit(args[1], ",")[[1]][1]
-      ncol = strsplit(args[1], ",")[[1]][2]
-      # Check ncol
-      if (! as.numeric(gsub("c", "", ncol)) %% 1 == 0) {
-        stop("Please enter an integer for level")
-      }
-      else {
-        ncol = as.numeric(gsub("c", "", ncol))
-      }
-      header = strsplit(args[1], ",")[[1]][3]
-      # Get file content
-      file = readfile(filename, header)
-      # Extract Protein IDs list
-      input = c()
-      for (row in as.character(file[,ncol])) {
-        input = c(input, strsplit(row, ";")[[1]][1])
-      }
-    }
-    id_type = args[3]
-    ontoopt = strsplit(args[4], ",")[[1]]
-    #print(ontoopt)
-    #plotopt = strsplit(args[3], ",")
-    plotopt = args[5]
-    level = args[6]
-    per = as.logical(args[7])
-    title = args[8]
-    duplicate = args[9]
-
-    profiles = getprofile(input, id_type, level, duplicate)
-    profile.CC = profiles[1]
-    #print(profile.CC)
-    profile.MF = profiles[2]
-    #print(profile.MF)
-    profile.BP = profiles[3]
-    #print(profile.BP)
-    profile.ALL = profiles[-3:-1]
-    #print(profile.ALL)
-    #c(profile.ALL, profile.CC, profile.MF, profile.BP)
-    
-    if ("CC" %in% ontoopt) {
-      #write.table("Profile CC", )
-      if (grepl("PNG", plotopt)) {
-        plotPNG(profile.CC=profile.CC, per=per, title=title)
-      }
-      if (grepl("JPEG", plotopt)) {
-        plotJPEG(profile.CC = profile.CC, per=per, title=title)
-      }
-      if (grepl("PDF", plotopt)) {
-        plotPDF(profile.CC = profile.CC, per=per, title=title)
-      }
-    }
-    if ("MF" %in% ontoopt) {
-      if (grepl("PNG", plotopt)) {
-        plotPNG(profile.MF = profile.MF, per=per, title=title)
-      }
-      if (grepl("JPEG", plotopt)) {
-        plotJPEG(profile.MF = profile.MF, per=per, title=title)
-      }
-      if (grepl("PDF", plotopt)) {
-        plotPDF(profile.MF = profile.MF, per=per, title=title)
-      }
-    }
-    if ("BP" %in% ontoopt) {
-      if (grepl("PNG", plotopt)) {
-        plotPNG(profile.BP = profile.BP, per=per, title=title)
-      }
-      if (grepl("JPEG", plotopt)) {
-        plotJPEG(profile.BP = profile.BP, per=per, title=title)
-      }
-      if (grepl("PDF", plotopt)) {
-        plotPDF(profile.BP = profile.BP, per=per, title=title)
-      }
-    }
-  }
-}
-
-#goprofiles()
-main()
-
-#Rscript go.R ../proteinGroups_Maud.txt "1" "CC" "PDF" 2 "TRUE" "Title"
+goprofiles()
