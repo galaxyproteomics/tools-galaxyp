@@ -12,6 +12,8 @@
 #------------------------------------------------------------------------------
 """
 
+from __future__ import print_function
+
 import argparse
 import re
 import sys
@@ -49,7 +51,6 @@ def __main__():
     parser.add_argument('-v', '--verbose', action='store_true', help='Verbose')
     parser.add_argument('-d', '--debug', action='store_true', help='Debug')
     args = parser.parse_args()
-    # print >> sys.stderr, "args: %s" % args
     species = args.species
     out_wtr = open(args.output, 'w') if args.output != '-' else sys.stdout
     biotypes = ';'.join(['biotype=%s' % bt.strip()
@@ -72,24 +73,24 @@ def __main__():
                             selected_regions[chrom] = []
                         selected_regions[chrom].append([start, end, strand])
         if args.debug:
-            print >> sys.stderr, "selected_regions: %s" % selected_regions
+            print("selected_regions: %s" % selected_regions, file=sys.stderr)
 
     def retrieve_region(species, ref, start, stop, strand):
         transcript_count = 0
-        regions = range(start, stop, max_region)
+        regions = list(range(start, stop, max_region))
         if not regions or regions[-1] < stop:
             regions.append(stop)
         for end in regions[1:]:
             bedlines = get_transcripts_bed(species, ref, start, end,
                                            strand=strand, params=biotypes)
             if args.debug:
-                print >> sys.stderr,\
-                    "%s\t%s\tstart: %d\tend: %d\tcDNA transcripts:%d"\
-                    % (species, ref, start, end, len(bedlines))
+                print("%s\t%s\tstart: %d\tend: %d\tcDNA transcripts:%d" %
+                      (species, ref, start, end, len(bedlines)),
+                      file=sys.stderr)
             # start, end, seq
             for i, bedline in enumerate(bedlines):
                 if args.debug:
-                    print >> sys.stderr, "%s\n" % (bedline)
+                    print("%s\n" % (bedline), file=sys.stderr)
                 if not args.ucsc_chrom_names:
                     bedline = re.sub('^[^\t]+', ref, bedline)
                 try:
@@ -100,8 +101,8 @@ def __main__():
                         out_wtr.write("\n")
                         out_wtr.flush()
                 except Exception as e:
-                    print >> sys.stderr,\
-                        "BED error (%s) : %s\n" % (e, bedline)
+                    print("BED error (%s) : %s\n" % (e, bedline),
+                          file=sys.stderr)
             start = end + 1
         return transcript_count
 
@@ -112,8 +113,8 @@ def __main__():
             length = coord_systems['chromosome'][ref]
             ref_lengths[ref] = length
             if args.toplevel:
-                print >> sys.stderr,\
-                    "%s\t%s\tlength: %d" % (species, ref, length)
+                print("%s\t%s\tlength: %d" % (species, ref, length),
+                      file=sys.stderr)
         if selected_regions:
             transcript_count = 0
             for ref in sorted(selected_regions.keys()):
@@ -129,10 +130,10 @@ def __main__():
                                                             strand)
                         if args.debug or args.verbose:
                             length = stop - start
-                            print >> sys.stderr,\
-                                "%s\t%s:%d-%d%s\tlength: %d\ttrancripts:%d"\
-                                % (species, ref, start, stop, strand,
-                                   length, transcript_count)
+                            print("%s\t%s:%d-%d%s\tlength: %d\ttrancripts:%d" %
+                                  (species, ref, start, stop, strand,
+                                   length, transcript_count),
+                                  file=sys.stderr)
         else:
             strand = ''
             start = 0
@@ -140,15 +141,14 @@ def __main__():
                 length = ref_lengths[ref]
                 transcript_count = 0
                 if args.debug:
-                    print >> sys.stderr,\
-                        "Retrieving transcripts: %s\t%s\tlength: %d"\
-                        % (species, ref, length)
+                    print("Retrieving transcripts: %s\t%s\tlength: %d" %
+                          (species, ref, length), file=sys.stderr)
                 transcript_count += retrieve_region(species, ref, start,
                                                     length, strand)
                 if args.debug or args.verbose:
-                    print >> sys.stderr,\
-                        "%s\t%s\tlength: %d\ttrancripts:%d"\
-                        % (species, ref, length, transcript_count)
+                    print("%s\t%s\tlength: %d\ttrancripts:%d" %
+                          (species, ref, length, transcript_count),
+                          file=sys.stderr)
 
 
 if __name__ == "__main__":
