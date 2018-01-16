@@ -105,8 +105,13 @@ def filter_keyword(MQfile, header, filtered_lines, ids, ncol, match):
                          "you would like to apply the filter "
                          "with valid format")
 
+    # Split list of filter IDs
     ids = ids.upper().split(":")
+    # Remove blank IDs
     [ids.remove(blank) for blank in ids if blank.isspace() or blank == ""]
+    # Remove space from 2 heads of IDs
+    ids = [id.strip() for id in ids]
+
 
     if header == "true":
         header = mq[0]
