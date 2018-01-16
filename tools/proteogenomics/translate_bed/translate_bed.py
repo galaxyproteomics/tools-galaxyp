@@ -12,6 +12,8 @@
 #------------------------------------------------------------------------------
 """
 
+from __future__ import print_function
+
 import argparse
 import re
 import sys
@@ -122,7 +124,7 @@ def __main__():
                             selected_regions[chrom] = []
                         selected_regions[chrom].append([start, end, strand])
         if args.debug:
-            print >> sys.stderr, "selected_regions: %s" % selected_regions
+            print("selected_regions: %s" % selected_regions, file=sys.stderr)
 
     def filter_by_regions(bed):
         if not selected_regions:
@@ -199,8 +201,8 @@ def __main__():
                     cds = bed.get_cds()
                     if cds:
                         if args.debug:
-                            print >> sys.stderr, "cdna:%s" % str(cdna)
-                            print >> sys.stderr, "cds: %s" % str(cds)
+                            print("cdna:%s" % str(cdna), file=sys.stderr)
+                            print("cds: %s" % str(cds), file=sys.stderr)
                         if len(cds) % 3 != 0:
                             cds = cds[:-(len(cds) % 3)]
                         refprot = translate(cds) if cds else None
@@ -224,11 +226,12 @@ def __main__():
                             return 1
                     return 0
             if args.debug:
-                print >> sys.stderr, "%s\n" % (str(bed))
-                print >> sys.stderr, "CDS: %s %d %d"\
-                    % (bed.strand, bed.cdna_offset_of_pos(bed.thickStart),
-                       bed.cdna_offset_of_pos(bed.thickEnd))
-                print >> sys.stderr, "refprot: %s" % str(refprot)
+                print("%s\n" % (str(bed)), file=sys.stderr)
+                print("CDS: %s %d %d" %
+                      (bed.strand, bed.cdna_offset_of_pos(bed.thickStart),
+                       bed.cdna_offset_of_pos(bed.thickEnd)),
+                      file=sys.stderr)
+                print("refprot: %s" % str(refprot), file=sys.stderr)
             for offset in range(3):
                 seqend = cdna_len - (cdna_len - offset) % 3
                 aaseq = translate(cdna[offset:seqend])
@@ -251,8 +254,8 @@ def __main__():
                                 break
                     is_cds = refprot and prot in refprot
                     if args.debug:
-                        print >> sys.stderr, "is_cds: %s %s"\
-                            % (str(is_cds), str(prot))
+                        print("is_cds: %s %s" % (str(is_cds), str(prot)),
+                              file=sys.stderr)
                     if len(prot) < args.min_length:
                         pass
                     elif not args.all and is_cds:
@@ -284,13 +287,12 @@ def __main__():
                 if filter_by_regions(bed):
                     translation_count += translate_bed(bed)
             except Exception as e:
-                print >> sys.stderr, "BED format Error: line %d: %s\n%s"\
-                    % (bedline, e)
+                print("BED format Error: line %d: %s\n%s"
+                      % (i, bedline, e), file=sys.stderr)
                 break
         if args.debug or args.verbose:
-            print >> sys.stderr,\
-                "transcripts: %d\ttranslations: %d"\
-                % (transcript_count, translation_count)
+            print("transcripts: %d\ttranslations: %d"
+                  % (transcript_count, translation_count), file=sys.stderr)
 
 
 if __name__ == "__main__":

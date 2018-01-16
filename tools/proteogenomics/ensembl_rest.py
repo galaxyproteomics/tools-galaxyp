@@ -12,6 +12,8 @@
 #------------------------------------------------------------------------------
 """
 
+from __future__ import print_function
+from __future__ import unicode_literals
 
 import sys
 
@@ -28,10 +30,10 @@ debug = False
 
 def ensembl_rest(ext, headers):
     if debug:
-        print >> sys.stderr, "%s" % ext
+        print("%s" % ext, file=sys.stderr)
     r = requests.get(server+ext, headers=headers)
     if r.status_code == 429:
-        print >> sys.stderr, "response headers: %s\n" % r.headers
+        print("response headers: %s\n" % r.headers, file=sys.stderr)
         if 'Retry-After' in r.headers:
             sleep(r.headers['Retry-After'])
             r = requests.get(server+ext, headers=headers)
@@ -47,12 +49,11 @@ def get_species():
     r = ensembl_rest(ext, req_header)
     for species in r.json()['species']:
         results[species['name']] = species
-        print >> sys.stdout,\
-            "%s\t%s\t%s\t%s\t%s"\
-            % (species['name'], species['common_name'],
+        print("%s\t%s\t%s\t%s\t%s" %
+              (species['name'], species['common_name'],
                species['display_name'],
                species['strain'],
-               species['taxon_id'])
+               species['taxon_id']), file=sys.stdout)
     return results
 
 

@@ -12,7 +12,10 @@
 #------------------------------------------------------------------------------
 """
 
+from __future__ import print_function
+
 import sys
+from builtins import str
 
 from Bio.Seq import reverse_complement, translate
 
@@ -45,6 +48,17 @@ def bed_from_line(line, ensembl=False, seq_column=None):
     return bed_entry
 
 
+def as_int_list(obj):
+    if obj is None:
+        return None
+    if isinstance(obj, list):
+        return [int(x) for x in obj]
+    elif isinstance(obj, str):
+        return [int(x) for x in obj.split(',')]
+    else:  # python2 unicode?
+        return [int(x) for x in str(obj).split(',')]
+
+
 class BedEntry(object):
     def __init__(self, chrom=None, chromStart=None, chromEnd=None,
                  name=None, score=None, strand=None,
@@ -60,18 +74,8 @@ class BedEntry(object):
         self.thickEnd = int(thickEnd) if thickEnd else self.chromEnd
         self.itemRgb = str(itemRgb) if itemRgb is not None else r'100,100,100'
         self.blockCount = int(blockCount)
-        if isinstance(blockSizes, str) or isinstance(blockSizes, unicode):
-            self.blockSizes = [int(x) for x in blockSizes.split(',')]
-        elif isinstance(blockSizes, list):
-            self.blockSizes = [int(x) for x in blockSizes]
-        else:
-            self.blockSizes = blockSizes
-        if isinstance(blockStarts, str) or isinstance(blockSizes, unicode):
-            self.blockStarts = [int(x) for x in blockStarts.split(',')]
-        elif isinstance(blockStarts, list):
-            self.blockStarts = [int(x) for x in blockStarts]
-        else:
-            self.blockStarts = blockStarts
+        self.blockSizes = as_int_list(blockSizes)
+        self.blockStarts = as_int_list(blockStarts)
         self.second_name = None
         self.cds_start_status = None
         self.cds_end_status = None
@@ -214,7 +218,7 @@ class BedEntry(object):
 
     def pos_of_cdna_offet(self, offset):
         if offset is not None and 0 <= offset < sum(self.blockSizes):
-            r = range(self.blockCount)
+            r = list(range(self.blockCount))
             rev = self.strand == '-'
             if rev:
                 r.reverse()
@@ -233,7 +237,7 @@ class BedEntry(object):
     def cdna_offset_of_pos(self, pos):
         if not self.chromStart <= pos < self.chromEnd:
             return -1
-        r = range(self.blockCount)
+        r = list(range(self.blockCount))
         rev = self.strand == '-'
         if rev:
             r.reverse()
@@ -248,19 +252,21 @@ class BedEntry(object):
     def apply_variant(self, pos, ref, alt):
         pos = int(pos)
         if not ref or not alt:
-            print >> sys.stderr, "variant requires ref and alt sequences"
+            print("variant requires ref and alt sequences", file=sys.stderr)
             return
         if not self.chromStart <= pos <= self.chromEnd:
-            print >> sys.stderr, "variant not in entry %s: %s %d < %d < %d"\
-                % (self.name, self.strand, self.chromStart, pos, self.chromEnd)
-            print >> sys.stderr, "%s" % str(self)
+            print("variant not in entry %s: %s %d < %d < %d" %
+                  (self.name, self.strand,
+                   self.chromStart, pos, self.chromEnd),
+                  file=sys.stderr)
+            print("%s" % str(self), file=sys.stderr)
             return
         if len(ref) != len(alt):
-            print >> sys.stderr, "variant only works for snp: %s  %s"\
-                % (ref, alt)
+            print("variant only works for snp: %s  %s" % (ref, alt),
+                  file=sys.stderr)
             return
         if not self.seq:
-            print >> sys.stderr, "variant entry %s has no seq" % self.name
+            print("variant entry %s has no seq" % self.name, file=sys.stderr)
             return
         """
         if self.strand  == '-':
@@ -274,27 +280,27 @@ class BedEntry(object):
             if offset is not None:
                 bases[offset+i] = alt[i]
             else:
-                print >> sys.stderr,\
-                    "variant offset %s: %s %d < %d < %d"\
-                    % (self.name, self.strand, self.chromStart,
-                       pos+1, self.chromEnd)
-                print >> sys.stderr, "%s" % str(self)
+                print("variant offset %s: %s %d < %d < %d" %
+                      (self.name, self.strand, self.chromStart,
+                       pos+1, self.chromEnd), file=sys.stderr)
+                print("%s" % str(self), file=sys.stderr)
         self.seq = ''.join(bases)
         self.variants.append("g.%d%s>%s" % (pos+1, ref, alt))
 
     def get_variant_bed(self, pos, ref, alt):
         pos = int(pos)
         if not ref or not alt:
-            print >> sys.stderr, "variant requires ref and alt sequences"
+            print("variant requires ref and alt sequences", file=sys.stderr)
             return None
         if not self.chromStart <= pos <= self.chromEnd:
-            print >> sys.stderr,\
-                "variant not in entry %s: %s %d < %d < %d"\
-                % (self.name, self.strand, self.chromStart, pos, self.chromEnd)
-            print >> sys.stderr, "%s" % str(self)
+            print("variant not in entry %s: %s %d < %d < %d" %
+                  (self.name, self.strand,
+                   self.chromStart, pos, self.chromEnd),
+                  file=sys.stderr)
+            print("%s" % str(self), file=sys.stderr)
             return None
         if not self.seq:
-            print >> sys.stderr, "variant entry %s has no seq" % self.name
+            print("variant entry %s has no seq" % self.name, file=sys.stderr)
             return None
         tbed = BedEntry(chrom=self.chrom,
                         chromStart=self.chromStart, chromEnd=self.chromEnd,
@@ -330,8 +336,8 @@ class BedEntry(object):
         chromStart = self.chromStart
         chromEnd = self.chromEnd
         if debug:
-            print >> sys.stderr, "%s" % (str(self))
-        r = range(self.blockCount)
+            print("%s" % (str(self)), file=sys.stderr)
+        r = list(range(self.blockCount))
         if self.strand == '-':
             r.reverse()
         bStart = 0
@@ -353,10 +359,9 @@ class BedEntry(object):
                     chromStart = self.chromStart + self.blockStarts[x] +\
                         self.blockSizes[x] - (tstop - bStart)
             if debug:
-                print >> sys.stderr,\
-                    "%3d %s\t%d\t%d\t%d\t%d\t%d\t%d"\
-                    % (x, self.strand, bStart, bEnd,
-                       tstart, tstop, chromStart, chromEnd)
+                print("%3d %s\t%d\t%d\t%d\t%d\t%d\t%d" %
+                      (x, self.strand, bStart, bEnd,
+                       tstart, tstop, chromStart, chromEnd), file=sys.stderr)
             bStart += self.blockSizes[x]
         return(chromStart, chromEnd)
 
@@ -409,7 +414,7 @@ class BedEntry(object):
         splice_sites = [sum(exon_sizes[:x]) / 3
                         for x in range(1, len(exon_sizes))]
         if debug:
-            print >> sys.stderr, "splice_sites: %s" % splice_sites
+            print("splice_sites: %s" % splice_sites, file=sys.stderr)
         junc = splice_sites[0] if len(splice_sites) > 0 else exon_sizes[0]
         if seq:
             for i in range(3):
@@ -419,9 +424,10 @@ class BedEntry(object):
                     tstop = len(translation)
                     offset = (block_sum - i) % 3
                     if debug:
-                        print >> sys.stderr,\
-                            "frame: %d\ttstart: %d  tstop: %d  offset: %d\t%s"\
-                            % (i, tstart, tstop, offset, translation)
+                        print("frame: %d\ttstart: %d  tstop: %d  " +
+                              "offset: %d\t%s" %
+                              (i, tstart, tstop, offset, translation),
+                              file=sys.stderr)
                     if not untrimmed:
                         tstart = translation.rfind('*', 0, junc) + 1
                         stop = translation.find('*', junc)
@@ -429,9 +435,10 @@ class BedEntry(object):
                     offset = (block_sum - i) % 3
                     trimmed = translation[tstart:tstop]
                     if debug:
-                        print >> sys.stderr,\
-                            "frame: %d\ttstart: %d  tstop: %d  offset: %d\t%s"\
-                            % (i, tstart, tstop, offset, trimmed)
+                        print("frame: %d\ttstart: %d  tstop: %d  " +
+                              "offset: %d\t%s" %
+                              (i, tstart, tstop, offset, trimmed),
+                              file=sys.stderr)
                     if filtering and tstart > ignore:
                         continue
                     # get genomic locations for start and end
@@ -449,9 +456,10 @@ class BedEntry(object):
                     translations[i] = (chromStart, chromEnd, trimmed,
                                        tblockCount, tblockSizes, tblockStarts)
                     if debug:
-                        print >> sys.stderr,\
-                            "tblockCount: %d tblockStarts: %s tblockSizes: %s"\
-                            % (tblockCount, tblockStarts, tblockSizes)
+                        print("tblockCount: %d tblockStarts: %s " +
+                              "tblockSizes: %s" %
+                              (tblockCount, tblockStarts, tblockSizes),
+                              file=sys.stderr)
         return translations
 
     def get_seq_id(self, seqtype='unk:unk', reference='', frame=None):
