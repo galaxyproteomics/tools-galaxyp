@@ -87,7 +87,7 @@ def get_transcripts_bed(species, refseq, start, length, strand='',
     bed = []
     param = params if params else ''
     req_header = {"Content-Type": "text/x-bed"}
-    regions = range(start, length, max_region)
+    regions = list(range(start, length, max_region))
     if not regions or regions[-1] < length:
         regions.append(length)
     for end in regions[1:]:
