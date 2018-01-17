@@ -32,13 +32,9 @@ moff_mbr.py \
 
 # clean up 
 # mbr outputs for moff all
-rm -r output1/mbr_output
+rm -r output1/*
 
-# logs
-rm output1/*.log output2/*.log
-
-# peptide summary for all
-rm output1/peptide_summary_intensity_moFF_run.tab
+rm output2/test_moff_result.txt output2/test__moff.log
 
 source deactivate tempmoff
 conda env remove -y -n tempmoff
