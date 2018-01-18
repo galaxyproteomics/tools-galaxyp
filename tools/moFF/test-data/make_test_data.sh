@@ -2,8 +2,8 @@
 
 #must be run within tools-galaxyp/tools/moFF/test-data
 
-conda create -n mofftestdata moff
-source activate mofftestdata
+conda create -y -n tempmoff moff=1.2.1
+source activate tempmoff
 
 moff_all.py --inputtsv input/mbr_test1.tabular input/mbr_test2.tabular \
     --inputraw input/mbr_test1.mzml input/mbr_test2.mzml \
@@ -32,10 +32,9 @@ moff_mbr.py \
 
 # clean up 
 # mbr outputs for moff all
-rm -r output1/mbr_output
+rm -r output1/*
 
-# logs
-rm output1/*.log output2/*.log
+rm output2/test_moff_result.txt output2/test__moff.log
 
-# peptide summary for all
-rm output1/peptide_summary_intensity_moFF_run.tab
+source deactivate tempmoff
+conda env remove -y -n tempmoff
