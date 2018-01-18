@@ -147,15 +147,13 @@ main <- function() {
   input = list_id
 
   # Read reference file
-  #reference_file = read.table(args$ref_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
-  #print(colnames(reference_file))
+  reference_file = read.table(args$ref_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
+  print(colnames(reference_file))
 
   # Extract other options
   atlas = args$atlas
   not_mapped_option = args$not_mapped
   if (atlas=="normal") {
-    # Read reference file
-    reference_file = read.table(args$ref_file, header = TRUE, sep = ",", stringsAsFactors = FALSE, fill = TRUE)
     tissue = strsplit(args$tissue, ",")[[1]]
     level = strsplit(args$level, ",")[[1]]
     reliability = strsplit(args$reliability, ",")[[1]]
@@ -163,8 +161,6 @@ main <- function() {
     res = annot.HPAnorm(input, reference_file, tissue, level, reliability, not_mapped_option)
   }
   else if (atlas=="cancer") {
-    # Read reference file
-    reference_file = read.table(args$ref_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
     cancer = strsplit(args$cancer, ",")[[1]]
     # Calculation
     res = annot.HPAcancer(input, reference_file, cancer, not_mapped_option)
