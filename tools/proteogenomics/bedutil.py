@@ -15,7 +15,6 @@
 from __future__ import print_function
 
 import sys
-from builtins import str
 
 from Bio.Seq import reverse_complement, translate
 
@@ -168,6 +167,11 @@ class BedEntry(object):
             else:
                 return self.set_cds(min(cds_pos), max(cds_pos) + basepairs)
         return None
+
+    def get_cds_bed(self):
+        cds_pos = [self.cdna_offset_of_pos(self.thickStart),
+                   self.cdna_offset_of_pos(self.thickEnd)]
+        return self.trim(min(cds_pos), max(cds_pos))
 
     def get_cigar(self):
         cigar = ''
