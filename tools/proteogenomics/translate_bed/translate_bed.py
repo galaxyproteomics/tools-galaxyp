@@ -160,18 +160,21 @@ def __main__():
 
     def get_sequence(chrom, start, end):
         if twobit:
-            if chrom in twobit:
+            if chrom in twobit and 0 <= start < end < len(twobit[chrom]):
                 return twobit[chrom][start:end]
             contig = chrom[3:] if chrom.startswith('chr') else 'chr%s' % chrom
-            if contig in twobit:
+            if contig in twobit and 0 <= start < end < len(twobit[contig]):
                 return twobit[contig][start:end]
         return None
 
-    def write_translation(tbed, prot):
+    def write_translation(tbed, accession, peptide):
         if args.id_prefix:
             tbed.name = "%s%s" % (args.id_prefix, tbed.name)
+        probed = "%s\t%s\t%s\t%s%s" % (accession, peptide,
+                                       'unique', args.reference,
+                                       '\t.' * 9)
         if bed_wtr:
-            bed_wtr.write("%s\t%s\n" % (str(tbed), prot))
+            bed_wtr.write("%s\t%s\n" % (str(tbed), probed))
             bed_wtr.flush()
         location = "chromosome:%s:%s:%s:%s:%s"\
             % (args.reference, tbed.chrom,
@@ -180,7 +183,7 @@ def __main__():
         fa_db = '%s%s' % (args.fa_db, args.fa_sep) if args.fa_db else ''
         fa_id = ">%s%s%s\n" % (fa_db, tbed.name, fa_desc)
         fa_wtr.write(fa_id)
-        fa_wtr.write(prot)
+        fa_wtr.write(peptide)
         fa_wtr.write("\n")
         fa_wtr.flush()
 
@@ -210,6 +213,7 @@ def __main__():
                     refprot = None
                 if args.cds:
                     if refprot:
+                        tbed = bed.get_cds_bed()
                         if args.start_codon:
                             m = refprot.find('M')
                             if m < 0:
@@ -222,7 +226,7 @@ def __main__():
                             bed.trim_cds((stop - len(refprot)) * 3)
                             refprot = refprot[:stop]
                         if len(refprot) >= args.min_length:
-                            write_translation(bed, refprot)
+                            write_translation(tbed, bed.name, refprot)
                             return 1
                     return 0
             if args.debug:
@@ -268,7 +272,7 @@ def __main__():
                         if args.all or unique_prot(tbed, prot):
                             translate_count += 1
                             tbed.name = prot_acc
-                            write_translation(tbed, prot)
+                            write_translation(tbed, bed.name, prot)
                     aa_start = aa_end + 1
         return translate_count
 
