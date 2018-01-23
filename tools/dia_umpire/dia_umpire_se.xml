@@ -8,25 +8,32 @@
     <command>
 <![CDATA[
 #import re
-## want to save all outputs in a directory output.extra_files_path to be used by 
+## want to save all outputs in a directory output.extra_files_path to be used by dia_umpire_quant
 ## Is file naming going to be a problem? May need to have a name param
+#if $se_extraction_data:
 #set $ser_dir = $se_params.extra_files_path
 mkdir $ser_dir
-&& ln -s $ser_dir $output_dir
+&& ln -s '$ser_dir' '$output_dir'
+#else:
+mkdir '$output_dir'
+#end if
 && cat $se_config > $se_params 
 ##
 && echo " " >> $se_params 
 && echo "Thread = \$GALAXY_SLOTS" >> $se_params
-#for $i, $input_file in enumerate( $inputs ):
 #if $input_prefix and len($input_prefix.strip()) > 0:
 #set $input_path = $ser_dir + "/" + $input_prefix.__str__ + "_rep" + str($i + 1) + ".mzXML" 
 #else:
-#set $input_path = $ser_dir + "/" + $re.sub('\.[mM]\w+$','',$re.sub('[^-a-zA-Z0-9_.]','_',$input_file.name)) + ".mzXML"
+#set $input_path = $ser_dir + "/" + $re.sub('\.[mM]\w+$','',$re.sub('[^-a-zA-Z0-9_.]','_',$input.name)) + ".mzXML"
 #end if
-&& ln -s "${input_file}" "$input_path"
-&& java -jar \$DIA_UMPIRE_SE_JAR $input_path $se_params
+&& ln -s '${input}' '$input_path'
+&&  dia_umpire_se '$input_path' '$se_params'
 && cat $output_dir/*.log >> "$logfile"
-#end for
+#if not $mgfs_as_collection:
+&& cp '$output_dir/*_Q1.mgf' '$q1_mgf'
+&& cp '$output_dir/*_Q2.mgf' '$q2_mgf'
+&& cp '$output_dir/*_Q3.mgf' '$q3_mgf'
+#end if
 ]]>
     </command>
   <configfiles>
@@ -35,14 +42,12 @@ mkdir $ser_dir
 #Data Independent Acquisition data processing and analysis package (Signal extraction module)
 
 #import re
-#for $i, $input_file in enumerate( $inputs ):
 #if $input_prefix:
 #set $input_path = $input_prefix.__str__ + "_rep" + str($i + 1) + ".mzXML" 
 #else:
-#set $input_path = $re.sub('\.[mM]\w+$','',$re.sub('[^-a-zA-Z0-9_.]','_',$input_file.name)) + ".mzXML"
+#set $input_path = $re.sub('\.[mM]\w+$','',$re.sub('[^-a-zA-Z0-9_.]','_',$input.name)) + ".mzXML"
 #end if
-# $input_file.name $input_path $input_file
-#end for
+# $input.name $input_path $input
 
 #No of threads
 Thread = 6
@@ -149,6 +154,10 @@ SE.MinNoPeakCluster = 2
 SE.MaxNoPeakCluster = 3#slurp
 #end if
 
+## SE.RemoveGroupedPeaksRTOverlap
+## SE.RemoveGroupedPeaksCorr
+## SE.IsoCorrThreshold
+
 #if $instrument.model != 'Thermo_Orbitrap':
 WindowType = $instrument.window.WindowType
 #if $instrument.window.WindowType == 'SWATH':
@@ -181,8 +190,8 @@ $row
   </configfiles>
 
     <inputs>
-        <param name="inputs" type="data" format="mzxml" multiple="true" label="Proteomics Spectrum  files in mzXML format"/>
-        <param name="input_prefix" type="text" value="" optional="true" label="File name prefix" help="Names inputs: prefix_rep#.mzXML Leave blank to use History names of inputs">
+        <param name="input" type="data" format="mzxml" label="Proteomics Spectrum  files in mzXML format"/>
+        <param name="input_prefix" type="text" value="" optional="true" label="File name prefix" help="Names inputs: prefix_rep#.mzXML Leave blank to use History names of input">
           <validator type="regex" message="">[a-zA-Z][a-zA-Z0-9_-]*</validator>
         </param>
         <param name="output_dir" type="hidden" value="gx_path"/>
@@ -377,16 +386,23 @@ SE.MinFrag: Minimum number of fragments for a precursor. Precursors which have l
           </when>
         </conditional>
 
-        <param name="ExportPrecursorPeak" type="boolean" truevalue="true" falsevalue="false" checked="false" label="ExportPrecursorPeak"
+        <param name="ExportPrecursorPeak" type="boolean" truevalue="true" falsevalue="false" checked="false" 
+               label="ExportPrecursorPeak"
                help="Output detailed information about detected MS1 precursor and MS2 unfragmented precursor signals"/>
-        <param name="ExportFragmentPeak" type="boolean" truevalue="true" falsevalue="false" checked="false" label="ExportFragmentPeak"
+        <param name="ExportFragmentPeak" type="boolean" truevalue="true" falsevalue="false" checked="false" 
+               label="ExportFragmentPeak"
                help="Output detailed information about detected MS2 signals"/>
+        <param name="se_extraction_data" type="boolean" truevalue="true" falsevalue="false" checked="false" 
+               label="Output Signal Extraction data for DIA_Umpire_Quant" />
+        <param name="mgfs_as_collection" type="boolean" truevalue="true" falsevalue="false" checked="false" 
+               label="Output MGFs as a collection" />
 
     </inputs>
 
     <outputs>
         <data format="txt" name="logfile" label="${tool.name} log"/>
         <data format="dia_umpire.ser" name="se_params" label="${tool.name} Signal Extraction data">
+            <filter>se_extraction_data</filter>
         </data>
         <data format="csv" name="PrecursorPeak" label="" from_work_dir="gx_path/swath_PeakCurve.csv">
             <filter>ExportPrecursorPeak</filter>
@@ -395,12 +411,23 @@ SE.MinFrag: Minimum number of fragments for a precursor. Precursors which have l
             <filter>ExportFragmentPeak</filter>
         </data>
         <collection name="dia_umpire_se_mgfs" type="list" label="${tool.name} MGFs">
+            <filter>mgfs_as_collection</filter>
             <discover_datasets pattern="(?P&lt;name&gt;.*Q[1-3]\.mgf)" ext="mgf" visible="false" directory="gx_path" />
         </collection>
-
+        <data format="csv" name="q1_mgf" label="${tool.name} Q1.mgf" >
+            <filter>not mgfs_as_collection</filter>
+        </data>
+        <data format="csv" name="q2_mgf" label="${tool.name} Q2.mgf" >
+            <filter>not mgfs_as_collection</filter>
+        </data>
+        <data format="csv" name="q3_mgf" label="${tool.name} Q3.mgf" >
+            <filter>not mgfs_as_collection</filter>
+        </data>
     </outputs>
     <tests>
         <test>
+            <param name="input" value="LongSwath_UPS1_1ug_rep1_xs.mzXML" ftype="mzxml"/>
+            <output name="q2_mgf" file="LongSwath_UPS1_1ug_rep1_xs_Q2.mgf"/>
         </test>
     </tests>
     <help>
