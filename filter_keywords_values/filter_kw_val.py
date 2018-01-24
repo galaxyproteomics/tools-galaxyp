@@ -71,21 +71,17 @@ def filters(args):
 
     # Write deleted lines to trash_file
     trash = open(args.trash_file, "w")
-    #print("".join(results[1]))
     trash.write("\n".join(results[1]))
     trash.close()
 
 def readOption(filename):
     f = open(filename, "r")
     file_content = f.read()
-    #print(file)
     filter_list = file_content.split("\n")
-    #print(filter_list)
     filters = ""
     for i in filter_list:
-        filters += i + ":"
+        filters += i + ";"
     filters = filters[:-1]
-    #print(filters)
     return filters
 
 def readMQ(MQfilename):
@@ -106,7 +102,7 @@ def filter_keyword(MQfile, header, filtered_lines, ids, ncol, match):
                          "with valid format")
 
     # Split list of filter IDs
-    ids = ids.upper().split(":")
+    ids = ids.upper().split(";")
     # Remove blank IDs
     [ids.remove(blank) for blank in ids if blank.isspace() or blank == ""]
     # Remove space from 2 heads of IDs
@@ -134,9 +130,6 @@ def filter_keyword(MQfile, header, filtered_lines, ids, ncol, match):
         if match != "false":
             # Filter protein IDs
             if any(pid.upper() in ids for pid in id_inline):
-                #ids = prot_ids.split(":")
-                #print(prot_ids.split(":"))
-                #if prot_id in ids:
                 filtered_lines.append(one_id_line)
                 mq.remove(line)
             else:
@@ -168,31 +161,32 @@ def filter_value(MQfile, header, filtered_prots, filter_value, ncol, opt):
         if header != "":
             filtered_prots.append(header)
 
-    for prot in content:
+    for line in content:
+        prot = line.replace("\n","")
         filter_value = float(filter_value)
         pep = prot.split("\t")[index].replace('"', "")
         if pep.replace(".", "", 1).isdigit():
             if opt == "<":
                 if float(pep) >= filter_value:
-                    filtered_prots.append(prot)
-                    mq.remove(prot)
+                    filtered_prots.append(line)
+                    mq.remove(line)
             elif opt == "<=":
                 if float(pep) > filter_value:
-                    filtered_prots.append(prot)
-                    mq.remove(prot)
+                    filtered_prots.append(line)
+                    mq.remove(line)
             elif opt == ">":
             #print(prot.number_of_prots, filter_value, int(prot.number_of_prots) > filter_value)
                 if float(pep) <= filter_value:
-                    filtered_prots.append(prot)
-                    mq.remove(prot)
+                    filtered_prots.append(line)
+                    mq.remove(line)
             elif opt == ">=":
                 if float(pep) < filter_value:
-                    filtered_prots.append(prot)
-                    mq.remove(prot)
+                    filtered_prots.append(line)
+                    mq.remove(line)
             else:
                 if float(pep) != filter_value:
-                    filtered_prots.append(prot)
-                    mq.remove(prot)
+                    filtered_prots.append(line)
+                    mq.remove(line)
     return mq, filtered_prots #output, trash_file
 
 if __name__ == "__main__":
