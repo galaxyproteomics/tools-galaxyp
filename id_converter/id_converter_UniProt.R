@@ -2,18 +2,18 @@
 readfile = function(filename, header) {
   if (header == "true") {
     # Read only first line of the file as header:
-    headers <- read.table(filename, nrows = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
+    headers <- read.table(filename, nrows = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE)
     #Read the data of the files (skipping the first row)
-    file <- read.table(filename, skip = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
+    file <- read.table(filename, skip = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE)
     # Remove empty rows
-    file <- file[!apply(is.na(file) | file == "", 1, all),]
+    file <- file[!apply(is.na(file) | file == "", 1, all), , drop=FALSE]
     #And assign the header to the data
     names(file) <- headers
   }
   else {
-    file <- read.table(filename, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
+    file <- read.table(filename, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE)
     # Remove empty rows
-    file <- file[!apply(is.na(file) | file == "", 1, all),]
+    file <- file[!apply(is.na(file) | file == "", 1, all), , drop=FALSE]
   }
   return(file)
 }
@@ -65,6 +65,9 @@ mapping = function() {
       column_number = as.numeric(gsub("c", "" ,strsplit(list_id, ",")[[1]][2]))
       header = strsplit(list_id, ",")[[1]][3]
       file_all = readfile(filename, header)
+      print(class(file_all))
+      str(file_all)
+      print(class(file_all[,1]))
       list_id = c()
       list_id = sapply(strsplit(file_all[,column_number], ";"), "[", 1)
     }
@@ -78,37 +81,7 @@ mapping = function() {
       mapped = human_id_map[match(list_id, human_id_map[input_id_type][,]),][opt][,]
       res = cbind(res, matrix(mapped))
     }
-    
-    # for (opt in options) {
-    #   names = c(names, opt)
-    #   # Map to neXtProt ID
-    #   if (opt == "neXtProt_ID") {
-    #     if (input_id_type == "UNIPROT_AC") {
-    #       mapped = sapply(strsplit(np_uniprot[match(list_id, np_uniprot$Uniprot_AC),]$neXtProt_ID, ";"), "[", 1)
-    #     }
-    #     else if (input_id_type == "neXtProt_ID") {
-    #       mapped = matrix(list_id)
-    #     }
-    #     else {
-    #       uniprot = sapply(strsplit(uniprot_map[match(list_id, uniprot_map[input_id_type][,]),]$UNIPROT_AC, ";"), "[", 1)
-    #       mapped = sapply(strsplit(np_uniprot[match(uniprot, np_uniprot$Uniprot_AC),]$neXtProt_ID, ";"), "[", 1)
-    #     }
-    #   }
-    #   # Map to other ID types
-    #   else {
-    #     if (input_id_type == "neXtProt_ID") {
-    #       uniprot = sapply(strsplit(np_uniprot[match(list_id, np_uniprot$neXtProt_ID),]$Uniprot_AC, ";"), "[", 1)
-    #       #mapped = sapply(strsplit(uniprot_map[match(uniprot, uniprot_map$UNIPROT_AC),][opt][,], ";"), "[", 1)
-    #       mapped = uniprot_map[match(uniprot, uniprot_map$UNIPROT_AC),][opt][,]
-    #     }
-    #     else {
-    #       #mapped = sapply(strsplit(uniprot_map[match(list_id, uniprot_map[input_id_type][,]),][opt][,], ";"), "[", 1)
-    #       mapped = uniprot_map[match(list_id, uniprot_map[input_id_type][,]),][opt][,]
-    #     }
-    #   }
-    #   res = cbind(res, matrix(mapped))
-    # }
-    
+     
     # Write output
     if (list_id_input_type == "list") {
       res = cbind(as.matrix(list_id), res)
