@@ -1,0 +1,304 @@
+<tool id="translate_bed" name="Translate BED transcripts" version="0.1.0">
+    <description>cDNA in 3frames or CDS</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <requirements>
+        <expand macro="ensembl_requirements" />
+        <expand macro="bedutil_requirements" />
+        <expand macro="twobit_requirements" />
+    </requirements>
+    <stdio>
+        <exit_code range="1:" />
+    </stdio>
+    <command detect_errors="aggressive"><![CDATA[
+        python '$__tool_directory__/translate_bed.py'  
+            #if $ref.ref_source == 'cached':
+                --twobit='$ref.ref_loc.fields.path'
+            #elif $ref.ref_source == 'history':
+                --twobit='$ref.ref_file'
+            #elif $ref.ref_source == 'last_column':
+                --column '-1'
+            #elif $ref.ref_source == 'select_column':
+                --column ${int(str($ref.seq_column)) - 1}
+            #elif $ref.ref_source == 'ensembl_rest':
+                --ensembl
+            #end if
+            #if $translations.translate == 'CDS':
+                --cds
+            #elif $translations.translate == 'cDNA':
+                --all
+            #end if 
+            $translations.start_codon
+            #if $bed_filters.biotypes:
+                --biotypes '$bed_filters.biotypes'
+                --ensembl
+            #end if
+            #if $bed_filters.regions:
+                --regions '$bed_filters.regions'
+            #end if
+            --min_length $translations.min_length
+            #if $translations.enzyme:
+                --enzyme '$translations.enzyme'
+            #end if
+            #if $fa_id.fa_db:
+               --fa_db='$fa_id.fa_db'
+            #end if
+            #if $fa_id.fa_sep:
+               --fa_sep='$fa_id.fa_sep'
+            #end if
+            #if $fa_id.reference:
+               --reference $fa_id.reference
+            #else:
+               --reference ${input.metadata.dbkey}
+            #end if
+            #if $fa_id.id_prefix:
+               --id_prefix '$fa_id.id_prefix'
+            #end if
+            --bed '$translation_bed'
+            --fasta '$translation_fasta'
+            -v
+        $input
+    ]]></command>
+    <inputs>
+        <param name="input" type="data" format="bed" label="A BED file with 12 columns" 
+               help="thickStart and thickEnd define protein coding region, blocks define exon regions"/>
+        <conditional name="ref">
+            <param name="ref_source" type="select" label="Source for Genomic Sequence Data">
+                <option value="cached">Locally cached twobit</option>
+                <option value="history">History dataset twobit</option>
+                <option value="last_column">Last Column in the BED file</option>
+                <option value="select_column">Select Column in the BED file</option>
+                <option value="ensembl_rest">Retrieve sequences from Ensembl (Slow and only for Ensembl Transcripts)</option>
+            </param>
+            <when value="cached">
+                <param name="ref_loc" type="select" label="Select reference 2bit file">
+                    <options from_data_table="twobit" />
+                </param>
+            </when>
+            <when value="history">
+                <param name="ref_file" type="data" format="twobit" label="reference 2bit file" />
+            </when>
+            <when value="last_column"/>
+            <when value="select_column">
+                <param name="seq_column" type="data_column" data_ref="input" label="BED column conatining the genomic sequence"
+                    help="unspliced genomic sequence from chromStart to chromEnd (Extract Genomic DNA)"/>
+            </when>
+            <when value="ensembl_rest"/>
+        </conditional>
+        <section name="bed_filters" expanded="false" title="BED Filtering Options">
+            <param name="regions" type="text" value="" optional="true" label="Restrict to features overlapping a comma-separated list of regions" >
+                <help>Each region is specifed as: chr or chr:pos or chr:from-to</help>
+                <validator type="regex" message="">^(\w+(:\d+(-\d+)?)?(,\w+(:\d+(-\d+)?)?)*)?$</validator>
+            </param>
+            <param name="biotypes" type="text" value="" optional="true" label="Restrict Feature translation to these biotypes" 
+                   help="For 20 column BED from Ensembl REST server">
+                <expand macro="biotypes_help" />
+            </param>
+        </section>
+        <section name="translations" expanded="false" title="Translation  Options">
+            <param name="translate" type="select" label="Feature translation">
+                <option value="cDNA_minus_CDS">cDNA in 3 frames excluding known CDS</option>
+                <option value="cDNA">cDNA in 3 frames</option>
+                <option value="CDS">CDS proteins</option>
+            </param>
+            <param name="min_length" type="integer" value="10" min="1" label="Minimum length of protein translation to report"/>
+            <param name="start_codon" type="boolean" truevalue="--start_codon" falsevalue="" checked="false" 
+                    label="Require translations to start with Methionine, trim other leading Amino Acids"/>
+            <param name="enzyme" type="select" optional="true" label="Digest enzyme" 
+                 help="Split the protein into peptides according to enzyme digestion">
+                <option value="trypsin">trypsin:       ([KR](?=[^P]))|((?&lt;=W)K(?=P))|((?&lt;=M)R(?=P))</option>
+            </param>
+        </section>
+        <section name="fa_id" expanded="false" title="Fasta ID Options">
+            <param name="reference" type="text" value="" optional="true" label="Genome reference name"
+                   help="By default, the input bed dataset metadata will be used."/>
+            <param name="fa_db" type="text" value="" optional="true" label="fasta ID source, e.g. generic"
+                   help="Any Compomics application such as PeptideShaker, requires a source for non reference proteins of 'generic' e.g.: generic|pep1|peptide description">
+            </param>
+            <param name="fa_sep" type="text" value="" optional="true" label="fasta ID line separator character"
+                   help="defaults to the pipe character, Ensembl FASTA files usually use a space character">
+            </param>
+            <param name="id_prefix" type="text" value="" optional="true" label="ID prefix for generated IDs"
+                   help="Can be used to distinguish samples">
+                <validator type="regex" message="Allowed chars:a-z A-Z 0-9 _ - |">^[a-zA-Z0-9_-|]*$</validator>
+            </param>
+        </section>
+    </inputs>
+    <outputs>
+        <!-- update translation_bed format to "probed" when datatype is available -->
+        <data name="translation_bed" format="bed" label="Translate ${translations.translate} on ${on_string} ${input.name}.proBed">
+            <actions>
+                <action name="column_names" type="metadata" 
+                 default="chrom,chromStart,chromEnd,name,score,strand,thickStart,thickEnd,itemRgb,blockCount,blockSizes,blockStarts,proteinAccession,peptideSequence,uniqueness,genomeReferenceVersion,psmScore,fdr,modifications,charge,expMassToCharge,calcMassToCharge,psmRank,datasetID,uri"/>
+            </actions>
+        </data>
+        <data name="translation_fasta" format="fasta" label="Translate ${translations.translate} on ${on_string} ${input.name}.fasta"/>
+    </outputs>
+    <tests>
+        <test>
+            <param name="input" value="human_transcripts.bed" ftype="bed12"/>
+            <param name="ref_source" value="ensembl_rest"/>
+            <param name="translate" value="cDNA_minus_CDS"/>
+            <output name="translation_bed">
+                <assert_contents>
+                    <has_text text="ENST00000641515" />
+                </assert_contents>
+            </output>
+            <output name="translation_fasta">
+                <assert_contents>
+                    <has_text text=">ENST00000641515" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="input" value="human_transcripts_seq.bed" ftype="bed12"/>
+            <param name="ref_source" value="last_column"/>
+            <param name="translate" value="cDNA_minus_CDS"/>
+            <output name="translation_bed">
+                <assert_contents>
+                    <has_text text="ENST00000488147" />
+                    <has_text text="FLLSSLLIGVPFCTSPHSCFSMFFGRSKAALTAKLTLMRV" />
+                </assert_contents>
+            </output>
+            <output name="translation_fasta">
+                <assert_contents>
+                    <has_text text="ENST00000488147" />
+                    <has_text text="FLLSSLLIGVPFCTSPHSCFSMFFGRSKAALTAKLTLMRV" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="input" value="human_transcripts_seq.bed" ftype="bed12"/>
+            <param name="ref_source" value="last_column"/>
+            <param name="translate" value="CDS"/>
+            <output name="translation_bed">
+                <assert_contents>
+                    <has_text text="ENST00000641515" />
+                    <has_text text="MVTEFIFLGLSDSQELQTFLFMLFFVFY" />
+                </assert_contents>
+            </output>
+            <output name="translation_fasta">
+                <assert_contents>
+                    <has_text text="ENST00000641515" />
+                    <has_text text="MVTEFIFLGLSDSQELQTFLFMLFFVFY" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="input" value="human_transcripts_seq.bed" ftype="bed12"/>
+            <param name="ref_source" value="last_column"/>
+            <param name="translate" value="cDNA_minus_CDS"/>
+            <param name="biotypes" value="protein_coding"/>
+            <param name="start_codon" value="False"/>
+            <param name="fa_db" value="generic"/>
+            <param name="id_prefix" value="test_"/>
+            <output name="translation_bed">
+                <assert_contents>
+                    <has_text text="test_ENST00000641515" />
+                    <has_text text="ELPHTLPQFIFQQLVCYILEYRYKVIMLSKYSFANS" />
+                </assert_contents>
+            </output>
+            <output name="translation_fasta">
+                <assert_contents>
+                    <has_text text="generic|test_ENST00000641515" />
+                    <has_text text="ELPHTLPQFIFQQLVCYILEYRYKVIMLSKYSFANS" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="input" value="human_transcripts_seq.bed" ftype="bed12"/>
+            <param name="ref_source" value="last_column"/>
+            <param name="translate" value="cDNA_minus_CDS"/>
+            <param name="biotypes" value="protein_coding"/>
+            <param name="start_codon" value="True"/>
+            <param name="fa_db" value="generic"/>
+            <param name="id_prefix" value="test_"/>
+            <output name="translation_bed">
+                <assert_contents>
+                    <has_text text="test_ENST00000641515" />
+                    <has_text text="MLSKYSFANS" />
+                    <not_has_text text="ELPHTLPQFIFQQLVCYILEYRYKVIMLSKYSFANS" />
+                </assert_contents>
+            </output>
+            <output name="translation_fasta">
+                <assert_contents>
+                    <has_text text="generic|test_ENST00000641515" />
+                    <has_text text="MLSKYSFANS" />
+                    <not_has_text text="ELPHTLPQFIFQQLVCYILEYRYKVIMLSKYSFANS" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="input" value="human_transcripts.bed" ftype="bed12"/>
+            <param name="ref_source" value="history"/>
+            <param name="ref_file" value="GRCh38.1.2bit" ftype="twobit"/>
+            <param name="translate" value="cDNA_minus_CDS"/>
+            <param name="regions" value="1:0-30000"/>
+            <param name="start_codon" value="True"/>
+            <param name="fa_db" value="generic"/>
+            <param name="id_prefix" value="test_"/>
+            <output name="translation_bed">
+                <assert_contents>
+                    <has_text text="test_ENST00000488147" />
+                    <has_text text="MAPSSRAPRTLACRDAPATGSRASTAPWTSGPCRRS" />
+                    <not_has_text text="ENST00000335137" />
+                </assert_contents>
+            </output>
+            <output name="translation_fasta">
+                <assert_contents>
+                    <has_text text="generic|test_ENST00000488147" />
+                    <has_text text="MAPSSRAPRTLACRDAPATGSRASTAPWTSGPCRRS" />
+                    <not_has_text text="ENST00000335137" />
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help><![CDATA[
+Translate transcripts from the input BED file into protein sequences.  
+
+The genomic sequence:
+
+  - may be supplied in an extra column in the BED input file
+  - retrieved from a twobit genomic reference file  
+  - retrieved from the Ensembl REST API for Ensembl transcripts
+
+
+**INPUTS**
+
+  - BED file with at least the standard 12 columns
+  - Genome reference in twobit format (optional)
+
+
+**OUTPUTS**
+
+  - FASTA of transcript translations
+  - BED with the genomic location of the translated protein.  The added 13th column contains the protein sequence.
+
+
+**OPTIONS**
+
+  - Feature translation
+
+    - cDNA - three frame translations of the cDNA sequences with an output for each sequence between STOP codons
+    - CDS - three frame translations of CDS (coding sequence defined by thickStart and thickEnd in the BED file)  
+
+  - Translation filtering
+
+    - can be trimmed to a Methionine start codon
+    - can be split into peptides by an enzyme digestion
+    - must exceed specified minimum length
+
+
+  - BED Filtering
+
+    - genomic regions 
+    - ensembl biotype if the BED contains the 20 columns as retrieved from the Ensembl REST API
+  
+
+    ]]></help>
+    <citations>
+        <citation type="doi">10.1093/bioinformatics/btu613</citation>
+        <citation type="doi">10.1093/nar/gku1010</citation>
+    </citations>
+</tool>
