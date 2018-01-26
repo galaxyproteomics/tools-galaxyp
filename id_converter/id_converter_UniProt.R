@@ -59,6 +59,8 @@ mapping = function() {
     # Extract input IDs
     if (list_id_input_type == "list") {
       list_id = strsplit(args[2], " ")[[1]]
+      # Remove isoform accession number (e.g. "-2")
+      list_id = gsub("-.+", "", list_id)
     }
     else if (list_id_input_type == "file") {
       filename = as.character(strsplit(list_id, ",")[[1]][1])
@@ -70,6 +72,8 @@ mapping = function() {
       print(class(file_all[,1]))
       list_id = c()
       list_id = sapply(strsplit(file_all[,column_number], ";"), "[", 1)
+      # Remove isoform accession number (e.g. "-2")
+      list_id = gsub("-.+", "", list_id)
     }
     names = c()
     
