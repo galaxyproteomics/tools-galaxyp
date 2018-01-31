@@ -4,10 +4,6 @@ library(clusterProfiler)
 library(org.Hs.eg.db)
 library(org.Mm.eg.db)
 
-##Reading data (206 Uniprot ID from Maud)
-#dat.UP<-read.table("CAE144.txt", header=F)
-#dat.UP<-as.vector(dat.UP$V1)
-
 # Read file and return file content as data.frame?
 readfile = function(filename, header) {
   if (header == "true") {
@@ -27,26 +23,42 @@ readfile = function(filename, header) {
   return(file)
 }
 
-## then enrichment and graphical representation functions
-## groupGO function of clusterProfiler
-## from gene id to GO repartition 
-geneid<-gene$ENTREZID    
-Orgdb<-orgdb
-
-repartition.GO <- function(geneid, OrgDb, ontology, level=3, readable=TRUE) {
+repartition.GO <- function(geneid, orgdb, ontology, level=3, readable=TRUE) {
   ggo<-groupGO(gene=geneid, 
-               OrgDb = org.Hs.eg.db, 
+               OrgDb = orgdb, 
                ont=ontology, 
                level=level, 
                readable=TRUE)
+  name <- paste("GGO.", ontology, ".png", sep = "")
+  png(name)
+  p <- barplot(ggo)
+  print(p)
+  dev.off()
   return(ggo)
-} #end of repartition.GO
+}
 
-## function to list genes by GO categories
-## for the 3 : BP, MF et CC. 
-
-
-##kegg enrichment to be looked at
+# GO over-representation test
+enrich.GO <- function(geneid, orgdb, ontology, pval_cutoff, qval_cutoff) {
+  ego<-enrichGO(gene=geneid,
+                OrgDb=orgdb,
+                keytype="ENTREZID",
+                ont=ontology,
+                pAdjustMethod="BH",
+                pvalueCutoff=pval_cutoff,
+                qvalueCutoff=qval_cutoff,
+                readable=TRUE)
+  bar_name <- paste("EGO.", ontology, ".bar.png", sep = "")
+  png(bar_name)
+  p <- barplot(ego)
+  print(p)
+  dev.off()
+  dot_name <- paste("EGO.", ontology, ".dot.png", sep = "")
+  png(dot_name)
+  p <- dotplot(ego)
+  print(p)
+  dev.off()
+  return(ego)
+}
 
 clusterProfiler = function() {
   args <- commandArgs(TRUE)
@@ -71,7 +83,6 @@ clusterProfiler = function() {
         --text_output: text output filename \n")
     q(save="no")
   }
-  
   # Parse arguments
   parseArgs <- function(x) strsplit(sub("^--", "", x), "=")
   argsDF <- as.data.frame(do.call("rbind", parseArgs(args)))
@@ -122,28 +133,27 @@ clusterProfiler = function() {
   if (id_type=="Uniprot") {
     idFrom<-"UNIPROT"
     idTo<-"ENTREZID"
-    gene<-bitr(input, fromType=idFrom, toType=idTo, annoDb=orgdb)
+    gene<-bitr(input, fromType=idFrom, toType=idTo, OrgDb=orgdb)
   }
   else if (id_type=="Entrez") {
     gene<-input
   }
-  
-  ggo<-repartition.GO(gene, orgdb, args$ontology, args$level, readable=TRUE)
 
-  #graphical representation 
-  barplot(ggo)
+  ontology <- strsplit(args$onto_opt, ",")[[1]]
+  level <- as.numeric(args$level)
+  pval_cutoff <- as.numeric(args$pval_cutoff)
+  qval_cutoff <- as.numeric(args$qval_cutoff)
 
-  ## enrichGO : GO over-representation test
-
-  ego<-enrichGO(gene=gene$ENTREZID, 
-                OrgDb=orgdb, 
-                ont=args$ontology, 
-                pAdjustMethod="BH", 
-                pvalueCutoff=args$pval_cutoff, 
-                qvalueCutoff=args$qval_cutoff, 
-                readable=TRUE)                  
-                                    
-  #graphical representation 
-  barplot(ego)
-  dotplot(ego)
+  ##enrichGO : GO over-representation test
+  for (onto in ontology) {
+    ggo<-repartition.GO(gene$ENTREZID, orgdb, onto, level, readable=TRUE)
+    ego<-enrich.GO(gene$ENTREZID, orgdb, onto,
+                pval_cutoff,
+                qval_cutoff)
+    # write textual output
+    write.table(ggo, args$text_output, append = TRUE, sep="\t", row.names = FALSE, quote=FALSE)
+    write.table(ego, args$text_output, append = TRUE, sep="\t", row.names = FALSE, quote=FALSE)
+  }
 }
+
+clusterProfiler()
