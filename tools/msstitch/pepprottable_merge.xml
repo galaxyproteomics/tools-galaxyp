@@ -1,0 +1,169 @@
+<tool id="msspepprottable_merge" name="Merge peptide or protein tables" version="1.1">
+    <description>containing multiple biological sets</description>
+    <requirements>
+        <requirement type="package" version="2.5">msstitch</requirement>
+    </requirements>
+    <command detect_errors="exit_code">
+        <![CDATA[
+        cp '$lookup' psmpg_lookup.sql
+        && 
+        msslookup
+        #if $quants.type == "protein"
+            proteins --protcol '$featcol'
+                #if str($quants.genecentric) != "none"
+                    --genecentric $quants.genecentric
+                #end if
+        #else if $quants.type == "peptide"
+            peptides --peptidecol '$featcol' 
+        #end if
+        
+        --dbfile psmpg_lookup.sql -i
+        #for $setname in $tables.keys()
+            '$tables[$setname]'
+        #end for
+        --setnames
+        #for $setname in $tables.keys()
+            '$setname'
+        #end for
+        #if $precurqcolpattern
+            --ms1quantcolpattern '$precurqcolpattern'
+        #end if
+        #if $nopsmcolpattern
+            --psmnrcolpattern '$nopsmcolpattern' 
+        #end if
+        #if $isobqcolpattern
+            --isobquantcolpattern '$isobqcolpattern'
+        #end if
+        #if $fdrpattern
+            --fdrcolpattern '$fdrpattern'
+        #end if
+        
+        &&
+        #if $quants.type == "protein"
+            mssprottable build
+            #if str($quants.genecentric) != "none"
+                --genecentric $quants.genecentric
+            #end if
+            #if $quants.fdrcutoff.value
+                --mergecutoff $quants.fdrcutoff
+            #end if
+
+        #else if $quants.type == "peptide"
+            msspeptable build 
+                #if $quants.centric.value == "gene"
+                    --genecentric
+                #else if $quants.centric.value == "plain"
+                    --noncentric
+                #end if
+        #end if
+        
+        --dbfile psmpg_lookup.sql -o '$mergedout'
+            #if $isobqcolpattern
+                --isobaric
+            #end if
+            #if $precurqcolpattern
+                --precursor
+            #end if
+            #if $fdrpattern
+                --fdr
+            #end if
+        &&
+        mv psmpg_lookup.sql '$lookupoutput'
+        ]]>        
+    </command>
+    
+    <inputs>
+        <param name="lookup" type="data" format="sqlite" label="Lookup file containing PSM/spectra info" />
+        <param name="tables" type="data_collection" format="tabular" label="Data to merge"  />
+        <param name="featcol" type="integer" value="1" min="1" label="Column number in which accessions/sequences are" />
+        <conditional name="quants">
+            <param name="type" type="select" label="Data type to merge" display="radio">
+                <option value="peptide">Peptides</option>
+                <option value="protein">Proteins</option>
+            </param>
+            <when value="peptide">
+                <param name="centric" type="select" display="radio" label="Center data on">
+                    <option value="pg" selected="true">protein groups</option>
+                    <option value="gene">genes</option>
+                    <option value="plain">non-centric</option>
+                </param>
+            </when>
+            <when value="protein">
+                <param name="genecentric" type="select" label="Genecentric analysis?">
+                    <option value="none">No</option>
+                    <option value="genes">Gene-centric (genes as in FASTA file)</option>
+                    <option value="assoc">Associated IDs (genes as in Biomart external IDs)</option>
+                </param>
+                <param name="fdrcutoff" type="float" label="FDR cutoff for inclusion" optional="true" />
+            </when>
+        </conditional>
+        <param name="precurqcolpattern" type="text" label="Regular expression pattern to identify precursor quant columns" optional="true" help="E.g. area"/>
+        <param name="isobqcolpattern" type="text" label="Regular expression pattern to identify columns containing isobaric quantification data" optional="true" help="E.g. tmt10plex, plex" />
+        <param name="nopsmcolpattern" type="text" label="Regular expression pattern to identify columns containing the amount of PSMs quantified" optional="true" help="E.g. quanted" />
+        <param name="fdrpattern" type="text" label="Regular expression pattern to identify columns containing peptide/protein FDR" optional="true" help="E.g. q-value" />
+    </inputs>
+    <outputs>
+        <data format="tabular" name="mergedout" label="Merged tables" />
+        <data format="sqlite" name="lookupoutput" label="Merged table lookup" />
+    </outputs>
+    <tests>
+        <test>
+            <param name="lookup" value="proteingroups.sql" />
+            <param name="tables">
+                <collection type="list">
+                    <element name="Set1" value="protein_fdr.txt" />
+                    <element name="Set2" value="protein_fdr2.txt" />
+                </collection>
+            </param>
+            <param name="featcol" value="1" />
+            <param name="quants|type" value="protein" />
+            <param name="quants|genecentric" value="none" />
+            <param name="quants|fdrcutoff" value="0.8" />
+            <param name="precurqcolpattern" value="area" />
+            <param name="isobqcolpattern" value="plex" />
+            <param name="nopsmcolpattern" value="quanted" />
+            <param name="fdrpattern" value="q-value" />
+            <output name="lookupoutput" compare="sim_size" value="mergedproteins.sql" />
+            <output name="mergedout" value="mergedproteins.txt" />
+        </test>
+        <test>
+            <param name="lookup" value="proteingroups.sql" />
+            <param name="tables">
+                <collection type="list">
+                    <element name="Set1" value="genes_set1.txt" />
+                    <element name="Set2" value="genes_set2.txt" />
+                </collection>
+            </param>
+            <param name="featcol" value="1" />
+            <param name="quants|type" value="protein" />
+            <param name="quants|genecentric" value="genes" />
+            <param name="quants|fdrcutoff" value="0.01" />
+            <param name="fdrpattern" value="^q-value" />
+            <output name="lookupoutput" compare="sim_size" delta="6440" value="mergedproteins.sql" />
+            <output name="mergedout" value="mergedgenes.txt" />
+        </test>
+        <test>
+            <param name="lookup" value="proteingroups.sql" />
+            <param name="tables">
+                <collection type="list">
+                    <element name="Set1" value="peptide_table.txt" />
+                    <element name="Set2" value="peptide_table2.txt" />
+                </collection>
+            </param>
+            <param name="featcol" value="13" />
+            <param name="quants|type" value="peptide" />
+            <param name="quants|centric" value="pg" />
+            <param name="precurqcolpattern" value="area" />
+            <param name="isobqcolpattern" value="plex" />
+            <param name="nopsmcolpattern" value="quanted" />
+            <param name="fdrpattern" value="^q-value" />
+            <output name="lookupoutput" compare="sim_size" value="mergedpeptides.sql" />
+            <output name="mergedout" value="mergedpeptides.txt" />
+        </test>
+    </tests>
+    <help>
+        This tool takes protein or peptide tables in a collection, e.g. containing different biological replicates or isobaric sample sets,
+        and merges them into a single table. It outputs the proteins or peptides in a tab separated table with data from each of the individual
+        tables next to eachother.
+    </help>
+</tool>

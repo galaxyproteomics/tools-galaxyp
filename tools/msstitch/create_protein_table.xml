@@ -1,0 +1,104 @@
+<tool id="create_protein_table" name="Create protein table" version="1.2">
+    <description>from PSMs</description>
+    <requirements>
+        <requirement type="package" version="2.5">msstitch</requirement>
+    </requirements>
+    <command detect_errors="exit_code">
+        <![CDATA[
+        echo Protein accession > proteintable.txt &&
+        tail -n+2 '$psmtable'|cut -f $accessioncol |grep -v '\;'|grep -v "^$"|sort|uniq >> proteintable.txt
+        #if $isoquant.yesno.value == "true"
+            &&
+            msspsmtable isoratio -i '$psmtable' -o isoquant.txt --protcol $accessioncol --targettable proteintable.txt --isobquantcolpattern '$isoquant.isobpattern' --minint $isoquant.minint --denompatterns
+            #for $sampleset in $isoquant.setdenoms
+                #if not $sampleset.setpattern or str($sampleset.setpattern) in $psmtable.element_identifier
+                        $sampleset.denompatterns
+                #break
+                    #end if
+            #end for
+            #if $isoquant.normalize.type != "false"
+                --normalize median
+                #if $isoquant.normalize.type == "medianother"
+                    --norm-ratios '$isoquant.normalize.norm_ratio_table'
+                #end if
+            #end if
+            &&
+            mv isoquant.txt proteintable.txt
+        #end if
+    
+        #if $ms1quant
+            &&
+            mssprottable ms1quant -i proteintable.txt -o ms1quanted.txt
+            --psmtable '$psmtable' --protcol '$accessioncol'
+            &&
+            mv ms1quanted.txt proteintable.txt
+        #end if
+    
+        && mv proteintable.txt '$output'
+        ]]>
+    </command>
+    <inputs>
+        <param name="psmtable" type="data" format="tabular" label="PSM table" help="Must contain isobaric ratios and accession of protein/gene/peptide" />
+        <param name="accessioncol" type="integer" value="" label="Accession column number in PSM table containing the proteins, genes, peptides to quantify" />
+            <conditional name="isoquant">
+                <param name="yesno" type="select" label="Use isobaric data to output ratios?">
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+        </param>
+            <when value="false" />
+            <when value="true"> 
+                <param name="isobpattern" type="text" label="Pattern for isobaric quant columns in PSM table" help="Regex to find quant columns, e.g. tmt10plex, itraq8plex, plex"/>
+                    <repeat name="setdenoms" title="Biological sets denominators">
+                        <param name="setpattern" type="text" label="Sample set name for denominator" help="If no different sample sets are used, leave blank" optional="true" />
+                        <param name="denompatterns" type="text" label="Patterns for denominator isobaric quant columns in PSM table" help="Multiple are separated with space, e.g. ^tmt10plex_126 ^tmt10plex_127N." />
+                    </repeat>
+               <param name="minint" type="float" value="0.1" label="Minimum intensity of PSM channel to include" />
+               <conditional name="normalize">
+                   <param name="type" type="select" label="Normalize isobaric ratios?">
+                       <option value="medianself">Median center using own ratios</option>
+                       <option value="medianother">Median center using ratios from other table</option>
+                       <option value="false">No</option>
+                  </param>
+                  <when value="false" />
+                  <when value="medianself" />
+                  <when value="medianother" >
+                      <param name="norm_ratio_table" type="data" label="Tabular datatable with ratios" help="Same isobaric quant columns should occur" />
+                  </when>
+               </conditional>
+            </when>
+        </conditional>
+        <param name="ms1quant" type="boolean" label="Calculate MS1 quant?" help="Average of 3 highest PSM MS1 areas for a protein" />
+    </inputs>
+    
+    <outputs>
+        <data format="tabular" name="output"/>
+    </outputs>
+    <tests>
+        <test>
+            <param name="psmtable" value="fullpsmtable.txt" />
+            <param name="accessioncol" value="13" />
+            <param name="ms1quant" value="false" />
+            <param name="isoquant|yesno" value="false" />
+            <output name="output" value="protein_table_noquant.txt" />
+        </test>
+        <test>
+            <param name="psmtable" value="fullpsmtable.txt" />
+            <param name="accessioncol" value="13" />
+            <param name="ms1quant" value="true" />
+            <param name="isoquant|yesno" value="true" />
+            <param name="isoquant|isobpattern" value="^tmt10plex" />
+            <repeat name="isoquant|setdenoms">
+                <param name="setpattern" value="fullpsmtable" />
+                <param name="denompatterns" value="^tmt10plex_126" />
+            </repeat>
+            <param name="isoquant|minint" value="0.2" />
+            <param name="isoquant|normalize|type" value="medianother" />
+            <param name="isoquant|normalize|norm_ratio_table" value="protein_ratios.txt" />
+            <output name="output" value="protein_table.txt" />
+        </test>
+    </tests>
+    <help>
+        Creates a protein table from PSM and peptide tables. Choose for each entry 
+        to add isobaric quant, precursor quant, probabilities.
+    </help>
+</tool>
