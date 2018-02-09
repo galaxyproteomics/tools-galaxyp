@@ -56,27 +56,6 @@ getprofile = function(ids, id_type, level, duplicate) {
     print("IDs unable to convert to ENTREZID: ")
     print(NAs)
   }
-  #print(genes_ids)
-  # Convert Protein IDs into entrez ids
-  
-  # for (i in 1:length(id$UNIPROT)) {
-  #   print(i)
-  #   if (is.na(id[[2]][i])) {
-  #     print(id[[2]][i])
-  #   }
-  # }
-  # a = id[which(id$ENTREZID == "NA"),]
-  # print(a)
-  # print(a$UNIPROT)
-  #print(id[[1]][which(is.na(id$ENTREZID))])
-  #print(genes_ids)
-  # for (gene in genes) {
-  #   #id = as.character(mget(gene, org.Hs.egALIAS2EG, ifnotfound = NA))
-  #   id = select(org.Hs.eg.db, genes, "ENTREZID", "UNIPROT")
-  #   print(id)
-  #   genes_ids = append(genes_ids, id$ENTREZID)
-  # }
-  #print(genes_ids)
   
   # Create basic profiles
   profile.CC = basicProfile(genes_ids, onto='CC', level=level, orgPackage="org.Hs.eg.db", empty.cats=F, ord=T, na.rm=T)
@@ -196,7 +175,7 @@ goprofiles = function() {
 
   input_type = args$input_type
   if (input_type == "text") {
-    input = args$input
+    input = strsplit(args$input, " ")[[1]]
   }
   else if (input_type == "file") {
     filename = args$input
