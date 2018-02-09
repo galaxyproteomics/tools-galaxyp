@@ -5,16 +5,12 @@ library("goProfiles", quietly=TRUE)
 # Read file and return file content as data.frame?
 readfile = function(filename, header) {
   if (header == "true") {
-    # Read only the first two lines of the files as data (without headers):
+    # Read only the first line of the files as data (without headers):
     headers <- read.table(filename, nrows = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
-    #print("header")
-    #print(headers)
-    # Create the headers names with the two (or more) first rows, sappy allows to make operations over the columns (in this case paste) - read more about sapply here :
-    #headers_names <- sapply(headers, paste, collapse = "_")
-    #print(headers_names)
-    #Read the data of the files (skipping the first 2 rows):
+    #Read the data of the files (skipping the first row):
     file <- read.table(filename, skip = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
-    #print(file[1,])
+    # Remove empty rows
+    file <- file[!apply(is.na(file) | file == "", 1, all),]
     #And assign the headers of step two to the data:
     names(file) <- headers
   }
@@ -24,10 +20,6 @@ readfile = function(filename, header) {
   return(file)
 }
 
-#filename = "/Users/LinCun/Documents/ProteoRE/usecase1/Check/HPA.Selection.134.txt"
-#test = readfile(filename)
-#str(test)
-#str(test$Gene.names)
 getprofile = function(ids, id_type, level, duplicate) {
   ####################################################################
   # Arguments
