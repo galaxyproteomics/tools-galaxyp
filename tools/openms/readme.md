@@ -53,29 +53,29 @@ Generating OpenMS wrappers
  * clone or install CTD2Galaxy
 
     ```bash
-    git clone https://github.com/WorkflowConversion/CTD2Galaxy.git
+    git clone https://github.com/WorkflowConversion/CTDConverter.git
     ```
     
- * If you have CTDopts and CTD2Galaxy installed you are ready to generate Galaxy Tools from CTD definitions. Change the following command according to your needs, especially the `/PATH/TO` parts. The default files are provided in this repository. You might have to install `libxslt` and `lxml` to run it.
+ * If you have CTDopts and CTDConverter installed you are ready to generate Galaxy Tools from CTD definitions. Change the following command according to your needs, especially the `/PATH/TO` parts. The default files are provided in this repository. You might have to install `libxslt` and `lxml` to run it. Further information can be found on the CTDConverter page.
 
     ```bash
-    python generator.py \ 
+    python convert.py galaxy \ 
     -i /PATH/TO/YOUR/CTD/*.ctd \
     -o ./PATH/TO/YOUR/WRAPPERS/ -t tool.conf \
     -d datatypes_conf.xml -g openms \
     -b version log debug test no_progress threads \
      in_type executable myrimatch_executable \
      fido_executable fidocp_executable \
-     omssa_executable pepnovo_executable \
+     omssa_executable pepnovo_e xecutable \
      xtandem_executable param_model_directory \
      java_executable java_memory java_permgen \
      r_executable rt_concat_trafo_out param_id_pool \
     -f /PATH/TO/filetypes.txt -m /PATH/TO/macros.xml \
-    -s PATH/TO/SKIP_TOOLS_FILES.txt
+    -s PATH/TO/tools_blacklist.txt
     ```
 
 
- * As last step you need to change manually the binary names of all external binaries you want to use in OpenMS. For example:
+ * As last step you need to change manually the binary names of all external binaries you want to use in OpenMS. Some of these tools might already be deprecated and the files might not exist:
 
     ```
     sed -i '13 a\-fido_executable Fido' wrappers/FidoAdapter.xml
@@ -171,8 +171,8 @@ Generating OpenMS wrappers
     ```
     
 
- * These tools have multiple outputs (number of inputs = number of outputs) which is not yet supported in
-   by the automatic conversion step and are therefore in `SKIP_TOOLS_FILES.txt`:
+ * `This section might not be up to date. It might be worth trying if these tools will run now.` These tools have multiple outputs (number of inputs = number of outputs) which is not yet supported in
+   by the automatic conversion step and are therefore in `tools_blacklist.txt`:
     * SeedListGenerator
     * SpecLibSearcher
     * MapAlignerIdentification
