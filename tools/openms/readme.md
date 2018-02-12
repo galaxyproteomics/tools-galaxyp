@@ -53,20 +53,20 @@ Generating OpenMS wrappers
  * clone or install CTD2Galaxy
 
     ```bash
-    git clone https://github.com/WorkflowConversion/CTD2Galaxy.git
+    git clone https://github.com/WorkflowConversion/CTDConverter.git
     ```
     
- * If you have CTDopts and CTD2Galaxy installed you are ready to generate Galaxy Tools from CTD definitions. Change the following command according to your needs, especially the `/PATH/TO` parts. The default files are provided in this repository. You might have to install `libxslt` and `lxml` to run it.
+ * If you have CTDopts and CTDConverter installed you are ready to generate Galaxy Tools from CTD definitions. Change the following command according to your needs, especially the `/PATH/TO` parts. The default files are provided in this repository. You might have to install `libxslt` and `lxml` to run it. Further information can be found on the CTDConverter page.
 
     ```bash
-    python generator.py \ 
+    python convert.py galaxy \ 
     -i /PATH/TO/YOUR/CTD/*.ctd \
     -o ./PATH/TO/YOUR/WRAPPERS/ -t tool.conf \
     -d datatypes_conf.xml -g openms \
     -b version log debug test no_progress threads \
      in_type executable myrimatch_executable \
      fido_executable fidocp_executable \
-     omssa_executable pepnovo_executable \
+     omssa_executable pepnovo_e xecutable \
      xtandem_executable param_model_directory \
      java_executable java_memory java_permgen \
      r_executable rt_concat_trafo_out param_id_pool \
