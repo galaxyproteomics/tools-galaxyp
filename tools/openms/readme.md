@@ -170,16 +170,6 @@ Generating OpenMS wrappers
     </tests>
     ```
     
-
- * `This section might not be up to date. It might be worth trying if these tools will run now.` These tools have multiple outputs (number of inputs = number of outputs) which is not yet supported in
-   by the automatic conversion step and are therefore in `tools_blacklist.txt`:
-    * SeedListGenerator
-    * SpecLibSearcher
-    * MapAlignerIdentification
-    * MapAlignerPoseClustering
-    * MapAlignerSpectrum
-    * MapAlignerRTTransformer
-    
  * Additionally cause of lacking dependencies, the following adapters have been removed in `SKIP_TOOLS_FILES.txt` as well:
     * OMSSAAdapter
     * MyrimatchAdapter
