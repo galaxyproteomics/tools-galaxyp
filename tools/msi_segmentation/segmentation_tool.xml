@@ -1,0 +1,424 @@
+<tool id="Mass_spectrometry_imaging_segmentations" name="MSI segmentation" version="1.7.0">
+    <description>
+        tool for
+ spatial clustering
+    </description>
+    <requirements>
+        <requirement type="package" version="1.7.0">bioconductor-cardinal</requirement>
+        <requirement type="package" version="2.2.1">r-gridextra</requirement>
+        <requirement type="package" version="2.23-15">r-kernsmooth</requirement>
+        <requirement type="package" version="0.20-35">r-lattice</requirement>
+    </requirements>
+    <stdio>
+        <exit_code range="1:" />
+    </stdio>
+    <command>
+    <![CDATA[
+
+        #if $infile.ext == 'imzml'
+            cp '${infile.extra_files_path}/imzml' infile.imzML &&
+            cp '${infile.extra_files_path}/ibd' infile.ibd &&
+        #elif $infile.ext == 'analyze75'
+            cp '${infile.extra_files_path}/hdr' infile.hdr &&
+            cp '${infile.extra_files_path}/img' infile.img &&
+            cp '${infile.extra_files_path}/t2m' infile.t2m &&
+        #else
+            ln -s $infile infile.RData &&
+        #end if
+        cat '${MSI_segmentation}' &&
+        echo ${MSI_segmentation} &&
+        pwd &&
+        Rscript '${MSI_segmentation}'
+
+
+
+    ]]>
+    </command>
+    <configfiles>
+        <configfile name="MSI_segmentation"><![CDATA[
+
+
+################################# load libraries and read file #########################
+
+
+library(Cardinal)
+library(gridExtra)
+library(KernSmooth)
+library(lattice)
+
+## Read MALDI Imaging dataset
+
+#if $infile.ext == 'imzml'
+    msidata <- readMSIData('infile.imzML')
+#elif $infile.ext == 'analyze75'
+    msidata <- readMSIData('infile.hdr')
+#else
+    load('infile.RData')
+#end if
+
+
+
+###################################### file properties in numbers ######################
+
+## Number of features (mz)
+maxfeatures = length(features(msidata))
+## Range mz
+minmz = round(min(mz(msidata)), digits=2)
+maxmz = round(max(mz(msidata)), digits=2)
+## Number of spectra (pixels)
+pixelcount = length(pixels(msidata))
+## Range x coordinates
+minimumx = min(coord(msidata)[,1])
+maximumx = max(coord(msidata)[,1])
+## Range y coordinates
+minimumy = min(coord(msidata)[,2])
+maximumy = max(coord(msidata)[,2])
+## Range of intensities
+minint = round(min(spectra(msidata)[]), digits=2)
+maxint = round(max(spectra(msidata)[]), digits=2)
+medint = round(median(spectra(msidata)[]), digits=2)
+## Number of intensities > 0
+npeaks= sum(spectra(msidata)[]>0)
+## Spectra multiplied with mz (potential number of peaks)
+numpeaks = ncol(spectra(msidata)[])*nrow(spectra(msidata)[])
+## Percentage of intensities > 0
+percpeaks = round(npeaks/numpeaks*100, digits=2)
+## Number of empty TICs
+TICs = colSums(spectra(msidata)[]) 
+NumemptyTIC = sum(TICs == 0)
+
+
+## Processing informations
+processinginfo = processingData(msidata)
+centroidedinfo = processinginfo@centroided # TRUE or FALSE
+
+## if TRUE write processinginfo if no write FALSE
+
+## normalization
+if (length(processinginfo@normalization) == 0) {
+  normalizationinfo='FALSE'
+} else {
+  normalizationinfo=processinginfo@normalization
+}
+## smoothing
+if (length(processinginfo@smoothing) == 0) {
+  smoothinginfo='FALSE'
+} else {
+  smoothinginfo=processinginfo@smoothing
+}
+## baseline
+if (length(processinginfo@baselineReduction) == 0) {
+  baselinereductioninfo='FALSE'
+} else {
+  baselinereductioninfo=processinginfo@baselineReduction
+}
+## peak picking
+if (length(processinginfo@peakPicking) == 0) {
+  peakpickinginfo='FALSE'
+} else {
+  peakpickinginfo=processinginfo@peakPicking
+}
+
+
+
+#############################################################################
+
+properties = c("Number of mz features",
+               "Range of mz values [Da]",
+               "Number of pixels", 
+               "Range of x coordinates", 
+               "Range of y coordinates",
+               "Range of intensities", 
+               "Median of intensities",
+               "Intensities > 0",
+               "Number of zero TICs",
+               "Preprocessing", 
+               "Normalization", 
+               "Smoothing",
+               "Baseline reduction",
+               "Peak picking",
+               "Centroided")
+
+values = c(paste0(maxfeatures), 
+           paste0(minmz, " - ", maxmz), 
+           paste0(pixelcount), 
+           paste0(minimumx, " - ", maximumx),  
+           paste0(minimumy, " - ", maximumy), 
+           paste0(minint, " - ", maxint), 
+           paste0(medint),
+           paste0(percpeaks, " %"), 
+           paste0(NumemptyTIC), 
+           paste0(" "),
+           paste0(normalizationinfo),
+           paste0(smoothinginfo),
+           paste0(baselinereductioninfo),
+           paste0(peakpickinginfo),
+           paste0(centroidedinfo))
+
+property_df = data.frame(properties, values)
+
+
+######################################## PDF #############################################
+##########################################################################################
+##########################################################################################
+
+
+pdf("segmentationpdf.pdf", fonts = "Times", pointsize = 12)
+plot(0,type='n',axes=FALSE,ann=FALSE)
+
+title(main=paste0("Spatial segmentation for file: \n\n", "$infile.display_name"))
+
+
+############################# I) numbers ####################################
+#############################################################################
+grid.table(property_df, rows= NULL)
+
+if (npeaks > 0)
+{
+
+
+######################## II) segmentation tools #############################
+#############################################################################
+        #set $color_string = ','.join(['"%s"' % $color.feature_color for $color in $colours])
+        colourvector = c($color_string)
+
+
+        #if str( $segm_cond.segmentationtool ) == 'pca':
+            print('pca')
+            ##pca
+            
+            component_vector = character()
+            for (numberofcomponents in 1:$segm_cond.pca_ncomp)
+            {component_vector[numberofcomponents]= paste0("PC", numberofcomponents)}
+            pca <- PCA(msidata, ncomp=$segm_cond.pca_ncomp, column = component_vector, superpose = FALSE, 
+            method = "$segm_cond.pca_method", scale = $segm_cond.pca_scale, layout = c(ncomp, 1))
+
+            print(image(pca, main="PCA image", lattice=TRUE, strip = strip.custom(bg="lightgrey", par.strip.text=list(col="black", cex=.9)), contrast.enhance = "$segm_cond.pca_imagecontrast", smooth.image = "$segm_cond.pca_imagesmoothing", col=colourvector))
+            print(plot(pca, main="PCA plot", lattice=TRUE, col= colourvector, strip = strip.custom(bg="lightgrey", par.strip.text=list(col="black", cex=.9))))
+
+
+            pcaloadings = (pca@resultData\$ncomp\$loadings) ### loading for each mz value
+            pcascores = (pca@resultData\$ncomp\$scores) ### scores for each pixel
+
+            write.table(pcaloadings, file="$mzfeatures", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+            write.table(pcascores, file="$pixeloutput", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+
+        #elif str( $segm_cond.segmentationtool ) == 'kmeans':
+            print('kmeans')
+            ##k-means
+
+            skm <- spatialKMeans(msidata, r=$segm_cond.kmeans_r, k=$segm_cond.kmeans_k, method="$segm_cond.kmeans_method")
+            print(image(skm, key=TRUE, main="K-means clustering", lattice=TRUE, strip = strip.custom(bg="lightgrey", par.strip.text=list(col="black", cex=.9)), contrast.enhance = "$segm_cond.kmeans_imagecontrast", col= colourvector, smooth.image = "$segm_cond.kmeans_imagesmoothing"))
+            print(plot(skm, main="K-means plot", lattice=TRUE, col= colourvector, strip = strip.custom(bg="lightgrey", par.strip.text=list(col="black", cex=.9))))
+
+
+            skm_clusters = (skm@resultData\$r\$cluster)
+            skm_toplabels = topLabels(skm, n=500)
+    
+            write.table(skm_toplabels, file="$mzfeatures", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+            write.table(skm_clusters, file="$pixeloutput", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+
+
+        #elif str( $segm_cond.segmentationtool ) == 'centroids':
+            print('centroids')
+            ##centroids
+
+            ssc <- spatialShrunkenCentroids(msidata, r=$segm_cond.centroids_r, k=$segm_cond.centroids_k, s=$segm_cond.centroids_s, method="$segm_cond.centroids_method")
+            print(image(ssc, key=TRUE, main="Spatial shrunken centroids", lattice=TRUE, strip = strip.custom(bg="lightgrey", par.strip.text=list(col="black", cex=.9)), contrast.enhance = "$segm_cond.centroids_imagecontrast", col= colourvector, smooth.image = "$segm_cond.centroids_imagesmoothing"))
+            print(plot(ssc, main="Spatial shrunken centroids plot", lattice=TRUE, col= colourvector, strip = strip.custom(bg="lightgrey", par.strip.text=list(col="black", cex=.9))))
+
+            ssc_classes = (ssc@resultData\$r\$classes)
+            ssc_toplabels =  topLabels(ssc, n=500)
+
+            write.table(ssc_toplabels, file="$mzfeatures", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+            write.table(ssc_classes, file="$pixeloutput", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+
+
+        #end if
+
+    dev.off()
+
+}else{
+    print("Inputfile has no intensities > 0")
+    dev.off()
+}
+
+
+    ]]></configfile>
+    </configfiles>
+    <inputs>
+        <param name="infile" type="data" format="imzml, rdata, analyze75" label="Inputfile as imzML, Analyze7.5 or Cardinal MSImageSet saved as RData"
+            help="Upload composite datatype imzml (ibd+imzML) or analyze75 (hdr+img+t2m) or regular upload .RData (Cardinal MSImageSet)"/>
+            <conditional name="segm_cond">
+                <param name="segmentationtool" type="select" label="Select the tool for spatial clustering.">
+                    <option value="pca" selected="True">pca</option>
+                    <option value="kmeans">k-means</option>
+                    <option value="centroids">shrunken centroids</option>
+                </param>
+                <when value="pca">
+                    <param name="pca_ncomp" type="integer" value="2"
+                           label="The number of principal components to calculate."/>
+                    <param name="pca_method" type="select" 
+                           label="The function used to calculate the singular value decomposition.">
+                        <option value="irlba" selected="True">irlba</option>
+                        <option value="svd">svd</option>
+                    </param>
+                    <param name="pca_scale" type="select" display="radio" optional="False"
+                           label="Shoud the data be scaled first?">
+                        <option value="TRUE">yes</option>
+                        <option value="FALSE" selected="True">no</option>
+                </param>
+                <param name="pca_imagecontrast" type="select" label="Select a contrast enhancement function." help="The 'histogram' equalization method flatterns the distribution of intensities. The hotspot 'suppression' method uses thresholding to reduce the intensities of hotspots">
+                    <option value="none" selected="True">none</option>
+                    <option value="suppression">suppression</option>
+                    <option value="histogram">histogram</option>
+                </param>
+                <param name="pca_imagesmoothing" type="select" label="Select an image smoothing function." help="The 'gaussian' smoothing method smooths images with a simple gaussian kernel. The 'adaptive' method uses bilateral filtering to preserve edges.">
+                    <option value="none" selected="True">none</option>
+                    <option value="gaussian">gaussian</option>
+                    <option value="adaptive">adaptive</option>
+                </param>
+                </when> 
+
+                <when value="kmeans">
+                    <param name="kmeans_r" type="text" value="2"
+                           label="The spatial neighborhood radius of nearby pixels to consider (r)."/>
+                    <param name="kmeans_k" type="text" value="3"
+                           label="The number of clusters (k)."/>
+                    <param name="kmeans_method" type="select" display="radio"
+                           label="The method to use to calculate the spatial smoothing kernels for the embedding. The 'gaussian' method refers to spatially-aware (SA) clustering, and 'adaptive' refers to spatially-aware structurally-adaptive (SASA) clustering.">
+                        <option value="gaussian">gaussian</option>
+                        <option value="adaptive" selected="True">adaptive</option>
+                </param>
+                <param name="kmeans_imagecontrast" type="select" label="Select a contrast enhancement function." help="The 'histogram' equalization method flatterns the distribution of intensities. The hotspot 'suppression' method uses thresholding to reduce the intensities of hotspots">
+                    <option value="none" selected="True">none</option>
+                    <option value="suppression">suppression</option>
+                    <option value="histogram">histogram</option>
+                </param>
+                <param name="kmeans_imagesmoothing" type="select" label="Select an image smoothing function." help="The 'gaussian' smoothing method smooths images with a simple gaussian kernel. The 'adaptive' method uses bilateral filtering to preserve edges.">
+                    <option value="none" selected="True">none</option>
+                    <option value="gaussian">gaussian</option>
+                    <option value="adaptive">adaptive</option>
+                </param>
+                </when>
+
+                <when value="centroids">
+                    <param name="centroids_r" type="text" value="2"
+                           label="The spatial neighborhood radius of nearby pixels to consider (r)."/>
+                    <param name="centroids_k" type="text" value="5"
+                           label="The initial number of clusters (k)."/>
+                    <param name="centroids_s" type="integer" value="2"
+                           label="The sparsity thresholding parameter by which to shrink the t-statistics (s)." help="As s increases, fewer mass
+features (m/z values) will be used in the spatial segmentation, and only the informative mass features will be retained."/>
+                    <param name="centroids_method" type="select" display="radio" label = "The method to use to calculate the spatial smoothing kernels for the embedding. The 'gaussian' method refers to spatially-aware (SA) weights, and 'adaptive' refers to spatially-aware structurally-adaptive (SASA) weights.">
+                        <option value="gaussian" selected="True">gaussian</option>
+                        <option value="adaptive">adaptive</option>
+                </param>
+                <param name="centroids_imagecontrast" type="select" label="Select a contrast enhancement function." help="The 'histogram' equalization method flatterns the distribution of intensities. The hotspot 'suppression' method uses thresholding to reduce the intensities of hotspots">
+                    <option value="none" selected="True">none</option>
+                    <option value="suppression">suppression</option>
+                    <option value="histogram">histogram</option>
+                </param>
+                <param name="centroids_imagesmoothing" type="select" label="Select an image smoothing function." help="The 'gaussian' smoothing method smooths images with a simple gaussian kernel. The 'adaptive' method uses bilateral filtering to preserve edges.">
+                    <option value="none" selected="True">none</option>
+                    <option value="gaussian">gaussian</option>
+                    <option value="adaptive">adaptive</option>
+                </param>
+                </when>
+            </conditional>
+            <repeat name="colours" title="Colours for the plots" min="1" max="50">
+                <param name="feature_color" type="color" label="Colours" value="#ff00ff" help="Numbers of columns should be the same as number of components">
+                  <sanitizer>
+                    <valid initial="string.letters,string.digits">
+                      <add value="#" />
+                    </valid>
+                  </sanitizer>
+                </param>
+            </repeat>
+    </inputs>
+    <outputs>
+        <data format="pdf" name="segmentationimages" from_work_dir="segmentationpdf.pdf" label = "${tool.name} on $infile.display_name"/>
+        <data format="tabular" name="mzfeatures" label="mzfeatures ${tool.name} on $infile.display_name"/>
+        <data format="tabular" name="pixeloutput" label="pixels ${tool.name} on $infile.display_name"/>
+    </outputs>
+    <tests>
+        <test>
+            <param name="infile" value="" ftype="imzml">
+                <composite_data value="Example_Continuous.imzML" ftype="imzml"/>
+                <composite_data value="Example_Continuous.ibd" ftype="ibd"/>
+            </param>
+            <param name="segmentationtool" value="pca"/>
+
+            <repeat name="colours">
+                <param name="feature_color" value="#ff00ff"/>
+            </repeat>
+            <repeat name="colours">
+                <param name="feature_color" value="#0000FF"/>
+            </repeat>
+            <output name="segmentationimages" file="pca_imzml.pdf" compare="sim_size" delta="20000"/>
+            <output name="mzfeatures" file="pcaloadings_results1.txt" compare="sim_size"/>
+            <output name="pixeloutput" file="pcascores_results1.txt" compare="sim_size"/>
+        </test>
+        <test>
+            <param name="infile" value="" ftype="analyze75">
+                <composite_data value="Analyze75.hdr" ftype="hdr"/>
+                <composite_data value="Analyze75.img" ftype="img"/>
+                <composite_data value="Analyze75.t2m" ftype="t2m"/>
+            </param>
+            <param name="segmentationtool" value="kmeans"/>
+            <repeat name="colours">
+                <param name="feature_color" value="#ff00ff"/>
+            </repeat>
+            <repeat name="colours">
+                <param name="feature_color" value="#0000FF"/>
+            </repeat>
+            <repeat name="colours">
+                <param name="feature_color" value="#00C957"/>
+            </repeat>
+            <output name="segmentationimages" file="kmeans_imzml.pdf" compare="sim_size" delta="20000"/>
+            <output name="mzfeatures" file="toplabels_results1.txt" compare="sim_size"/>
+            <output name="pixeloutput" file="cluster_results1.txt" compare="sim_size"/>
+        </test>
+        <test>
+            <param name="infile" value="preprocessing_results1.RData" ftype="rdata"/>
+            <param name="segmentationtool" value="centroids"/>
+            <repeat name="colours">
+                <param name="feature_color" value="#0000FF"/>
+            </repeat>
+            <repeat name="colours">
+                <param name="feature_color" value="#00C957"/>
+            </repeat>
+            <repeat name="colours">
+                <param name="feature_color" value="#B0171F"/>
+            </repeat>
+            <repeat name="colours">
+                <param name="feature_color" value="#FFD700"/>
+            </repeat>
+            <repeat name="colours">
+                <param name="feature_color" value="#848484"/>
+            </repeat>
+            <output name="segmentationimages" file="centroids_imzml.pdf" compare="sim_size" delta="20000"/>
+            <output name="mzfeatures" file="toplabels_results1.txt" compare="sim_size"/>
+            <output name="pixeloutput" file="classes_results1.txt" compare="sim_size"/>
+        </test>
+    </tests>
+    <help>
+        <![CDATA[
+
+Spatially aware segmentation of mass-spectrometry imaging data by unsupervised clustering algorithms. Underlying structures can be identified with the following tools: pca, k-means clustering and spatial shrunken centroids. The spatialShrunkenCentroids method allows the number of segments to decrease according to the data. This allows automatic selection of the number
+of clusters.
+
+Input data: 3 types of input data can be used:
+
+- imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <http://ms-imaging.org/wp/introduction/>`_
+- Analyze7.5 (upload hdr, img and t2m file via the "composite" function)
+- Cardinal "MSImageSet" data (with variable name "msidata", saved as .RData)
+
+The output of this tool contains a pdf with plots from the segmentation tools. 
+        ]]>
+    </help>
+    <citations>
+        <citation type="doi">10.1093/bioinformatics/btv146</citation>
+    </citations>
+</tool>
+
