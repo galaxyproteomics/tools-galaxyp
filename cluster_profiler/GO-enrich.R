@@ -77,6 +77,7 @@ clusterProfiler = function() {
         --id_type: the type of input IDs (UniProt/EntrezID)
         --species
         --onto_opt: ontology options
+        --go_function: groupGO/enrichGO
         --level: 1-3
         --pval_cutoff
         --qval_cutoff
@@ -140,19 +141,21 @@ clusterProfiler = function() {
   }
 
   ontology <- strsplit(args$onto_opt, ",")[[1]]
+  go_function <- strsplit(args$go_function, ",")[[1]]
   level <- as.numeric(args$level)
   pval_cutoff <- as.numeric(args$pval_cutoff)
   qval_cutoff <- as.numeric(args$qval_cutoff)
 
   ##enrichGO : GO over-representation test
   for (onto in ontology) {
-    ggo<-repartition.GO(gene$ENTREZID, orgdb, onto, level, readable=TRUE)
-    ego<-enrich.GO(gene$ENTREZID, orgdb, onto,
-                pval_cutoff,
-                qval_cutoff)
-    # write textual output
-    write.table(ggo, args$text_output, append = TRUE, sep="\t", row.names = FALSE, quote=FALSE)
-    write.table(ego, args$text_output, append = TRUE, sep="\t", row.names = FALSE, quote=FALSE)
+    if ("ggo" %in% go_function) {
+      ggo<-repartition.GO(gene$ENTREZID, orgdb, onto, level, readable=TRUE)
+      write.table(ggo, args$text_output, append = TRUE, sep="\t", row.names = FALSE, quote=FALSE)
+    }
+    if ("ego" %in% go_function) {
+      ego<-enrich.GO(gene$ENTREZID, orgdb, onto, pval_cutoff, qval_cutoff)
+      write.table(ego, args$text_output, append = TRUE, sep="\t", row.names = FALSE, quote=FALSE)
+    }
   }
 }
 
