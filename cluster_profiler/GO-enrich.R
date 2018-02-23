@@ -141,18 +141,22 @@ clusterProfiler = function() {
   }
 
   ontology <- strsplit(args$onto_opt, ",")[[1]]
-  go_function <- strsplit(args$go_function, ",")[[1]]
-  level <- as.numeric(args$level)
-  pval_cutoff <- as.numeric(args$pval_cutoff)
-  qval_cutoff <- as.numeric(args$qval_cutoff)
+  if ("--go_represent" %in% args) {
+    go_represent <- args$go_represent
+    level <- as.numeric(args$level)
+  }
+  if ("--go_enrich" %in% args) {
+    pval_cutoff <- as.numeric(args$pval_cutoff)
+    qval_cutoff <- as.numeric(args$qval_cutoff)
+  }
 
   ##enrichGO : GO over-representation test
   for (onto in ontology) {
-    if ("ggo" %in% go_function) {
+    if (go_represent == "true") {
       ggo<-repartition.GO(gene$ENTREZID, orgdb, onto, level, readable=TRUE)
       write.table(ggo, args$text_output, append = TRUE, sep="\t", row.names = FALSE, quote=FALSE)
     }
-    if ("ego" %in% go_function) {
+    if (go_enrich == "true") {
       ego<-enrich.GO(gene$ENTREZID, orgdb, onto, pval_cutoff, qval_cutoff)
       write.table(ego, args$text_output, append = TRUE, sep="\t", row.names = FALSE, quote=FALSE)
     }
