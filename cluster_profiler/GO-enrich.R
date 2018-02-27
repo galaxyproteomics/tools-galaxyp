@@ -141,11 +141,12 @@ clusterProfiler = function() {
   }
 
   ontology <- strsplit(args$onto_opt, ",")[[1]]
-  if ("--go_represent" %in% args) {
+  if (args$go_represent) {
     go_represent <- args$go_represent
     level <- as.numeric(args$level)
   }
-  if ("--go_enrich" %in% args) {
+  if (args$go_enrich) {
+    go_enrich <- args$go_enrich
     pval_cutoff <- as.numeric(args$pval_cutoff)
     qval_cutoff <- as.numeric(args$qval_cutoff)
   }
