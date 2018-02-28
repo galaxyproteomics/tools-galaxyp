@@ -1,0 +1,361 @@
+<tool id="mass_spectrometry_imaging_filtering" name="MSI filtering" version="1.7.0">
+    <description>tool for filtering mass spectrometry imaging data</description>
+    <requirements>
+        <requirement type="package" version="1.7.0">bioconductor-cardinal</requirement>
+        <requirement type="package" version="2.2.1">r-gridextra</requirement>
+    </requirements>
+    <command detect_errors="exit_code">
+    <![CDATA[
+
+        #if $infile.ext == 'imzml'
+            cp '${infile.extra_files_path}/imzml' infile.imzML &&
+            cp '${infile.extra_files_path}/ibd' infile.ibd &&
+        #elif $infile.ext == 'analyze75'
+            cp '${infile.extra_files_path}/hdr' infile.hdr &&
+            cp '${infile.extra_files_path}/img' infile.img &&
+            cp '${infile.extra_files_path}/t2m' infile.t2m &&
+        #else
+            ln -s $infile infile.RData &&
+        #end if
+        cat '${MSI_subsetting}' &&
+        echo ${MSI_subsetting} &&
+        Rscript '${MSI_subsetting}'
+
+    ]]>
+    </command>
+    <configfiles>
+        <configfile name="MSI_subsetting"><![CDATA[
+
+
+################################# load libraries and read file #########################
+
+
+library(Cardinal)
+library(gridExtra)
+
+## Read MALDI Imaging dataset
+
+#if $infile.ext == 'imzml'
+    msidata = readMSIData('infile.imzML')
+#elif $infile.ext == 'analyze75'
+    msidata = readMSIData('infile.hdr')
+#else
+    load('infile.RData')
+#end if
+
+###################################### inputfile properties in numbers ######################
+
+#if $outputs.outputs_select == "quality_control"
+    ## Number of features (mz)
+    maxfeatures = length(features(msidata))
+    ## Range mz
+    minmz = round(min(mz(msidata)), digits=2)
+    maxmz = round(max(mz(msidata)), digits=2)
+    ## Number of spectra (pixels)
+    pixelcount = length(pixels(msidata))
+    ## Range x coordinates
+    minimumx = min(coord(msidata)[,1])
+    maximumx = max(coord(msidata)[,1])
+    ## Range y coordinates
+    minimumy = min(coord(msidata)[,2])
+    maximumy = max(coord(msidata)[,2])
+    ## Number of intensities > 0
+    npeaks= sum(spectra(msidata)[]>0)
+    ## Spectra multiplied with mz (potential number of peaks)
+    numpeaks = ncol(spectra(msidata)[])*nrow(spectra(msidata)[])
+    ## Percentage of intensities > 0
+    percpeaks = round(npeaks/numpeaks*100, digits=2)
+    ## Number of empty TICs
+    TICs = colSums(spectra(msidata)[])
+    NumemptyTIC = sum(TICs == 0)
+    ## median TIC
+    medint = round(median(TICs), digits=2)
+    ## Store features for QC plot
+    featuresinfile = mz(msidata)
+#end if
+
+
+###################################### filtering of pixels ######################
+#if $inputpixels:
+    input_list = read.delim("$inputpixels", header = FALSE, 
+            na.strings=c("","NA", "#NUM!", "#ZAHL!"), stringsAsFactors = FALSE)
+    validpixels = input_list[,$pixel_column] %in% names(pixels(msidata))
+
+            if (validpixels != 0)
+        {
+            pixelsofinterest = pixels(msidata)[names(pixels(msidata)) %in% input_list[validpixels,$pixel_column]]
+            msidata = msidata[,pixelsofinterest]
+            numberpixels = length(input_list[,$pixel_column])
+        }else {
+            numberpixels = 0
+        }
+
+
+#else
+    input_list = data.frame(0, 0)
+    validpixels=0
+    numberpixels = 0
+#end if
+
+
+
+###################################### filtering of features ######################
+
+#if $inputfeatures:
+    input_features = read.delim("$inputfeatures", header = FALSE,
+                 na.strings=c("","NA", "#NUM!", "#ZAHL!"), stringsAsFactors = FALSE)
+    validfeatures = input_features[,$feature_column] %in% names(features(msidata)) 
+
+            if (validfeatures != 0)
+        {
+            featuresofinterest = features(msidata)[names(features(msidata)) %in% input_features[validfeatures,$feature_column]]
+            msidata = msidata[featuresofinterest,]
+            numberfeatures = length(input_features[,$feature_column])
+        } else {
+            numberfeatures = 0
+        }
+
+
+#else
+    input_features = data.frame(0, 0)
+    validfeatures = 0
+    numberfeatures = 0
+#end if
+
+
+
+
+
+
+# save msidata as Rfile
+save(msidata, file="$msidata_filtered")
+
+###################################### outputfile properties in numbers ######################
+
+#if $outputs.outputs_select == "quality_control"
+
+## Number of features (mz)
+maxfeatures2 = length(features(msidata))
+## Range mz
+minmz2 = round(min(mz(msidata)), digits=2)
+maxmz2 = round(max(mz(msidata)), digits=2)
+## Number of spectra (pixels)
+pixelcount2 = length(pixels(msidata))
+## Range x coordinates
+minimumx2 = min(coord(msidata)[,1])
+maximumx2 = max(coord(msidata)[,1])
+## Range y coordinates
+minimumy2 = min(coord(msidata)[,2])
+maximumy2 = max(coord(msidata)[,2])
+## Number of intensities > 0
+npeaks2= sum(spectra(msidata)[]>0)
+## Spectra multiplied with mz (potential number of peaks)
+numpeaks2 = ncol(spectra(msidata)[])*nrow(spectra(msidata)[])
+## Percentage of intensities > 0
+percpeaks2 = round(npeaks2/numpeaks2*100, digits=2)
+## Number of empty TICs
+TICs2 = colSums(spectra(msidata)[]) 
+NumemptyTIC2 = sum(TICs2 == 0)
+## median TIC
+medint2 = round(median(TICs2), digits=2)
+
+
+properties = c("Number of mz features",
+               "Range of mz values [Da]",
+               "Number of pixels", 
+               "Range of x coordinates", 
+               "Range of y coordinates",
+               "Intensities > 0",
+               "Median TIC per pixel",
+               "Number of zero TICs", 
+               paste0("# pixels in ", "$inputpixels.display_name"), 
+               paste0("# mz in ", "$inputfeatures.display_name"))
+
+before = c(paste0(maxfeatures), 
+           paste0(minmz, " - ", maxmz), 
+           paste0(pixelcount), 
+           paste0(minimumx, " - ", maximumx),  
+           paste0(minimumy, " - ", maximumy), 
+           paste0(percpeaks, " %"), 
+           paste0(medint),
+           paste0(NumemptyTIC), 
+           paste0("input pixels: ", numberpixels),
+           paste0("input mz: ", numberfeatures))
+
+filtered = c(paste0(maxfeatures2), 
+           paste0(minmz2, " - ", maxmz2), 
+           paste0(pixelcount2), 
+           paste0(minimumx2, " - ", maximumx2),  
+           paste0(minimumy2, " - ", maximumy2), 
+           paste0(percpeaks2, " %"), 
+           paste0(medint2),
+           paste0(NumemptyTIC2), 
+           paste0("valid pixels: ", sum(validpixels)),
+           paste0("valid mz: ", sum(validfeatures)))
+
+
+property_df = data.frame(properties, before, filtered)
+
+
+
+######################################## PDF QC #############################################
+
+
+    pdf("filtertool_QC.pdf", fonts = "Times", pointsize = 12)
+    plot(0,type='n',axes=FALSE,ann=FALSE)
+
+    title(main=paste0("Qualitycontrol of filtering tool for file: \n\n", "$infile.display_name"))
+
+
+    grid.table(property_df, rows= NULL)
+
+
+    ### heatmap image as visual pixel control
+
+
+    image(msidata, mz=$outputs.inputmz, plusminus = $outputs.plusminus_dalton, contrast.enhance = "none", 
+          main= paste0($outputs.inputmz," ± ", $outputs.plusminus_dalton, " Da"), ylim = c(maximumy2+0.2*maximumy2,minimumy2-0.2*minimumy2))
+
+    ### control features which are left
+
+    par(mfrow = c(2,1))
+    plot(featuresinfile, ylab = "m/z in Dalton", xlab = "feature index")
+    plot(mz(msidata), ylab = "m/z in Dalton", xlab = "feature index")
+
+
+    dev.off()
+
+#end if
+
+######################################## intensity matrix ##################################
+
+#if $output_matrix:
+
+if (length(features(msidata))> 0 & length(pixels(msidata)) > 0)
+{
+
+    spectramatrix = spectra(msidata)
+    rownames(spectramatrix) = mz(msidata)
+    newmatrix = rbind(pixels(msidata), spectramatrix)
+    write.table(newmatrix[2:nrow(newmatrix),], file="$matrixasoutput", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+
+}else{
+    print("file has no features or pixels left")
+}
+
+#end if
+
+
+    ]]></configfile>
+    </configfiles>
+    <inputs>
+        <param name="infile" type="data" format="imzml, rdata, analyze75"
+               label="Inputfile as imzML, Analyze7.5 or Cardinal MSImageSet saved as RData"
+                help="Upload composite datatype imzml (ibd+imzML) or analyze75 (hdr+img+t2m) or regular upload .RData (Cardinal MSImageSet)"/>
+        <param name="inputpixels" type="data" optional="true" format="tabular" label="pixels for filtering of MSI data"
+            help="tabular file with pixels of interest in the form x = 1, y = 1"/>
+        <param name="pixel_column" data_ref="inputpixels" optional="true" label="Column with pixels" type="data_column" />
+        <param name="inputfeatures" type="data" optional="true" format="tabular" label="features for filtering of MSI data"
+            help="tabular file with masses of interest in the form mz = 800.05"/>
+        <param name="feature_column" data_ref="inputfeatures" optional="true" label="Column with features" type="data_column" />
+
+        <conditional name="outputs">
+           <param name="outputs_select" type="select" label="Quality control output">
+               <option value="quality_control" selected="True">yes</option>
+               <option value="no_quality_control" >no</option>
+           </param>
+           <when value="quality_control">
+              <param name="inputmz" type="float" value="1296.7" label="Mass for which a heatmap image will be drawn" help="Use a mass which is still present in all pixels to control if the pixel filtering went well"/>
+              <param name="plusminus_dalton" value="0.25" type="float" label="mass range for mz value" help="plusminus mass window in Dalton"/>
+           </when>
+         </conditional>
+         <param name="output_matrix" type="boolean" display="radio" label="Intensity matrix output"/>
+    </inputs>
+    <outputs>
+        <data format="rdata" name="msidata_filtered" label="${tool.name} on $infile.display_name"/>
+        <data format="pdf" name="filtering_qc" from_work_dir="filtertool_QC.pdf" label = "QC ${tool.name} on $infile.display_name">
+            <filter>outputs["outputs_select"] == "quality_control"</filter>
+        </data>
+        <data format="tabular" name="matrixasoutput" label="matrix ${tool.name} on $infile.display_name">
+            <filter>output_matrix</filter>
+        </data>
+    </outputs>
+
+    <tests>
+        <test expect_num_outputs="2">
+            <param name="infile" value="" ftype="imzml">
+                <composite_data value="Example_Continuous.imzML"/>
+                <composite_data value="Example_Continuous.ibd"/>
+            </param>
+            <param name="inputpixels" ftype="tabular" value = "inputpixels.tabular"/>
+            <param name="pixel_column" value="1"/>
+            <param name="inputfeatures" ftype="tabular" value = "inputfeatures.tabular"/>
+            <param name="feature_column" value="2"/>
+
+            <conditional name="outputs">
+                <param name="outputs_select" value="quality_control"/>
+                    <param name="inputmz" value="328.9"/>
+                    <param name="plusminus_dalton" value="0.25"/>
+            </conditional>
+            <output name="filtering_qc" file="imzml_filtered.pdf" compare="sim_size" delta="20000"/>
+            <output name="msidata_filtered" file="imzml_filtered.RData" compare="sim_size" />
+        </test>
+        <test expect_num_outputs="3">
+           <param name="infile" value="" ftype="analyze75">
+                <composite_data value="Analyze75.hdr"/>
+                <composite_data value="Analyze75.img"/>
+                <composite_data value="Analyze75.t2m"/>
+            </param>
+            <param name="inputpixels" ftype="tabular" value = "inputpixels2.tabular"/>
+            <param name="pixel_column" value="1"/>
+            <param name="inputfeatures" ftype="tabular" value = "featuresofinterest2.tabular"/>
+            <param name="feature_column" value="1"/>
+            <conditional name="outputs">
+                <param name="outputs_select" value="quality_control"/>
+                    <param name="inputmz" value="702"/>
+                    <param name="plusminus_dalton" value="0.25"/>
+            </conditional>
+            <param name="output_matrix" value="True"/>
+            <output name="filtering_qc" file="analyze_filtered.pdf" compare="sim_size" delta="20000"/>
+            <output name="msidata_filtered" file="analyze_filtered.RData" compare="sim_size" />
+            <output name="matrixasoutput" file="analyze_matrix.tabular"/>
+        </test>
+        <test expect_num_outputs="1">
+           <param name="infile" value="" ftype="analyze75">
+                <composite_data value="Analyze75.hdr"/>
+                <composite_data value="Analyze75.img"/>
+                <composite_data value="Analyze75.t2m"/>
+            </param>
+            <conditional name="outputs">
+                <param name="outputs_select" value="no_quality_control"/>
+            </conditional>
+            <output name="msidata_filtered" file="analyze_originaloutput.RData" compare="sim_size" />
+        </test>
+        <test expect_num_outputs="2">
+            <param name="infile" value="preprocessing_results1.RData" ftype="rdata"/>
+            <conditional name="outputs">
+                <param name="outputs_select" value="no_quality_control"/>
+            </conditional>
+            <param name="output_matrix" value="True"/>
+            <output name="matrixasoutput" file="rdata_matrix.tabular"/>
+        </test>
+    </tests>
+    <help>
+        <![CDATA[
+
+This tool can filter three types of mass-spectrometry imaging files (see below) for pixels and features of interest. This can be used to keep only pixels in a regions of interest.
+For filtering at least one valid pixel/feature is needed otherwise no filtering will be performed.
+
+Input data: 3 types of input data can be used:
+
+- imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <http://ms-imaging.org/wp/introduction/>`_
+- Analyze7.5 (upload hdr, img and t2m file via the "composite" function)
+- Cardinal "MSImageSet" data (with variable name "msidata", saved as .RData)
+
+The output of this tool is a subsetted Cardinal "MSImageSet" with the variable name "msidata" saved as .RData. 
+        ]]>
+    </help>
+    <citations>
+        <citation type="doi">10.1093/bioinformatics/btv146</citation>
+    </citations>
+</tool>
