@@ -36,24 +36,13 @@ library(lattice)
 ## Read MALDI Imaging dataset
 
 #if $infile.ext == 'imzml'
-    msidata <- readMSIData('infile.imzML')
+    msidata = readMSIData('infile.imzML')
 #elif $infile.ext == 'analyze75'
-    msidata <- readMSIData('infile.hdr')
+    msidata = readMSIData('infile.hdr')
 #else
     load('infile.RData')
 #end if
 
-#if $massfile:
-    ### Read tabular file with peptide masses for plots and heatmap images: 
-    input_list = read.delim("$massfile", header = FALSE, na.strings=c("","NA", "#NUM!", "#ZAHL!"), stringsAsFactors = FALSE)
-        if (ncol(input_list) == 1)
-        {
-            input_list = cbind(input_list, input_list)
-        }
-#else
-    input_list = data.frame(0, 0)
-#end if
-colnames(input_list)[1:2] = c("mz", "name")
 
 ###################################### file properties in numbers ######################
 
@@ -115,12 +104,32 @@ if (length(processinginfo@peakPicking) == 0) {
   peakpickinginfo=processinginfo@peakPicking
 }
 
-### calculate how many input masses are valid: 
-inputmasses = input_list[input_list[,1]>minmz & input_list[,1]<maxmz,]
+#if $massfile:
+    ### Read tabular file with peptide masses for plots and heatmap images: 
+    input_list = read.delim("$massfile", header = FALSE, stringsAsFactors = FALSE)
+        if (ncol(input_list) == 1)
+        {
+            input_list = cbind(input_list, input_list)
+        }
+        ### calculate how many input masses are valid: 
+        inputmasses = input_list[input_list[,1]>minmz & input_list[,1]<maxmz,]
 
-inputmz = inputmasses[,1]
-inputnames = inputmasses[,2]
+        inputmz = inputmasses[,1]
+        inputnames = inputmasses[,2]
+#else
+    input_list = data.frame(0, 0)
+    inputmz = 0
+#end if
 
+
+countpixels = rowSums(spectra(msidata)[features(msidata, mz=inputmz),]>0)
+percentpixels = round(countpixels/pixelcount*100, digits=1)
+valuesdataframe = cbind(inputmz, cbind(countpixels, percentpixels))
+
+
+write.table(valuesdataframe, file="$pixel_count", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+
+colnames(input_list)[1:2] = c("mz", "name")
 properties = c("Number of mz features",
                "Range of mz values [Da]",
                "Number of pixels", 
@@ -136,7 +145,7 @@ properties = c("Number of mz features",
                "Baseline reduction",
                "Peak picking",
                "Centroided", 
-                paste0("# valid masses in ", "$filename"))
+                paste0("# valid masses in ", "$massfile.display_name"))
 
 values = c(paste0(maxfeatures), 
            paste0(minmz, " - ", maxmz), 
@@ -157,6 +166,9 @@ values = c(paste0(maxfeatures),
 
 property_df = data.frame(properties, values)
 
+
+
+
 ######################################## PDF #############################################
 ##########################################################################################
 ##########################################################################################
@@ -176,15 +188,19 @@ grid.table(property_df, rows= NULL)
 
 if (npeaks > 0)
 {
+
     if (length(inputmz) != 0)
     {
+
       for (mass in 1:length(inputmz))
       {
-        print(image(msidata, mz=inputmz[mass], strip = strip.custom(bg="lightgrey", par.strip.text=list(col="black", cex=.9)),
-              lattice=TRUE, ylim = c(maximumy+1,minimumy-1), plusminus = $plusminusinDalton, contrast.enhance = "histogram", 
-              main= paste0(mass, ") ", inputnames[mass], " (", round(inputmz[mass], digits = 2)," ± ", $plusminusinDalton, " Da)")))
+
+
+      print(image(msidata, mz=inputmz[mass], strip = strip.custom(bg="lightgrey", par.strip.text=list(col="black", cex=.9)),
+              lattice=TRUE, ylim = c(maximumy+1,minimumy-1), plusminus = $plusminus_dalton, contrast.enhance = "$image_contrast", smooth.image = "$image_smoothing", 
+              main= paste0(mass, ") ", inputnames[mass], " (", round(inputmz[mass], digits = 2)," ± ", $plusminus_dalton, " Da)")))
       }
-    } else {print("The input masses were outside the mass range")}
+    } else {print("The input masses were invalid")}
 
     dev.off()
 
@@ -198,12 +214,23 @@ dev.off()
         <param name="infile" type="data" format="imzml,rdata,analyze75" label="Inputfile as imzML, Analyze7.5 or Cardinal MSImageSet saved as RData"
             help="Upload composite datatype imzml (ibd+imzML) or analyze75 (hdr+img+t2m) or regular upload .RData (Cardinal MSImageSet)"/>
         <param name="filename" type="text" value="" label="Title" help="will appear in the quality report. If nothing given it will take the dataset name."/>
-        <param name="massfile" type="data" optional="true" format="tabular" label="Text file with masses and names"
+        <param name="massfile" type="data" format="tabular" label="Text file with masses and names"
             help="first column mass (m/z), second column mass name, tab separated file"/>
-        <param name="plusminusinDalton" value="0.25" type="float" label="Mass range" help="plusminus mass window in Dalton"/>
+        <param name="image_contrast" type="select" label="Select a contrast enhancement function for the heatmap images." help="The 'histogram' equalization method flatterns the distribution of intensities. The hotspot 'suppression' method uses thresholding to reduce the intensities of hotspots">
+            <option value="none" selected="True">none</option>
+            <option value="suppression">suppression</option>
+            <option value="histogram">histogram</option>
+        </param>
+        <param name="image_smoothing" type="select" label="Select an image smoothing function for the heatmap images." help="The 'gaussian' smoothing method smooths images with a simple gaussian kernel. The 'adaptive' method uses bilateral filtering to preserve edges.">
+            <option value="none" selected="True">none</option>
+            <option value="gaussian">gaussian</option>
+            <option value="adaptive">adaptive</option>
+        </param>
+        <param name="plusminus_dalton" value="0.25" type="float" label="Mass range" help="plusminus mass window in Dalton"/>
     </inputs>
     <outputs>
         <data format="pdf" name="plots" from_work_dir="heatmaps.pdf" label = "${tool.name} on $infile.display_name"/>
+        <data format="tabular" name="pixel_count" label="Number of pixels per mz with intensity"/>
     </outputs>
     <tests>
         <test>
@@ -211,9 +238,10 @@ dev.off()
                 <composite_data value="Example_Continuous.imzML"/>
                 <composite_data value="Example_Continuous.ibd"/>
             </param>
-            <param name="massfile" value="inputpeptides.csv" ftype="tabular"/>
-            <param name="plusminusinDalton" value="0.25"/>
+            <param name="massfile" value="inputpeptides.tabular" ftype="tabular"/>
+            <param name="plusminus_dalton" value="0.25"/>
             <param name="filename" value="Testfile_imzml"/>
+            <param name="image_contrast" value="histogram"/>
             <output name="plots" file="Heatmaps_imzml.pdf" compare="sim_size" delta="20000"/>
         </test>
 
@@ -223,37 +251,48 @@ dev.off()
                 <composite_data value="Analyze75.img"/>
                 <composite_data value="Analyze75.t2m"/>
             </param>
-            <param name="massfile" value="inputpeptides.txt" ftype="tabular"/>
-            <param name="plusminusinDalton" value="0.5"/>
+            <param name="massfile" value="inputpeptides2.tabular" ftype="tabular"/>
+            <param name="plusminus_dalton" value="0.5"/>
             <param name="filename" value="Testfile_analyze75"/>
+            <param name="image_smoothing" value="gaussian"/>
             <output name="plots" file="Heatmaps_analyze75.pdf" compare="sim_size" delta="20000"/>
         </test>
         <test>
             <param name="infile" value="preprocessing_results1.RData" ftype="rdata"/>
-            <param name="massfile" value="inputpeptides.csv" ftype="tabular"/>
-            <param name="plusminusinDalton" value="0.1"/>
+            <param name="massfile" value="inputpeptides.tabular" ftype="tabular"/>
+            <param name="plusminus_dalton" value="0.1"/>
             <param name="filename" value="Testfile_rdata"/>
             <output name="plots" file="Heatmaps_rdata.pdf" compare="sim_size" delta="20000"/>
         </test>
         <test>
             <param name="infile" value="LM8_file16.rdata" ftype="rdata"/>
-            <param name="massfile" value="inputpeptides.txt" ftype="tabular"/>
-            <param name="plusminusinDalton" value="0.1"/>
+            <param name="massfile" value="inputpeptides2.tabular" ftype="tabular"/>
+            <param name="plusminus_dalton" value="0.1"/>
             <param name="filename" value="Testfile_rdata"/>
             <output name="plots" file="Heatmaps_LM8_file16.pdf" compare="sim_size" delta="20000"/>
         </test>
     </tests>
     <help><![CDATA[
 
-Heatmaps for different ion masses in mass-spectrometry imaging data. 
+Heatmaps for different masses in mass-spectrometry imaging data as pdf output. 
 
-Input data: 3 types of input data can be used:
+Input data: 
+
+3 types of mass-spectrometry imaging data can be used:
 
 - imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <http://ms-imaging.org/wp/introduction/>`_
 - Analyze7.5 (upload hdr, img and t2m file via the "composite" function)
 - Cardinal "MSImageSet" data (with variable name "msidata", saved as .RData)
 
-The output of this tool contains heatmaps for every ion mass of interest as pdf. 
+tabular file with masses: 
+- tab separated file (.tabular), datatype in Galaxy must be tabular (if Galaxy auto-detection was wrong, datatype can be changed by pressing the pen button)
+- no empty fields or letters are allowed (tool crashes with empty fields and a single letter prohibits generation of images)
+- separate point numbers by point (a single number with comma prohibits generation of images)
+
+Trouble shooting: 
+- no heatmaps are plotted when tabular file contains letters or point numbers with commas or when the input MSI file had no intensities > 0
+- contrast enhance functions need masses with intensities > 0 in about 1.5% of all pixels - tool crashes when contrast enhance is used on too few intensities
+
 
     ]]>
     </help>
