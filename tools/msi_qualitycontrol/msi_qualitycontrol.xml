@@ -34,41 +34,17 @@ library(RColorBrewer)
 library(gridExtra)
 library(KernSmooth)
 
-## Read MALDI Imagind dataset
+## Read MALDI Imaging dataset
 
 #if $infile.ext == 'imzml'
-    msidata <- readMSIData('infile.imzML')
+    msidata = readMSIData('infile.imzML')
 #elif $infile.ext == 'analyze75'
-    msidata <- readMSIData('infile.hdr')
+    msidata = readMSIData('infile.hdr')
 
 #else
     load('infile.RData')
 #end if
 
-#if $inputpeptidefile:
-    ### Read tabular file with peptide masses for plots and heatmap images: 
-    input_list = read.delim("$inputpeptidefile", header = FALSE, na.strings=c("","NA", "#NUM!", "#ZAHL!"), stringsAsFactors = FALSE)
-        if (ncol(input_list) == 1)
-        {
-            input_list = cbind(input_list, input_list)
-        }
-#else
-    input_list = data.frame(0, 0)
-#end if
-colnames(input_list)[1:2] = c("mz", "name")
-
-#if $inputcalibrants:
-    ### Read tabular file with calibrant masses: 
-    calibrant_list = read.delim("$inputcalibrants", header = FALSE, na.strings=c("","NA", "#NUM!", "#ZAHL!"), stringsAsFactors = FALSE)
-        if (ncol(calibrant_list) == 1)
-        {
-            calibrant_list = cbind(calibrant_list, calibrant_list)
-         }
-#else
-   calibrant_list = data.frame(0,0)
-#end if
-
-colnames(calibrant_list)[1:2] = c("mz", "name")
 
 
 ###################################### file properties in numbers ######################
@@ -131,11 +107,47 @@ if (length(processinginfo@peakPicking) == 0) {
   peakpickinginfo=processinginfo@peakPicking
 }
 
-### calculate how many input peptide masses are valid: 
-inputpeptides = input_list[input_list[,1]>minmz & input_list[,1]<maxmz,]
+### Read tabular file with peptide masses for plots and heatmap images: 
 
-### calculate how many input calibrant masses are valid: 
-inputcalibrants = calibrant_list[calibrant_list[,1]>minmz & calibrant_list[,1]<maxmz,]
+#if $peptide_file:
+
+    input_list = read.delim("$peptide_file", header = FALSE, na.strings=c("","NA"), stringsAsFactors = FALSE)
+        if (ncol(input_list) == 1)
+        {
+            input_list = cbind(input_list, input_list)
+        }
+
+        ### calculate how many input peptide masses are valid: 
+        inputpeptides = input_list[input_list[,1]>minmz & input_list[,1]<maxmz,]
+        number_peptides_in = length(input_list[,1])
+        number_peptides_valid = length(inputpeptides)
+
+#else
+    inputpeptides = data.frame(0,0)
+    number_peptides_in = 0
+    number_peptides_valid = 0
+#end if
+
+colnames(inputpeptides) = c("mz", "name")
+
+#if $calibrant_file:
+    ### Read tabular file with calibrant masses: 
+    calibrant_list = read.delim("$calibrant_file", header = FALSE, na.strings=c("","NA"), stringsAsFactors = FALSE)
+        if (ncol(calibrant_list) == 1)
+        {
+            calibrant_list = cbind(calibrant_list, calibrant_list)
+         }
+        ### calculate how many input calibrant masses are valid: 
+        inputcalibrants = calibrant_list[calibrant_list[,1]>minmz & calibrant_list[,1]<maxmz,]
+        number_calibrants_in = length(calibrant_list[,1])
+        number_calibrants_valid = length(inputcalibrants)
+#else
+    inputcalibrants = data.frame(0,0)
+    number_calibrants_in = 0
+    number_calibrants_valid = 0
+#end if
+
+colnames(inputcalibrants) = c("mz", "name")
 
 ### bind inputcalibrants and inputpeptides together, to make heatmap on both lists
 
@@ -159,7 +171,8 @@ properties = c("Number of mz features",
                "Baseline reduction",
                "Peak picking",
                "Centroided", 
-                paste0("# valid masses in ", "$filename"))
+               paste0("# peptides in ", "$peptide_file.display_name"), 
+               paste0("# calibrants in ", "$calibrant_file.display_name"))
 
 values = c(paste0(maxfeatures), 
            paste0(minmz, " - ", maxmz), 
@@ -176,7 +189,8 @@ values = c(paste0(maxfeatures),
            paste0(baselinereductioninfo),
            paste0(peakpickinginfo),
            paste0(centroidedinfo), 
-           paste0(length(inputmasses), "/", length(calibrant_list[,1])+length(input_list[,1])))
+           paste0(number_peptides_valid, " / " , number_peptides_in),
+           paste0(number_calibrants_valid, " / ", number_calibrants_in))
 
 
 property_df = data.frame(properties, values)
@@ -207,24 +221,17 @@ if (npeaks > 0)
                                    xlim=c(min(x1),max(x1)),
                                    xlab="",ylab="",main=""){
       
-      df <- data.frame(x1,x2)
-      x <- densCols(x1,x2, colramp=colorRampPalette(c("black", "white")))
-      df\$dens <- col2rgb(x)[1,] + 1L
-      cols <-  colorRampPalette(c("#000099", "#00FEFF", "#45FE4F","#FCFF00", "#FF9400", "#FF3100"))(256)
-      df\$col <- cols[df\$dens]
+      df = data.frame(x1,x2)
+      x = densCols(x1,x2, colramp=colorRampPalette(c("black", "white")))
+      df\$dens = col2rgb(x)[1,] + 1L
+      cols = colorRampPalette(c("#000099", "#00FEFF", "#45FE4F","#FCFF00", "#FF9400", "#FF3100"))(256)
+      df\$col = cols[df\$dens]
       plot(x2~x1, data=df[order(df\$dens),], 
            ylim=ylim,xlim=xlim,pch=20,col=col,
            cex=1,xlab=xlab,ylab=ylab,las=1,
            main=main)
     }
 
-    ## Variables for plots
-    xrange = 1
-    yrange = 1
-    maxx = max(coord(msidata)[,1])+xrange
-    minx = min(coord(msidata)[,1])-xrange
-    maxy = max(coord(msidata)[,2])+yrange
-    miny = min(coord(msidata)[,2])-yrange
 
     ############################################################################
 
@@ -249,8 +256,8 @@ if (npeaks > 0)
     {   for (calibrantnr in 1:length(inputcalibrantmasses))
         {
           calibrantmz = inputcalibrantmasses[calibrantnr]
-          calibrantfeaturemin = features(msidata, mz=calibrantmz-$plusminusinDalton)
-          calibrantfeaturemax = features(msidata, mz=calibrantmz+$plusminusinDalton)
+          calibrantfeaturemin = features(msidata, mz=calibrantmz-$plusminus_dalton)
+          calibrantfeaturemax = features(msidata, mz=calibrantmz+$plusminus_dalton)
 
             if (calibrantfeaturemin == calibrantfeaturemax)
             {
@@ -267,7 +274,7 @@ if (npeaks > 0)
 
         countvector= as.factor(colSums(pixelmatrix>0))
         countdf= cbind(coord(msidata), countvector)
-        mycolours = c("black","grey", "darkblue", "blue", "green" , "red", "yellow", "magenta", "olivedrap1", "lightseagreen")
+        mycolours = c("black","grey", "darkblue", "blue", "green" , "red", "yellow", "magenta", "olivedrab1", "lightseagreen")
 
         print(ggplot(countdf, aes(x=x, y=y, fill=countvector))
            + geom_tile() + coord_fixed() 
@@ -276,7 +283,7 @@ if (npeaks > 0)
           + theme(text=element_text(family="ArialMT", face="bold", size=12))
           + scale_fill_manual(values = mycolours[1:length(countvector)], 
                                 na.value = "black", name = "# calibrants"))
-    }else{print("2) The inputcalibrant masses were outside the mass range")}
+    }else{print("2) The inputcalibrant masses were not provided or outside the mass range")}
 
 
 ############# new 2b) image of foldchanges (log2 intensity ratios) between two masses in the same spectrum
@@ -306,25 +313,24 @@ if (npeaks > 0)
             mzdown2 = features(msidata, mz = mass2-2)
             mzup2 = features(msidata, mz = mass2+3)
 
-            ### plot the part which was chosen, with chosen value in blue, distance in blue, maxmass in red, xlim fixed to 5 Da window
+            ### find mass in the given range with the highest intensity (will be plotted in red)
 
                 if (mzrowdown1 == mzrowup1)
                 {
-                        maxmassrow1 = spectra(msidata)[mzrowup1,]
-                        maxmass1 = mz(msidata)[mzrowup1][which.max(maxmassrow1)]
-                }else{
+                         maxmass1 = mz(msidata)[ mzrowdown1]
+                }else{ ### for all masses in the massrange calculate mean intensity over all pixels and take mass which has highest mean
                         maxmassrow1 = rowMeans(spectra(msidata)[mzrowdown1:mzrowup1,])
-                        maxmass1 = mz(msidata)[mzrowdown1:mzrowup1][which.max(maxmassrow1)]
+                        maxmass1 = mz(msidata)[mzrowdown1:mzrowup1][which.max(maxmassrow1)] 
                 }
                 if (mzrowdown2 == mzrowup2)
                 {
-                    maxmassrow2 = spectra(msidata)[mzrowup2,]
-                    maxmass2 = mz(msidata)[mzrowup2][which.max(maxmassrow2)]
+                    maxmass2 = mz(msidata)[mzrowup2]
                 }else{
                     maxmassrow2 = rowMeans(spectra(msidata)[mzrowdown2:mzrowup2,])
                     maxmass2 = mz(msidata)[mzrowdown2:mzrowup2][which.max(maxmassrow2)]
                 }
 
+            ### plot the part which was chosen, with chosen value in blue, distance in blue, maxmass in red, xlim fixed to 5 Da window
             par(mfrow=c(2,1), oma=c(0,0,2,0))
             plot(msidata[mzdown1:mzup1,], pixel = 1:pixelcount, main=paste0("average spectrum ", mass1, " Da"))
             abline(v=c(mass1-distance, mass1, mass1+distance), col="blue",lty=c(3,5,3))
@@ -339,7 +345,6 @@ if (npeaks > 0)
 
             mass1vector = spectra(msidata)[features(msidata, mz = maxmass1),]
             mass2vector = spectra(msidata)[features(msidata, mz = maxmass2),]
-
             foldchange = log2(mass1vector/mass2vector)
 
             ratiomatrix = cbind(foldchange, coord(msidata))
@@ -360,9 +365,9 @@ if (npeaks > 0)
     if (length(inputmasses) != 0)
     {   for (mass in 1:length(inputmasses))
         {
-          image(msidata, mz=inputmasses[mass], plusminus=$plusminusinDalton, 
-          main= paste0("3", LETTERS[mass], ") ", inputnames[mass], " (", round(inputmasses[mass], digits = 2)," ± ", $plusminusinDalton, " Da)"),
-                contrast.enhance = "histogram", ylim=c(maxy+1, 0))
+          image(msidata, mz=inputmasses[mass], plusminus=$plusminus_dalton, 
+          main= paste0("3", LETTERS[mass], ") ", inputnames[mass], " (", round(inputmasses[mass], digits = 2)," ± ", $plusminus_dalton, " Da)"),
+                contrast.enhance = "histogram", ylim=c(maximumy+2, 0))
         }
     } else {print("3) The inputpeptide masses were outside the mass range")}
 
@@ -381,7 +386,7 @@ if (npeaks > 0)
 
     ## 5) TIC image 
     TICcoordarray=cbind(coord(msidata), TICs)
-    colo <- colorRampPalette(
+    colo = colorRampPalette(
     c("blue", "cyan", "green", "yellow","red"))
     print(ggplot(TICcoordarray, aes(x=x, y=y, fill=TICs), colour=colo)
      + geom_tile() + coord_fixed() 
@@ -414,10 +419,10 @@ if (npeaks > 0)
     secondhighestmz_pixel = which(round(highestmz_matrix\$highestmzinDa, digits=0) == secondhighestmz)[1]
 
     ## 7) pca image for two components
-    pca <- PCA(msidata, ncomp=2) 
+    pca = PCA(msidata, ncomp=2) 
     par(mfrow = c(2,1))
     plot(pca, col=c("black", "darkgrey"), main="7) PCA for two components")
-    image(pca, col=c("black", "white"),ylim=c(maxy+1, 0))
+    image(pca, col=c("black", "white"),ylim=c(maximumy+2, 0))
 
 
     ############################# III) properties over acquisition (spectra index)##########
@@ -436,7 +441,7 @@ if (npeaks > 0)
     title(ylab="Frequency = # spectra", line=4)
     abline(v=median(peaksperpixel), col="blue")
 
-    ## 9a) TIC per spectrum -  density scatterplot
+    ## 9a) TIC per spectrum - density scatterplot
     zero=0
     par(mfrow = c(2,1), mar=c(5,6,4,2))
     plot_colorByDensity(pixels(msidata), TICs,  ylab = "", xlab = "", main="9a) TIC per pixel")
@@ -533,7 +538,7 @@ if (npeaks > 0)
     plot(msidata, pixel = secondhighestmz_pixel, main= paste0("Spectrum at ", rownames(coord(msidata)[secondhighestmz_pixel,])))
 
     ## 15) Zoomed in mass spectra for calibrants
-    plusminusvalue = $plusminusinDalton
+    plusminusvalue = $plusminus_dalton
     x = 1
     if (length(inputcalibrantmasses) != 0)
     {
@@ -545,7 +550,7 @@ if (npeaks > 0)
           par(mfrow = c(2, 2), oma=c(0,0,2,0))
           plot(msidata[minmasspixel:maxmasspixel,], pixel = 1:length(pixelnumber), main= "average spectrum")
           abline(v=c(calibrant-plusminusvalue, calibrant,calibrant+plusminusvalue), col="blue", lty=c(3,5,3))
-          plot(msidata[minmasspixel:maxmasspixel,], pixel =round(pixelnumber/2, digits=0), main="pixel in middle of acquisition")
+          plot(msidata[minmasspixel:maxmasspixel,], pixel =round(length(pixelnumber)/2, digits=0), main="pixel in middle of acquisition")
           abline(v=c(calibrant-plusminusvalue, calibrant,calibrant+plusminusvalue), col="blue", lty=c(3,5,3))
           plot(msidata[minmasspixel:maxmasspixel,], pixel = highestmz_pixel,main= paste0("Spectrum at ", rownames(coord(msidata)[highestmz_pixel,])))
           abline(v=c(calibrant-plusminusvalue, calibrant,calibrant+plusminusvalue), col="blue", lty=c(3,5,3))
@@ -569,12 +574,12 @@ dev.off()
         <param name="infile" type="data" format="imzml,rdata,analyze75" label="Inputfile as imzML, Analyze7.5 or Cardinal MSImageSet saved as RData"
             help="Upload composite datatype imzml (ibd+imzML) or analyze75 (hdr+img+t2m) or regular upload .RData (Cardinal MSImageSet)"/>
         <param name="filename" type="text" value="" optional="true" label="Title" help="will appear in the quality report. If nothing given it will take the dataset name."/>
-        <param name="inputpeptidefile" type="data" optional="true" format="txt, csv" label="Text file with peptidemasses and names"
+        <param name="peptide_file" type="data" optional="true" format="tabular" label="Text file with peptidemasses and names"
             help="first column peptide m/z, second column peptide name, tab separated file"/>
-        <param name="inputcalibrants" type="data" optional="true" format="txt,csv"
+        <param name="calibrant_file" type="data" optional="true" format="tabular"
             label="Internal calibrants"
             help="Used for plot number of calibrant per spectrum and for zoomed in mass spectra"/>
-        <param name="plusminusinDalton" value="0.25" type="text" label="Mass range" help="plusminus mass window in Dalton"/>
+        <param name="plusminus_dalton" value="0.25" type="text" label="Mass range" help="plusminus mass window in Dalton"/>
         <repeat name="calibrantratio" title="Plot fold change of two masses for each spectrum" min="0" max="10">
             <param name="mass1" value="1111" type="float" label="Mass 1" help="First mass in Dalton"/>
             <param name="mass2" value="2222" type="float" label="Mass 2" help="Second mass in Dalton"/>
@@ -592,14 +597,15 @@ dev.off()
                 <composite_data value="Example_Continuous.imzML" />
                 <composite_data value="Example_Continuous.ibd" />
             </param>
-            <param name="inputpeptidefile" value="inputpeptides.csv" ftype="csv"/>
-            <param name="inputcalibrants" ftype="txt" value="inputcalibrantfile1.txt"/>
-            <param name="plusminusinDalton" value="0.25"/>
+            <param name="peptide_file" value="inputpeptides.csv" ftype="csv"/>
+            <param name="calibrant_file" ftype="txt" value="inputcalibrantfile1.txt"/>
+            <param name="plusminus_dalton" value="0.25"/>
             <param name="filename" value="Testfile_imzml"/>
             <repeat name="calibrantratio">
                 <param name="mass1" value="111"/>
                 <param name="mass2" value="222"/>
                 <param name="distance" value="0.25"/>
+                <param name="filenameratioplot" value = "Ratio of mass1 (111) / mass2 (222)"/>
             </repeat>
             <output name="plots" file="Testfile_qualitycontrol_imzml.pdf" compare="sim_size" delta="20000"/>
         </test>
@@ -610,34 +616,34 @@ dev.off()
                 <composite_data value="Analyze75.img"/>
                 <composite_data value="Analyze75.t2m"/>
             </param>
-            <param name="inputpeptidefile" value="inputpeptides.txt" ftype="txt"/>
-            <param name="inputcalibrants" ftype="txt" value="inputcalibrantfile2.txt"/>
-            <param name="plusminusinDalton" value="0.5"/>
+            <param name="peptide_file" value="inputpeptides.txt" ftype="txt"/>
+            <param name="calibrant_file" ftype="txt" value="inputcalibrantfile2.txt"/>
+            <param name="plusminus_dalton" value="0.5"/>
             <param name="filename" value="Testfile_analyze75"/>
             <output name="plots" file="Testfile_qualitycontrol_analyze75.pdf" compare="sim_size" delta="20000"/>
         </test>
 
         <test>
             <param name="infile" value="preprocessing_results1.RData" ftype="rdata"/>
-            <param name="inputpeptidefile" value="inputpeptides.csv" ftype="txt"/>
-            <param name="inputcalibrants" ftype="txt" value="inputcalibrantfile1.txt"/>
-            <param name="plusminusinDalton" value="0.1"/>
+            <param name="peptide_file" value="inputpeptides.csv" ftype="txt"/>
+            <param name="calibrant_file" ftype="txt" value="inputcalibrantfile1.txt"/>
+            <param name="plusminus_dalton" value="0.1"/>
             <param name="filename" value="Testfile_rdata"/>
             <output name="plots" file="Testfile_qualitycontrol_rdata.pdf" compare="sim_size" delta="20000"/>
         </test>
         <test>
             <param name="infile" value="LM8_file16.rdata" ftype="rdata"/>
-            <param name="inputpeptidefile" value="inputpeptides.txt" ftype="txt"/>
-            <param name="inputcalibrants" ftype="txt" value="inputcalibrantfile2.txt"/>
-            <param name="plusminusinDalton" value="0.1"/>
+            <param name="peptide_file" value="inputpeptides.txt" ftype="txt"/>
+            <param name="calibrant_file" ftype="txt" value="inputcalibrantfile2.txt"/>
+            <param name="plusminus_dalton" value="0.1"/>
             <param name="filename" value="Testfile_rdata"/>
             <output name="plots" file="LM8_file16output.pdf" compare="sim_size" delta="20000"/>
         </test>
     </tests>
     <help>
         <![CDATA[
-Quality control for maldi imaging mass spectrometry data.
-
+Quality control for maldi imaging mass spectrometry data. The output of this tool contains key values and plots of the imaging data as pdf. 
+For additional beautiful heatmap images use the MSI ion images tool and to plot more mass spectra use the MSI massspectra tool. 
 
 Input data: 3 types of input data can be used:
 
@@ -645,7 +651,7 @@ Input data: 3 types of input data can be used:
 - Analyze7.5 (upload hdr, img and t2m file via the "composite" function)
 - Cardinal "MSImageSet" data (with variable name "msidata", saved as .RData)
 
-The output of this tool contains key values and plots of the imaging data as pdf. 
+
 
         ]]>
     </help>
