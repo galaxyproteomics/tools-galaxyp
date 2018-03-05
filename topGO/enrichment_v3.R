@@ -32,7 +32,7 @@
 
 
 # loading topGO library
-library("topGO") 
+library(topGO) 
 
 '%!in%' <- function(x,y)!('%in%'(x,y))
 

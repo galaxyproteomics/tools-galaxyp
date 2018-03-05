@@ -1,5 +1,5 @@
-Wrapper for topGO
-=================
+Wrapper for topGO Tool
+======================
 
 **Authors**
 
@@ -15,7 +15,7 @@ This work has been partially funded through the French National Agency for Resea
 
 Contact support@proteore.org for any questions or concerns about the Galaxy implementation of this tool.
 
-===================
+----------------------
 
 **Galaxy component based on R package topGO.** 
 
