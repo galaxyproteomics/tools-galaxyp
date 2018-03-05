@@ -53,9 +53,9 @@ if (typeinput=="copypaste"){
 if (typeinput=="tabfile"){
   
   if (header=="TRUE"){
-    listfile = read.table(listfile,header=TRUE,sep="\t",quote="\"",fill=TRUE)
+    listfile = read.table(listfile,header=TRUE,sep="\t",stringsAsFactors = FALSE,quote="\"",fill=TRUE)
   }else{
-    listfile = read.table(listfile,header=FALSE,sep="\t",quote="\"",fill=TRUE)
+    listfile = read.table(listfile,header=FALSE,sep="\t",stringsAsFactors = FALSE,quote="\"",fill=TRUE)
   }
   sample = listfile[,column]
 
@@ -109,14 +109,17 @@ if ((length(sample[sample %in% nextprot[,1]]))==0){
 
   # if only some of the proteins were not found in nextprot they will be added to
 	# the file with the fields "Protein not found in Nextprot"
-	if (length(which(sample %!in% nextprot[,1]))!=0){
-	  proteins_not_found = as.data.frame(sample[which(sample %!in% nextprot[,1])])
+	#if (length(which(sample %!in% nextprot[,1]))!=0){
+	#  proteins_not_found = as.data.frame(sample[which(sample %!in% nextprot[,1])])
 	
-	  proteins_not_found = cbind(proteins_not_found,matrix(rep("Protein not found in Nextprot",length(proteins_not_found)),nrow=length(proteins_not_found),ncol=length(colnames(data))-1))
-
-  colnames(proteins_not_found)=colnames(data) 
-	 data = rbind(data,proteins_not_found)
-	}
+	#  proteins_not_found = cbind(proteins_not_found,matrix(rep("Protein not found in Nextprot",length(proteins_not_found)),nrow=length(proteins_not_found),ncol=length(colnames(data))-1))
+  #  print(proteins_not_found)
+    
+  #  colnames(proteins_not_found)=colnames(data) 
+    
+	#  data = rbind(data,proteins_not_found)
+  #  print(length(data[,1]))
+	#}
   
   # Merge original data and data selected from nextprot
 
@@ -125,14 +128,17 @@ if ((length(sample[sample %in% nextprot[,1]]))==0){
   if (typeid=="uniprot"){
     data[,1] = gsub("^NX_","",data[,1])
   }
-  data = merge(listfile, data, by.x = column, by.y=1)
+  #data = merge(listfile, data, by.x = column, by.y=1)
+  data = merge(listfile, data, all.x=TRUE)
   if (typeid=="uniprot"){
     colnames(data)[1] = "UniprotID"	
   }
   if (typeid=="nextprot"){
     colnames(data)[1] = "NextprotID"	
   }
+  print(length(data[,1]))
   # Write result
   write.table(data,file=filename,sep="\t",quote=FALSE,col.names=TRUE,row.names=FALSE)
 	
 }
+#Rscript get_data_nextprot_Lien.R --inputtype=tabfile --input='/Users/LinCun/Desktop/Galaxy7-[Filter_lines_by_keywords_or_numerical_value_on_ID_Converter_on_data_2].tabular' --nextprot=result_nextprot.txt --column='c2' --argsP1='SeqLength,MW,IsoPoint,TMDomains,ProteinExistence' --argsP2='Chr,SubcellLocations' --argsP3='Diseases' --type='nextprot' --output='dataset_36228.txt' --header='TRUE'
