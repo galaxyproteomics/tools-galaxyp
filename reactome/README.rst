@@ -1,5 +1,5 @@
-Wrapper for Reactome web service
-================================
+Wrapper for Reactome Tool
+=========================
 
 Reactome web service (https://reactome.org)
 
@@ -11,9 +11,10 @@ Sandra Dérozier, Olivier Rué, Christophe Caron, Valentin Loux INRA, Paris-Sacl
 
 Contact support@proteore.org for any questions or concerns about the Galaxy implementation of this tool.
 
---------------------------------
+-------------------------
 
-Reactome software provides service of creating diagram representing the relations between the biological processes. This tool allows linking to Reactome web service with pre-loaded data from a list of IDs, a file containing IDs or from a column of a complexed file.
+Reactome software provides service of creating diagram representing the relations between the biological processes. 
+This tool allows linking to Reactome web service with pre-loaded data from a list of IDs, a file containing IDs or from a column of a complexed file.
 
 **For the rows that have more than 1 ID, only the first one is taken into account.**
 
