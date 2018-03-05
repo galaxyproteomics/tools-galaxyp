@@ -1,5 +1,5 @@
-Wrapper for Jvenn plug-in
-=========================
+Wrapper for JVenn Diagram Tool
+==============================
 
 **Authors**
 
@@ -13,7 +13,7 @@ Sandra Dérozier, Olivier Rué, Christophe Caron, Valentin Loux INRA, Paris-Sacl
 
 Contact support@proteore.org for any questions or concerns about the Galaxy implementation of this tool.
 
-=========================
+------------------------------
 
 This tool draw a venn diagram from lists/files using Jvenn plug-in (http://jvenn.toulouse.inra.fr/app/index.html). It also creates output files that contain common or specific elements between query and each compared lists/files.
 
