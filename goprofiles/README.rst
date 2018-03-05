@@ -1,5 +1,5 @@
-Galaxy wrappers for goProfiles package
-======================================
+Galaxy wrappers for goProfiles Tool
+===================================
 
 **Authors** 
 
@@ -13,7 +13,7 @@ Sandra Dérozier, Olivier Rué, Christophe Caron, Valentin Loux INRA, Paris-Sacl
 
 Contact support@proteore.org for any questions or concerns about the Galaxy implementation of this tool.
 
-======================================
+-----------------------------------
 
 This tool, based on the goProfiles R package, performs statistical analysis of functional profiles. It is based on GO ontology and considers either a gene set ('Entrez’ Identifiers) or a protein set (Uniprot ID) as input. 
 

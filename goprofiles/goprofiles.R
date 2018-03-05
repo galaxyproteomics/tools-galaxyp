@@ -1,6 +1,6 @@
 # Load necessary libraries
-library("org.Hs.eg.db", quietly=TRUE)
-library("goProfiles", quietly=TRUE)
+library(org.Hs.eg.db)
+library(goProfiles)
 
 # Read file and return file content as data.frame?
 readfile = function(filename, header) {
