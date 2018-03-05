@@ -1,4 +1,4 @@
-Wrapper for Select expression data by tissue Tool
+Wrapper for Get expression data by tissue Tool
 =================================================
 
 **Authors**
