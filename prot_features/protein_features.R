@@ -70,8 +70,12 @@ protein_features = function() {
       input = c(input, strsplit(row, ";")[[1]][1])
     }
   }
+
+  # Read reference file
   nextprot_file = args$nextprot
-  nextprot = human_id_map = read.table(nextprot_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings = "")
+  nextprot = read.table(nextprot_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings = "", quote = "")
+  
+  # Parse arguments
   typeid = args$type
   P1_args = strsplit(args$argsP1, ",")[[1]]
   P2_args = strsplit(args$argsP2, ",")[[1]]
