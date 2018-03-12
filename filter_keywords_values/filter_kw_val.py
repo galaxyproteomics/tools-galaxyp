@@ -70,12 +70,12 @@ def filters(args):
 
     # Write results to output
     output = open(args.output, "w")
-    output.write("\n".join(results[0]))
+    output.write("".join(results[0]))
     output.close()
 
     # Write deleted lines to trash_file
     trash = open(args.trash_file, "w")
-    trash.write("\n".join(results[1]))
+    trash.write("".join(results[1]))
     trash.close()
 
 def readOption(filename):
