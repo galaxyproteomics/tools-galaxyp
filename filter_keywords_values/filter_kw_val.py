@@ -4,12 +4,22 @@ import re
 
 def options():
     """
-    Parse options
+    Parse options:
+        -i, --input     Input filename and boolean value if the file contains header ["filename,true/false"]
+        -m, --match     if the keywords should be filtered in exact
+        --kw            Keyword to be filtered, the column number where this filter applies, 
+                        boolean value if the keyword should be filtered in exact ["keyword,ncol,true/false"].
+                        This option can be repeated: --kw "kw1,c1,true" --kw "kw2,c1,false" --kw "kw3,c2,true"
+        --kwfile        A file that contains keywords to be filter, the column where this filter applies and 
+                        boolean value if the keyword should be filtered in exact ["filename,ncol,true/false"]
+        --value         The value to be filtered, the column number where this filter applies and the 
+                        operation symbol ["value,ncol,=/>/>=/</<="]
+        --o --output    The output filename
+        --trash_file    The file contains removed lines
     """
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--input", help="Input file", required=True)
-    parser.add_argument("-m", "--match", help="Exact macth")
-    parser.add_argument("--kw", nargs="+", action="append", help="") #
+    parser.add_argument("--kw", nargs="+", action="append", help="")
     parser.add_argument("--kw_file", nargs="+", action="append", help="")
     parser.add_argument("--value", nargs="+", action="append", help="")
     parser.add_argument("-o", "--output", default="output.txt")
@@ -19,16 +29,12 @@ def options():
 
     filters(args)
 
-    # python filter2.py -i "/projet/galaxydev/galaxy/tools/proteore_uc1/proteinGroups_Maud.txt"
-    # --protein_IDs "A2A288:A8K2U0" --peptides 2 "=" -o "test-data/output_MQfilter.txt"
-
-
 def isnumber(number_format, n):
     """
     Check if a variable is a float or an integer
     """
-    float_format = re.compile("^[\-]?[1-9][0-9]*\.?[0-9]+$")
-    int_format = re.compile("^[\-]?[1-9][0-9]*$")
+    float_format = re.compile(r"^[-]?[1-9][0-9]*.?[0-9]+$")
+    int_format = re.compile(r"^[-]?[1-9][0-9]*$")
     test = ""
     if number_format == "int":
         test = re.match(int_format, n)
@@ -36,8 +42,6 @@ def isnumber(number_format, n):
         test = re.match(float_format, n)
     if test:
         return True
-#    else:
-#        return False
 
 def filters(args):
     """
@@ -75,6 +79,7 @@ def filters(args):
     trash.close()
 
 def readOption(filename):
+    # Read the keywords file to extract the list of keywords
     f = open(filename, "r")
     file_content = f.read()
     filter_list = file_content.split("\n")
@@ -85,7 +90,7 @@ def readOption(filename):
     return filters
 
 def readMQ(MQfilename):
-    # Read MQ file
+    # Read input file
     mqfile = open(MQfilename, "r")
     mq = mqfile.readlines()
     # Remove empty lines (contain only space or new line or "")
@@ -95,7 +100,7 @@ def readMQ(MQfilename):
 def filter_keyword(MQfile, header, filtered_lines, ids, ncol, match):
     mq = MQfile
     if isnumber("int", ncol.replace("c", "")):
-        id_index = int(ncol.replace("c", "")) - 1 #columns.index("Majority protein IDs")
+        id_index = int(ncol.replace("c", "")) - 1 
     else:
         raise ValueError("Please specify the column where "
                          "you would like to apply the filter "
@@ -124,28 +129,29 @@ def filter_keyword(MQfile, header, filtered_lines, ids, ncol, match):
     for line in content:
         line = line.replace("\n", "")
         id_inline = line.split("\t")[id_index].replace('"', "").split(";")
-        one_id_line = line.replace(line.split("\t")[id_index], id_inline[0]) # Take only first IDs
+        # Take only first IDs
+        #one_id_line = line.replace(line.split("\t")[id_index], id_inline[0]) 
         line = line + "\n"
 
         if match != "false":
             # Filter protein IDs
             if any(pid.upper() in ids for pid in id_inline):
-                filtered_lines.append(one_id_line)
+                filtered_lines.append(line)
                 mq.remove(line)
-            else:
-                mq[mq.index(line)] = one_id_line
+            #else:
+            #    mq[mq.index(line)] = one_id_line
         else:
             if any(ft in pid.upper() for pid in id_inline for ft in ids):
-                filtered_lines.append(one_id_line)
+                filtered_lines.append(line)
                 mq.remove(line)
-            else:
-                mq[mq.index(line)] = one_id_line
+            #else:
+            #    mq[mq.index(line)] = one_id_line
     return mq, filtered_lines
 
 def filter_value(MQfile, header, filtered_prots, filter_value, ncol, opt):
     mq = MQfile
-    if ncol and isnumber("int", ncol.replace("c", "")): #"Gene names" in columns:
-        index = int(ncol.replace("c", "")) - 1 #columns.index("Gene names")
+    if ncol and isnumber("int", ncol.replace("c", "")): 
+        index = int(ncol.replace("c", "")) - 1 
     else:
         raise ValueError("Please specify the column where "
                          "you would like to apply the filter "
@@ -187,7 +193,7 @@ def filter_value(MQfile, header, filtered_prots, filter_value, ncol, opt):
                 if float(pep) != filter_value:
                     filtered_prots.append(line)
                     mq.remove(line)
-    return mq, filtered_prots #output, trash_file
+    return mq, filtered_prots
 
 if __name__ == "__main__":
     options()
