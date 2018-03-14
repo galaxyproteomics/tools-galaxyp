@@ -19,8 +19,9 @@ select.HPAimmunohisto<-function(hpa_ref, tissue, level, reliability) {
     
 select.HPARNAseq<-function(hpa_ref, sample) {
   load(hpa_ref)
-  res.rna <- subset(HPA.rnaTissue, Sample%in%sample)
-  return(res.rna) 
+  res.rna <- subset(HPA.rnaTissue, Sample%in%sample, select = -c(Unit))
+  colnames(res.rna)[which(colnames(res.rna) == 'Value')] <- 'Value (TPM unit)'
+  return(res.rna)
 }
 
 main <- function() {
@@ -34,13 +35,13 @@ main <- function() {
     cat("Selection and Annotation HPA
     Arguments:
         --data_source: immuno/rnaseq
+        --hpe_ref: path to reference file (HPA.normal.RData/HPA.rnaTissue.RData)
           if immuno:
             --tissue: list of tissues
             --level: Not detected, Low, Medium, High
             --reliability: Supported, Approved, Enhanced, Uncertain
           if rnaseq:
-            --sample: Sample tissues
-        --not_mapped: true/false if your output file should contain not-mapped and not-match IDs 
+            --sample: Sample tissues 
         --output: output filename \n")
     q(save="no")
   }
