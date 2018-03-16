@@ -2,20 +2,22 @@
 library(org.Hs.eg.db)
 library(goProfiles)
 
-# Read file and return file content as data.frame?
+# Read file and return file content as data.frame
 readfile = function(filename, header) {
   if (header == "true") {
-    # Read only the first line of the files as data (without headers):
-    headers <- read.table(filename, nrows = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
-    #Read the data of the files (skipping the first row):
-    file <- read.table(filename, skip = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
+    # Read only first line of the file as header:
+    headers <- read.table(filename, nrows = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = "")
+    #Read the data of the files (skipping the first row)
+    file <- read.table(filename, skip = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = "")
     # Remove empty rows
-    file <- file[!apply(is.na(file) | file == "", 1, all),]
-    #And assign the headers of step two to the data:
+    file <- file[!apply(is.na(file) | file == "", 1, all), , drop=FALSE]
+    #And assign the header to the data
     names(file) <- headers
   }
   else {
-    file <- read.table(filename, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
+    file <- read.table(filename, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = "")
+    # Remove empty rows
+    file <- file[!apply(is.na(file) | file == "", 1, all), , drop=FALSE]
   }
   return(file)
 }
