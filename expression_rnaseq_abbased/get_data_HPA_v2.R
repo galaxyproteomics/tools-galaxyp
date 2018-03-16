@@ -17,6 +17,26 @@
 # --output : output file name
 # Useful functions
 
+# Read file and return file content as data.frame
+readfile = function(filename, header) {
+  if (header == "true") {
+    # Read only first line of the file as header:
+    headers <- read.table(filename, nrows = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = "")
+    #Read the data of the files (skipping the first row)
+    file <- read.table(filename, skip = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = "")
+    # Remove empty rows
+    file <- file[!apply(is.na(file) | file == "", 1, all), , drop=FALSE]
+    #And assign the header to the data
+    names(file) <- headers
+  }
+  else {
+    file <- read.table(filename, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = "")
+    # Remove empty rows
+    file <- file[!apply(is.na(file) | file == "", 1, all), , drop=FALSE]
+  }
+  return(file)
+}
+
 '%!in%' <- function(x,y)!('%in%'(x,y))
 
 args = commandArgs(trailingOnly = TRUE)
@@ -52,9 +72,9 @@ if (typeinput=="copypaste"){
 if (typeinput=="tabfile"){
   
   if (header=="TRUE"){
-    listfile = read.table(listfile,header=TRUE,sep="\t",quote="\"",fill=TRUE, na.strings=c("","NA"))
+    listfile = readfile(listfile, "true")
   }else{
-    listfile = read.table(listfile,header=FALSE,sep="\t",quote="\"",fill=TRUE, na.strings=c("","NA"))
+    listfile = readfile(listfile, "false")
   }
   sample = listfile[,column]
 
@@ -86,7 +106,7 @@ if ((length(sample[sample %in% proteinatlas[,3]]))==0){
   # the file with the fields "Protein not found in proteinatlas"
   if (length(which(sample %!in% proteinatlas[,3]))!=0){
     proteins_not_found = as.data.frame(sample[which(sample %!in% proteinatlas[,3])])
-	proteins_not_found = cbind(proteins_not_found,matrix(rep("Protein not found in HPA",length(proteins_not_found)),nrow=length(proteins_not_found),ncol=length(colnames(data))-1))
+	  proteins_not_found = cbind(proteins_not_found,matrix(rep("Protein not found in HPA",length(proteins_not_found)),nrow=length(proteins_not_found),ncol=length(colnames(data))-1))
 
     colnames(proteins_not_found)=colnames(data) 
 	
