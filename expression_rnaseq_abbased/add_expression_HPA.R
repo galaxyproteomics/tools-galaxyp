@@ -20,7 +20,7 @@ readfile = function(filename, header) {
 
 add_expression = function(input, atlas, options) {
   if (all(!input %in% atlas$Ensembl)) {
-    return(FALSE)
+    return(NULL)
   }
   else {
     res = matrix(nrow=length(input), ncol=0)
@@ -30,9 +30,9 @@ add_expression = function(input, atlas, options) {
       info = atlas[match(input, atlas$Ensembl,incomparable="NA"),][opt][,]
       res = cbind(res, info)
     }
+    colnames(res) = names
+    return(res)
   }
-  colnames(res) = names
-  return(res)
 }
 
 main = function() {
@@ -98,7 +98,7 @@ main = function() {
   res = add_expression(input, protein_atlas, options)
 
   # Write output
-  if (res == FALSE) {
+  if (is.null(res)) {
     write.table("None of the input ENSG ids are can be found in HPA data file",file=output,sep="\t",quote=FALSE,col.names=TRUE,row.names=FALSE)
   }
   else {
