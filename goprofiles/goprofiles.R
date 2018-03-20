@@ -177,7 +177,7 @@ goprofiles = function() {
 
   input_type = args$input_type
   if (input_type == "text") {
-    input = strsplit(args$input, " ")[[1]]
+    input = strsplit(args$input, "[ \t\n]+")[[1]]
   }
   else if (input_type == "file") {
     filename = args$input
