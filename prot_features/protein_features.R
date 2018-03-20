@@ -49,7 +49,7 @@ protein_features = function() {
 
   inputtype = args$inputtype
   if (inputtype == "copypaste") {
-    input = strsplit(args$input, " ")[[1]]
+    input = strsplit(args$input, "[ \t\n]+")[[1]]
   }
   else if (inputtype == "tabfile") {
     filename = args$input
@@ -90,7 +90,7 @@ protein_features = function() {
 
   # Select user input protein ids in nextprot
   if ((length(input[input %in% nextprot[,1]]))==0){
-    write.table("None of the input ids are can be found in Nextprot",file=filename,sep="\t",quote=FALSE,col.names=TRUE,row.names=FALSE)
+    write.table("None of the input ids are can be found in Nextprot",file=output,sep="\t",quote=FALSE,col.names=TRUE,row.names=FALSE)
   } else {
     names = c()
     res = matrix(nrow=length(input), ncol=0)
@@ -117,6 +117,7 @@ protein_features = function() {
         res = cbind(res, info)
       }
     }
+    --inputtype="tabfile" --input="Galaxy50-[ID_Converter_on_data_47].tabular" --header='true' --natlas="proteinatlas.csv" --column='c7' --select='Gene,Gene.description,Evidence,RNA.tissue.category,Reliability.IH,TPM.max.in.non.specific' --output="test.txt"
 
     # Write output
     if (inputtype == "copypaste") {
