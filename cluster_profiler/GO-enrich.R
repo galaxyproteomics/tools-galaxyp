@@ -93,7 +93,7 @@ clusterProfiler = function() {
 
   input_type = args$input_type
   if (input_type == "text") {
-    input = args$input
+    input = strsplit(args$input, "[ \t\n]+")[[1]]
   }
   else if (input_type == "file") {
     filename = args$input
