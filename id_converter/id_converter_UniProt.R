@@ -58,7 +58,7 @@ mapping = function() {
     
     # Extract input IDs
     if (list_id_input_type == "list") {
-      list_id = strsplit(args[2], " ")[[1]]
+      list_id = strsplit(args[2], "[ \t\n]+")[[1]]
       # Remove isoform accession number (e.g. "-2")
       list_id = gsub("-.+", "", list_id)
     }
