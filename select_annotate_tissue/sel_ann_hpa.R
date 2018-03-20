@@ -38,7 +38,6 @@ annot.HPAnorm<-function(input, HPA_normal_tissue, tissue, level, reliability, no
     res.Level<-subset(res.Tissue, Level==level) 
   }
   if (length(level)>1)  { 
-    print(level)
     res.Level<-subset(res.Tissue, Level %in% level) 
   }
   
@@ -46,7 +45,6 @@ annot.HPAnorm<-function(input, HPA_normal_tissue, tissue, level, reliability, no
     res.Rel<-subset(res.Level, Reliability==reliability) 
   }
   if (length(reliability)>1)  {
-    print(reliability)
     res.Rel<-subset(res.Level, Reliability %in% reliability) 
   }
   
@@ -135,7 +133,7 @@ main <- function() {
   # Extract input
   input_type = args$input_type
   if (input_type == "list") {
-    list_id = strsplit(args$input, " +")[[1]]
+    list_id = strsplit(args$input, "[ \t\n]+")[[1]]
   }
   else if (input_type == "file") {
     filename = args$input
@@ -143,14 +141,12 @@ main <- function() {
     header = args$header
     file = readfile(filename, header)
     list_id = c()
-    print(file)
     list_id = sapply(strsplit(file[,column_number], ";"), "[", 1)
   }
   input = list_id
 
   # Read reference file
   reference_file = read.table(args$ref_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
-  print(colnames(reference_file))
 
   # Extract other options
   atlas = args$atlas
