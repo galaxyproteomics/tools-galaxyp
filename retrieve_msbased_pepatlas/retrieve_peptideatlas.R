@@ -18,7 +18,7 @@ readfile = function(filename, header) {
   return(file)
 }
 
-annotPeptideAtlas <- function(input_file, atlas_file) {
+annotPeptideAtlas <- function(input, atlas_file) {
   atlas = readfile(atlas_file, "true")
   info = atlas[match(input, atlas["biosequence_name"][,]),]$n_observations
   return(info)
