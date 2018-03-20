@@ -135,7 +135,7 @@ main <- function() {
   # Extract input
   input_type = args$input_type
   if (input_type == "list") {
-    list_id = strsplit(args$input, " ")[[1]]
+    list_id = strsplit(args$input, " +")[[1]]
   }
   else if (input_type == "file") {
     filename = args$input
@@ -174,8 +174,3 @@ main <- function() {
 }
 
 main()
-
-# Example commands
-# Rscript sel_ann_hpa.R --input_type="file" --input="./test-data/ENSGid.txt" --ref_file="./pathology.tsv" --cancer="lung cancer,carcinoid" --not_mapped="true" --column_number="c1" --header="true" --output="test-data/ENSG_tissue_output_cancer.txt"
-# Rscript sel_ann_hpa.R --input_type="file" --input="./test-data/ENSGid.txt" --ref_file="./normal_tissue.tsv" --tissue="lung" --level="Not detected,Medium,High,Low" --reliability="Approved,Supported,Uncertain" --column_number="c1" --header="true" --not_mapped="false" --output="./test-data/ENSG_tissue_output.txt"
-# Rscript sel_ann_hpa.R --input_type="file" --input="./test-data/ENSG_no_not_match.txt" --ref_file="/Users/LinCun/Documents/ProteoRE/usecase1/normal_tissue.csv" --tissue="lung" --level="Not detected,Medium,High,Low" --reliability="Approved,Supportive,Uncertain" --column_number="c1" --header="true" --output="./test-data/ENSG_tissue_output2.txt"
