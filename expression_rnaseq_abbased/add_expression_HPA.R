@@ -65,7 +65,7 @@ main = function() {
 
   inputtype = args$inputtype
   if (inputtype == "copypaste") {
-    input = strsplit(args$input, " ")[[1]]
+    input = strsplit(args$input, "[ \t\n]+")[[1]]
   }
   else if (inputtype == "tabfile") {
     filename = args$input
