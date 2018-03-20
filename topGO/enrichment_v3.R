@@ -70,11 +70,11 @@ listoptions <- unlist(strsplit(hh,'--'))[-1]
 # for each input, split the arguments with blank space as separator, unlist,
 # and delete the first element which is the input name (e.g --inputtype) 
 options.args <- sapply(listoptions,function(x){
-         unlist(strsplit(x, ' '))[-1]
+         unlist(strsplit(x, '[ \t\n]+'))[-1]
         })
 # same as the step above, except that only the names are kept
 options.names <- sapply(listoptions,function(x){
-  option <-  unlist(strsplit(x, ' '))[1]
+  option <-  unlist(strsplit(x, '[ \t\n]+'))[1]
 })
 names(options.args) <- unlist(options.names)
 
