@@ -18,8 +18,8 @@ def isnumber(format, n):
     """
     Check if an element is integer or float
     """
-    float_format = re.compile("^[\-]?[1-9][0-9]*\.?[0-9]+$")
-    int_format = re.compile("^[\-]?[1-9][0-9]*$")
+    float_format = re.compile(r"^[-]?[1-9][0-9]*.?[0-9]+$")
+    int_format = re.compile(r"^[-]?[1-9][0-9]*$")
     test = ""
     if format == "int":
         test = re.match(int_format, n)
@@ -55,7 +55,6 @@ def input_to_dict(inputs):
                     file_content = [x.strip() for x in [line.split("\t")[int(ncol.replace("c", ""))-1].split(";")[0] for line in file_content[1:]]]     # take only first IDs
                 else:
                     file_content = [x.strip() for x in [line.split("\t")[int(ncol.replace("c", ""))-1].split(";")[0] for line in file_content]]     # take only first IDs
-                #print(file_content[1:13])
             else:
                 raise ValueError("Please fill in the right format of column number")        
         else:
@@ -78,7 +77,6 @@ def intersect(comp_dict):
             [others.add(name) for name in names if name not in group]
             difference = []
             intersected = set.intersection(*(comp_dict[k] for k in group))
-            n = "".join(group)
             if len(others) > 0:
                 difference = intersected.difference(set.union(*(comp_dict[k] for k in others)))
             yield group, list(intersected), list(difference)    
@@ -115,9 +113,7 @@ def write_text_venn(json_result):
     string = ""
     lines = []
     result = dict((k, v) for k, v in json_result["data"].iteritems() if v != [])
-    print(result)
     max_count = max(len(v) for v in result.values())
-    print(max_count)
     for i in range(max_count):
         lines.append("")
         
@@ -128,16 +124,19 @@ def write_text_venn(json_result):
             name = "_".join([json_result["name"][x] for x in data])
             header += name + "\t"
             if len(result[data]) > i:
+                print("a", result[data][i])
                 lines[i] += result[data][i] + "\t"
             else:
                 lines[i] += "\t"
+    # Strip last tab in the end of the lines
+    header = header.rstrip()
+    lines = [line.rstrip() for line in lines]
     string += header + "\n"
     string += "\n".join(lines)
-    print(string)
     output.write(string)
     output.close()
 
-def write_summary( summary_file, inputs):
+def write_summary(summary_file, inputs):
     """
     Paste json string into template file
     """
