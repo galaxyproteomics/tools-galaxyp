@@ -18,8 +18,8 @@ readfile = function(filename, header) {
   return(file)
 }
 
-annotPeptideAtlas <- function(input, atlas_file) {
-  atlas = read.table(atlas_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings = "", quote = "")
+annotPeptideAtlas <- function(input_file, atlas_file) {
+  atlas = readfile(atlas_file, "true")
   info = atlas[match(input, atlas["biosequence_name"][,]),]$n_observations
   return(info)
 }
@@ -58,7 +58,7 @@ main = function() {
   # Extract input
   input_type = args$input_type
   if (input_type == "list") {
-    input = strsplit(args$input, " ")[[1]]
+    input = strsplit(args$input, "[ \t\n]+")[[1]]
   }
   else if (input_type == "file") {
     filename = args$input
