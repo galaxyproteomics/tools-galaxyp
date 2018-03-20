@@ -39,67 +39,83 @@ readfile = function(filename, header) {
 #   Ensembl_ENSP: Ensembl protein identifiers (e.g. ENSP00000300161; ENSP00000361930)
 
 mapping = function() {
-  # Extract arguments
-  args = commandArgs(trailingOnly = TRUE)
-  #print(args)
-  if (length(args) != 6) {
-    stop("Not enough/Too many arguments", call. = FALSE)
+  args <- commandArgs(TRUE)
+  if(length(args)<1) {
+    args <- c("--help")
   }
-  else {
-    input_id_type = args[1]
-    list_id = args[2]
-    list_id_input_type = args[3]
-    options = strsplit(args[4], ",")[[1]]
-    output = args[5]
-    human_id_mapping_file = args[6]
-    
-    # Extract ID maps
-    human_id_map = read.table(human_id_mapping_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings = "", quote = "")
-    
-    # Extract input IDs
-    if (list_id_input_type == "list") {
-      list_id = strsplit(args[2], "[ \t\n]+")[[1]]
-      # Remove isoform accession number (e.g. "-2")
-      list_id = gsub("-.+", "", list_id)
-    }
-    else if (list_id_input_type == "file") {
-      filename = as.character(strsplit(list_id, ",")[[1]][1])
-      column_number = as.numeric(gsub("c", "" ,strsplit(list_id, ",")[[1]][2]))
-      header = strsplit(list_id, ",")[[1]][3]
-      file_all = readfile(filename, header)
-      print(class(file_all))
-      str(file_all)
-      print(class(file_all[,1]))
-      list_id = c()
-      list_id = sapply(strsplit(file_all[,column_number], ";"), "[", 1)
-      # Remove isoform accession number (e.g. "-2")
-      list_id = gsub("-.+", "", list_id)
-    }
-    names = c()
-    
-    # Map IDs
-    res = matrix(nrow=length(list_id), ncol=0)
+  
+  # Help section
+  if("--help" %in% args) {
+    cat("Selection and Annotation HPA
+    Arguments:
+        --ref_file: path to reference file (human_id_mapping_file.txt)
+        --input_type: type of input (list of id or filename)
+        --id_type: type of input IDs
+        --input: list of IDs (text or filename)
+        --column_number: the column number which contains list of input IDs
+        --header: true/false if your file contains a header
+        --target_ids: target IDs to map to 
+        --output: output filename \n")
+    q(save="no")
+  }
+  
+  # Parse arguments
+  parseArgs <- function(x) strsplit(sub("^--", "", x), "=")
+  argsDF <- as.data.frame(do.call("rbind", parseArgs(args)))
+  args <- as.list(as.character(argsDF$V2))
+  names(args) <- argsDF$V1
 
-    for (opt in options) {
-      names = c(names, opt)
-      mapped = human_id_map[match(list_id, human_id_map[input_id_type][,]),][opt][,]
-      res = cbind(res, matrix(mapped))
-    }
+  input_id_type = args$id_type # Uniprot, ENSG....
+  list_id_input_type = args$input_type # list or file
+  options = strsplit(args$target_ids, ",")[[1]]
+  output = args$output
+  human_id_mapping_file = args$ref_file
+    
+  # Extract input IDs
+  if (list_id_input_type == "list") {
+    print(args$input)
+    list_id = strsplit(args$input, "[ \t\n]+")[[1]]
+    # Remove isoform accession number (e.g. "-2")
+    list_id = gsub("-.+", "", list_id)
+  }
+  else if (list_id_input_type == "file") {
+    filename = args$input
+    column_number = as.numeric(gsub("c", "" ,args$column_number))
+    header = args$header
+    file_all = readfile(filename, header)
+    list_id = c()
+    list_id = sapply(strsplit(file_all[,column_number], ";"), "[", 1)
+    # Remove isoform accession number (e.g. "-2")
+    list_id = gsub("-.+", "", list_id)
+  }
+
+  # Extract ID maps
+  human_id_map = read.table(human_id_mapping_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings = "", quote = "")
+  
+  names = c()
+    
+  # Map IDs
+  res = matrix(nrow=length(list_id), ncol=0)
+
+  for (opt in options) {
+    names = c(names, opt)
+    mapped = human_id_map[match(list_id, human_id_map[input_id_type][,]),][opt][,]
+    res = cbind(res, matrix(mapped))
+  }
      
-    # Write output
-    if (list_id_input_type == "list") {
-      res = cbind(as.matrix(list_id), res)
-      names = c(input_id_type, names)
-      colnames(res) = names
-      write.table(res, output, row.names = FALSE, sep = "\t", quote = FALSE)
-    }
-    else if (list_id_input_type == "file") {
-      names(res) = options
-      names = c(names(file_all), names)
-      output_content = cbind(file_all, res)
-      colnames(output_content) = names
-      write.table(output_content, output, row.names = FALSE, sep = "\t", quote = FALSE)
-    }
+  # Write output
+  if (list_id_input_type == "list") {
+    res = cbind(as.matrix(list_id), res)
+    names = c(input_id_type, names)
+    colnames(res) = names
+    write.table(res, output, row.names = FALSE, sep = "\t", quote = FALSE)
+  }
+  else if (list_id_input_type == "file") {
+    names(res) = options
+    names = c(names(file_all), names)
+    output_content = cbind(file_all, res)
+    colnames(output_content) = names
+    write.table(output_content, output, row.names = FALSE, sep = "\t", quote = FALSE)
   }
 }
 
