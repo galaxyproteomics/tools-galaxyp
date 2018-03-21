@@ -117,8 +117,7 @@ protein_features = function() {
         res = cbind(res, info)
       }
     }
-    --inputtype="tabfile" --input="Galaxy50-[ID_Converter_on_data_47].tabular" --header='true' --natlas="proteinatlas.csv" --column='c7' --select='Gene,Gene.description,Evidence,RNA.tissue.category,Reliability.IH,TPM.max.in.non.specific' --output="test.txt"
-
+  
     # Write output
     if (inputtype == "copypaste") {
       res = cbind(as.matrix(input), res)
