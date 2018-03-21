@@ -35,6 +35,7 @@ def __main__():
             'complete/partial', 'gene score', 'used model',
             'rbs start', 'rbs end', 'rbs score']))
 
+    gc_rbs_pat = '# gc = (-?[0-9]*[.]?[0-9]+), rbs = (-?[0-9]*[.]?[0-9]+)' 
     seq_count = 0
     gene_count = 0
     for i, line in enumerate(input_rdr):
@@ -43,9 +44,7 @@ def __main__():
         # self: -
         if line.startswith('# gc'):
             try:
-                m = re.match('# gc = (-?[0-9]*[.]?[0-9]+)',
-                             'rbs = (-?[0-9]*[.]?[0-9]+)',
-                             line.strip())
+                m = re.match(gc_rbs_pat, line.strip())
                 seq_gc, seq_rbs = m.groups()
             except:
                 seq_gc = seq_rbs = ''
