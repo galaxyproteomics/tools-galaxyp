@@ -1,0 +1,149 @@
+<tool id="metagene_annotator" name="MetaGeneAnnotator" version="0.1.1">
+    <description>gene-finding program for prokaryote and phage (used by sixgill)</description>
+    <requirements>
+        <requirement type="package">metagene_annotator</requirement>
+        <requirement type="package">python</requirement>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        #set $output_list = str($output_formats).split(',')
+        touch mga_output
+        #for $input in $inputs:
+            && mga ${input} $multiple_species >> mga_output
+        #end for
+        #if 'tsv' in $output_list or 'bed' in $output_list:
+            && python '$__tool_directory__/convert_mga.py' -v mga_output
+            #if 'tsv' in $output_list
+                --tsv '$mga_tsv'
+            #end if
+            #if 'bed' in $output_list
+                --bed '$mga_bed'
+            #end if
+        #end if
+    ]]></command>
+    <inputs>
+        <param name="inputs" type="data" format="fasta" multiple="true" label="prokaryote DNA sequences"/>
+        <param name="multiple_species" type="boolean" truevalue="-m" falsevalue="-s" checked="true" 
+               label="MetaGenomic - Sequences are from multiple organisms" />
+        <param name="output_formats" type="select" multiple="true" display="checkboxes" label="output formats">
+            <option value="txt" selected="true">MetaGeneAnnotator text report</option>
+            <option value="tsv">MetaGeneAnnotator tabular report with sequence columns</option>
+            <option value="bed">MetaGeneAnnotator in BED format</option>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="mga_txt" format="txt" from_work_dir="mga_output" label="${tool.name} on ${on_string} metagenefile">
+            <filter>'txt' in output_formats</filter>
+        </data>
+        <data name="mga_tsv" format="tabular" label="${tool.name} on ${on_string} mga table">
+            <filter>'tsv' in output_formats</filter>
+            <actions>
+                <action name="column_names" type="metadata" 
+                 default="seq_ID,seq_model,seq_gc,seq_rbs,gene ID,start pos,end pos,strand,frame,complete/partial,gene score,used model,rbs start,rbs end,rbs score"/>
+            </actions>
+        </data>
+        <data name="mga_bed" format="bed" label="${tool.name} on ${on_string} mga bed">
+            <filter>'bed' in output_formats</filter>
+            <actions>
+                <action name="column_names" type="metadata" 
+                 default="chrom,chromStart,chromEnd,name,score,strand,thickStart,thickEnd,itemRgb,blockCount,blockSizes,blockStarts"/>
+            </actions>
+        </data>
+    </outputs>
+    <tests>
+        <test>
+            <param name="inputs" value="metasequences.fasta" ftype="fasta"/>
+            <param name="multiple_species" value="True"/>
+            <param name="output_formats" value="txt,tsv,bed"/>
+            <output name="mga_txt" value="m_mga.txt"/> 
+            <output name="mga_tsv" value="m_mga.tsv"/> 
+            <output name="mga_bed" value="m_mga.bed"/> 
+        </test>
+        <test>
+            <param name="inputs" value="metasequences.fasta" ftype="fasta"/>
+            <param name="multiple_species" value="False"/>
+            <param name="output_formats" value="bed"/>
+            <output name="mga_bed" value="m_mga.bed"/> 
+        </test>
+        <test>
+            <param name="inputs" value="metasequences1.fasta,metasequences2.fasta" ftype="fasta"/>
+            <param name="multiple_species" value="False"/>
+            <param name="output_formats" value="bed"/>
+            <output name="mga_bed" value="m_mga.bed"/> 
+        </test>
+    </tests>
+    <help><![CDATA[
+**MetaGeneAnnotator (mga)**
+
+A gene-finding program for prokaryote and phage.
+
+The gene annotations can be used by sixgill_ when generating metapeptides from metagenomics shotgun sequencing.
+
+.. image:: Sixgill_MetaGeneAnnotator_Workflow.png
+  :height: 213
+  :width: 625
+
+usage:
+    mga [multi-fasta] <-m/-s>
+
+         -m    (multiple species sequences are individually treated)
+         -s    (single species sequences are treated as a unit)
+
+**Input:**
+    *A fasta file of metagenomic sequences*
+
+
+**Outputs:**
+
+    *MetaGeneAnnotator text report*
+        Output from the MetaGeneAnnotator mga application::
+
+            # 1/1
+            # gc = 0.275862, rbs = -1
+            # self: -
+            gene_1	1812	1994	-	0	11	14.1035	b	2002	2007	2.11797
+            # 2/1
+            # gc = 0.338877, rbs = -1
+            # self: -
+            gene_1	1	414	+	0	01	25.748	b	.	.	.
+            gene_2	614	790	+	0	11	0.774142	b	.	.	.
+            gene_3	822	1079	+	0	11	20.6507	b	.	.	.
+
+        output format description::
+
+            # [sequence name]
+            # gc = [gc%], rbs = [rbs%]
+            # self: [(b)acteria/(a)rchaea/(p)hage/unused(-)]
+            [gene ID] [start pos.] [end pos.] [strand] [frame] [complete/partial] [gene score] [used model] [rbs start] [rbs end] [rbs score]
+
+            explanations of output column:
+                *The value of [frame] (0/1/2) indicates the number of surplus (untranslated) nucleotides at the 5'-end of the predicted ORF.
+                *The value of [score] indicates the estimated score of predicted gene. All predicted genes are more than 0.
+                *The value of [complete/partial] indicates that the predicted gene structure is whether complete (contains both of start and stop codons[11]) or partial (lacks start[01] or stop[10] or both of them[00]).
+                *The value of [model] indicates a selected model ((s)elf/(b)acteria/(a)rchaea/(p)hage) for predicting the gene. 
+
+
+    *MetaGeneAnnotator tabular report with sequence columns*
+        The mga output reformated as a tabular file::
+
+            #seq_id	seq_model	seq_gc	seq_rbs	gene ID	start pos	end pos	strand	frame	complete/partial	gene score	used model	rbs start	rbs end	rbs score
+            1/1	 -	0.275862	-1	gene_1	1812	1994	-	0	11	14.1035	b	2002	2007	2.11797
+            2/1	 -	0.338877	-1	gene_1	1	414	+	0	01	25.748	b	.	.	.
+            2/1	 -	0.338877	-1	gene_2	614	790	+	0	11	0.774142	b	.	.	.
+            2/1	 -	0.338877	-1	gene_3	822	1079	+	0	11	20.6507	b	.	.	.
+
+
+    *MetaGeneAnnotator in BED format*
+        The mga output reformatted as a BED file which can be used to extract the DNA sequences for each gene from the fasta file::
+
+            1/1	1811	1994	1/1:gene_1	15	-	1811	1994	0	1	183	0
+            2/1	0	414	2/1:gene_1	26	+	0	414	0	1	414	0
+            2/1	613	790	2/1:gene_2	1	+	613	790	0	1	177	0
+            2/1	821	1079	2/1:gene_3	21	+	821	1079	0	1	258	0
+
+
+.. _sixgill: https://github.com/dhmay/sixgill
+    ]]></help>
+    <citations>
+        <citation type="doi">10.1093/dnares/dsn027</citation>
+    </citations>
+</tool>
