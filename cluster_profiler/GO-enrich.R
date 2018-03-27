@@ -154,6 +154,7 @@ clusterProfiler = function() {
     idFrom<-"UNIPROT"
     idTo<-"ENTREZID"
     gene<-bitr(input, fromType=idFrom, toType=idTo, OrgDb=orgdb)
+    gene<-gene$ENTREZID
   }
   else if (id_type=="Entrez") {
     gene<-input
@@ -169,18 +170,18 @@ clusterProfiler = function() {
       universe_filename = args$universe
       universe_ncol = args$uncol
       # Check ncol
-      if (! as.numeric(gsub("c", "", uncol)) %% 1 == 0) {
+      if (! as.numeric(gsub("c", "", universe_ncol)) %% 1 == 0) {
         stop("Please enter the right format for column number: c[number]")
       }
       else {
-        uncol = as.numeric(gsub("c", "", uncol))
+        universe_ncol = as.numeric(gsub("c", "", universe_ncol))
       }
       universe_header = args$uheader
       # Get file content
       universe_file = readfile(universe_filename, universe_header)
       # Extract Protein IDs list
       universe = c()
-      for (row in as.character(universe_file[,ncol])) {
+      for (row in as.character(universe_file[,universe_ncol])) {
         universe = c(universe, strsplit(row, ";")[[1]][1])
       }
     }
@@ -190,8 +191,9 @@ clusterProfiler = function() {
       idFrom<-"UNIPROT"
       idTo<-"ENTREZID"
       universe_gene<-bitr(universe, fromType=idFrom, toType=idTo, OrgDb=orgdb)
+      universe_gene<-universe_gene$ENTREZID
     }
-    else if (id_type=="Entrez") {
+    else if (universe_id_type=="Entrez") {
       universe_gene<-universe
     }
   }
@@ -213,11 +215,11 @@ clusterProfiler = function() {
   ##enrichGO : GO over-representation test
   for (onto in ontology) {
     if (args$go_represent == "true") {
-      ggo<-repartition.GO(gene$ENTREZID, orgdb, onto, level, readable=TRUE)
+      ggo<-repartition.GO(gene, orgdb, onto, level, readable=TRUE)
       write.table(ggo, args$text_output, append = TRUE, sep="\t", row.names = FALSE, quote=FALSE)
     }
     if (args$go_enrich == "true") {
-      ego<-enrich.GO(gene$ENTREZID, universe_gene, orgdb, onto, pval_cutoff, qval_cutoff)
+      ego<-enrich.GO(gene, universe_gene, orgdb, onto, pval_cutoff, qval_cutoff)
       write.table(ego, args$text_output, append = TRUE, sep="\t", row.names = FALSE, quote=FALSE)
     }
   }
