@@ -40,8 +40,7 @@ repartition.GO <- function(geneid, orgdb, ontology, level=3, readable=TRUE) {
 
 # GO over-representation test
 enrich.GO <- function(geneid, universe, orgdb, ontology, pval_cutoff, qval_cutoff) {
-  if (!is.null(universe)) {
-    ego<-enrichGO(gene=geneid,
+  ego<-enrichGO(gene=geneid,
                 universe=universe,
                 OrgDb=orgdb,
                 keytype="ENTREZID",
@@ -50,17 +49,7 @@ enrich.GO <- function(geneid, universe, orgdb, ontology, pval_cutoff, qval_cutof
                 pvalueCutoff=pval_cutoff,
                 qvalueCutoff=qval_cutoff,
                 readable=TRUE)
-  }
-  else {
-    ego<-enrichGO(gene=geneid,
-                OrgDb=orgdb,
-                keytype="ENTREZID",
-                ont=ontology,
-                pAdjustMethod="BH",
-                pvalueCutoff=pval_cutoff,
-                qvalueCutoff=qval_cutoff,
-                readable=TRUE)
-  }
+  # Plot bar & dot plots
   bar_name <- paste("EGO.", ontology, ".bar.png", sep = "")
   png(bar_name)
   p <- barplot(ego)
@@ -108,7 +97,7 @@ clusterProfiler = function() {
   argsDF <- as.data.frame(do.call("rbind", parseArgs(args)))
   args <- as.list(as.character(argsDF$V2))
   names(args) <- argsDF$V1
-  print(args)
+  #print(args)
 
   # Extract OrgDb
   if (args$species=="human") {
@@ -154,54 +143,14 @@ clusterProfiler = function() {
     idFrom<-"UNIPROT"
     idTo<-"ENTREZID"
     gene<-bitr(input, fromType=idFrom, toType=idTo, OrgDb=orgdb)
-    gene<-gene$ENTREZID
+    gene<-unique(gene$ENTREZID)
   }
   else if (id_type=="Entrez") {
-    gene<-input
-  }
-
-  # Extract universe background genes
-  if (!is.null(args$universe_type)) {
-    universe_type = args$universe_type
-    if (universe_type == "text") {
-      universe = strsplit(args$universe, "[ \t\n]+")[[1]]
-    }
-    else if (universe_type == "file") {
-      universe_filename = args$universe
-      universe_ncol = args$uncol
-      # Check ncol
-      if (! as.numeric(gsub("c", "", universe_ncol)) %% 1 == 0) {
-        stop("Please enter the right format for column number: c[number]")
-      }
-      else {
-        universe_ncol = as.numeric(gsub("c", "", universe_ncol))
-      }
-      universe_header = args$uheader
-      # Get file content
-      universe_file = readfile(universe_filename, universe_header)
-      # Extract Protein IDs list
-      universe = c()
-      for (row in as.character(universe_file[,universe_ncol])) {
-        universe = c(universe, strsplit(row, ";")[[1]][1])
-      }
-    }
-    universe_id_type = args$universe_id_type
-    ##to initialize
-    if (universe_id_type=="Uniprot") {
-      idFrom<-"UNIPROT"
-      idTo<-"ENTREZID"
-      universe_gene<-bitr(universe, fromType=idFrom, toType=idTo, OrgDb=orgdb)
-      universe_gene<-universe_gene$ENTREZID
-    }
-    else if (universe_id_type=="Entrez") {
-      universe_gene<-universe
-    }
-  }
-  else {
-    universe_gene = NULL
+    gene<-unique(input)
   }
 
   ontology <- strsplit(args$onto_opt, ",")[[1]]
+  ## Extract GGO/EGO arguments
   if (args$go_represent == "true") {
     go_represent <- args$go_represent
     level <- as.numeric(args$level)
@@ -210,6 +159,46 @@ clusterProfiler = function() {
     go_enrich <- args$go_enrich
     pval_cutoff <- as.numeric(args$pval_cutoff)
     qval_cutoff <- as.numeric(args$qval_cutoff)
+    # Extract universe background genes (same as input file)
+    if (!is.null(args$universe_type)) {
+      universe_type = args$universe_type
+      if (universe_type == "text") {
+        universe = strsplit(args$universe, "[ \t\n]+")[[1]]
+      }
+      else if (universe_type == "file") {
+        universe_filename = args$universe
+        universe_ncol = args$uncol
+        # Check ncol
+        if (! as.numeric(gsub("c", "", universe_ncol)) %% 1 == 0) {
+          stop("Please enter the right format for column number: c[number]")
+        }
+        else {
+          universe_ncol = as.numeric(gsub("c", "", universe_ncol))
+        }
+        universe_header = args$uheader
+        # Get file content
+        universe_file = readfile(universe_filename, universe_header)
+        # Extract Protein IDs list
+        universe = c()
+        for (row in as.character(universe_file[,universe_ncol])) {
+          universe = c(universe, strsplit(row, ";")[[1]][1])
+        }
+      }
+      universe_id_type = args$universe_id_type
+      ##to initialize
+      if (universe_id_type=="Uniprot") {
+        idFrom<-"UNIPROT"
+        idTo<-"ENTREZID"
+        universe_gene<-bitr(universe, fromType=idFrom, toType=idTo, OrgDb=orgdb)
+        universe_gene<-unique(universe_gene$ENTREZID)
+      }
+      else if (universe_id_type=="Entrez") {
+        universe_gene<-unique(universe)
+      }
+    }
+    else {
+      universe_gene = NULL
+    }
   }
 
   ##enrichGO : GO over-representation test
