@@ -23,8 +23,8 @@ def isnumber(format, n):
     """
     Check if an variable is numeric
     """
-    float_format = re.compile("^[\-]?[1-9][0-9]*\.?[0-9]+$")
-    int_format = re.compile("^[\-]?[1-9][0-9]*$")
+    float_format = re.compile(r"^[-]?[1-9][0-9]*.?[0-9]+$")
+    int_format = re.compile(r"^[-]?[1-9][0-9]*$")
     test = ""
     if format == "int":
         test = re.match(int_format, n)
@@ -81,9 +81,11 @@ def write_output(filename, json_string, trash_file, trash):
     template.close()
     output.close()
     
-    trash_out = open(trash_file, "w")
-    trash_out.write("\n".join(trash))
-    trash_out.close()
+    if trash:
+        print(trash)
+        trash_out = open(trash_file, "w")
+        trash_out.write("\n".join(trash))
+        trash_out.close()
 
 def options():
     parser = argparse.ArgumentParser()
