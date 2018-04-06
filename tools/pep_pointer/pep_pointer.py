@@ -1,7 +1,7 @@
 
 # 
 # Author: Praveen Kumar
-# Updated: Nov 8th, 2017
+# Updated: April 6th, 2018
 # 
 # 
 # 
@@ -38,9 +38,9 @@ def main():
                                 start = a[4].strip()
                                 end = a[3].strip()
                             else:
-                                print "Something fishy in start end coordinates"
+                                print "Please check the start end coordinates in the GTF file"
                         else:
-                            print "Something fishy in reading"
+                            print "Please check the strand information in the GTF file. It should be '+' or '-'."
                         if not gtf.has_key(strand):
                             gtf[strand] = {}
                         if not gtf[strand].has_key(type):
@@ -148,7 +148,7 @@ def main():
             elif strand == "-":
                 st = "negative"
             else:
-                print "Something fishy in writing . . ."
+                print "Please check the strand information in the GTF file. It should be '+' or '-'."
         
             for type in gtf[strand].keys():
                 data = gtf[strand][type]
@@ -162,49 +162,55 @@ def main():
         # output file
         outfh = open(inputFile[3], 'w')
         # outfh = open("classified_1_Mouse_Data_All_peptides_withNewDBs.txt", "w")
-    
+        
         for each in data:
-            a = each.split("\t")
+            a = each.strip().split("\t")
             chr = a[0].strip()
-            pep_start = a[1].strip()
+            pep_start = str(int(a[1].strip())+1)
             pep_end = a[2].strip()
             strand = a[5].strip()
-            c.execute("select * from gtf_data where type = 'CDS' and chr = '"+chr+"' and start <= "+pep_start+" and end >= "+pep_end+" and strand = '"+strand+"' ")
-            rows = c.fetchall()
-            if len(rows) > 0:
-                outfh.write(each.strip() + "\tCDS\n")
-            else:
-                c.execute("select * from gtf_data where type = 'five_prime_utr' and chr = '"+chr+"' and start <= "+pep_start+" and end >= "+pep_end+" and strand = '"+strand+"' ")
+            each = "\t".join(a[:6])
+            if (len(a) == 12 and int(a[9]) == 1) or (len(a) == 6):
+                c.execute("select * from gtf_data where type = 'CDS' and chr = '"+chr+"' and start <= "+pep_start+" and end >= "+pep_end+" and strand = '"+strand+"' ")
                 rows = c.fetchall()
                 if len(rows) > 0:
-                    outfh.write(each.strip() + "\tfive_prime_utr\n")
+                    outfh.write(each.strip() + "\tCDS\n")
                 else:
-                    c.execute("select * from gtf_data where type = 'three_prime_utr' and chr = '"+chr+"' and start <= "+pep_start+" and end >= "+pep_end+" and strand = '"+strand+"' ")
+                    c.execute("select * from gtf_data where type = 'five_prime_utr' and chr = '"+chr+"' and start <= "+pep_start+" and end >= "+pep_end+" and strand = '"+strand+"' ")
                     rows = c.fetchall()
                     if len(rows) > 0:
-                        outfh.write(each.strip() + "\tthree_prime_utr\n")
+                        outfh.write(each.strip() + "\tfive_prime_utr\n")
                     else:
-                        c.execute("select * from gtf_data where type = 'exon' and chr = '"+chr+"' and start <= "+pep_start+" and end >= "+pep_end+" and strand = '"+strand+"' ")
+                        c.execute("select * from gtf_data where type = 'three_prime_utr' and chr = '"+chr+"' and start <= "+pep_start+" and end >= "+pep_end+" and strand = '"+strand+"' ")
                         rows = c.fetchall()
                         if len(rows) > 0:
-                            outfh.write(each.strip() + "\texon\n")
+                            outfh.write(each.strip() + "\tthree_prime_utr\n")
                         else:
-                            c.execute("select * from gtf_data where type = 'intron' and chr = '"+chr+"' and start <= "+pep_start+" and end >= "+pep_end+" and strand = '"+strand+"' ")
+                            c.execute("select * from gtf_data where type = 'exon' and chr = '"+chr+"' and start <= "+pep_start+" and end >= "+pep_end+" and strand = '"+strand+"' ")
                             rows = c.fetchall()
                             if len(rows) > 0:
-                                outfh.write(each.strip() + "\tintron\n")
+                                outfh.write(each.strip() + "\texon\n")
                             else:
-                                c.execute("select * from gtf_data where type = 'gene' and chr = '"+chr+"' and start <= "+pep_start+" and end >= "+pep_end+" and strand = '"+strand+"' ")
+                                c.execute("select * from gtf_data where type = 'intron' and chr = '"+chr+"' and start <= "+pep_start+" and end >= "+pep_end+" and strand = '"+strand+"' ")
                                 rows = c.fetchall()
                                 if len(rows) > 0:
-                                    outfh.write(each.strip() + "\tgene\n")
+                                    outfh.write(each.strip() + "\tintron\n")
                                 else:
-                                    c.execute("select * from gtf_data where type = 'intergenic' and chr = '"+chr+"' and start <= "+pep_start+" and end >= "+pep_end+" and strand = '"+strand+"' ")
+                                    c.execute("select * from gtf_data where type = 'gene' and chr = '"+chr+"' and start <= "+pep_start+" and end >= "+pep_end+" and strand = '"+strand+"' ")
                                     rows = c.fetchall()
                                     if len(rows) > 0:
-                                        outfh.write(each.strip() + "\tintergene\n")
+                                        outfh.write(each.strip() + "\tgene\n")
                                     else:
-                                        outfh.write(each.strip() + "\tOVERLAPPING_ON_TWO_REGIONS: PLEASE_LOOK_MANUALLY (Will be updated in next version)\n")
+                                        c.execute("select * from gtf_data where type = 'intergenic' and chr = '"+chr+"' and start <= "+pep_start+" and end >= "+pep_end+" and strand = '"+strand+"' ")
+                                        rows = c.fetchall()
+                                        if len(rows) > 0:
+                                            outfh.write(each.strip() + "\tintergene\n")
+                                        else:
+                                            outfh.write(each.strip() + "\tOVERLAPPING_ON_TWO_REGIONS: PLEASE_LOOK_MANUALLY (Will be updated in next version)\n")
+            elif (len(a) == 12 and int(a[9]) == 2):
+                outfh.write(each.strip() + "\tSpliceJunction\n")
+            else:
+                outfh.write(each.strip() + "\tPlease check\n")
     
         conn.close()
         outfh.close()
