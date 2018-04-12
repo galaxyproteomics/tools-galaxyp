@@ -33,8 +33,8 @@ def isnumber(number_format, n):
     """
     Check if a variable is a float or an integer
     """
-    float_format = re.compile(r"^[-]?[1-9][0-9]*.?[0-9]+$")
-    int_format = re.compile(r"^[-]?[1-9][0-9]*$")
+    float_format = re.compile(r"^[-]?[0-9][0-9]*.?[0-9]+$")
+    int_format = re.compile(r"^[-]?[0-9][0-9]*$")
     test = ""
     if number_format == "int":
         test = re.match(int_format, n)
