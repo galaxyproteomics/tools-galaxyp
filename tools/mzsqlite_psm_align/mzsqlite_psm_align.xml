@@ -1,0 +1,113 @@
+<tool id="mzsqlite_psm_align" name="MzSQLite ProBED ProBAM" version="0.1.0">
+    <description>from mz.sqlite aand genomic mapping</description>
+    <requirements>
+        <requirement type="package">biopython</requirement>
+        <requirement type="package">twobitreader</requirement>
+        <requirement type="package">pysam</requirement>
+        <requirement type="package">gffutils</requirement>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        #if $readlignments:
+            ln -s -f '${$readlignments}' 'input.bam' &&
+            ln -s -f '${$readlignments.metadata.bam_index}' 'input.bam.bai' &&
+        #end if
+        python '$__tool_directory__/mzsqlite_psm_align.py'  
+            #if $ref.ref_source == 'cached':
+                --twobit='$ref.ref_loc.fields.path'
+            #elif $ref.ref_source == 'history':
+                --twobit='$ref.ref_file'
+            #end if
+            #if $gffutilsdb:
+                --gffutils_sqlite '$gffutilsdb'
+            #end if
+            #if $readlignments:
+                --reads_bam 'input.bam'
+            #end if
+            #if 'probed' in str($output_formats).split(','):
+               --probed '$probed'
+            #end if
+            #if 'prosam' in str($output_formats).split(','):
+               --prosam '$prosam'
+            #end if
+            #if 'probam' in str($output_formats).split(','):
+               --probam '$probam'
+            #end if
+            #if $genomicref:
+               --genomeReference $genomicref
+            #else
+               --genomeReference $genomicdb.metadata.dbkey
+            #end if
+            -v
+            '$mzsqlitedb' '$genomicdb'
+    ]]></command>
+    <inputs>
+        <param name="mzsqlitedb" type="data" format="mz.sqlite" label="mz.sqlite databse"/>
+        <param name="genomicdb" type="data" format="sqlite" label="genomic mapping sqlite databse"/>
+        <conditional name="ref">
+            <param name="ref_source" type="select" label="Source for Genomic Sequence Data">
+                <option value="cached">Locally cached twobit</option>
+                <option value="history">History dataset twobit</option>
+            </param>
+            <when value="cached">
+                <param name="ref_loc" type="select" label="Select reference 2bit file">
+                    <options from_data_table="twobit" />
+                </param>
+            </when>
+            <when value="history">
+                <param name="ref_file" type="data" format="twobit" label="reference 2bit file" />
+            </when>
+        </conditional>
+        <param name="gffutilsdb" type="data" format="sqlite" label="gffutils sqlite database" optional="true"/>
+        <param name="readlignments" type="data" format="bam" label="read alignments bam" optional="true"/>
+        <param name="genomicref" type="text" value="" label="Genome Reference name" optional="true"/>
+        <param name="output_formats" type="select" display="checkboxes" label="outputs" multiple="true">
+            <option value="probam">pro.bam</option>
+            <option value="prosam">pro.sam</option>
+            <option value="probed">pro.bed</option>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="prosam" format="sam" label="pro.SAM on ${on_string}">
+            <filter>'prosam' in output_formats</filter>
+        </data>
+        <data name="probam" format="bam" label="pro.Bam on ${on_string}">
+            <filter>'probam' in output_formats</filter>
+        </data>
+        <data name="probed" format="bed" label="pro.Bed on ${on_string}">
+            <filter>'probed' in output_formats</filter>
+        </data>
+    </outputs>
+    <help><![CDATA[
+
+Generates proBAM or proBED feature alignment files for peptides identified from a mass spectrometry protein search analysis.
+
+The tool mz_to_sqlite generates the a SQLite database for a mzIdentML file, 
+along with the fasta search database and the spectrum files used in the search.
+
+The genomic mapping sqlite database has this schema:
+
+    CREATE TABLE feature_cds_map (	/* One row for each exon in the search protein */
+        name TEXT, 		/* Accession name of search protein in mzIdentML */
+        chrom TEXT, 		/* Reference genome chromosome for this exon */
+        start INTEGER, 		/* genomic start of the exon (zero-based like BED) */
+        end INTEGER, 		/* genomic end of the exon (non-incluse like BED) */
+        strand TEXT, 		/* genomic strand: '+' or '-' */
+        cds_start INTEGER, 	/* The CDS coding start for this exon (zero-based) */
+        cds_end INTEGER		/* The CDS coding start end this exon (non-inclusive) */
+    );
+
+Example:
+    sqlite> select * from feature_cds_map WHERE name like 'ENSMUSP00000000001%';
+    ENSMUSP00000000001      chr3    108145887       108146005       -       0       118
+    ENSMUSP00000000001      chr3    108123794       108123837       -       118     161
+    ENSMUSP00000000001      chr3    108123541       108123683       -       161     303
+    ENSMUSP00000000001      chr3    108118300       108118458       -       303     461
+    ENSMUSP00000000001      chr3    108115762       108115891       -       461     590
+    ENSMUSP00000000001      chr3    108112472       108112602       -       590     720
+    ENSMUSP00000000001      chr3    108111934       108112088       -       720     874
+    ENSMUSP00000000001      chr3    108109421       108109612       -       874     1065
+
+This schema can describe structural variants as well as canonical transcripts.
+
+    ]]></help>
+</tool>
