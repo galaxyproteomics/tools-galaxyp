@@ -103,8 +103,11 @@ main = function() {
     else if (tissue == "Human_Kidney") {
       atlas_file = args$atlas_Human_Kidney
     }
-    else {
+    else if (tissue == "Human_Liver") {
       atlas_file = args$atlas_Human_Liver
+    }
+    else {
+      atlas_file = args$atlas_Human_CSF
     }
     info = annotPeptideAtlas(input, atlas_file)
     write.table(info, output_filename, row.names = FALSE, sep = "\t", quote = FALSE)

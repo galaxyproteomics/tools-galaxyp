@@ -19,11 +19,14 @@ readfile = function(filename, header) {
 }
 
 annotPeptideAtlas <- function(input, atlas_file) {
+  ## Calculate the sum of n_observations for each ID in input
   atlas = readfile(atlas_file, "true")
   n_observations = c()
   for (id in input) {
     n_observations = c(n_observations, sum(atlas[which(atlas["biosequence_name"][,] == id),]$n_observations))
   }
+  # Replace sum value 0 by NA
+  n_observations = replace(n_observations, n_observations == 0, NA)
   return(n_observations)
 }
 
@@ -46,6 +49,7 @@ main = function() {
         --atlas_liver: path to liver atlas file
         --atlas_plasma_nonglyco: path to plasma non glyco atlas file
         --atlas_urine: path to urine atlas file
+        --atlas_csf: path to csf atlas file
         --column: the column number which contains Uniprot IDs
         --header: true/false if your file contains a header
         --output: text output filename \n")
