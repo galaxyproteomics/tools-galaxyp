@@ -1,0 +1,161 @@
+<tool id="mass_spectrometry_imaging_combine" name="MSI combine" version="1.7.0.0">
+    <description>
+        combine several mass spectrometry imaging datasets into one
+    </description>
+    <requirements>
+        <requirement type="package" version="1.7.0">bioconductor-cardinal</requirement>
+    </requirements>
+    <command detect_errors="exit_code">
+    <![CDATA[
+        #for $i, $infile in enumerate($infiles):
+            #if $infile.ext == 'imzml'
+                cp '${infile.extra_files_path}/imzml' infile_$i.imzML &&
+                cp '${infile.extra_files_path}/ibd' infile_$i.ibd &&
+            #elif $infile.ext == 'analyze75'
+                cp '${infile.extra_files_path}/hdr' infile_$i.hdr &&
+                cp '${infile.extra_files_path}/img' infile_$i.img &&
+                cp '${infile.extra_files_path}/t2m' infile_$i.t2m &&
+            #else
+                ln -s '$infile' infile_${i}.RData &&
+            #end if
+        #end for
+        cat '${msi_combine}' &&
+        Rscript '${msi_combine}'
+
+    ]]>
+    </command>
+    <configfiles>
+        <configfile name="msi_combine"><![CDATA[
+library(Cardinal)
+
+#if $coordinates_file:
+    input_list = read.delim("$coordinates_file", header = FALSE, 
+    stringsAsFactors = FALSE)
+#end if
+
+pixel_vector = numeric()
+
+#set $msidata = []
+#for $i, $infile in enumerate($infiles):
+
+    #if $infile.ext == 'imzml'
+        msidata_$i <- readMSIData('infile_${i}.imzML')
+        sampleNames(msidata_$i) = "msidata"
+    #elif $infile.ext == 'analyze75'
+        msidata_$i <- readMSIData('infile_${i}.hdr')
+        sampleNames(msidata_$i) = "msidata"
+    #else
+        loadRData <- function(fileName){
+        #loads an RData file, and returns it
+        load(fileName)
+        get(ls()[ls() != "fileName"])
+        }
+        msidata_$i = loadRData('infile_${i}.RData')
+        sampleNames(msidata_$i) = "msidata"
+    #end if
+
+    #if $coordinates_file:
+        coord(msidata_$i)\$x = coord(msidata_$i)\$x + input_list[$i+1+$coordinates_header,$column_x]
+        coord(msidata_$i)\$y = coord(msidata_$i)\$y + input_list[$i+1+$coordinates_header,$column_y]
+        pixelnumber = ncol(msidata_$i)
+        pixel_vector = append(pixel_vector, rep(input_list[$i+1+$coordinates_header,$column_names],times=pixelnumber))
+    #end if
+    #silent $msidata.append('msidata_'+str($i))
+#end for
+
+msidata_combined = do.call(combine, list(#echo ','.join($msidata)#))
+
+### count NAs and replace by 0
+spectra(msidata_combined)[is.na(spectra(msidata_combined))] <- 0
+print(paste0("Number of NAs which were replaced ",sum(is.na(msidata_combined))))
+
+#if $coordinates_file:
+### rename pixels according to dataset
+sample_names = as.factor(pixel_vector)
+msidata_combined@pixelData@data\$sample = sample_names
+#end if
+
+
+### outputs ###
+
+## save as (.RData)
+msidata = msidata_combined
+save(msidata, file="$msidata_combined")
+
+pdf("combining_qc.pdf", fonts = "Times", pointsize = 12)
+image(msidata_combined, mz=1, colorkey=FALSE)
+dev.off()
+
+### optional: intensity matrix ###
+
+#if $output_matrix:
+
+if (length(features(msidata_combined))> 0 & length(pixels(msidata_combined)) > 0)
+{
+    spectramatrix = spectra(msidata_combined)
+    rownames(spectramatrix) = mz(msidata_combined)
+    newmatrix = rbind(pixels(msidata_combined), spectramatrix)
+    write.table(newmatrix[2:nrow(newmatrix),], file="$matrixasoutput", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+}else{
+    print("file has no features or pixels left")
+}
+#end if
+
+    ]]></configfile>
+    </configfiles>
+    <inputs>
+        <param name="infiles" type="data" multiple="true" format="imzml,rdata,analyze75"
+            label="MSI rawdata as imzml, analyze7.5 or Cardinal MSImageSet saved as RData"
+            help="load imzml and ibd file by uploading composite datatype imzml"/>
+        <param name="coordinates_file" type="data" optional="true" format="tabular" label="X and y values to shift data before combining"
+            help="tabular file with pixels of interest in two separate columns"/>
+        <param name="column_x" data_ref="coordinates_file" optional="true" label="Column with values for shift in x direction" type="data_column"/>
+        <param name="column_y" data_ref="coordinates_file" optional="true" label="Column with values for shift in y direction" type="data_column"/>
+        <param name="column_names" data_ref="coordinates_file" optional="true" label="Column with dataset names" type="data_column"/>
+        <param name="coordinates_header" label="Number of header lines to skip" value="0" type="integer"/>
+        <param name="output_matrix" type="boolean" display="radio" label="Intensity matrix output"/>
+    </inputs>
+    <outputs>
+        <data format="rdata" name="msidata_combined" label="Combined MSI data"/>
+        <data format="pdf" name="combining_qc" from_work_dir="combining_qc.pdf" label = "Combined image of pixels"/>
+        <data format="tabular" name="matrixasoutput" label="Combined matrix">
+            <filter>output_matrix</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="3">
+            <param name="infiles" value="msidata_1.RData,msidata_2.RData,msidata_3.RData" ftype="rdata"/>
+            <param name="coordinates_file" ftype="tabular" value="xy_coordinates.tabular"/>
+            <param name="column_x" value="1"/>
+            <param name="column_y" value="2"/>
+            <param name="column_names" value="3"/>
+            <param name="output_matrix" value="True"/>
+            <output name="matrixasoutput" file="123_combined_matrix.tabular"/>
+            <output name="msidata_combined" file="123_combined.RData" compare="sim_size" />
+            <output name="combining_qc" file="123_combined_QC.pdf" compare="sim_size" delta="20000"/>
+        </test>
+        <test expect_num_outputs="3">
+            <param name="infiles" value="msidata_1.RData,msidata_2.RData" ftype="rdata"/>
+            <param name="output_matrix" value="True"/>
+            <output name="matrixasoutput" file="12_combined_matrix.tabular"/>
+            <output name="msidata_combined" file="12_combined.RData" compare="sim_size" />
+            <output name="combining_qc" file="12_combined_QC.pdf" compare="sim_size" delta="20000"/>
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+This tool can combine several mass-spectrometry imaging files. A prerequesite for the combination is that the m/z values are the same across all datasets. To achieve this use the filtering tool to get all datasets to the same m/z range and then use the binning function in the preprocessing tool to obtain the same bins for all dataset. The pixels on the other hand must be unique, therefore you should provide a number for the shift of x and y coordinates so that pixels of different datasets do not overlap.
+
+Input data: 3 types of input data can be used:
+
+- imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <http://ms-imaging.org/wp/introduction/>`_
+- Analyze7.5 (upload hdr, img and t2m file via the "composite" function)
+- Cardinal "MSImageSet" data (with variable name "msidata", saved as .RData)
+
+The output of this tool is a Cardinal "MSImageSet" with the variable name "msidata" saved as .RData. 
+]]>
+    </help>
+    <citations>
+        <citation type="doi">10.1093/bioinformatics/btv146</citation>
+    </citations>
+</tool>
