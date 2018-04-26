@@ -4,6 +4,7 @@
     </description>
     <requirements>
         <requirement type="package" version="1.7.0">bioconductor-cardinal</requirement>
+        <requirement type="package" version="2.2.1">r-ggplot2</requirement>
     </requirements>
     <command detect_errors="exit_code">
     <![CDATA[
@@ -27,6 +28,7 @@
     <configfiles>
         <configfile name="msi_combine"><![CDATA[
 library(Cardinal)
+library(ggplot2)
 
 #if $coordinates_file:
     input_list = read.delim("$coordinates_file", header = FALSE, 
@@ -55,10 +57,10 @@ pixel_vector = numeric()
     #end if
 
     #if $coordinates_file:
-        coord(msidata_$i)\$x = coord(msidata_$i)\$x + input_list[$i+1+$coordinates_header,$column_x]
-        coord(msidata_$i)\$y = coord(msidata_$i)\$y + input_list[$i+1+$coordinates_header,$column_y]
+        coord(msidata_$i)\$x = coord(msidata_$i)\$x + input_list[$i+1,$column_x]
+        coord(msidata_$i)\$y = coord(msidata_$i)\$y + input_list[$i+1,$column_y]
         pixelnumber = ncol(msidata_$i)
-        pixel_vector = append(pixel_vector, rep(input_list[$i+1+$coordinates_header,$column_names],times=pixelnumber))
+        pixel_vector = append(pixel_vector, rep(input_list[$i+1,$column_names],times=pixelnumber))
     #end if
     #silent $msidata.append('msidata_'+str($i))
 #end for
@@ -67,12 +69,12 @@ msidata_combined = do.call(combine, list(#echo ','.join($msidata)#))
 
 ### count NAs and replace by 0
 spectra(msidata_combined)[is.na(spectra(msidata_combined))] <- 0
-print(paste0("Number of NAs which were replaced ",sum(is.na(msidata_combined))))
+print(paste0("Number of NAs which were replaced ",sum(is.na(spectra(msidata_combined)))))
 
 #if $coordinates_file:
 ### rename pixels according to dataset
 sample_names = as.factor(pixel_vector)
-msidata_combined@pixelData@data\$sample = sample_names
+pData(msidata_combined)\$sample = sample_names
 #end if
 
 
@@ -83,7 +85,16 @@ msidata = msidata_combined
 save(msidata, file="$msidata_combined")
 
 pdf("combining_qc.pdf", fonts = "Times", pointsize = 12)
-image(msidata_combined, mz=1, colorkey=FALSE)
+position_df = cbind(coord(msidata), pData(msidata)\$sample)
+colnames(position_df)[3] = "sample_name"
+
+ggplot(position_df, aes(x=x, y=y, fill=sample_name))+
+       geom_tile() +
+       coord_fixed()+
+       ggtitle("Spatial orientation of combined data")+
+       theme_bw()+
+       theme(text=element_text(family="ArialMT", face="bold", size=12))
+
 dev.off()
 
 ### optional: intensity matrix ###
@@ -107,12 +118,11 @@ if (length(features(msidata_combined))> 0 & length(pixels(msidata_combined)) > 0
         <param name="infiles" type="data" multiple="true" format="imzml,rdata,analyze75"
             label="MSI rawdata as imzml, analyze7.5 or Cardinal MSImageSet saved as RData"
             help="load imzml and ibd file by uploading composite datatype imzml"/>
-        <param name="coordinates_file" type="data" optional="true" format="tabular" label="X and y values to shift data before combining"
-            help="tabular file with pixels of interest in two separate columns"/>
+        <param name="coordinates_file" type="data" optional="true" format="tabular" label="datasetnames, X and y values to shift data before combining"
+            help="Tabular file with three columns: 1 for the filename, 1 for the x-coordinate shift and 1 for the y-coordinate shift"/>
         <param name="column_x" data_ref="coordinates_file" optional="true" label="Column with values for shift in x direction" type="data_column"/>
         <param name="column_y" data_ref="coordinates_file" optional="true" label="Column with values for shift in y direction" type="data_column"/>
         <param name="column_names" data_ref="coordinates_file" optional="true" label="Column with dataset names" type="data_column"/>
-        <param name="coordinates_header" label="Number of header lines to skip" value="0" type="integer"/>
         <param name="output_matrix" type="boolean" display="radio" label="Intensity matrix output"/>
     </inputs>
     <outputs>
