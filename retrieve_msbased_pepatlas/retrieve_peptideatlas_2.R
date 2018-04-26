@@ -24,7 +24,9 @@ annotPeptideAtlas<-function(input, atlas_file) {
   colnames(info) = c("biosequence_name","peptide_accession","peptide_sequence","n_observations","empirical_proteotypic_score","SSRCalc_relative_hydrophobicity")
   for (id in input) {
     info = rbind(info,subset(atlas, biosequence_name == id, select = c(biosequence_name,peptide_accession,peptide_sequence,n_observations,empirical_proteotypic_score,SSRCalc_relative_hydrophobicity)))
-  }  
+  }
+  colnames(info)[which(colnames(info) == "biosequence_name")] = "Uniprot_accNum"
+  colnames(info)[which(colnames(info) == "peptide_accession")] = "PA_peptide_accession"  
   return(info)
 }
 
