@@ -1,5 +1,5 @@
-GalaxyP - Filter by FASTA IDs
-=============================
+GalaxyP - Filter FASTA
+======================
 
 * Home: <https://github.com/galaxyproteomics/tools-galaxyp/>
 * Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/filter_by_fasta_ids>
@@ -9,7 +9,7 @@ GalaxyP - Filter by FASTA IDs
 Description
 -----------
 
-Extract sequences from a FASTA file based on a list of IDs.
+Filter entries of a FASTA file on the headers and/or the sequences based on various criteria.
 
 
 GalaxyP Community
@@ -23,7 +23,7 @@ Current governing community policies for [GalaxyP](https://github.com/galaxyprot
 License
 -------
 
-Copyright (c) 2014 Regents of the University of Minnesota and Authors listed below.
+Copyright (c) 2014,2018 Regents of the University of Minnesota and Authors listed below.
 
 To the extent possible under law, the author(s) have dedicated all copyright and related and neighboring rights to this software to the public domain worldwide. This software is distributed without any warranty.
 
@@ -44,4 +44,6 @@ Authors
 Authors and contributors:
 
 * John Chilton <jmchilton@gmail.com>
-* Minnesota Supercomputing Institute, Univeristy of Minnesota
+* Minnesota Supercomputing Institute, University of Minnesota
+* Nicola Soranzo <nicola.soranzo@earlham.ac.uk>
+* Earlham Institute, Norwich, UK

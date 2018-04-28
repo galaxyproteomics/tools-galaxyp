@@ -1,43 +1,142 @@
-<tool id="filter_by_fasta_ids" name="Filter by FASTA IDs" version="1.0">
-    <description>Extract sequences from a FASTA file based on a list of IDs</description>
+<tool id="filter_by_fasta_ids" name="Filter FASTA" version="2.0">
+    <description>on the headers and/or the sequences</description>
+    <macros>
+        <xml name="regexp_macro" token_label="Regular expression pattern">
+            <param name="regexp" type="text" value="" label="@LABEL@" help="Use the Python regular expression syntax as specified in https://docs.python.org/3/library/re.html">
+                <validator type="empty_field" />
+                <sanitizer>
+                    <valid initial="string.printable">
+                        <remove value="'"/>
+                    </valid>
+                    <mapping initial="none">
+                        <add source="'" target="'&quot;'&quot;'" />
+                    </mapping>
+                </sanitizer>
+            </param>
+        </xml>
+    </macros>
     <requirements>
-        <requirement type="package" version="2.7.12">python</requirement>
+        <requirement type="package" version="3.6.5">python</requirement>
     </requirements>
-    <command>
-<![CDATA[
-        python '$__tool_directory__/filter_by_fasta_ids.py'
-            $dedup
-            '$identifiers'
-            '$input'
-            '$output'
-]]>
-    </command>
+    <command><![CDATA[
+python '$__tool_directory__/filter_by_fasta_ids.py'
+-i '$input'
+#if $header_criteria.header_criteria_select == 'id_list'
+    --id_list '$header_criteria.identifiers'
+#elif $header_criteria.header_criteria_select == 'regexp'
+    --header_regexp '$header_criteria.regexp'
+#end if
+#if $sequence_criteria.sequence_criteria_select == 'seq_length'
+    --min_length $sequence_criteria.min_length
+    #if str($sequence_criteria.max_length)
+        --max_length $sequence_criteria.max_length
+    #end if
+#elif $sequence_criteria.sequence_criteria_select == 'regexp'
+    --sequence_regexp '$sequence_criteria.regexp'
+#end if
+$dedup
+-o '$output'
+#if $output_discarded
+    -d '$discarded'
+#end if
+    ]]></command>
     <inputs>
-        <param name="input" format="fasta" type="data" label="FASTA sequences"/>
-        <param name="identifiers" format="txt" type="data" label="List of IDs to extract sequences for"/>
-        <param name="dedup" type="boolean" truevalue="--dedup" falsevalue="" checked="true" label="Remove duplicate sequences" />
+        <param name="input" type="data" format="fasta" label="FASTA sequences"/>
+        <conditional name="header_criteria">
+            <param name="header_criteria_select" type="select" label="Criteria for filtering on the headers">
+                <option value="">No filtering</option>
+                <option value="id_list">List of IDs</option>
+                <option value="regexp">Regular expression on the headers</option>
+            </param>
+            <when value="" />
+            <when value="id_list">
+                <param name="identifiers" type="data" format="txt" label="List of IDs to extract sequences for"/>
+            </when>
+            <when value="regexp">
+                <expand macro="regexp_macro" label="Regular expression pattern the header should match" />
+            </when>
+        </conditional>
+        <conditional name="sequence_criteria">
+            <param name="sequence_criteria_select" type="select" label="Criteria for filtering on the sequences">
+                <option value="">No filtering</option>
+                <option value="seq_length">Sequence length</option>
+                <option value="regexp">Regular expression on the sequences</option>
+            </param>
+            <when value="" />
+            <when value="seq_length">
+                <param name="min_length" type="integer" value="0" label="Minimum length" />
+                <param name="max_length" type="integer" min="1" value="" optional="true" label="Maximum length" />
+            </when>
+            <when value="regexp">
+                <expand macro="regexp_macro" label="Regular expression pattern the sequence should match" />
+            </when>
+        </conditional>
+        <param name="dedup" type="boolean" truevalue="--dedup" falsevalue="" label="Remove duplicate sequences" />
+        <param name="output_discarded" type="boolean" label="Output discarded FASTA entries" />
     </inputs>
     <outputs>
-        <data format="fasta" name="output" label="FASTA sequences for ${identifiers.name}"/>
+        <data name="output" format="fasta" label="${tool.name} on ${on_string}: FASTA sequences"/>
+        <data name="discarded" format="fasta" label="${tool.name} on ${on_string}: discarded entries">
+            <filter>output_discarded</filter>
+        </data>
     </outputs>
     <tests>
-        <test>
+        <test expect_num_outputs="1">
             <param name="input" ftype="fasta" value="input.fasta" />
+            <param name="header_criteria_select" value="id_list" />
             <param name="identifiers" ftype="txt" value="ids.txt" />
+            <param name="dedup" value="True" />
             <output name="output" file="output_dedup.fasta" />
         </test>
-        <test>
+        <test expect_num_outputs="2">
             <param name="input" ftype="fasta" value="input.fasta" />
+            <param name="header_criteria_select" value="id_list" />
             <param name="identifiers" ftype="txt" value="ids.txt" />
             <param name="dedup" value="False" />
+            <param name="output_discarded" value="True" />
             <output name="output" file="output_not_dedup.fasta" />
+            <output name="discarded" file="discarded_not_dedup.fasta" />
+        </test>
+        <test expect_num_outputs="2">
+            <param name="input" ftype="fasta" value="input.fasta" />
+            <param name="header_criteria_select" value="regexp" />
+            <param name="regexp" value="2" />
+            <param name="dedup" value="False" />
+            <param name="output_discarded" value="True" />
+            <output name="output" file="output_header_regexp.fasta" />
+            <output name="discarded" file="discarded_header_regexp.fasta" />
+        </test>
+        <test expect_num_outputs="2">
+            <param name="input" ftype="fasta" value="input.fasta" />
+            <param name="sequence_criteria_select" value="seq_length" />
+            <param name="min_length" value="5" />
+            <param name="dedup" value="False" />
+            <param name="output_discarded" value="True" />
+            <output name="output" file="output_min_length5.fasta" />
+            <output name="discarded" file="discarded_min_length5.fasta" />
+        </test>
+        <test expect_num_outputs="2">
+            <param name="input" ftype="fasta" value="input.fasta" />
+            <param name="sequence_criteria_select" value="seq_length" />
+            <param name="max_length" value="4" />
+            <param name="dedup" value="False" />
+            <param name="output_discarded" value="True" />
+            <output name="output" file="output_max_length4.fasta" />
+            <output name="discarded" file="discarded_max_length4.fasta" />
+        </test>
+        <test expect_num_outputs="2">
+            <param name="input" ftype="fasta" value="input.fasta" />
+            <param name="sequence_criteria_select" value="regexp" />
+            <param name="regexp" value="T{2,}" />
+            <param name="dedup" value="False" />
+            <param name="output_discarded" value="True" />
+            <output name="output" file="output_sequence_regexp.fasta" />
+            <output name="discarded" file="discarded_sequence_regexp.fasta" />
         </test>
     </tests>
-    <help>
-<![CDATA[
+    <help><![CDATA[
 **What it does**
 
-Extract sequences from a FASTA file based on a list of IDs.
-]]>
-    </help>
+Filter entries of a FASTA file on the headers and/or the sequences based on various criteria.
+    ]]></help>
 </tool>
