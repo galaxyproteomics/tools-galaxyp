@@ -1,21 +1,21 @@
-<tool id="mass_spectrometry_imaging_combine" name="MSI combine" version="1.7.0.0">
+<tool id="mass_spectrometry_imaging_combine" name="MSI combine" version="1.10.0.0">
     <description>
         combine several mass spectrometry imaging datasets into one
     </description>
     <requirements>
-        <requirement type="package" version="1.7.0">bioconductor-cardinal</requirement>
+        <requirement type="package" version="1.10.0">bioconductor-cardinal</requirement>
         <requirement type="package" version="2.2.1">r-ggplot2</requirement>
     </requirements>
     <command detect_errors="exit_code">
     <![CDATA[
         #for $i, $infile in enumerate($infiles):
             #if $infile.ext == 'imzml'
-                cp '${infile.extra_files_path}/imzml' infile_$i.imzML &&
-                cp '${infile.extra_files_path}/ibd' infile_$i.ibd &&
+                ln -s '${infile.extra_files_path}/imzml' infile.imzML &&
+                ln -s '${infile.extra_files_path}/ibd' infile.ibd &&
             #elif $infile.ext == 'analyze75'
-                cp '${infile.extra_files_path}/hdr' infile_$i.hdr &&
-                cp '${infile.extra_files_path}/img' infile_$i.img &&
-                cp '${infile.extra_files_path}/t2m' infile_$i.t2m &&
+                ln -s '${infile.extra_files_path}/hdr' infile.hdr &&
+                ln -s '${infile.extra_files_path}/img' infile.img &&
+                ln -s '${infile.extra_files_path}/t2m' infile.t2m &&
             #else
                 ln -s '$infile' infile_${i}.RData &&
             #end if
@@ -27,25 +27,37 @@
     </command>
     <configfiles>
         <configfile name="msi_combine"><![CDATA[
+#import re
+################ load libraries, read rename and combine files #################
+
 library(Cardinal)
 library(ggplot2)
 
-#if $coordinates_file:
-    input_list = read.delim("$coordinates_file", header = FALSE, 
+#if str( $combine_conditional.combine_method ) == 'xy_shifts':
+    input_list = read.delim("$combine_conditional.coordinates_file", header = FALSE, 
     stringsAsFactors = FALSE)
 #end if
 
 pixel_vector = numeric()
+names_vector = character()
+x_shifts = 0
+y_shifts = 0
+max_y = numeric()
 
 #set $msidata = []
+#set $pixelcoords = []
+#set $num_infiles = len($infiles)
+
 #for $i, $infile in enumerate($infiles):
 
     #if $infile.ext == 'imzml'
-        msidata_$i <- readMSIData('infile_${i}.imzML')
+        msidata_$i <- readImzML('infile_${i}')
         sampleNames(msidata_$i) = "msidata"
+        pixelcoords_$i = cbind(coord(msidata_$i)[,1:2], rep($i+1,ncol(msidata_$i)))
     #elif $infile.ext == 'analyze75'
-        msidata_$i <- readMSIData('infile_${i}.hdr')
+        msidata_$i <- readAnalyze('infile_${i}')
         sampleNames(msidata_$i) = "msidata"
+        pixelcoords_$i = cbind(coord(msidata_$i)[,1:2], rep($i+1,ncol(msidata_$i)))
     #else
         loadRData <- function(fileName){
         #loads an RData file, and returns it
@@ -54,62 +66,190 @@ pixel_vector = numeric()
         }
         msidata_$i = loadRData('infile_${i}.RData')
         sampleNames(msidata_$i) = "msidata"
+        pixelcoords_$i = cbind(coord(msidata_$i)[,1:2], rep($i+1,ncol(msidata_$i)))
     #end if
+        colnames(pixelcoords_$i)[3] = "file_number"
 
-    #if $coordinates_file:
-        coord(msidata_$i)\$x = coord(msidata_$i)\$x + input_list[$i+1,$column_x]
-        coord(msidata_$i)\$y = coord(msidata_$i)\$y + input_list[$i+1,$column_y]
-        pixelnumber = ncol(msidata_$i)
-        pixel_vector = append(pixel_vector, rep(input_list[$i+1,$column_names],times=pixelnumber))
+    #if str( $combine_conditional.combine_method ) == 'xy_shifts':
+        coord(msidata_$i)\$x = coord(msidata_$i)\$x + input_list[$i+1,$combine_conditional.column_x]
+        coord(msidata_$i)\$y = coord(msidata_$i)\$y + input_list[$i+1,$combine_conditional.column_y]
+        pixel_vector = append(pixel_vector, rep(input_list[$i+1,$combine_conditional.column_names],times=ncol(msidata_$i)))
+    
+    #elif str( $combine_conditional.combine_method ) == 'automatic_combine':
+        #set escaped_element_identifier = re.sub('[^\w\-\s\[/]]', '_', str($infile.element_identifier))
+        names_vector = append(names_vector, rep(paste($i+1, "$escaped_element_identifier", sep="_"),ncol(msidata_$i)))
+        coord(msidata_$i)\$x = coord(msidata_$i)\$x - (min(coord(msidata_$i)\$x-1)) + x_shifts
+        coord(msidata_$i)\$y = coord(msidata_$i)\$y - (min(coord(msidata_$i)\$y-1)) + y_shifts
+        x_shifts = max(coord(msidata_$i)\$x) + $combine_conditional.x_distance
+        max_y = append(max_y, max(coord(msidata_$i)\$y))
+
+        all_files = $num_infiles
+        new_row = ($i+1)/ceiling(sqrt(all_files))
+        new_row%%1==0
+        if (new_row%%1==0)
+        {x_shifts = 0 ### x values start again at zero
+         y_shifts = max(max_y) + $combine_conditional.y_distance
+        max_y = numeric()}
+
     #end if
     #silent $msidata.append('msidata_'+str($i))
+    #silent $pixelcoords.append('pixelcoords_'+str($i))
 #end for
 
-msidata_combined = do.call(combine, list(#echo ','.join($msidata)#))
+###################### automatic combination ###################################
+################################################################################
 
-### count NAs and replace by 0
-spectra(msidata_combined)[is.na(spectra(msidata_combined))] <- 0
-print(paste0("Number of NAs which were replaced ",sum(is.na(spectra(msidata_combined)))))
+#if str( $combine_conditional.combine_method ) == 'automatic_combine':
+    print("automatic_combine")
+    msidata_combined = do.call(combine, list(#echo ','.join($msidata)#))
+    sample_names = as.factor(names_vector)
+    pData(msidata_combined)\$sample = sample_names
 
-#if $coordinates_file:
-### rename pixels according to dataset
-sample_names = as.factor(pixel_vector)
-pData(msidata_combined)\$sample = sample_names
+   ## create PDF to show pixels of each file
+    pdf("combining_qc.pdf", width=15, height=15)
+    position_df = cbind(coord(msidata_combined)[,1:2], pData(msidata_combined)\$sample)
+    colnames(position_df)[3] = "sample_name"
+
+    combine_plot = ggplot(position_df, aes(x=x, y=y, fill=sample_name))+
+           geom_tile() +
+           coord_fixed()+
+           ggtitle("Spatial orientation of combined data")+
+           theme_bw()+
+           theme(text=element_text(family="ArialMT", face="bold", size=15))+
+           theme(legend.position="bottom",legend.direction="vertical")+
+           guides(fill=guide_legend(ncol=4,byrow=TRUE))
+
+
+    coord_labels = aggregate(cbind(x,y)~sample_name, data=position_df, mean)
+    coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$sample_name)
+    for(file_count in 1:nrow(coord_labels))
+    {
+        combine_plot = combine_plot + annotate("text",x=coord_labels[file_count,"x"],y=coord_labels[file_count,"y"],label=toString(coord_labels[file_count,4]))
+    }
+    
+    print(combine_plot)
+    dev.off()
+
+     ## save as (.RData)
+    msidata = msidata_combined
+    save(msidata, file="$msidata_combined")
+################################## xy shifts ###################################
+################################################################################
+#elif str( $combine_conditional.combine_method ) == 'xy_shifts':
+    print("xy_shifts")
+    msidata_combined = do.call(combine, list(#echo ','.join($msidata)#))
+
+############# replace NA with 0 and rename pixels according to dataset #########
+
+    spectra(msidata_combined)[is.na(spectra(msidata_combined))] <- 0
+    print(paste0("Number of NAs which were replaced ",sum(is.na(spectra(msidata_combined)))))
+
+    sample_names = as.factor(pixel_vector)
+    pData(msidata_combined)\$sample = sample_names
+
+###################################### outputs #################################
+    ## save as (.RData)
+    msidata = msidata_combined
+    save(msidata, file="$msidata_combined")
+
+    ## create PDF to show pixels of each file
+    pdf("combining_qc.pdf")
+    position_df = cbind(coord(msidata), pData(msidata)\$sample)
+    colnames(position_df)[3] = "sample_name"
+
+    combine_plot = ggplot(position_df, aes(x=x, y=y, fill=sample_name))+
+           geom_tile() +
+           coord_fixed()+
+           ggtitle("Spatial orientation of combined data")+
+           theme_bw()+
+           theme(text=element_text(family="ArialMT", face="bold", size=12))
+
+    coord_labels = aggregate(cbind(x,y)~sample_name, data=position_df, mean)
+    for(file_count in 1:nrow(coord_labels))
+    {
+        combine_plot = combine_plot + annotate("text",x=coord_labels[file_count,"x"],y=coord_labels[file_count,"y"],label=toString(coord_labels[file_count,"sample_name"]))
+    }
+        
+    print(combine_plot)
+
+    dev.off()
+
+
+################################## no shifts ###################################
+################################################################################
+#elif str( $combine_conditional.combine_method ) == 'no_shifts':
+    print("no_shifts")
+    msidata_combined = do.call(combine, list(#echo ','.join($msidata)#))
+
+############# replace NA with 0 and rename pixels according to dataset #########
+
+    spectra(msidata_combined)[is.na(spectra(msidata_combined))] <- 0
+    print(paste0("Number of NAs which were replaced ",sum(is.na(spectra(msidata_combined)))))
+
+###################################### outputs #################################
+    ## save as (.RData)
+    msidata = msidata_combined
+    save(msidata, file="$msidata_combined")
+
+    ## create PDF to show pixels of each file
+    pdf("combining_qc.pdf")
+    position_df = cbind(coord(msidata), pData(msidata)\$sample)
+    colnames(position_df)[3] = "sample_name"
+
+           ggplot(position_df, aes(x=x, y=y, fill=sample_name))+
+           geom_tile() +
+           coord_fixed()+
+           ggtitle("Spatial orientation of combined data")+
+           theme_bw()+
+           theme(text=element_text(family="ArialMT", face="bold", size=12))
+
+    dev.off()
+
+
+################################## no combination ##############################
+################################################################################
+#elif str( $combine_conditional.combine_method ) == 'no_combine':
+    print("no_combine")
+
+    ## create PDF to show pixels of each file
+    pdf("combining_qc.pdf")
+    position_df = do.call(rbind, list(#echo ','.join($pixelcoords)#))
+    position_df[duplicated(position_df[,1:2]),3] = 0
+    position_df\$file_number = as.factor(position_df\$file_number)
+
+    combine_plot = ggplot(position_df, aes(x=x, y=y, fill=file_number))+
+           geom_tile() +
+           coord_fixed()+
+           ggtitle("Spatial orientation before combination")+
+           theme_bw()+
+           theme(text=element_text(family="ArialMT", face="bold", size=12))+
+           theme(panel.grid.major = element_line(colour = "black")) +
+           scale_x_continuous(minor_breaks = seq(min(position_df\$x-50), max(position_df\$x+50, 1))) +
+           scale_y_continuous(minor_breaks = seq(min(position_df\$y-50), max(position_df\$y+50, 1)))
+
+
+    coord_labels = aggregate(cbind(x,y)~file_number, data=position_df, mean)
+    for(file_count in 1:nrow(coord_labels))
+    {
+        combine_plot = combine_plot + annotate("text",x=coord_labels[file_count,"x"],y=coord_labels[file_count,"y"],label=toString(coord_labels[file_count,"file_number"]))
+    }
+        
+    print(combine_plot)
+
+    dev.off()
 #end if
-
-
-### outputs ###
-
-## save as (.RData)
-msidata = msidata_combined
-save(msidata, file="$msidata_combined")
-
-pdf("combining_qc.pdf", fonts = "Times", pointsize = 12)
-position_df = cbind(coord(msidata), pData(msidata)\$sample)
-colnames(position_df)[3] = "sample_name"
-
-ggplot(position_df, aes(x=x, y=y, fill=sample_name))+
-       geom_tile() +
-       coord_fixed()+
-       ggtitle("Spatial orientation of combined data")+
-       theme_bw()+
-       theme(text=element_text(family="ArialMT", face="bold", size=12))
-
-dev.off()
-
-### optional: intensity matrix ###
 
 #if $output_matrix:
 
-if (length(features(msidata_combined))> 0 & length(pixels(msidata_combined)) > 0)
-{
-    spectramatrix = spectra(msidata_combined)
-    rownames(spectramatrix) = mz(msidata_combined)
-    newmatrix = rbind(pixels(msidata_combined), spectramatrix)
-    write.table(newmatrix[2:nrow(newmatrix),], file="$matrixasoutput", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
-}else{
-    print("file has no features or pixels left")
-}
+    if (length(features(msidata_combined))> 0 & length(pixels(msidata_combined)) > 0)
+    {
+        spectramatrix = spectra(msidata_combined)
+        rownames(spectramatrix) = mz(msidata_combined)
+        newmatrix = rbind(pixels(msidata_combined), spectramatrix)
+        write.table(newmatrix[2:nrow(newmatrix),], file="$matrixasoutput", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+    }else{
+        print("file has no features or pixels left")
+    }
 #end if
 
     ]]></configfile>
@@ -118,12 +258,29 @@ if (length(features(msidata_combined))> 0 & length(pixels(msidata_combined)) > 0
         <param name="infiles" type="data" multiple="true" format="imzml,rdata,analyze75"
             label="MSI rawdata as imzml, analyze7.5 or Cardinal MSImageSet saved as RData"
             help="load imzml and ibd file by uploading composite datatype imzml"/>
-        <param name="coordinates_file" type="data" optional="true" format="tabular" label="datasetnames, X and y values to shift data before combining"
+        <conditional name="combine_conditional">
+            <param name="combine_method" type="select" label="Select the way you want to combine multiple files" help="More detailed help can be found in the help section at the bottom">
+                <option value="automatic_combine" selected="True" >automatic combination</option>
+                <option value="no_shifts" >no coordinates shift</option>
+                <option value="xy_shifts">xy shifts by hand</option>
+                <option value="no_combine">check pixels before combination</option>
+            </param>
+            <when value="no_shifts">
+            </when>
+            <when value="automatic_combine">
+                <param name="x_distance" type="integer" value="10" label="How many pixels in x direction should be between files?"/>
+                <param name="y_distance" type="integer" value="10" label="How many pixels in y direction should be between files?"/>
+            </when>
+            <when value="xy_shifts">
+                <param name="coordinates_file" type="data" format="tabular" label="datasetnames, X and y values to shift data before combining"
             help="Tabular file with three columns: 1 for the filename, 1 for the x-coordinate shift and 1 for the y-coordinate shift"/>
-        <param name="column_x" data_ref="coordinates_file" optional="true" label="Column with values for shift in x direction" type="data_column"/>
-        <param name="column_y" data_ref="coordinates_file" optional="true" label="Column with values for shift in y direction" type="data_column"/>
-        <param name="column_names" data_ref="coordinates_file" optional="true" label="Column with dataset names" type="data_column"/>
-        <param name="output_matrix" type="boolean" display="radio" label="Intensity matrix output"/>
+                <param name="column_x" data_ref="coordinates_file" label="Column with values for shift in x direction" type="data_column"/>
+                <param name="column_y" data_ref="coordinates_file" label="Column with values for shift in y direction" type="data_column"/>
+                <param name="column_names" data_ref="coordinates_file" label="Column with dataset names" type="data_column"/>
+            </when>
+            <when value="no_combine"/>
+        </conditional>
+    <param name="output_matrix" type="boolean" display="radio" label="Intensity matrix output"/>
     </inputs>
     <outputs>
         <data format="rdata" name="msidata_combined" label="Combined MSI data"/>
@@ -135,6 +292,7 @@ if (length(features(msidata_combined))> 0 & length(pixels(msidata_combined)) > 0
     <tests>
         <test expect_num_outputs="3">
             <param name="infiles" value="msidata_1.RData,msidata_2.RData,msidata_3.RData" ftype="rdata"/>
+            <param name="combine_method" value="xy_shifts"/>
             <param name="coordinates_file" ftype="tabular" value="xy_coordinates.tabular"/>
             <param name="column_x" value="1"/>
             <param name="column_y" value="2"/>
@@ -146,15 +304,36 @@ if (length(features(msidata_combined))> 0 & length(pixels(msidata_combined)) > 0
         </test>
         <test expect_num_outputs="3">
             <param name="infiles" value="msidata_1.RData,msidata_2.RData" ftype="rdata"/>
+            <param name="combine_method" value="no_shifts"/>
             <param name="output_matrix" value="True"/>
             <output name="matrixasoutput" file="12_combined_matrix.tabular"/>
             <output name="msidata_combined" file="12_combined.RData" compare="sim_size" />
             <output name="combining_qc" file="12_combined_QC.pdf" compare="sim_size" delta="20000"/>
         </test>
+        <test expect_num_outputs="3">
+            <param name="infiles" value="msidata_1.RData,msidata_2.RData" ftype="rdata"/>
+            <param name="combine_method" value="automatic_combine"/>
+            <param name="x_distance" value="1"/>
+            <param name="y_distance" value="1"/>
+            <param name="output_matrix" value="True"/>
+            <output name="matrixasoutput" file="12_auto_combined_matrix.tabular"/>
+            <output name="msidata_combined" file="12_auto_combined.RData" compare="sim_size" />
+            <output name="combining_qc" file="12_auto_combined_QC.pdf" compare="sim_size" delta="20000"/>
+        </test>
     </tests>
     <help>
 <![CDATA[
-This tool can combine several mass-spectrometry imaging files. A prerequesite for the combination is that the m/z values are the same across all datasets. To achieve this use the filtering tool to get all datasets to the same m/z range and then use the binning function in the preprocessing tool to obtain the same bins for all dataset. The pixels on the other hand must be unique, therefore you should provide a number for the shift of x and y coordinates so that pixels of different datasets do not overlap.
+This tool can combine several mass-spectrometry imaging files. 
+    1) m/z values need to be the same across all datasets
+    2) pixels (defined by x and y coordinates) must be unique
+
+1) Same m/z values/axis can be achieved with the filtering tool to get all datasets to the same m/z range and afterwards binning in the preprocessing tool to obtain the same bins for all dataset. 
+2) The pixels (defined by x and y coordinates) must be unique across all datasets, therefore the option "Select the way you want to combine multiple files" is helpful:
+
+    - "automatic combination": files are arranged in a grid with a distance in x and y direction which can be given by the user
+    - "no coordinates shift": this option can only be used if all pixels are unique across datasets
+    - "xy shifts by hand": each file can be moved in x and y direction according to the users need (define one tabular file in the order in which the files are loaded in the history (bottom to top) and define for each file the x and y coordinates shifts in separate columns
+    - "check pixels before combination": no combination takes place. You will only get a pdf which shows the arrangement of the pixels (with or without additional xy shifts)
 
 Input data: 3 types of input data can be used:
 
