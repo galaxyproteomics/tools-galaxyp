@@ -38,6 +38,12 @@ library(ggplot2)
     stringsAsFactors = FALSE)
 #end if
 
+loadRData <- function(fileName){
+#loads an RData file, and returns it
+load(fileName)
+get(ls()[ls() != "fileName"])
+}
+
 pixel_vector = numeric()
 names_vector = character()
 x_shifts = 0
@@ -47,28 +53,21 @@ max_y = numeric()
 #set $msidata = []
 #set $pixelcoords = []
 #set $num_infiles = len($infiles)
+all_files = $num_infiles
 
 #for $i, $infile in enumerate($infiles):
 
     #if $infile.ext == 'imzml'
         msidata_$i <- readImzML('infile_${i}')
-        sampleNames(msidata_$i) = "msidata"
-        pixelcoords_$i = cbind(coord(msidata_$i)[,1:2], rep($i+1,ncol(msidata_$i)))
     #elif $infile.ext == 'analyze75'
         msidata_$i <- readAnalyze('infile_${i}')
-        sampleNames(msidata_$i) = "msidata"
-        pixelcoords_$i = cbind(coord(msidata_$i)[,1:2], rep($i+1,ncol(msidata_$i)))
     #else
-        loadRData <- function(fileName){
-        #loads an RData file, and returns it
-        load(fileName)
-        get(ls()[ls() != "fileName"])
-        }
         msidata_$i = loadRData('infile_${i}.RData')
+     #end if
+
+########## wenn ncol msidata > 0 and nrow msidata > 0, dann alles abklappern andernfalls nicht in msiliste mitreinnehmen (unten hinter python vor end for: filenr ausprinten)
         sampleNames(msidata_$i) = "msidata"
         pixelcoords_$i = cbind(coord(msidata_$i)[,1:2], rep($i+1,ncol(msidata_$i)))
-    #end if
-        colnames(pixelcoords_$i)[3] = "file_number"
 
     #if str( $combine_conditional.combine_method ) == 'xy_shifts':
         coord(msidata_$i)\$x = coord(msidata_$i)\$x + input_list[$i+1,$combine_conditional.column_x]
@@ -95,6 +94,7 @@ max_y = numeric()
     #silent $msidata.append('msidata_'+str($i))
     #silent $pixelcoords.append('pixelcoords_'+str($i))
 #end for
+    colnames(pixelcoords_$i)[3] = "file_number"
 
 ###################### automatic combination ###################################
 ################################################################################
@@ -102,13 +102,16 @@ max_y = numeric()
 #if str( $combine_conditional.combine_method ) == 'automatic_combine':
     print("automatic_combine")
     msidata_combined = do.call(combine, list(#echo ','.join($msidata)#))
+    print("combination successful")
     sample_names = as.factor(names_vector)
     pData(msidata_combined)\$sample = sample_names
+    print("names successful")
 
    ## create PDF to show pixels of each file
     pdf("combining_qc.pdf", width=15, height=15)
     position_df = cbind(coord(msidata_combined)[,1:2], pData(msidata_combined)\$sample)
     colnames(position_df)[3] = "sample_name"
+    print("position_df")
 
     combine_plot = ggplot(position_df, aes(x=x, y=y, fill=sample_name))+
            geom_tile() +
@@ -323,25 +326,35 @@ max_y = numeric()
     </tests>
     <help>
 <![CDATA[
-This tool can combine several mass-spectrometry imaging files. 
-    1) m/z values need to be the same across all datasets
-    2) pixels (defined by x and y coordinates) must be unique
 
-1) Same m/z values/axis can be achieved with the filtering tool to get all datasets to the same m/z range and afterwards binning in the preprocessing tool to obtain the same bins for all dataset. 
-2) The pixels (defined by x and y coordinates) must be unique across all datasets, therefore the option "Select the way you want to combine multiple files" is helpful:
+Cardinal is an R package that implements statistical & computational tools for analyzing mass spectrometry imaging datasets. `More information on Cardinal <http://cardinalmsi.org//>`_
 
-    - "automatic combination": files are arranged in a grid with a distance in x and y direction which can be given by the user
-    - "no coordinates shift": this option can only be used if all pixels are unique across datasets
-    - "xy shifts by hand": each file can be moved in x and y direction according to the users need (define one tabular file in the order in which the files are loaded in the history (bottom to top) and define for each file the x and y coordinates shifts in separate columns
-    - "check pixels before combination": no combination takes place. You will only get a pdf which shows the arrangement of the pixels (with or without additional xy shifts)
+This tool uses the Cardinal combine function to combine several mass-spectrometry imaging data. 
 
 Input data: 3 types of input data can be used:
 
-- imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <http://ms-imaging.org/wp/introduction/>`_
+- imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <https://ms-imaging.org/wp/imzml/>`_
 - Analyze7.5 (upload hdr, img and t2m file via the "composite" function)
 - Cardinal "MSImageSet" data (with variable name "msidata", saved as .RData)
 
-The output of this tool is a Cardinal "MSImageSet" with the variable name "msidata" saved as .RData. 
+Prerequisite:
+
+- m/z values need to be the same across all datasets (before using this tool), this can be achieved with the filtering tool (use same m/z range) and the preprocessing tool (use same binning parameter)
+
+Options: 
+
+- "automatic combination": files are arranged in a grid with a minimal distance in x and y direction which can be given by the user, subfiles are named according to input file name
+- "no coordinates shift": this option can only be used if all pixels are unique across datasets, no assignment of names to the subfiles
+- "xy shifts by hand": each file can be moved in x and y direction according to the users need (define one tabular file in the order in which the files are loaded in the history (bottom to top) and define for each file the x and y coordinates shifts in separate columns
+- "check pixels before combination": no combination takes place but a pdf shows the current arrangement of the pixels
+
+Output: 
+
+- imzML file containing multiple subfiles
+- pdf that shows the pixel positions of the combined files
+- optional: intensity matrix as tabular file (intensities for masses in rows and pixel in columns)
+
+
 ]]>
     </help>
     <citations>
