@@ -1,9 +1,9 @@
-<tool id="mass_spectrometry_imaging_qc" name="MSI Qualitycontrol" version="1.7.0.5">
+<tool id="mass_spectrometry_imaging_qc" name="MSI Qualitycontrol" version="1.10.0.0">
     <description>
         mass spectrometry imaging QC
     </description>
     <requirements>
-        <requirement type="package" version="1.7.0">bioconductor-cardinal</requirement>
+        <requirement type="package" version="1.10.0">bioconductor-cardinal</requirement>
         <requirement type="package" version="2.2.1">r-ggplot2</requirement>
         <requirement type="package" version="1.1_2">r-rcolorbrewer</requirement>
         <requirement type="package" version="2.2.1">r-gridextra</requirement>
@@ -12,12 +12,12 @@
     <command detect_errors="exit_code">
     <![CDATA[
         #if $infile.ext == 'imzml'
-            cp '${infile.extra_files_path}/imzml' infile.imzML &&
-            cp '${infile.extra_files_path}/ibd' infile.ibd &&
+            ln -s '${infile.extra_files_path}/imzml' infile.imzML &&
+            ln -s '${infile.extra_files_path}/ibd' infile.ibd &&
         #elif $infile.ext == 'analyze75'
-            cp '${infile.extra_files_path}/hdr' infile.hdr &&
-            cp '${infile.extra_files_path}/img' infile.img &&
-            cp '${infile.extra_files_path}/t2m' infile.t2m &&
+            ln -s '${infile.extra_files_path}/hdr' infile.hdr &&
+            ln -s '${infile.extra_files_path}/img' infile.img &&
+            ln -s '${infile.extra_files_path}/t2m' infile.t2m &&
         #else
             ln -s '$infile' infile.RData &&
         #end if
@@ -37,10 +37,9 @@ library(KernSmooth)
 ## Read MALDI Imaging dataset
 
 #if $infile.ext == 'imzml'
-    msidata = readMSIData('infile.imzML')
+    msidata = readImzML('infile')
 #elif $infile.ext == 'analyze75'
-    msidata = readMSIData('infile.hdr')
-
+    msidata = readAnalyze('infile')
 #else
     load('infile.RData')
 #end if
@@ -107,7 +106,7 @@ if (length(processinginfo@peakPicking) == 0) {
   peakpickinginfo=processinginfo@peakPicking
 }
 
-### Read tabular file with peptide masses for plots and heatmap images: 
+### Read tabular file with masses for plots and heatmap images: 
 
 #if $peptide_file:
 
@@ -143,10 +142,8 @@ colnames(inputpeptides) = c("mz", "name")
         number_calibrants_in = length(calibrant_list[,1])
         number_calibrants_valid = length(inputcalibrants[,1])
 #else
-    ###inputcalibrants = data.frame(0,0)
 
     inputcalibrants = as.data.frame(matrix(, nrow = 0, ncol = 2))
-
     number_calibrants_in = 0
     number_calibrants_valid = 0
 #end if
@@ -372,7 +369,7 @@ if (npeaks > 0)
         {
           image(msidata, mz=inputmasses[mass], plusminus=$plusminus_dalton, 
           main= paste0(inputnames[mass], " (", round(inputmasses[mass], digits = 2)," ± ", $plusminus_dalton, " Da)"),
-                contrast.enhance = "histogram", ylim=c(maximumy+2, 0))
+                contrast.enhance = "histogram", ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy))
         }
     } else {print("3) The inputpeptide masses were not provided or outside the mass range")}
 
@@ -428,7 +425,7 @@ if (npeaks > 0)
     pca = PCA(msidata, ncomp=2) 
     par(mfrow = c(2,1))
     plot(pca, col=c("black", "darkgrey"), main="PCA for two components")
-    image(pca, col=c("black", "white"),ylim=c(maximumy+2, 0),  strip=FALSE)
+    image(pca, col=c("black", "white"),ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy),  strip=FALSE)
 
 
     ############################# III) properties over acquisition (spectra index)##########
@@ -600,12 +597,12 @@ dev.off()
         <param name="infile" type="data" format="imzml,rdata,analyze75" label="Inputfile as imzML, Analyze7.5 or Cardinal MSImageSet saved as RData"
             help="Upload composite datatype imzml (ibd+imzML) or analyze75 (hdr+img+t2m) or regular upload .RData (Cardinal MSImageSet)"/>
         <param name="filename" type="text" value="" optional="true" label="Title" help="will appear in the quality report. If nothing given it will take the dataset name."/>
-        <param name="peptide_file" type="data" optional="true" format="tabular" label="Text file with peptidemasses and names"
-            help="first column peptide m/z, second column peptide name, tab separated file"/>
+        <param name="peptide_file" type="data" optional="true" format="tabular" label="Text file with masses and names"
+            help="first column m/z, second column name, tab separated file"/>
         <param name="calibrant_file" type="data" optional="true" format="tabular"
-            label="Internal calibrants"
+            label="Internal calibrants and names"
             help="Used for plot number of calibrant per spectrum and for zoomed in mass spectra"/>
-        <param name="plusminus_dalton" value="0.25" type="text" label="Mass range" help="plusminus mass window in Dalton"/>
+        <param name="plusminus_dalton" value="0.25" type="text" label="Mass range in Dalton" help="Plusminus mass window in Dalton for calibrant and peptide plots"/>
         <repeat name="calibrantratio" title="Plot fold change of two masses for each spectrum" min="0" max="10">
             <param name="mass1" value="1111" type="float" label="Mass 1" help="First mass in Dalton"/>
             <param name="mass2" value="2222" type="float" label="Mass 2" help="Second mass in Dalton"/>
@@ -623,7 +620,7 @@ dev.off()
                 <composite_data value="Example_Continuous.imzML" />
                 <composite_data value="Example_Continuous.ibd" />
             </param>
-            <param name="peptide_file" value="inputpeptides.csv" ftype="csv"/>
+            <param name="peptide_file" value="inputpeptides.txt" ftype="txt"/>
             <param name="calibrant_file" ftype="txt" value="inputcalibrantfile1.txt"/>
             <param name="plusminus_dalton" value="0.25"/>
             <param name="filename" value="Testfile_imzml"/>
@@ -633,9 +630,8 @@ dev.off()
                 <param name="distance" value="0.25"/>
                 <param name="filenameratioplot" value = "Ratio of mass1 (111) / mass2 (222)"/>
             </repeat>
-            <output name="plots" file="Testfile_qualitycontrol_imzml.pdf" compare="sim_size" delta="20000"/>
+            <output name="plots" file="QC_imzml.pdf" compare="sim_size" delta="20000"/>
         </test>
-
         <test>
             <param name="infile" value="" ftype="analyze75">
                 <composite_data value="Analyze75.hdr"/>
@@ -646,36 +642,48 @@ dev.off()
             <param name="calibrant_file" ftype="txt" value="inputcalibrantfile2.txt"/>
             <param name="plusminus_dalton" value="0.5"/>
             <param name="filename" value="Testfile_analyze75"/>
-            <output name="plots" file="Testfile_qualitycontrol_analyze75.pdf" compare="sim_size" delta="20000"/>
+            <output name="plots" file="QC_analyze75.pdf" compare="sim_size" delta="20000"/>
         </test>
-
         <test>
-            <param name="infile" value="preprocessing_results1.RData" ftype="rdata"/>
-            <param name="plusminus_dalton" value="0.1"/>
+            <param name="infile" value="preprocessed.RData" ftype="rdata"/>
+            <param name="plusminus_dalton" value="0"/>
             <param name="filename" value="Testfile_rdata"/>
-            <output name="plots" file="Testfile_qualitycontrol_rdata.pdf" compare="sim_size" delta="20000"/>
+            <output name="plots" file="QC_rdata.pdf" compare="sim_size" delta="20000"/>
         </test>
         <test>
-            <param name="infile" value="LM8_file16.rdata" ftype="rdata"/>
+            <param name="infile" value="empty_spectra.rdata" ftype="rdata"/>
             <param name="peptide_file" value="inputpeptides.txt" ftype="txt"/>
             <param name="calibrant_file" ftype="txt" value="inputcalibrantfile2.txt"/>
             <param name="plusminus_dalton" value="0.1"/>
             <param name="filename" value="Testfile_rdata"/>
-            <output name="plots" file="LM8_file16output.pdf" compare="sim_size" delta="20000"/>
+            <output name="plots" file="QC_empty_spectra.pdf" compare="sim_size" delta="20000"/>
         </test>
     </tests>
     <help>
         <![CDATA[
-Quality control for maldi imaging mass spectrometry data. The output of this tool contains key values and plots of the imaging data as pdf. 
-For additional beautiful heatmap images use the MSI ion images tool and to plot more mass spectra use the MSI massspectra tool. 
+Cardinal is an R package that implements statistical & computational tools for analyzing mass spectrometry imaging datasets. `More information on Cardinal <http://cardinalmsi.org//>`_
+
+This tool uses some Cardinal functions to create a quality control report with descriptive plots for mass-spectrometry imaging data. 
 
 Input data: 3 types of input data can be used:
 
-- imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <http://ms-imaging.org/wp/introduction/>`_
+- imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <https://ms-imaging.org/wp/imzml/>`_
 - Analyze7.5 (upload hdr, img and t2m file via the "composite" function)
 - Cardinal "MSImageSet" data (with variable name "msidata", saved as .RData)
 
+Options: 
 
+- masses of interest as tabular file, used to generate heatmap images
+- internal calibrants as tabular file, used for the following plots: Number of calibrant per spectrum, heatmap images, mass-spectrum plot zoomed in for calibrant region, ppm accuracy
+- fold change plot: draws a heatmap of the fold change of two masses (log2(intensity ratio))
+
+Output: 
+
+- pdf with numbers and descriptive plots to check the quality of the mass-spectrometry imaging data
+
+Tip: 
+
+- For additional heatmap images use the MSI ion images tool and to plot more mass spectra use the MSI massspectra tool. 
 
         ]]>
     </help>
