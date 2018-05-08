@@ -1,19 +1,19 @@
-<tool id="mass_spectrometry_imaging_filtering" name="MSI filtering" version="1.7.0.1">
+<tool id="mass_spectrometry_imaging_filtering" name="MSI filtering" version="1.10.0.0">
     <description>tool for filtering mass spectrometry imaging data</description>
     <requirements>
-        <requirement type="package" version="1.7.0">bioconductor-cardinal</requirement>
+        <requirement type="package" version="1.10.0">bioconductor-cardinal</requirement>
         <requirement type="package" version="2.2.1">r-gridextra</requirement>
     </requirements>
     <command detect_errors="exit_code">
     <![CDATA[
 
         #if $infile.ext == 'imzml'
-            cp '${infile.extra_files_path}/imzml' infile.imzML &&
-            cp '${infile.extra_files_path}/ibd' infile.ibd &&
+            ln -s '${infile.extra_files_path}/imzml' infile.imzML &&
+            ln -s '${infile.extra_files_path}/ibd' infile.ibd &&
         #elif $infile.ext == 'analyze75'
-            cp '${infile.extra_files_path}/hdr' infile.hdr &&
-            cp '${infile.extra_files_path}/img' infile.img &&
-            cp '${infile.extra_files_path}/t2m' infile.t2m &&
+            ln -s '${infile.extra_files_path}/hdr' infile.hdr &&
+            ln -s '${infile.extra_files_path}/img' infile.img &&
+            ln -s '${infile.extra_files_path}/t2m' infile.t2m &&
         #else
             ln -s $infile infile.RData &&
         #end if
@@ -27,23 +27,21 @@
         <configfile name="MSI_subsetting"><![CDATA[
 
 
-################################# load libraries and read file #########################
+################################# load libraries and read file #################
 
 
 library(Cardinal)
 library(gridExtra)
 
-## Read MALDI Imaging dataset
-
 #if $infile.ext == 'imzml'
-    msidata = readMSIData('infile.imzML')
+    msidata = readImzML('infile')
 #elif $infile.ext == 'analyze75'
-    msidata = readMSIData('infile.hdr')
+    msidata = readAnalyze('infile')
 #else
     load('infile.RData')
 #end if
 
-###################################### inputfile properties in numbers ######################
+##################################### QC: inputfile properties in numbers ######
 
 #if $outputs.outputs_select == "quality_control":
     ## Number of features (mz)
@@ -75,12 +73,13 @@ library(gridExtra)
 #end if
 
 
-###################################### filtering of pixels ######################
+###################################### Filtering of pixels #####################
+
+### Pixels in the one column format "x=,y="
 
 #if str($pixels_cond.pixel_filtering) == "single_column":
     print("single column")
 
-    #if $pixels_cond.single_pixels:
         input_list = read.delim("$pixels_cond.single_pixels", header = FALSE, stringsAsFactors = FALSE)
         numberpixels = length(input_list[,$pixels_cond.pixel_column])
         valid_entries = input_list[,$pixels_cond.pixel_column] %in% names(pixels(msidata))
@@ -91,18 +90,15 @@ library(gridExtra)
                 pixelsofinterest = pixels(msidata)[names(pixels(msidata)) %in% input_list[valid_entries,$pixels_cond.pixel_column]]
                 msidata = msidata[,pixelsofinterest]
             }else{
+                msidata = msidata[,0]
                 validpixels=0
             }
 
-    #else
-        validpixels=0
-        numberpixels = 0
-    #end if 
+
+### Pixels in two columns format: x and y in different columns
 
 #elif str($pixels_cond.pixel_filtering) == "two_columns":
     print("two columns")
-
-    #if $pixels_cond.two_columns_pixel:
 
         input_list = read.delim("$pixels_cond.two_columns_pixel", header = FALSE, 
         stringsAsFactors = FALSE)
@@ -132,11 +128,8 @@ library(gridExtra)
             validpixels=0
         }
 
-        
-    #else
-        validpixels=0
-        numberpixels = 0
-    #end if 
+
+### Pixels wihin x and y minima and maxima are kept: 
 
 #elif str($pixels_cond.pixel_filtering) == "pixel_range":
     print("pixel range")
@@ -144,14 +137,15 @@ library(gridExtra)
     numberpixels = "range"
     validpixels = "range"
 
-    if (sum(coord(msidata)\$x <= $pixels_cond.max_x_range & coord(msidata)\$x >= $pixels_cond.min_x_range) > 0)
+## only filter pixels if at least one pixel will be left
+
+    if (sum(coord(msidata)\$x <= $pixels_cond.max_x_range & coord(msidata)\$x >= $pixels_cond.min_x_range) > 0 & sum(coord(msidata)\$y <= $pixels_cond.max_y_range & coord(msidata)\$y >= $pixels_cond.min_y_range) > 0)
     {
         msidata = msidata[, coord(msidata)\$x <= $pixels_cond.max_x_range & coord(msidata)\$x >= $pixels_cond.min_x_range]
-    }
-
-    if (sum(coord(msidata)\$y <= $pixels_cond.max_y_range & coord(msidata)\$y >= $pixels_cond.min_y_range) > 0)
-    {
         msidata = msidata[, coord(msidata)\$y <= $pixels_cond.max_y_range & coord(msidata)\$y >= $pixels_cond.min_y_range]
+    }else{ 
+        msidata = msidata[,0]
+        print("no valid pixel found")
     }
 
 
@@ -167,8 +161,9 @@ library(gridExtra)
 
 ###################################### filtering of features ######################
 
-#if str($features_cond.features_filtering) == "features_list":
+### Tabular file contains mz either as numbers or in the format mz=800.01
 
+#if str($features_cond.features_filtering) == "features_list":
     print("feature list")
 
     input_features = read.delim("$inputfeatures", header = FALSE, stringsAsFactors = FALSE)
@@ -177,10 +172,10 @@ library(gridExtra)
     extracted_features = input_features[startingrow:nrow(input_features),$features_cond.feature_column]
     numberfeatures = length(extracted_features)
 
-
     if (grepl("m/z = ", input_features[startingrow,$features_cond.feature_column])==FALSE)
 
-    {   print("no m/z = in data")
+### if input is in numeric format
+    {
 
         if (class(extracted_features) == "numeric")
         {
@@ -188,36 +183,45 @@ library(gridExtra)
             mz_added = paste0(charactervector, round(extracted_features,digits=2))
             validfeatures = mz_added %in% names(features(msidata))
             featuresofinterest = features(msidata)[names(features(msidata)) %in% mz_added[validfeatures]]
+            validmz = sum(validfeatures)
         }else{
-            validfeatures = 0
-            featuresofinterest = features(msidata)
+            validmz = 0
+            featuresofinterest = 0
         }
+
+### if input is already in character format (m/z = 800.01)
+
     }else{   
         validfeatures = extracted_features %in% names(features(msidata))
         featuresofinterest = features(msidata)[names(features(msidata)) %in% extracted_features[validfeatures]]
+        validmz = sum(validfeatures)
     }
 
+### filter msidata for valid features
     msidata = msidata[featuresofinterest,]
 
 
+### Only features within a given minimum and maximum value are kept: 
 
 #elif str($features_cond.features_filtering) == "features_range":
-
     print("feature range")
 
     numberfeatures = "range"
-    validfeatures = NA
+    validmz = "range"
 
     if (sum(mz(msidata) >= $features_cond.min_mz & mz(msidata) <= $features_cond.max_mz)> 0)
     {
     msidata = msidata[mz(msidata) >= $features_cond.min_mz & mz(msidata) <= $features_cond.max_mz,]
+    }else{ 
+        msidata = msidata[0,]
+        print("no valid mz range")
     }
 
 
 #elif str($features_cond.features_filtering) == "none":
 
     print("no feature filtering")
-    validfeatures = 0
+    validmz = 0
     numberfeatures = 0
 #end if
 
@@ -226,7 +230,7 @@ library(gridExtra)
 # save msidata as Rfile
 save(msidata, file="$msidata_filtered")
 
-###################################### outputfile properties in numbers ######################
+###################################### outputfile properties in numbers ########
 
 #if $outputs.outputs_select == "quality_control":
 
@@ -287,14 +291,14 @@ filtered = c(paste0(maxfeatures2),
            paste0(medint2),
            paste0(NumemptyTIC2), 
            paste0("valid pixels: ", validpixels),
-           paste0("valid mz: ", sum(validfeatures)))
+           paste0("valid mz: ", validmz))
 
 
 property_df = data.frame(properties, before, filtered)
 
 
 
-######################################## PDF QC #############################################
+######################################## PDF QC ################################
 
     pdf("filtertool_QC.pdf", fonts = "Times", pointsize = 12)
     plot(0,type='n',axes=FALSE,ann=FALSE)
@@ -322,9 +326,6 @@ if (length(features(msidata))> 0 & length(pixels(msidata)) > 0)
            legend = c("before", "filtered"), 
            fill = c("red", "green"))
 
-
-
-
 }else{
     print("file has no features or pixels left")
 }
@@ -333,7 +334,7 @@ if (length(features(msidata))> 0 & length(pixels(msidata)) > 0)
 
 #end if
 
-######################################## intensity matrix ##################################
+######################################## intensity matrix ######################
 
 #if $output_matrix:
 
@@ -358,7 +359,6 @@ if (length(features(msidata))> 0 & length(pixels(msidata)) > 0)
         <param name="infile" type="data" format="imzml, rdata, analyze75"
                label="Inputfile as imzML, Analyze7.5 or Cardinal MSImageSet saved as RData"
                 help="Upload composite datatype imzML (ibd+imzML) or analyze75 (hdr+img+t2m) or regular upload .RData (Cardinal MSImageSet)"/>
-
         <conditional name="pixels_cond">
             <param name="pixel_filtering" type="select" label="Select pixel filtering option">
                 <option value="none" selected="True">none</option>
@@ -385,14 +385,12 @@ if (length(features(msidata))> 0 & length(pixels(msidata)) > 0)
                 <param name="max_y_range" type="integer" value="100" label="Maximum value for y"/>
             </when> 
         </conditional>
-
         <conditional name="features_cond">
             <param name="features_filtering" type="select" label="Select feature filtering option">
                 <option value="none" selected="True">none</option>
                 <option value="features_list">tabular file with features (data type: 800.12 or m/z = 800.12)</option>
                 <option value="features_range">range of features</option>
             </param>
-
             <when value="none"/>
             <when value="features_list">
                 <param name="inputfeatures" type="data" format="tabular" label="Features for filtering of MSI data" help="tabular file with masses of interest either as numbers (800.05) or in the form m/z = 800.05"/>
@@ -400,11 +398,10 @@ if (length(features(msidata))> 0 & length(pixels(msidata)) > 0)
                 <param name="feature_header" label="Number of header lines to skip" value="0" type="integer"/>
             </when> 
             <when value="features_range">
-                <param name="min_mz" type="integer" value="1" label="Minimum value for mz (in Dalton)"/>
-                <param name="max_mz" type="integer" value="100" label="Maximum value for mz (in Dalton)"/>
+                <param name="min_mz" type="float" value="1" label="Minimum value for mz (in Dalton)"/>
+                <param name="max_mz" type="float" value="100" label="Maximum value for mz (in Dalton)"/>
             </when> 
         </conditional>
-
         <conditional name="outputs">
            <param name="outputs_select" type="select" label="Quality control output">
                <option value="quality_control" selected="True">yes</option>
@@ -423,11 +420,10 @@ if (length(features(msidata))> 0 & length(pixels(msidata)) > 0)
         <data format="pdf" name="filtering_qc" from_work_dir="filtertool_QC.pdf" label = "QC ${tool.name} ${on_string}">
             <filter>outputs["outputs_select"] == "quality_control"</filter>
         </data>
-        <data format="tabular" name="matrixasoutput" label="Matrix ${tool.name} on ${on_string}">
+        <data format="tabular" name="matrixasoutput" label="Matrix ${tool.name} ${on_string}">
             <filter>output_matrix</filter>
         </data>
     </outputs>
-
     <tests>
         <test expect_num_outputs="2">
             <param name="infile" value="" ftype="imzml">
@@ -453,8 +449,8 @@ if (length(features(msidata))> 0 & length(pixels(msidata)) > 0)
                 <composite_data value="Example_Continuous.ibd"/>
             </param>
             <param name="pixel_filtering" value="pixel_range"/>
-            <param name="min_x_range" value="0"/>
-            <param name="max_x_range" value="10"/>
+            <param name="min_x_range" value="10"/>
+            <param name="max_x_range" value="20"/>
             <param name="min_y_range" value="2"/>
             <param name="max_y_range" value="2"/>
              <param name="outputs_select" value="quality_control"/>
@@ -469,12 +465,12 @@ if (length(features(msidata))> 0 & length(pixels(msidata)) > 0)
                 <composite_data value="Example_Continuous.ibd"/>
             </param>
             <param name="pixel_filtering" value="pixel_range"/>
-            <param name="min_x_range" value="0"/>
-            <param name="max_x_range" value="10"/>
+            <param name="min_x_range" value="1"/>
+            <param name="max_x_range" value="20"/>
             <param name="min_y_range" value="2"/>
             <param name="max_y_range" value="2"/>
             <param name="features_filtering" value="features_range"/>
-            <param name="min_mz" value="200" />
+            <param name="min_mz" value="0" />
             <param name="max_mz" value="500"/>
              <param name="outputs_select" value="quality_control"/>
                 <param name="inputmz" value="328.9"/>
@@ -514,8 +510,8 @@ if (length(features(msidata))> 0 & length(pixels(msidata)) > 0)
             <param name="min_y_range" value="2"/>
             <param name="max_y_range" value="20"/>
             <param name="features_filtering" value="features_range"/>
-            <param name="min_mz" value="1" />
-            <param name="max_mz" value="150"/>
+            <param name="min_mz" value="500" />
+            <param name="max_mz" value="700"/>
              <param name="outputs_select" value="quality_control"/>
                 <param name="inputmz" value="328.9"/>
                 <param name="plusminus_dalton" value="0.25"/>
@@ -536,7 +532,7 @@ if (length(features(msidata))> 0 & length(pixels(msidata)) > 0)
             <param name="feature_column" value="1"/>
             <conditional name="outputs">
                 <param name="outputs_select" value="quality_control"/>
-                    <param name="inputmz" value="702"/>
+                    <param name="inputmz" value="1200"/>
                     <param name="plusminus_dalton" value="0.25"/>
             </conditional>
             <param name="output_matrix" value="True"/>
@@ -552,14 +548,14 @@ if (length(features(msidata))> 0 & length(pixels(msidata)) > 0)
             </param>
             <conditional name="outputs">
                 <param name="outputs_select" value="quality_control"/>
-                    <param name="inputmz" value="702"/>
+                    <param name="inputmz" value="1200"/>
                     <param name="plusminus_dalton" value="0.25"/>
             </conditional>
             <output name="filtering_qc" file="analyze75_filtered2.pdf" compare="sim_size" delta="20000"/>
-            <output name="msidata_filtered" file="analyze_originaloutput2.RData" compare="sim_size" />
+            <output name="msidata_filtered" file="analyze_filteredoutside.RData" compare="sim_size" />
         </test>
         <test expect_num_outputs="2">
-            <param name="infile" value="preprocessing_results1.RData" ftype="rdata"/>
+            <param name="infile" value="preprocessed.RData" ftype="rdata"/>
             <conditional name="outputs">
                 <param name="outputs_select" value="no_quality_control"/>
             </conditional>
@@ -571,16 +567,32 @@ if (length(features(msidata))> 0 & length(pixels(msidata)) > 0)
     <help>
         <![CDATA[
 
-This tool can filter three types of mass-spectrometry imaging files (see below) for pixels and features of interest. This can be used to keep only pixels in a regions of interest.
-For filtering at least one valid pixel/feature is needed otherwise no filtering will be performed. It is recommended to use the filtering tool only for feature masses which have been extracted from the same dataset. If you have feature masses from dataset A and you want to use them to filter dataset B, first find the corresponding (closest) features in dataset B by using the tool "Join two files on column allowing a small difference". Afterwards use the corresponding feature masses from dataset B to filter dataset B. 
+Cardinal is an R package that implements statistical & computational tools for analyzing mass spectrometry imaging datasets. `More information on Cardinal <http://cardinalmsi.org//>`_
+
+This tool provides provides options to filter (subset) pixels and masses of mass-spectrometry imaging data.
 
 Input data: 3 types of input data can be used:
 
-- imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <http://ms-imaging.org/wp/introduction/>`_
+- imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <https://ms-imaging.org/wp/imzml/>`_
 - Analyze7.5 (upload hdr, img and t2m file via the "composite" function)
 - Cardinal "MSImageSet" data (with variable name "msidata", saved as .RData)
 
-The output of this tool is a subsetted Cardinal "MSImageSet" with the variable name "msidata" saved as .RData. 
+Options:
+
+- pixel filtering: can use a tabular file containing x and y coordinates or by defining a range for x and y by hand
+- mass filtering: can use a tabular file containing masses of interest or by defining a range for the mass values
+
+Output: 
+
+- imzML file filtered for pixels and/or masses
+- optional: pdf with heatmap showing the pixels that are left after filtering and plot of masses before and after filtering
+- optional: intensity matrix as tabular file (intensities for masses in rows and pixel in columns)
+
+Tip: 
+
+- It is recommended to use the filtering tool only for masses which have been extracted from the same dataset. If you have masses from dataset A and you want to use them to filter dataset B, first find the corresponding (closest) features in dataset B by using the tool "Join two files on column allowing a small difference". Afterwards use the corresponding feature masses from dataset A to filter dataset B. 
+
+
         ]]>
     </help>
     <citations>
