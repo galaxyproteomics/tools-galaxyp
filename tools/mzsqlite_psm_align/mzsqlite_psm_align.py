@@ -276,6 +276,7 @@ def __main__():
                     ftype = f[3]
                     if ftype == 'transcript':
                         if i > 0 or efeatures[i]:
+                            transcripts.append(f)
                             continue
                     if i == 0:
                         if transcript not in transcript_features:
@@ -286,10 +287,7 @@ def __main__():
                         if transcript in transcript_features:
                             transcript_features[transcript][i].append(f)
                             efeatures[i].append(f)
-                        else:
-                            del transcript_features[transcript]
                 if not efeatures[i]:
-                    
                     efeatures[i] = transcripts
                 for f in efeatures[i]:
                     (seqid,start,end,featuretype,strand,frame,in_frame,start_offset,end_offset,parent) = f
@@ -390,32 +388,6 @@ def __main__():
                     if xg != '*':
                         probam_dict['XG'] = xg
                         break    
-        return pep_cds
-
-    def get_variant_cds(exons,ref_prot,peptide,pep_cds):
-        if ref_prot != peptide and samfile:
-            try:
-                if args.debug:
-                    print('name: %s \nref: %s\npep: %s\n' % (scan_name,ref_prot,peptide), file=sys.stderr)
-                ts = time()
-                for exon in exons:
-                   (acc,chrom,start,end,strand,c_start,c_end) = exon
-                   a_start = c_start / 3 * 3
-                   a_end = c_end / 3 * 3
-                   if ref_prot[a_start:a_end] != peptide[a_start:a_end]:
-                       pileup = get_exon_pileup(chrom,start,end)
-                       for i, (bi,ai,ao) in enumerate([(i,i / 3, i % 3) for i in range(c_start, c_end)]):
-                           if ao == 0 or i == 0:
-                               if ref_prot[ai] != peptide[ai]:
-                                   codon = get_pep_codon(pileup, bi - c_start, peptide[ai], ao)
-                                   if args.debug:
-                                       print('%d %d %d   %s :  %s %s %s' % (bi,ai,ao,  peptide[ai], str(pep_cds[:bi]), str(codon), str(pep_cds[bi+3:])), file=sys.stderr)
-                                   if codon:
-                                       pep_cds = pep_cds[:bi] + codon + pep_cds[bi+3:]
-                te = time()   
-                add_time('var_cds',te - ts)
-            except Exception as e:
-                print('name: %s \nref: %s\npep: %s\n%s\n' % (scan_name,ref_prot,peptide,e), file=sys.stderr)
         return pep_cds
 
     def get_mapping(acc,pep_start,pep_end):
