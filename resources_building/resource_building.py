@@ -42,7 +42,7 @@ def HPA_sources(data_manager_dict, tissue, target_directory):
         url = "https://www.proteinatlas.org/download/proteinatlas.tsv.zip"
     output_file = tissue + ".tsv"
     path = os.path.join(target_directory, output_file)
-    unzip(url, output_file)
+    unzip(url, path)
     data_table_entry = dict(value = tissue, name = tissue_name, path = path)
     _add_data_table_entry(data_manager_dict, data_table_entry)
 
@@ -88,6 +88,11 @@ def main():
     args = parser.parse_args()
 
     data_manager_dict = {}
+    # Extract json file params
+    filename = args.output
+    params = from_json_string(open(filename).read())
+    target_directory = params[ 'output_data' ][0]['extra_files_path']
+    os.mkdir(target_directory)
 
     ## Download source files from HPA
     try:
@@ -95,7 +100,7 @@ def main():
     except NameError:
         hpa = None
     if hpa is not None:
-        target_directory = "test-data/"
+        #target_directory = "/projet/galaxydev/galaxy/tools/proteore/ProteoRE/tools/resources_building/test-data/"
         hpa = hpa.split(",")
         for hpa_tissue in hpa:
             HPA_sources(data_manager_dict, hpa_tissue, target_directory)
@@ -106,7 +111,7 @@ def main():
     except NameError:
         peptide_atlas = None
     if peptide_atlas is not None:
-        target_directory = "test-data/"
+        #target_directory = "/projet/galaxydev/galaxy/tools/proteore/ProteoRE/tools/resources_building/test-data/"
         peptide_atlas = peptide_atlas.split(",")
         for pa_tissue in peptide_atlas:
             peptide_atlas_sources(data_manager_dict, pa_tissue, target_directory)
