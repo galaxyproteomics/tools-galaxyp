@@ -2,56 +2,111 @@ define([],
 	function(){
 		return Backbone.Model.extend({
 			defaults: {
-				data : [],
+				data : null,
 				summaryData : [],
 				ID : '',
 				name : 'CRAVAT Output', 
 				shownHeaders : [],
 				headerConfig : {},
 				'Sorting data' : [],
+				Filters : {},
+				'Sorted data' : [],
+				'All headers' : []
 			},
-
-
-			headerTypes : {'Variant Info' : ['Input line','ID','Chromosome','Position','Strand','Reference base(s)','Alternate base(s)','Sample ID','HUGO symbol','dbSNP', 'Variant Impact'],
-							'Structure' : ['Protein 3D variant'],
-							'Variant Impact' : ['Sequence ontology','Protein sequence change','S.O. transcript','S.O. all transcripts','HGVS Genomic','HGVS Protein','HGVS Protein All'],
-							'CHASM' : ['CHASM p-value','CHASM FDR','CHASM transcript','CHASM score','All transcripts CHASM results'],
-							'VEST' : ['VEST p-value','VEST FDR','VEST score transcript','VEST score (missense)','VEST score (frameshift indels)','VEST score (inframe indels)','VEST score (stop-gain)','VEST score (stop-loss)','VEST score (splice site)','All transcripts VEST results'],
-							'Disease Association' : ['CGL driver class','TARGET','COSMIC ID','COSMIC variant count (tissue)','COSMIC variant count','COSMIC transcript','COSMIC protein change','PubMed article count','PubMed search term','ClinVar','ClinVar disease identifier','ClinVar XRef','CGC driver class','CGC inheritance','CGC tumor types somatic','CGC tumor types germline','GWAS NHLBI Key (GRASP)','GWAS PMID (GRASP)','GWAS Phenotype (GRASP)'],
-							'Population Stats' : ['1000 Genomes AF','ESP6500 AF (average)','ESP6500 AF (European American)','ESP6500 AF (African American)','gnomAD AF Total','gnomAD AF African','gnomAD AF American','gnomAD AF Ashkenazi Jewish','gnomAD AF East Asian','gnomAD AF Finnish','gnomAD AF Non-Finnish European','gnomAD AF Other','gnomAD AF South Asian'],
-							'Study' : ['Number of samples with variant']},
 
 
 			initialize : function(params){
 				this.name = params.name;
 				this.exceedsLimit = false;
 				//this.shownHeaders = params.headers;
-				this.set('shownHeaders',params.headers);
-				this.allHeaders = [];
+				this.categories = params.categories || [];
+				this.filters = [];
 				//this.filterColumns = ['Chromosome', 'Sample ID', 'COSMIC variant count (tissue)', '1000 Genomes AF'];
 				this.filterColumns = [{name : 'Chromosome', categorical : true},
 									  {name : 'Sample ID', categorical : true},
-									  {name : 'COSMIC variant count (tissue)', categorical : false},
-									  {name : '1000 Genomes AF', categorical : false}];
+									  {name : 'COSMIC variant count (tissue)', categorical : false, type: '>='},
+									  {name : '1000 Genomes AF', categorical : false, type: '<=' }];
 				//this.on('change', this.notify, this);
 				this.testing = true;
+				this.set('shownHeaders',params.headers);
 			},
 
-			getColumns : function(headers){
+			sortData : function(){
+				var filt;
+				var filter;
+				var filterConfig;
+				var filterCategory;
+				var index;
+				var filteredData = this.data;
+				for (var i in this.filters) {
+					filterCategory = this.filters[i];
+					if (filterCategory.category != null){
+
+						filterConfig = this.filterColumns.filter(a => a.name == filterCategory.category)[0];
+
+						index = this.allHeaders.indexOf(filterCategory.category);
+
+						if (filterConfig.categorical){
+							filter = function(a){
+								return a[index] == filterCategory.filter;
+							}
+						} else {
+							if (filterConfig.type == '>='){
+								filter = function(a){
+									return parseFloat(a[index]) <= parseFloat(filterCategory.filter);
+								}
+							} else {
+								filter = function(a){
+									return parseFloat(a[index]) >= parseFloat(filterCategory.filter);
+								}
+							}
+						}
+						filteredData = filteredData.filter(filter);
+					}
+				}
+				this.set('Sorted data', filteredData);
+			},
+
+			old_getColumns : function(headers){
 				data = this.get('data');
 				columns = {};
+				var indices = [];
 				for (var i = 0; i < headers.length; i++){
 					index = this.allHeaders.indexOf(headers[i]);
+					indices.push(index);
 					columns[headers[i]] = [];
 					for (var j = 0; j < data.length; j++){
 						columns[headers[i]].push(data[j][index]);
 					}
 				}
+				// var xhr = jQuery.getJSON('/api/datasets/' + this.id, {
+				// 		data_type : 'raw_data',
+				// 		provider : 'column',
+				// 		indeces : indices.join(',')
+				// 	});
+
+				// xhr.done(function(response){
+				// 	console.log(response.data);
+				// });
+
+
 				return columns;
 			},
 
-			setData : function(data){
-				console.log('fetching data for ' + this.name);
+			//fetchData : function
+
+			setData : function(id){
+				var allHeaders = this.get('All headers');
+				if (allHeaders.indexOf('$%$') > 0){
+					allHeaders = allHeaders.split('$%$');
+				}
+				this.id = id;
+				this.set('headerConfig', this.formatHeaderConfig(allHeaders));
+				this.set('ID', id);
+			},
+
+			oldsetData : function(data){
+				console.log('setting data for ' + this.name);
 				/*this.ID = datasetID;
 				this.commentLines = 11;
 				var view = this;
@@ -70,6 +125,10 @@ define([],
 					provider : 'column',
 					limit: this.lim
 				});*/
+				if (data.constructor == Object){
+					//data = this.
+					console.log(this.name);
+				}
 				var view = this;
 				this.data = data;
 				view.allHeaders = data.shift();
@@ -82,42 +141,37 @@ define([],
 				view.set('data',data);
 			},
 
-			setSortingData : function(id){
-				this.ID = id;
-				var view = this;
-				var xhr = jQuery.getJSON('/api/datasets/' + id, {
-						data_type : 'raw_data',
-						provider : 'column',
-						limit : 1
-					});
 
-					// Get the indices for the sorting headers, then obtain those columns from the dataset.
-					xhr.done(function(response){
-						view.allHeaders = response.data[0];
-						indices = view.headerIndices();
-						var xhr = jQuery.getJSON('/api/datasets/' + view.ID, {
-							data_type : 'raw_data',
-							provider : 'column',
-							indeces : indices.join(',')
-						});
+			mapToArray : function(data){
+				for (header in data){
 
-						xhr.done(function(response){
-							console.log('Set sorting data!');
-							view.getUniqueValues(response.data);
-							view.set('Sorting data', view.formatObjectArray(response.data));
-						})
-					});
+				}
+				return data
 			},
 
-			getUniqueValues : function(data){
+			setSortingData : function(data){
+				this.data = data;
+				console.log(data);
+				this.allHeaders = data.shift();
+				this.set('headerConfig', this.formatHeaderConfig(this.allHeaders));
+				this.fillOutEndData();
+				this.getUniqueValues();
+			},
+
+			setTestTable : function(){
+				this.set('data', 'TEST');
+			},
+
+			getUniqueValues : function(){
 				columns = this.filterColumns;
 				uniqueValueTypes = {};
 				for (var i = 0; i < columns.length; i++){
+					index = this.allHeaders.indexOf(columns[i].name);
 					if (columns[i].categorical){
 						header = columns[i].name;
 						uniqueValues = [];
-						for (var j = 1; j < data.length; j++){
-							value = data[j][i];
+						for (var j = 1; j < this.data.length; j++){
+							value = this.data[j][index];
 							if (uniqueValues.indexOf(value) < 0){
 								uniqueValues.push(value);
 							}
@@ -167,9 +221,10 @@ define([],
 			},
 
 			columnVisibility : function(){
-				colVisibility = [];
-				for (var i = 0; i < this.allHeaders.length; i++){
-					if (this.get('shownHeaders').indexOf(this.allHeaders[i]) >= 0){
+				var colVisibility = [];
+				var allHeaders = this.get('All headers');
+				for (var i = 0; i < allHeaders.length; i++){
+					if (this.get('shownHeaders').indexOf(allHeaders[i]) >= 0){
 						colVisibility.push(true);
 					} else {
 						colVisibility.push(false);
@@ -179,9 +234,10 @@ define([],
 			},
 
 			fillOutEndData : function(){
+				var allHeaders = this.get('All headers');
 				for (var i = 0; i < this.data.length; i++){
-					if (this.allHeaders){
-						while(this.allHeaders.length > this.data[i].length){
+					if (allHeaders){
+						while(allHeaders.length > this.data[i].length){
 							this.data[i].push('');
 						}
 					}

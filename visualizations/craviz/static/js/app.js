@@ -7,11 +7,35 @@ define(['plugin/viewer'],
         
         el : $('#container'),
 
-    	initialize: function(options){
+    	initialize: function(config){
 
-           this.contentView = new ContentView({dataset_id : options.dataset_id});
+            /*var names = options.dataset_names;
+            var filename = options.filename;
+            var dataset_name;
 
+            var current_index = -1;
+            for (var i = 0; i < names.length; i++){
+                if (filename.indexOf(names[i]) > 0){
+                    current_index = i;
+                    dataset_name = names[i];
+                }
+            }*/
+            var name = config.report_name;
+            var names = config.report_names;
+            this.index = Object.keys(names).indexOf(name) + 1;
+            config.index = this.index;
+
+          /* this.contentView = new ContentView({dataset_id : options.dataset_id,
+                                                dataset_names : names,
+                                                history_id : options.history_id,
+                                                filename : options.filename,
+                                                current_index : current_index,
+                                                dataset_name : dataset_name});*/
+            this.contentView = new ContentView(config);
+           //this.dataset_name = options.dataset_name;
     	   this.render();
+
+
 
 
            this.footer = ['<footer>',
@@ -24,8 +48,8 @@ define(['plugin/viewer'],
         render : function(){
             this.$el.append(this.contentView.tabViewer.el);
             this.$el.append(this.contentView.el);
-            //this.$el.append(this.portlet.el);
-            $('.tab-button:eq(3)').click();
+            this.$el.append(this.footer);
+            $('.nav-tabs button:eq(' + this.index + ')').click();
         }
     });
 });
