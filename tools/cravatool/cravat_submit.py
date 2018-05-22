@@ -10,26 +10,52 @@ from difflib import SequenceMatcher
 from xml.etree import ElementTree as ET
 import sqlite3
 
-try:
-    input_filename = sys.argv[1]
-    input_select_bar = sys.argv[2]
-    GRCh_build = sys.argv[3]
+#try:
+print sys.argv
+input_filename = sys.argv[1]
+input_select_bar = sys.argv[2]
+GRCh_build = sys.argv[3]
+i = 0
+if len(sys.argv) >= 11:
     probed_filename = sys.argv[4]
-    output_filename = sys.argv[5]
-    file_3 = sys.argv[6]
-    file_4 = sys.argv[7]
-    file_5 = sys.argv[8]
-except:
-    # Filenames for testing.
-    input_filename = 'test-data/[VCF-BEDintersect__on_data_65_and_data_6].vcf'
-    probed_filename = 'test-data/[PepPointer].bed'
-    input_select_bar = 'VEST'
-    GRCh_build = 'GRCh38'
-    output_filename = 'combined_variants.tsv'
-    file_3 = 'test-results/Gene_Level_Analysis.tsv'
-    file_4 = 'test-results/Variant_Non-coding.Result.tsv'
-    file_5 = 'test-results/Input_Errors.Result.tsv'
-    matches_filename = 'matches.tsv'
+    intersected_only = sys.argv[5]
+    output_vcf = sys.argv[6]
+    vcf_output = sys.argv[7]
+    output_filename = sys.argv[8]
+    file_3 = sys.argv[9]
+    file_4 = sys.argv[10]
+    file_5 = sys.argv[11]
+else:
+    probed_filename = 'None'
+    output_filename = sys.argv[4]
+    file_3 = sys.argv[5]
+    file_4 = sys.argv[6]
+    file_5 = sys.argv[7]
+
+print intersected_only
+print output_vcf
+##    
+##input_filename = sys.argv[1]
+##input_select_bar = sys.argv[2]
+##GRCh_build = sys.argv[3]
+##probed_filename = sys.argv[4]
+##output_filename = sys.argv[5]
+##file_3 = sys.argv[6]
+##file_4 = sys.argv[7]
+##file_5 = sys.argv[8]
+##    
+##except:
+##    # Filenames for testing.
+##    input_filename = 'test-data/[VCF-BEDintersect__on_data_65_and_data_6].vcf'
+##    input_filename = 'test-data/Galaxy2-[Human_Vcf_MCF7].vcf'
+##    probed_filename = 'test-data/[PepPointer].bed'
+##    probed_filename = 'None'
+##    input_select_bar = 'VEST'
+##    GRCh_build = 'GRCh38'
+##    output_filename = 'combined_variants.tsv'
+##    file_3 = 'test-results/Gene_Level_Analysis.tsv'
+##    file_4 = 'test-results/Variant_Non-coding.Result.tsv'
+##    file_5 = 'test-results/Input_Errors.Result.tsv'
 
 def getSequence(transcript_id):
     server = 'http://rest.ensembl.org'
@@ -97,59 +123,59 @@ urllib.urlretrieve("http://staging.cravat.us/CRAVAT/results/" + jobid + "/" + "V
 urllib.urlretrieve("http://staging.cravat.us/CRAVAT/results/" + jobid + "/" + "Input_Errors.Result.tsv", file_5)
 
 #opens the Variant Result file and the Variant Additional Details file as csv readers, then opens the output file (galaxy) as a writer
-with open(file_1) as tsvin_1, open(file_2) as tsvin_2, open(output_filename, 'wb') as tsvout:
-    tsvreader_2 = csv.reader(tsvin_2, delimiter='\t')        
-    tsvout = csv.writer(tsvout, delimiter='\t')
+if (probed_filename != 'None'):
+    with open(file_1) as tsvin_1, open(file_2) as tsvin_2, open(output_filename, 'wb') as tsvout:
+        tsvreader_2 = csv.reader(tsvin_2, delimiter='\t')        
+        tsvout = csv.writer(tsvout, delimiter='\t')
 
-    headers = []
-    duplicate_indices = []
-    n = 12 #Index for proteogenomic column start
-    reg_seq_change = re.compile('([A-Z]+)(\d+)([A-Z]+)')
-    SOtranscripts = re.compile('([A-Z]+[\d\.]+):([A-Z]+\d+[A-Z]+)')
-    pep_muts = {}
-    pep_map = {}
-    rows = []
+        
+        n = 12 #Index for proteogenomic column start
+        reg_seq_change = re.compile('([A-Z]+)(\d+)([A-Z]+)')
+        SOtranscripts = re.compile('([A-Z]+[\d\.]+):([A-Z]+\d+[A-Z]+)')
+        pep_muts = {}
+        pep_map = {}
+        rows = []
 
-    for row in tsvreader_2:
-        if row != [] and row[0][0] != '#':
-        #checks if the row begins with input line
-            if row[0] == 'Input line':
-                vad_headers = row
-            else:
-                # Initially screens through the output Variant Additional Details to catch mutations on same peptide region
-                genchrom = row[vad_headers.index('Chromosome')]
-                genpos = int(row[vad_headers.index('Position')])
-                aa_change = row[vad_headers.index('Protein sequence change')]
-                input_line = row[vad_headers.index('Input line')]
-                
-                for peptide in proBED:
-                    pepseq = peptide[3]
-                    pepchrom = peptide[0]
-                    pepposA = int(peptide[1])
-                    pepposB = int(peptide[2])
-                    if genchrom == pepchrom and pepposA <= genpos and genpos <= pepposB:
-                        strand = row[vad_headers.index('Strand')]
-                        transcript_strand = row[vad_headers.index('S.O. transcript strand')]
+        for row in tsvreader_2:
+            if row != [] and row[0][0] != '#':
+            #checks if the row begins with input line
+                if row[0] == 'Input line':
+                    vad_headers = row
+                else:
+                    # Initially screens through the output Variant Additional Details to catch mutations on same peptide region
+                    genchrom = row[vad_headers.index('Chromosome')]
+                    genpos = int(row[vad_headers.index('Position')])
+                    aa_change = row[vad_headers.index('Protein sequence change')]
+                    input_line = row[vad_headers.index('Input line')]
+                    
+                    for peptide in proBED:
+                        pepseq = peptide[3]
+                        pepchrom = peptide[0]
+                        pepposA = int(peptide[1])
+                        pepposB = int(peptide[2])
+                        if genchrom == pepchrom and pepposA <= genpos and genpos <= pepposB:
+                            strand = row[vad_headers.index('Strand')]
+                            transcript_strand = row[vad_headers.index('S.O. transcript strand')]
 
-                        # Calculates the position of the variant amino acid(s) on peptide
-                        if transcript_strand == strand:                               
-                            aa_peppos = int(math.ceil((genpos - pepposA)/3.0) - 1)
-                        if strand == '-' or transcript_strand == '-' or aa_peppos >= len(pepseq):
-                            aa_peppos = int(math.floor((pepposB - genpos)/3.0))
-                        if pepseq in pep_muts:
-                            if aa_change not in pep_muts[pepseq]:
-                                pep_muts[pepseq][aa_change] = [aa_peppos]
+                            # Calculates the position of the variant amino acid(s) on peptide
+                            if transcript_strand == strand:                               
+                                aa_peppos = int(math.ceil((genpos - pepposA)/3.0) - 1)
+                            if strand == '-' or transcript_strand == '-' or aa_peppos >= len(pepseq):
+                                aa_peppos = int(math.floor((pepposB - genpos)/3.0))
+                            if pepseq in pep_muts:
+                                if aa_change not in pep_muts[pepseq]:
+                                    pep_muts[pepseq][aa_change] = [aa_peppos]
+                                else:
+                                    if aa_peppos not in pep_muts[pepseq][aa_change]:
+                                        pep_muts[pepseq][aa_change].append(aa_peppos)
                             else:
-                                if aa_peppos not in pep_muts[pepseq][aa_change]:
-                                    pep_muts[pepseq][aa_change].append(aa_peppos)
-                        else:
-                            pep_muts[pepseq] = {aa_change : [aa_peppos]}
-                        # Stores the intersect information by mapping Input Line (CRAVAT output) to peptide sequence.
-                        if input_line in pep_map:
-                            if pepseq not in pep_map[input_line]:
-                                pep_map[input_line].append(pepseq)
-                        else:
-                            pep_map[input_line] = [pepseq]
+                                pep_muts[pepseq] = {aa_change : [aa_peppos]}
+                            # Stores the intersect information by mapping Input Line (CRAVAT output) to peptide sequence.
+                            if input_line in pep_map:
+                                if pepseq not in pep_map[input_line]:
+                                    pep_map[input_line].append(pepseq)
+                            else:
+                                pep_map[input_line] = [pepseq]
 
 with open(file_1) as tsvin_1, open(file_2) as tsvin_2, open(output_filename, 'wb') as tsvout:
     tsvreader_1 = csv.reader(tsvin_1, delimiter='\t')
@@ -157,6 +183,7 @@ with open(file_1) as tsvin_1, open(file_2) as tsvin_2, open(output_filename, 'wb
     tsvout = csv.writer(tsvout, delimiter='\t')
 
     headers = []
+    duplicate_indices = []
             
     #loops through each row in the Variant Additional Details (VAD) file
     for row in tsvreader_2:
