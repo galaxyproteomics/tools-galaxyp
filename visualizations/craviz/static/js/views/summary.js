@@ -314,7 +314,6 @@ define(['plugin/views/sidebar', 'plugin/lib/cytoscape', 'plugin/lib/nvd3_pie','p
 						paging: false,
 						'scrollX': false
 					});
-					console.log(data);
 					this.dataTable.DataTable().draw();
 				}
 			},

@@ -38,8 +38,6 @@
         ${h.stylesheet_link( repository_root + "/css/style.css" )}
         ${h.stylesheet_link( repository_root + "/css/datatables.min.css" )}
 
-
-
     </head>
     <body>
 

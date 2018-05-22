@@ -20,7 +20,6 @@ define(['plugin/views/tabs','plugin/models/data','plugin/collections/data','plug
                                                             'Sample ID',
                                                             'HUGO symbol',
                                                             'Sequence ontology',
-                                                            'Reference peptide',
                                                             'Variant peptide',
                                                             'Protein sequence change',
                                                             'VEST p-value',

@@ -1,4 +1,4 @@
-define (['plugin/test-data'],
+define ([''],
 	function(){
 		return Backbone.Collection.extend({
 
