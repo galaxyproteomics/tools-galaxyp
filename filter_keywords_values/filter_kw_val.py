@@ -13,7 +13,7 @@ def options():
         --kwfile        A file that contains keywords to be filter, the column where this filter applies and 
                         boolean value if the keyword should be filtered in exact ["filename,ncol,true/false"]
         --value         The value to be filtered, the column number where this filter applies and the 
-                        operation symbol ["value,ncol,=/>/>=/</<="]
+                        operation symbol ["value,ncol,=/>/>=/</<=/!="]
         --o --output    The output filename
         --trash_file    The file contains removed lines
     """
@@ -171,25 +171,30 @@ def filter_value(MQfile, header, filtered_prots, filter_value, ncol, opt):
         prot = line.replace("\n","")
         filter_value = float(filter_value)
         pep = prot.split("\t")[index].replace('"', "")
+        pep = pep.strip() 
         if pep.replace(".", "", 1).isdigit():
             if opt == "<":
-                if float(pep) >= filter_value:
+                if float(pep) < filter_value:
                     filtered_prots.append(line)
                     mq.remove(line)
             elif opt == "<=":
-                if float(pep) > filter_value:
+                if float(pep) <= filter_value:
                     filtered_prots.append(line)
                     mq.remove(line)
             elif opt == ">":
             #print(prot.number_of_prots, filter_value, int(prot.number_of_prots) > filter_value)
-                if float(pep) <= filter_value:
+                if float(pep) > filter_value:
                     filtered_prots.append(line)
                     mq.remove(line)
             elif opt == ">=":
-                if float(pep) < filter_value:
+                if float(pep) >= filter_value:
                     filtered_prots.append(line)
                     mq.remove(line)
-            else:
+            elif opt == "=":
+                if float(pep) == filter_value:
+                    filtered_prots.append(line)
+                    mq.remove(line)
+            else: 
                 if float(pep) != filter_value:
                     filtered_prots.append(line)
                     mq.remove(line)
