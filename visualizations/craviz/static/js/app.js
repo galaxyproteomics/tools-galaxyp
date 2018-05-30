@@ -21,10 +21,14 @@ define(['plugin/viewer'],
                 }
             }*/
             var name = config.report_name;
+        
+            name = name.indexOf(' on data') > 0 ? 
+                name.slice(0,name.indexOf(' on data')) :
+                name;
             var names = config.report_names;
+
             this.index = Object.keys(names).indexOf(name) + 1;
             config.index = this.index;
-
           /* this.contentView = new ContentView({dataset_id : options.dataset_id,
                                                 dataset_names : names,
                                                 history_id : options.history_id,
