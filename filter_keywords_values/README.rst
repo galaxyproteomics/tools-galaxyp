@@ -3,7 +3,7 @@ Wrapper for Filter by keywords or numerical values Tool
 
 **Authors**
 
-T.P. Lien Nguyen, Florence Combes, Yves Vandenbrouck CEA, INSERM, CNRS, Grenoble-Alpes University, BIG Institute, FR
+T.P. Lien Nguyen, David Christiany, Florence Combes, Yves Vandenbrouck CEA, INSERM, CNRS, Grenoble-Alpes University, BIG Institute, FR
 
 Sandra Dérozier, Olivier Rué, Christophe Caron, Valentin Loux INRA, Paris-Saclay University, MAIAGE Unit, Migale Bioinformatics platform
 
@@ -15,9 +15,7 @@ Contact support@proteore.org for any questions or concerns about the Galaxy impl
 
 This tool allows to remove unneeded data (e.g. contaminants, non-significant values) from a proteomics results file (e.g. MaxQuant or Proline output).
 
-**For each row, if there are more than one protein IDs/protein names/gene names, only the first one will be considered in the output**
-
-**Filter the file by keywords**
+**Filter by keyword(s)**
 
 Several options can be used. For each option, you can fill in the field or upload a file which contains the keywords.
 
@@ -45,11 +43,55 @@ For example:
 
 **No** option (partial match) for "kinase": not only lines which contain "kinase" but also lines with "alpha-kinase" (and so  on) are removed.
 
-**Filter the file by values**
+-------------------------------------------------------
 
-You can choose to use one or more options (e.g. to filter out peptides of low intensity value, by q-value, etc.).
+**Filter by values**
 
-* For each option, you can choose between "=", ">", ">=", "<" and "<=", then enter the value to filter and specify the column to apply that option.
+You can filter your data by a column of numerical values.
+Enter the column to be use and select one operator in the list :
+
+- "="
+- "!="
+- "<"
+- "<="
+- ">"
+- ">="
+
+Then enter the value to filter and specify the column to apply that option.
+If a row contains a value that correspond to your settings, it will be filtered.
+
+-------------------------------------------------------
+
+**Filter by a range of values**
+
+You can also set a range of values to filter your file.
+In opposition to value filter, rows with values inside of the defined range are kept.
+
+Rows with values outside of the defined range will be filtered.
+
+-------------------------------------------------------
+
+**AND/OR operator**
+
+Since you can add as many filters as you want, you can choose how filters apply on your data.
+
+AND or OR operator option works on all filters :
+
+- OR : only one filter to be satisfied to remove one row
+- AND : all filters must be satisfied to remove one row
+
+-------------------------------------------------------
+
+**Sort the results files**
+
+You can sort the result file if you wish, it can help you to check results. 
+
+In order to do so : enter the column to be used, all columns will be sorted according to the one filled in.
+
+Rows stay intact, just in different order like excel.
+You can also choose ascending or descending order, by default descending order is set.
+
+-------------------------------------------------------
 
 **Output**
 
