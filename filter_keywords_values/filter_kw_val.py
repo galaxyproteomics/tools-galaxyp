@@ -11,6 +11,7 @@ def options():
                         boolean value if the keyword should be filtered in exact ["filename,ncol,true/false"]
         --value         The value to be filtered, the column number where this filter applies and the 
                         operation symbol ["value,ncol,=/>/>=/</<=/!="]
+        --values_range  range of values to be keep, example : --values_range 5 20 c1 true 
         --operator      The operator used to filter with several keywords/values : AND or OR
         --o --output    The output filename
         --filtered_file    The file contains removed lines
@@ -21,6 +22,7 @@ def options():
     parser.add_argument("--kw", nargs="+", action="append", help="")
     parser.add_argument("--kw_file", nargs="+", action="append", help="")
     parser.add_argument("--value", nargs="+", action="append", help="")
+    parser.add_argument("--values_range", nargs="+", action="append", help="")
     parser.add_argument("--operator", default="OR", type=str, choices=['AND','OR'],help='')
     parser.add_argument("-o", "--output", default="output.txt")
     parser.add_argument("--filtered_file", default="filtered_output.txt")
@@ -70,9 +72,14 @@ def filters(args):
     if args.value:
         for v in args.value:
             if is_number("float", v[0]):
-                results = filter_value(csv_file, header, results_dict, v[0], v[1], v[2])
+                results_dict = filter_value(csv_file, header, results_dict, v[0], v[1], v[2])
             else:
                 raise ValueError("Please enter a number in filter by value")
+
+    if args.values_range:
+        for vr in args.values_range:
+            if (is_number("float", vr[0]) or is_number("int", vr[0])) and (is_number("float",vr[1]) or is_number("int",vr[1])):
+                results_dict = filter_values_range(csv_file, header, results_dict, vr[0], vr[1], vr[2], vr[3])
 
     remaining_lines=[]
     filtered_lines=[]
@@ -98,16 +105,11 @@ def filters(args):
     #sort of results by column
     if args.sort_col :
         sort_col=args.sort_col.split(",")[0]
-        if is_number("int", sort_col.replace("c", "")): 
-            sort_col = int(sort_col.replace("c", "")) -1
-        else: 
-            raise ValueError("Please specify the column to "
-                         "sort your file ")
+        sort_col=column_from_txt(sort_col)
         reverse=str_to_bool(args.sort_col.split(",")[1])
         remaining_lines= sort_by_column(remaining_lines,sort_col,reverse,header)
         filtered_lines = sort_by_column(filtered_lines,sort_col,reverse,header)
     
-
     # Write results to output
     with open(args.output,"w") as output :
         writer = csv.writer(output,delimiter="\t")
@@ -159,12 +161,7 @@ def read_file(filename):
 #seek for keywords in rows of csvfile, return a dictionary of boolean (true if keyword found, false otherwise) 
 def filter_keyword(csv_file, header, results_dict, keywords, ncol, match):
     match=str_to_bool(match)
-    if is_number("int", ncol.replace("c", "")):
-        ncol = int(ncol.replace("c", "")) - 1 
-    else:
-        raise ValueError("Please specify the column where "
-                         "you would like to apply the filter "
-                         "with valid format")
+    ncol=column_from_txt(ncol)
 
     keywords = keywords.upper().split(";")                                            # Split list of filter keyword
     [keywords.remove(blank) for blank in keywords if blank.isspace() or blank == ""]  # Remove blank keywords
@@ -192,12 +189,7 @@ def filter_keyword(csv_file, header, results_dict, keywords, ncol, match):
 def filter_value(csv_file, header, results_dict, filter_value, ncol, opt):
 
     filter_value = float(filter_value)
-    if ncol and is_number("int", ncol.replace("c", "")): 
-        ncol = int(ncol.replace("c", "")) - 1 
-    else:
-        raise ValueError("Please specify the column where "
-                         "you would like to apply the filter "
-                         "with valid format")
+    ncol=column_from_txt(ncol)
 
     for id_line,line in enumerate(csv_file):
         if header is True and id_line == 0 : continue
@@ -210,6 +202,38 @@ def filter_value(csv_file, header, results_dict, filter_value, ncol, opt):
             else : results_dict[id_line]=[to_filter]
             
     return results_dict
+
+#filter ba determined value in rows of csvfile, return a dictionary of boolean (true if value filtered, false otherwise)
+def filter_values_range(csv_file, header, results_dict, bottom_value, top_value, ncol, inclusive):
+    inclusive=str_to_bool(inclusive)
+    bottom_value = float(bottom_value)
+    top_value=float(top_value)
+    ncol=column_from_txt(ncol)
+
+    for id_line, line in enumerate(csv_file):
+        if header is True and id_line == 0 : continue
+        value = line[ncol].replace('"', "").strip()
+        if value.replace(".", "", 1).isdigit():
+            value=float(value)
+            if inclusive is True:
+                in_range = not (bottom_value <= value <= top_value)
+            else : 
+                in_range = not (bottom_value < value < top_value)
+
+            #adding the result to the dictionary
+            if id_line in results_dict : results_dict[id_line].append(in_range)
+            else : results_dict[id_line]=[in_range]
+
+    return results_dict 
+
+def column_from_txt(ncol):
+    if is_number("int", ncol.replace("c", "")): 
+        ncol = int(ncol.replace("c", "")) - 1 
+    else:
+        raise ValueError("Please specify the column where "
+                         "you would like to apply the filter "
+                         "with valid format")
+    return ncol
 
 #return True if value is in the determined values, false otherwise
 def value_compare(value,filter_value,opt):
