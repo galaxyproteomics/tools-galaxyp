@@ -122,18 +122,20 @@ def filters(args):
 
 #function to sort the csv_file by value in a specific column
 def sort_by_column(tab,sort_col,reverse,header):
-    if header is True :
-        head=tab[0]
-        tab=tab[1:]
-
-    if is_number("int",tab[0][sort_col]) :
-        tab = sorted(tab, key=lambda row: int(row[sort_col]), reverse=reverse)
-    elif is_number("float",tab[0][sort_col]) :
-        tab = sorted(tab, key=lambda row: float(row[sort_col]), reverse=reverse)
-    else :
-        tab = sorted(tab, key=lambda row: row[sort_col], reverse=reverse)
     
-    if header is True : tab = [head]+tab
+    if len(tab) > 1 : #if there's more than just a header or 1 row
+        if header is True :
+            head=tab[0]
+            tab=tab[1:]
+
+        if is_number("int",tab[0][sort_col]) :
+            tab = sorted(tab, key=lambda row: int(row[sort_col]), reverse=reverse)
+        elif is_number("float",tab[0][sort_col]) :
+            tab = sorted(tab, key=lambda row: float(row[sort_col]), reverse=reverse)
+        else :
+            tab = sorted(tab, key=lambda row: row[sort_col], reverse=reverse)
+        
+        if header is True : tab = [head]+tab
 
     return tab
 
