@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
 <!--Proposed Tool Section: [Utilities]-->
-<tool id="MetaProSIP" name="MetaProSIP" version="2.3.1">
+<tool id="MetaProSIP" name="MetaProSIP" version="2.3.2">
   <description>Performs proteinSIP on peptide features for elemental flux analysis.</description>
   <macros>
     <token name="@EXECUTABLE@">MetaProSIP</token>
@@ -25,7 +25,7 @@ MetaProSIP
   -out_csv $param_out_csv
 #end if
 #if $param_out_peptide_centric_csv:
-  -out_peptide_centric_csv $param_out_peptide_centric_csv
+  -out_peptide_centric_csv param_out_peptide_centric_csv
 #end if
 #if $param_in_featureXML:
   -in_featureXML $param_in_featureXML
@@ -59,11 +59,7 @@ MetaProSIP
     $param_plot_extension
   #end if
 #end if
-#if $param_plot_extension == 'pdf':
-  -qc_output_directory images
-#else
-  -qc_output_directory '${html_file.files_path}'
-#end if
+-qc_output_directory images
 #if $param_labeling_element:
   -labeling_element
   #if " " in str($param_labeling_element):
@@ -132,12 +128,24 @@ MetaProSIP
 #end if
 -threads "\${GALAXY_SLOTS:-1}"
 
-## remove urls and paths (keeping the file name basename)
-&& sed -i -e 's/file:\/\/[^[:space:]]\+\///g; s/\/[^[:space:]]\+\///g' $param_out_csv 
+## - add comment char to first line, 
+## - remove empty line(s) 
+## - add empty fields as '0' (MetaproSIP output has varying number of output columns, ie it omits the last columns if there are no values)
+## - remove urls and paths (keeping the file name basename)
+&& cat param_out_peptide_centric_csv | 
+	sed '1 s/^/#/' | 
+	sed 's/\t /\t/g; s/ \t/\t/g; s/ /_/g' | 
+	grep -v "^$" | 
+	sed "s/\tfile:\/\//\t/g; s/\t\/[^\t]\+\//\t/g" | 
+	awk -v FS='\t' 'BEGIN{line=0}{if(line==0){ncol=NF; print $0}else{printf("%s",$0); for(i=0; i<ncol-NF; i++){printf("\t0")}printf("\n")}line+=1}' > "$param_out_peptide_centric_csv"
 
 ## get html file (should be only one [?])
-#if $param_plot_extension != 'pdf':
-  && cp '${html_file.files_path}'/*\.html output.html
+
+#if $param_collection or $param_plot_extension == 'pdf'
+	&& rm -f images/*\.html
+#else
+	&& mv images/*\.html '${html_file}'
+	&& mv images/ '${html_file.files_path}'
 #end if
  ]]></command>
   <inputs>
@@ -167,6 +175,7 @@ MetaProSIP
     <param name="param_report_natural_peptides" display="radio" type="boolean" truevalue="-report_natural_peptides" falsevalue="" checked="false" optional="True" label="Whether purely natural peptides are reported in the quality report" help="(-report_natural_peptides) "/>
     <param name="param_filter_monoisotopic" display="radio" type="boolean" truevalue="-filter_monoisotopic" falsevalue="" checked="false" optional="True" label="Try to filter out mono-isotopic patterns to improve detection of low RIA patterns" help="(-filter_monoisotopic) "/>
     <param name="param_cluster" display="radio" type="boolean" truevalue="-cluster" falsevalue="" checked="false" optional="True" label="Perform grouping" help="(-cluster) "/>
+    <param name="param_collection" type="boolean" checked="true" label="output images as collection" help="if enabled images are written to a collection amd to a webpage otherwise (pdf is always written to a collection)"/>
     <expand macro="advanced_options">
       <param name="param_min_correlation_distance_to_averagine" type="float" value="-1.0" label="Minimum difference in correlation between incorporation pattern and averagine pattern" help="(-min_correlation_distance_to_averagine) Positive values filter all RIAs passing the correlation threshold but that also show a better correlation to an averagine peptide. Disabled for values &lt;= -1"/>
       <param name="param_pattern_15N_TIC_threshold" type="float" value="0.95" label="The most intense peaks of the theoretical pattern contributing to at least this TIC fraction are taken into account" help="(-pattern_15N_TIC_threshold) "/>
@@ -188,26 +197,30 @@ MetaProSIP
   <outputs>
     <data name="param_out_csv" format="tabular" label="${tool.name} on ${on_string}: tabular"/>
     <data name="param_out_peptide_centric_csv" format="tabular" label="${tool.name} on ${on_string}: peptide centric tabular"/>
-    <data format="html" name="html_file" from_work_dir="output.html" label="${tool.name} on ${on_string}: Webpage">
-      <filter>param_plot_extension == 'png' or param_plot_extension == 'svg'</filter>
+    <data format="html" name="html_file" label="${tool.name} on ${on_string}: Webpage">
+      <filter>not param_collection and (param_plot_extension == 'png' or param_plot_extension == 'svg')</filter>
     </data>
     <collection name="images" type="list" label="${tool.name} on ${on_string}: images">
-      <filter>param_plot_extension == 'pdf'</filter>
+      <filter>param_collection or param_plot_extension == 'pdf'</filter>
       <discover_datasets pattern="__name_and_ext__" directory="images" />
     </collection>
   </outputs>
   <tests>
     <test>
-      <param name="param_in_mzML" value="MetaProSIP_1_input.mzML"/>
-      <param name="param_in_fasta" value="MetaProSIP_1_input.fasta"/>
-      <param name="param_in_featureXML" value="MetaProSIP_1_input.featureXML"/>
-      <output name="param_out_csv" file="MetaProSIP_1_output_1.csv" />
-      <output name="param_out_peptide_centric_csv" file="MetaProSIP_1_output_2.csv" />
+      <param name="param_in_mzML" value="MetaProSIP_1_input.mzML" ftype="mzml"/>
+      <param name="param_in_fasta" value="MetaProSIP_1_input.fasta" ftype="fasta"/>
+      <param name="param_in_featureXML" value="MetaProSIP_1_input.featureXML" ftype="featurexml"/>
+      <output name="param_out_csv" file="MetaProSIP_1_output_1.csv"/>
+      <output name="param_out_peptide_centric_csv" file="MetaProSIP_1_output_2.csv"  compare="sim_size" lines_diff="2"/>
     </test>
   </tests>
   <help>Performs proteinSIP on peptide features for elemental flux analysis.
 
+	  For more information, visit http://ftp.mi.fu-berlin.de/OpenMS/release-documentation/html/UTILS_MetaProSIP.html
 
-For more information, visit http://ftp.mi.fu-berlin.de/OpenMS/release-documentation/html/UTILS_MetaProSIP.html</help>
+	  ** Galaxy specific notes **
+
+	  The peptide centric tabular data set generated by the tool is not rendered properly by Galaxy, because it has more than 50 columns. You might extract columns of interst. 
+  </help>
 <expand macro="references"/>
 </tool>
