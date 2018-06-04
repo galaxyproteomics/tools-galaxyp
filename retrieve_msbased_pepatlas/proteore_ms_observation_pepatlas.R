@@ -1,8 +1,13 @@
 # Read file and return file content as data.frame
-readfile = function(filename, header) {
+readfile <- function(filename, header) {
   if (header == "true") {
     # Read only first line of the file as header:
-    headers <- read.table(filename, nrows = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = "")
+    headers <- try(read.table(filename, nrows = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = ""),silent=TRUE)
+    if (!inherits(headers, 'try-error')){
+      file
+    } else {
+      stop("Your file seems to be empty, 'number of MS/MS observations in a tissue' tool stopped !")
+    }
     #Read the data of the files (skipping the first row)
     file <- read.table(filename, skip = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = "")
     # Remove empty rows
@@ -11,7 +16,12 @@ readfile = function(filename, header) {
     names(file) <- headers
   }
   else {
-    file <- read.table(filename, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = "")
+    file <- try(read.table(filename, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = ""),silent=TRUE)
+    if (!inherits(file, 'try-error')){
+      file
+    } else {
+      stop("Your file seems to be empty, 'number of MS/MS observations in a tissue' tool stopped !")
+    }
     # Remove empty rows
     file <- file[!apply(is.na(file) | file == "", 1, all), , drop=FALSE]
   }
