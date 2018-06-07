@@ -5,6 +5,7 @@ The purpose of this script is to create source files from different databases to
 import os
 import argparse
 import requests
+import time
 from io import BytesIO
 from zipfile import ZipFile
 from galaxy.util.json import from_json_string, to_json_string
@@ -43,7 +44,11 @@ def HPA_sources(data_manager_dict, tissue, target_directory):
     output_file = tissue + ".tsv"
     path = os.path.join(target_directory, output_file)
     unzip(url, path)
-    data_table_entry = dict(value = tissue, name = tissue_name, path = path)
+    print(str(os.path.isfile(path)))
+    tmp=open(path,"r").readlines()
+    print (tmp[:3])
+    tissue_name = tissue_name + " " + time.strftime("%d/%m/%Y")
+    data_table_entry = dict(value = tissue_name, name = tissue, path = path)
     _add_data_table_entry(data_manager_dict, data_table_entry)
 
 #######################################################################################################
@@ -92,6 +97,7 @@ def main():
     filename = args.output
     params = from_json_string(open(filename).read())
     target_directory = params[ 'output_data' ][0]['extra_files_path']
+    print (target_directory)
     os.mkdir(target_directory)
 
     ## Download source files from HPA
