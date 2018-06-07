@@ -112,6 +112,9 @@ mapping = function() {
   }
   else if (list_id_input_type == "file") {
     names(res) = options
+    if (all(names(file_all) == file_all[1,1:length(names(file_all))])){ #if header of file is the same as the first line of file
+      names(file_all)[column_number] = input_id_type
+    }
     names = c(names(file_all), names)
     output_content = cbind(file_all, res)
     colnames(output_content) = names
