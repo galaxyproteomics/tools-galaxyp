@@ -1,7 +1,7 @@
 library("pathview")
 
 read_file <- function(path,header){
-    file <- try(read.table(path,header=TRUE, sep="\t"),silent=TRUE)
+    file <- try(read.table(path,header=TRUE, sep="\t",stringsAsFactors = FALSE),silent=TRUE)
     if (inherits(file,"try-error")){
       stop("File not found !")
     }else{
@@ -18,8 +18,10 @@ tmp <- gse16873.d[,1][1:nrow(tab)]
 names(tmp) <- tab$GeneID
 tmp
 
-geneID = unlist(strsplit(tab$GeneID,"[;]"))
+geneID = tab$GeneID[which(tab$GeneID !="NA")]
 geneID = gsub(" ","",geneID)
+geneID = unlist(strsplit(geneID,"[;]"))
+
 tmp=c(rep(-1,length(geneID)))
 names(tmp) <- geneID
 
