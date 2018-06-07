@@ -46,19 +46,17 @@ protein_features = function() {
   argsDF <- as.data.frame(do.call("rbind", parseArgs(args)))
   args <- as.list(as.character(argsDF$V2))
   names(args) <- argsDF$V1 
-
+  
   inputtype = args$inputtype
   if (inputtype == "copypaste") {
     input = strsplit(args$input, "[ \t\n]+")[[1]]
-  }
-  else if (inputtype == "tabfile") {
+  } else if (inputtype == "tabfile") {
     filename = args$input
     ncol = args$column
     # Check ncol
     if (! as.numeric(gsub("c", "", ncol)) %% 1 == 0) {
       stop("Please enter an integer for level")
-    }
-    else {
+    } else {
       ncol = as.numeric(gsub("c", "", ncol))
     }
     header = args$header
@@ -90,7 +88,7 @@ protein_features = function() {
 
   # Select user input protein ids in nextprot
   if ((length(input[input %in% nextprot[,1]]))==0){
-    write.table("None of the input ids are can be found in Nextprot",file=output,sep="\t",quote=FALSE,col.names=TRUE,row.names=FALSE)
+    write.table("None of the input ids can be found in Nextprot",file=output,sep="\t",quote=FALSE,col.names=TRUE,row.names=FALSE)
   } else {
     names = c()
     res = matrix(nrow=length(input), ncol=0)
@@ -126,6 +124,9 @@ protein_features = function() {
       write.table(res, output, row.names = FALSE, sep = "\t", quote = FALSE)
     }
     else if (inputtype == "tabfile") {
+      if (all(names(file) == file[1,1:length(names(file))])){ #if header of file is the same as the first line of file
+        names(file)[ncol] = "UniprotID"
+      }
       names = c(names(file), names)
       output_content = cbind(file, res)
       colnames(output_content) = names
