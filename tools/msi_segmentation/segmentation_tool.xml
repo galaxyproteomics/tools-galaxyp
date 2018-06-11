@@ -1,5 +1,5 @@
 <tool id="mass_spectrometry_imaging_segmentations" name="MSI segmentation" version="1.10.0.0">
-    <description>tool for spatial clustering</description>
+    <description>mass spectrometry imaging spatial clustering</description>
     <requirements>
         <requirement type="package" version="1.10.0">bioconductor-cardinal</requirement>
         <requirement type="package" version="2.2.1">r-gridextra</requirement>
@@ -28,8 +28,7 @@
         <configfile name="MSI_segmentation"><![CDATA[
 
 
-################################# load libraries and read file #########################
-
+################################# load libraries and read file #################
 
 library(Cardinal)
 library(gridExtra)
@@ -47,9 +46,9 @@ library(lattice)
 
 ###################################### file properties in numbers ##############
 
-## Number of features (mz)
+## Number of features (m/z)
 maxfeatures = length(features(msidata))
-## Range mz
+## Range m/z
 minmz = round(min(mz(msidata)), digits=2)
 maxmz = round(max(mz(msidata)), digits=2)
 ## Number of spectra (pixels)
@@ -66,7 +65,7 @@ maxint = round(max(spectra(msidata)[]), digits=2)
 medint = round(median(spectra(msidata)[]), digits=2)
 ## Number of intensities > 0
 npeaks= sum(spectra(msidata)[]>0)
-## Spectra multiplied with mz (potential number of peaks)
+## Spectra multiplied with m/z (potential number of peaks)
 numpeaks = ncol(spectra(msidata)[])*nrow(spectra(msidata)[])
 ## Percentage of intensities > 0
 percpeaks = round(npeaks/numpeaks*100, digits=2)
@@ -74,12 +73,11 @@ percpeaks = round(npeaks/numpeaks*100, digits=2)
 TICs = colSums(spectra(msidata)[]) 
 NumemptyTIC = sum(TICs == 0)
 
-
 ## Processing informations
 processinginfo = processingData(msidata)
 centroidedinfo = processinginfo@centroided # TRUE or FALSE
 
-## if TRUE write processinginfo if no write FALSE
+## if TRUE write processinginfo if FALSE write FALSE
 
 ## normalization
 if (length(processinginfo@normalization) == 0) {
@@ -106,10 +104,8 @@ if (length(processinginfo@peakPicking) == 0) {
   peakpickinginfo=processinginfo@peakPicking
 }
 
-#############################################################################
-
-properties = c("Number of mz features",
-               "Range of mz values [Da]",
+properties = c("Number of m/z features",
+               "Range of m/z values [Da]",
                "Number of pixels", 
                "Range of x coordinates", 
                "Range of y coordinates",
@@ -167,6 +163,21 @@ if (npeaks > 0)
         #set $color_string = ','.join(['"%s"' % $color.feature_color for $color in $colours])
         colourvector = c($color_string)
 
+        ### preparation for images and plots:
+        #if str($image_cond.image_type) == "standard_image":
+            print("standard image")
+
+            strip_input = TRUE
+            lattice_input = FALSE
+
+        #elif str($image_cond.image_type) == "lattice_image":
+            print("lattice image")
+
+            strip_input = strip.custom(bg="lightgrey", par.strip.text=list(col="black", cex=.9))
+            lattice_input = TRUE
+
+        #end if
+
 
         #if str( $segm_cond.segmentationtool ) == 'pca':
             print('pca')
@@ -178,25 +189,31 @@ if (npeaks > 0)
             pca = PCA(msidata, ncomp=$segm_cond.pca_ncomp, column = component_vector, superpose = FALSE, 
             method = "$segm_cond.pca_method", scale = $segm_cond.pca_scale, layout = c(ncomp, 1))
 
-            print(image(pca, main="PCA image", lattice=TRUE, strip = strip.custom(bg="lightgrey", par.strip.text=list(col="black", cex=.9)), col=colourvector))
-            print(plot(pca, main="PCA plot", lattice=TRUE, col= colourvector, strip = strip.custom(bg="lightgrey", par.strip.text=list(col="black", cex=.9))))
+            print(image(pca, main="PCA image", lattice=lattice_input, strip = strip_input, col=colourvector))
+            print(plot(pca, main="PCA plot", lattice=lattice_input, col= colourvector, strip = strip_input))
 
-
-            pcaloadings = (pca@resultData\$ncomp\$loadings) ### loading for each mz value
+            pcaloadings = (pca@resultData\$ncomp\$loadings) ### loading for each m/z value
             pcascores = (pca@resultData\$ncomp\$scores) ### scores for each pixel
 
             write.table(pcaloadings, file="$mzfeatures", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
             write.table(pcascores, file="$pixeloutput", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+
+            ## optional output as .RData
+            #if $output_rdata:
+
+            ## save as (.RData)
+            save(pca, file="$segmentation_rdata")
+
+            #end if
 
         #elif str( $segm_cond.segmentationtool ) == 'kmeans':
             print('kmeans')
             ##k-means
 
             skm = spatialKMeans(msidata, r=c($segm_cond.kmeans_r), k=c($segm_cond.kmeans_k), method="$segm_cond.kmeans_method")
-            print(image(skm, key=TRUE, main="K-means clustering", lattice=TRUE, strip = strip.custom(bg="lightgrey", par.strip.text=list(col="black", cex=.9)), col= colourvector, layout=c(1,1)))
+            print(image(skm, key=TRUE, main="K-means clustering", lattice=lattice_input, strip=strip_input, col= colourvector, layout=c(1,1)))
 
-            print(plot(skm, main="K-means plot", lattice=TRUE, col= colourvector, strip = strip.custom(bg="lightgrey", par.strip.text=list(col="black", cex=.9)), layout=c($segm_cond.kmeans_layout)))
-
+            print(plot(skm, main="K-means plot", lattice=lattice_input, col= colourvector, strip=strip_input, layout=c($segm_cond.kmeans_layout)))
 
             skm_clusters = data.frame(matrix(NA, nrow = pixelcount, ncol = 0))
             for (iteration in 1:length(skm@resultData)){
@@ -209,14 +226,21 @@ if (npeaks > 0)
             write.table(skm_toplabels, file="$mzfeatures", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
             write.table(skm_clusters, file="$pixeloutput", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
 
+            ## optional output as .RData
+            #if $output_rdata:
+
+            ## save as (.RData)
+            save(skm, file="$segmentation_rdata")
+
+            #end if
 
         #elif str( $segm_cond.segmentationtool ) == 'centroids':
             print('centroids')
             ##centroids
 
             ssc = spatialShrunkenCentroids(msidata, r=c($segm_cond.centroids_r), k=c($segm_cond.centroids_k), s=c($segm_cond.centroids_s), method="$segm_cond.centroids_method")
-            print(image(ssc, key=TRUE, main="Spatial shrunken centroids", lattice=TRUE, strip = strip.custom(bg="lightgrey", par.strip.text=list(col="black", cex=.9)), col= colourvector,layout=c(1,1)))
-            print(plot(ssc, main="Spatial shrunken centroids plot", lattice=TRUE, col= colourvector, strip = strip.custom(bg="lightgrey", par.strip.text=list(col="black", cex=.9)),layout=c($segm_cond.centroids_layout)))
+            print(image(ssc, key=TRUE, main="Spatial shrunken centroids", lattice=lattice_input, strip = strip_input, col= colourvector,layout=c(1,1)))
+            print(plot(ssc, main="Spatial shrunken centroids plot", lattice=lattice_input, col= colourvector, strip = strip_input,layout=c($segm_cond.centroids_layout)))
 
             ssc_classes = data.frame(matrix(NA, nrow = pixelcount, ncol = 0))
             for (iteration in 1:length(ssc@resultData)){
@@ -229,6 +253,13 @@ if (npeaks > 0)
             write.table(ssc_toplabels, file="$mzfeatures", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
             write.table(ssc_classes, file="$pixeloutput", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
 
+            ## optional output as .RData
+            #if $output_rdata:
+
+            ## save as (.RData)
+            save(ssc, file="$segmentation_rdata")
+
+            #end if
 
         #end if
 
@@ -277,7 +308,7 @@ if (npeaks > 0)
                         <option value="adaptive" selected="True">adaptive</option>
                 </param>
                 <param name="kmeans_toplabels" type="integer" value="500"
-                       label="Number of toplabels (masses) which should be written in tabular output"/>
+                       label="Number of toplabels (m/z) which should be written in tabular output"/>
                 <param name="kmeans_layout" type="text" value="1,1"
                        label="Number of rows and columns to plot pictures in pdf output" help="e.g. 1,1 means 1 plot per page; 2,3 means 2 rows with 3 plots each = 6 plots per page"/>
                  </when>
@@ -289,16 +320,24 @@ if (npeaks > 0)
                            label="The initial number of clusters (k)" help="Multiple values are allowed (e.g. 1,2,3 or 2:5)"/>
                     <param name="centroids_s" type="text" value="2"
                            label="The sparsity thresholding parameter by which to shrink the t-statistics (s)"
-                           help="As s increases, fewer mass features (m/z values) will be used in the spatial segmentation, and only the informative mass features will be retained. Multiple values are allowed (e.g. 1,2,3 or 2:5)"/>
+                           help="As s increases, fewer m/z features (m/z values) will be used in the spatial segmentation, and only the informative m/z features will be retained. Multiple values are allowed (e.g. 1,2,3 or 2:5)"/>
                     <param name="centroids_method" type="select" display="radio" label = "The method to use to calculate the spatial smoothing kernels for the embedding. The 'gaussian' method refers to spatially-aware (SA) weights, and 'adaptive' refers to spatially-aware structurally-adaptive (SASA) weights">
                         <option value="gaussian" selected="True">gaussian</option>
                         <option value="adaptive">adaptive</option>
                 </param>
                 <param name="centroids_toplabels" type="integer" value="500"
-                       label="Number of toplabels (masses) which should be written in tabular output"/>
+                       label="Number of toplabels (m/z) which should be written in tabular output"/>
                 <param name="centroids_layout" type="text" value="1,1"
                        label="Number of rows and columns to plot pictures in pdf output" help="e.g. 1,1 means 1 plot per page; 2,3 means 2 rows with 3 plots each = 6 plots per page"/>
                 </when>
+            </conditional>
+            <conditional name="image_cond">
+                <param name="image_type" type="select" label="Select the image type">
+                    <option value="standard_image" selected="True">standard</option>
+                    <option value="lattice_image">lattice</option>
+                </param>
+                <when value="standard_image"/>
+                <when value="lattice_image"/>
             </conditional>
             <repeat name="colours" title="Colours for the plots" min="1" max="50">
                 <param name="feature_color" type="color" label="Colours" value="#ff00ff" help="Numbers of columns should be the same as number of components">
@@ -309,11 +348,15 @@ if (npeaks > 0)
                   </sanitizer>
                 </param>
             </repeat>
+        <param name="output_rdata" type="boolean" display="radio" label="Results as .RData output"/>
     </inputs>
     <outputs>
-        <data format="pdf" name="segmentationimages" from_work_dir="segmentationpdf.pdf" label = "${tool.name} ${on_string}"/>
-        <data format="tabular" name="mzfeatures" label="Mz features ${on_string}"/>
-        <data format="tabular" name="pixeloutput" label="Pixels ${on_string}"/>
+        <data format="pdf" name="segmentationimages" from_work_dir="segmentationpdf.pdf" label = "$infile.display_name segmentation"/>
+        <data format="tabular" name="mzfeatures" label="$infile.display_name m/z features"/>
+        <data format="tabular" name="pixeloutput" label="$infile.display_name pixels"/>
+        <data format="rdata" name="segmentation_rdata" label="$infile.display_name segmentation">
+            <filter>output_rdata</filter>
+        </data>
     </outputs>
     <tests>
         <test>
@@ -322,6 +365,7 @@ if (npeaks > 0)
                 <composite_data value="Example_Continuous.ibd"/>
             </param>
             <param name="segmentationtool" value="pca"/>
+            <param name="image_type" value="lattice_image"/>
             <repeat name="colours">
                 <param name="feature_color" value="#ff00ff"/>
             </repeat>
@@ -351,9 +395,12 @@ if (npeaks > 0)
             <repeat name="colours">
                 <param name="feature_color" value="#00C957"/>
             </repeat>
+            <param name="output_rdata" value="True"/>
             <output name="segmentationimages" file="kmeans_analyze.pdf" compare="sim_size" delta="20000"/>
             <output name="mzfeatures" file="toplabels_skm.tabular" compare="sim_size"/>
             <output name="pixeloutput" file="cluster_skm.tabular" compare="sim_size"/>
+            <output name="pixeloutput" file="cluster_skm.tabular" compare="sim_size"/>
+            <output name="segmentation_rdata" file="cluster_skm.RData" compare="sim_size"/>
         </test>
         <test>
             <param name="infile" value="preprocessed.RData" ftype="rdata"/>
@@ -386,7 +433,7 @@ if (npeaks > 0)
 
 Cardinal is an R package that implements statistical & computational tools for analyzing mass spectrometry imaging datasets. `More information on Cardinal <http://cardinalmsi.org//>`_
 
-This tool provides three different Cardinal functions for unsupervised clustering/spatial segmentation of mass-spectrometry imaging data.
+This tool provides three different Cardinal functions for unsupervised clustering/spatial segmentation of mass spectrometry imaging data.
 
 Input data: 3 types of input data can be used:
 
@@ -403,7 +450,8 @@ Options:
 Output: 
 
 - Pdf with the heatmaps and plots for the segmentation
-- Tabular file with information on masses and pixels: loadings/scores (PCA), toplabels/clusters (k-means), toplabels/classes (spatial shrunken centroids)
+- Tabular file with information on m/z and pixels: loadings/scores (PCA), toplabels/clusters (k-means), toplabels/classes (spatial shrunken centroids)
+- Optional .RData file which contains the segmentation results and can be used for further exploration in R
 
         ]]>
     </help>
