@@ -70,7 +70,7 @@ args <- argparse()
 #print(args)
 
 ###save and load args in rda file for testing
-save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/pathview/args.Rda")
+#save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/pathview/args.Rda")
 #load("/home/dchristiany/proteore_project/ProteoRE/tools/pathview/args.Rda")
 
 ###setting variables
