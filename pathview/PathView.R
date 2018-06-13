@@ -196,7 +196,7 @@ for (id in ids) {
            #key.pos="topright",
            #new.signature=TRUE,
            #rankdir="LB",
-           cex=0.5,
+           #cex=0.3,
            #text.width=15,
            #res=300,
            pdf.size=c(9,9))
