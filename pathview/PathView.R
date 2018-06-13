@@ -176,7 +176,7 @@ for (id in ids) {
            gene.idtype = "entrez", 
            #gene.annotpkg = NULL, 
            #min.nnodes = 3, 
-           kegg.native = native_kegg)
+           kegg.native = native_kegg,
            #map.null = TRUE, 
            #expand.node = FALSE, 
            #split.group = FALSE, 
@@ -196,9 +196,9 @@ for (id in ids) {
            #key.pos="topright",
            #new.signature=TRUE,
            #rankdir="LB",
-           #cex=0.3,
+           cex=0.5,
            #text.width=15,
            #res=300,
-           #pdf.size=c(7,7),
+           pdf.size=c(9,9))
            #is.signal=TRUE)
 }
