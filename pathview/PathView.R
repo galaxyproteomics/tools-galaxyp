@@ -37,10 +37,10 @@ argparse <- function() {
   # specify our desired options 
   # by default ArgumentParser will add an help option 
   parser$add_argument("-i", "--input", type="character", help="path of the input  file (must contains a colum of uniprot and/or geneID accession number)")
-  parser$add_argument("-l", "--id_list", type="character", help="list of ids to use, ';' separated")
-  parser$add_argument("-o", "--output", type="character", help="Output filename")
-  parser$add_argument("-p", "--pathways_id", type="character", help="Id(s) of pathway(s) to use, if several, semicolon separated list : 00010;05412")
-  parser$add_argument("-n", "--pathways_name", type="character", help = "Name(s) of the pathway(s) to use, if several, semicolon separated list : 'Glycolysis / Gluconeogenesis - Homo sapiens (human);Arrhythmogenic right ventricular cardiomyopathy (ARVC) - Homo sapiens (human)'")
+  parser$add_argument("-l", "--id_list", type="character", help="list of ids to use, ',' separated")
+  #parser$add_argument("-o", "--output", type="character", help="Output filename")
+  parser$add_argument("-p", "--pathways_id", type="character", help="Id(s) of pathway(s) to use, if several, semicolon separated list : 00010,05412")
+  parser$add_argument("-n", "--pathways_name", type="character", help = "Name(s) of the pathway(s) to use, if several, semicolon separated list : 'Glycolysis / Gluconeogenesis - Homo sapiens (human),Arrhythmogenic right ventricular cardiomyopathy (ARVC) - Homo sapiens (human)'")
   parser$add_argument("-s", "--species", type="character", default='hsa', help= "KEGG short name for species, ex : 'hsa' for human")
   parser$add_argument("-t", "--id_type", type="character", default='geneID', help="Type of accession number ('uniprotID' or 'geneID')")
   parser$add_argument("-c", "--id_column", default="c1", type="character", help="Column containing accesion number of interest (ex : 'c1')")
@@ -74,9 +74,9 @@ args <- argparse()
 #load("/home/dchristiany/proteore_project/ProteoRE/tools/pathview/args.Rda")
 
 ###setting variables
-if (!is.null(args$pathways_id)) { ids <- rapply(strsplit(args$pathways_id,";"),c)}
-if (!is.null(args$pathways_name)) {names <- as.vector(sapply(strsplit(args$pathways_name,";"), function(x) concat_string(x),USE.NAMES = FALSE))}
-if (!is.null(args$id_list)) {id_list <- as.vector(strsplit(args$id_list,";"))}
+if (!is.null(args$pathways_id)) { ids <- rapply(strsplit(args$pathways_id,","),c)}
+if (!is.null(args$pathways_name)) {names <- as.vector(sapply(strsplit(args$pathways_name,","), function(x) concat_string(x),USE.NAMES = FALSE))}
+if (!is.null(args$id_list)) {id_list <- as.vector(strsplit(args$id_list,","))}
 id_type <- tolower(args$id_type)
 ncol <- as.numeric(gsub("c", "" ,args$id_column))
 e1 <- as.numeric(gsub("c", "" ,args$e1))
@@ -86,7 +86,7 @@ if (!is.null(args$e2)) { colnames(tab)[,e2] <- "e2" }
 e3 <- as.numeric(gsub("c", "" ,args$e3))
 if (!is.null(args$e2)) { colnames(tab)[,e3] <- "e3" }
 header <- str2bool(args$header)
-output <- args$output
+#output <- args$output
 native_kegg <- str2bool(args$native_kegg)
 
 
