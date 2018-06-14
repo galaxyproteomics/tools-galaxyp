@@ -114,6 +114,17 @@ str2bool <- function(x){
   }
 }
 
+is.letter <- function(x) grepl("[[:alpha:]]", x)
+
+#### hsa00010 -> 00010
+remove_kegg_prefix <- function(x){
+  if (is.letter(substr(x,1,3))){
+    x <- substr(x,4,nchar(x))
+  }
+  return(x)
+}
+
+
 #args <- argparse()
 #print(args)
 
@@ -124,7 +135,7 @@ args <- get_args()
 #load("/home/dchristiany/proteore_project/ProteoRE/tools/pathview/args.Rda")
 
 ###setting variables
-if (!is.null(args$pathways_id)) { ids <- rapply(strsplit(args$pathways_id,","),c)}
+if (!is.null(args$pathways_id)) { ids <- sapply(rapply(strsplit(args$pathways_id,","),c), function(x) remove_kegg_prefix(x),USE.NAMES = FALSE)}
 if (!is.null(args$pathways_name)) {names <- as.vector(sapply(strsplit(args$pathways_name,","), function(x) concat_string(x),USE.NAMES = FALSE))}
 if (!is.null(args$id_list)) {id_list <- as.vector(strsplit(args$id_list,","))}
 id_type <- tolower(args$id_type)
