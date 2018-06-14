@@ -4,7 +4,7 @@
 #output : KEGG pathway : jpeg or pdf file.
 
 suppressMessages(library("pathview"))
-suppressMessages(library("argparse"))
+#suppressMessages(library("argparse"))
 
 read_file <- function(path,header){
     file <- try(read.table(path,header=header, sep="\t",stringsAsFactors = FALSE, quote=""),silent=TRUE)
@@ -30,6 +30,54 @@ concat_string <- function(x){
 }
 
 
+get_args <- function(){
+  
+  ## Collect arguments
+  args <- commandArgs(TRUE)
+  
+  ## Default setting when no arguments passed
+  if(length(args) < 1) {
+    args <- c("--help")
+  }
+  
+  ## Help section
+  if("--help" %in% args) {
+    cat("Pathview R script
+    Arguments:
+      --help                  Print this test
+      --input                 path of the input  file (must contains a colum of uniprot and/or geneID accession number)
+      --id_list               list of ids to use, ',' separated
+      --pathways_id            Id(s) of pathway(s) to use, if several, semicolon separated list : hsa00010;hsa05412 
+      --pathways_name          Name(s) of the pathway(s) to use, if several, semicolon separated list :  
+                                'Glycolysis / Gluconeogenesis - Homo sapiens (human);Arrhythmogenic right ventricular cardiomyopathy (ARVC) - Homo sapiens (human)'
+      --id_type               Type of accession number ('uniprotID' or 'geneID')
+      --id_column             Column containing accesion number of interest (ex : 'c1')
+      --header                Boolean, TRUE if header FALSE if not
+      --ouput                 Output filename
+      --expression_values1    Column containing expression values (first condition)
+      --expression_values2    Column containing expression values (second condition)
+      --expression_values3    Column containing expression values (third condition)
+      --native_kegg           TRUE : native KEGG graph, FALSE : Graphviz graph
+      --species               KEGG short name for species, ex : 'hsa' for human
+
+      Example:
+      ./PathView.R --input 'input.csv' --pathway_id '05412' --id_type 'uniprotID' --id_column 'c1' --header TRUE \n\n")
+    
+    q(save="no")
+  }
+  
+  
+  #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/pathview/args.Rda")
+  #load("/home/dchristiany/proteore_project/ProteoRE/tools/pathview/args.Rda")
+  parseArgs <- function(x) strsplit(sub("^--", "", x), "=")
+  argsDF <- as.data.frame(do.call("rbind", parseArgs(args)))
+  args <- as.list(as.character(argsDF$V2))
+  names(args) <- argsDF$V1
+  
+  return(args)
+}
+
+  
 argparse <- function() {
   # create parser object
   parser <- ArgumentParser()
@@ -66,8 +114,10 @@ str2bool <- function(x){
   }
 }
 
-args <- argparse()
+#args <- argparse()
 #print(args)
+
+args <- get_args()
 
 ###save and load args in rda file for testing
 #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/pathview/args.Rda")
@@ -125,19 +175,20 @@ geneID = unlist(strsplit(geneID,"[;]"))
 #names(geneid_hsa_pathways) <- c("geneID","pathway")
 
 
-#### build data.frame of pathways
-#download.file(url = "http://rest.kegg.jp/list/pathway/hsa", destfile = "/home/dchristiany/proteore_project/ProteoRE/tools/pathview/hsa_pathways.csv")
-hsa_pathways <- read_file(path = "/home/dchristiany/proteore_project/ProteoRE/tools/pathview/hsa_pathways.csv",FALSE)
-pathways <- sapply(hsa_pathways$V1, function(x) gsub("path:","",x),USE.NAMES = FALSE)
-pathways <- cbind(sapply(pathways, function(x) substr(x,1,3), USE.NAMES = FALSE), sapply(pathways, function(x) substr(x,4,nchar(x)),USE.NAMES = FALSE))
-pathways <- cbind(pathways,sapply(hsa_pathways$V2, function(x) gsub(" - .*","",x), USE.NAMES = FALSE))  #remove the last part of the name (ex : ' - Homo sapiens (human)')
-pathways <- cbind(pathways,sapply(pathways[,3], function(x) concat_string(x), USE.NAMES = FALSE))
-pathways <- data.frame(pathways,stringsAsFactors = FALSE)
-names(pathways) <- c("species","id","name","concat_name")
-
-
 ##### retrieve pathway id
+
 if (is.null(args$pathways_id)){
+  
+  #### build data.frame of pathways
+  #download.file(url = "http://rest.kegg.jp/list/pathway/hsa", destfile = "/home/dchristiany/proteore_project/ProteoRE/tools/pathview/hsa_pathways.csv")
+  hsa_pathways <- read_file(path = paste(wd,"/projet/galaxydev/galaxy/tools/proteore/ProteoRE/tools/pathview/hsa_pathways.csv",sep="/"),FALSE)
+  pathways <- sapply(hsa_pathways$V1, function(x) gsub("path:","",x),USE.NAMES = FALSE)
+  pathways <- cbind(sapply(pathways, function(x) substr(x,1,3), USE.NAMES = FALSE), sapply(pathways, function(x) substr(x,4,nchar(x)),USE.NAMES = FALSE))
+  pathways <- cbind(pathways,sapply(hsa_pathways$V2, function(x) gsub(" - .*","",x), USE.NAMES = FALSE))  #remove the last part of the name (ex : ' - Homo sapiens (human)')
+  pathways <- cbind(pathways,sapply(pathways[,3], function(x) concat_string(x), USE.NAMES = FALSE))
+  pathways <- data.frame(pathways,stringsAsFactors = FALSE)
+  names(pathways) <- c("species","id","name","concat_name")
+
   ids <- pathways$id[match(names,pathways$concat_name)]
 }
 
