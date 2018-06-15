@@ -192,7 +192,7 @@ if (is.null(args$pathways_id)){
   
   #### build data.frame of pathways
   #download.file(url = "http://rest.kegg.jp/list/pathway/hsa", destfile = "/home/dchristiany/proteore_project/ProteoRE/tools/pathview/hsa_pathways.csv")
-  hsa_pathways <- read_file(path = paste(wd,"/projet/galaxydev/galaxy/tools/proteore/ProteoRE/tools/pathview/hsa_pathways.csv",sep="/"),FALSE)
+  hsa_pathways <- read_file(path = "/projet/galaxydev/galaxy/tools/proteore/ProteoRE/tools/pathview/hsa_pathways.csv",FALSE)
   pathways <- sapply(hsa_pathways$V1, function(x) gsub("path:","",x),USE.NAMES = FALSE)
   pathways <- cbind(sapply(pathways, function(x) substr(x,1,3), USE.NAMES = FALSE), sapply(pathways, function(x) substr(x,4,nchar(x)),USE.NAMES = FALSE))
   pathways <- cbind(pathways,sapply(hsa_pathways$V2, function(x) gsub(" - .*","",x), USE.NAMES = FALSE))  #remove the last part of the name (ex : ' - Homo sapiens (human)')
@@ -264,3 +264,4 @@ for (id in ids) {
            pdf.size=c(9,9))
            #is.signal=TRUE)
 }
+
