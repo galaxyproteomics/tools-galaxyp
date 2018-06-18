@@ -140,12 +140,6 @@ if (!is.null(args$pathways_name)) {names <- as.vector(sapply(strsplit(args$pathw
 if (!is.null(args$id_list)) {id_list <- as.vector(strsplit(args$id_list,","))}
 id_type <- tolower(args$id_type)
 ncol <- as.numeric(gsub("c", "" ,args$id_column))
-e1 <- as.numeric(gsub("c", "" ,args$e1))
-if (!is.null(args$e1)) { colnames(tab)[,e1] <- "e1" }
-e2 <- as.numeric(gsub("c", "" ,args$e2))
-if (!is.null(args$e2)) { colnames(tab)[,e2] <- "e2" }
-e3 <- as.numeric(gsub("c", "" ,args$e3))
-if (!is.null(args$e2)) { colnames(tab)[,e3] <- "e3" }
 header <- str2bool(args$header)
 #output <- args$output
 native_kegg <- str2bool(args$native_kegg)
@@ -159,6 +153,13 @@ if (!is.null(args$input)){
   tab <- data.frame(id_list)
   ncol=1
 }
+
+e1 <- as.numeric(gsub("c", "" ,args$expression_values1))
+if (!is.null(args$expression_values1)) { colnames(tab)[e1] <- "e1" }
+e2 <- as.numeric(gsub("c", "" ,args$expression_values2))
+if (!is.null(args$expression_values2)) { colnames(tab)[e2] <- "e2" }
+e3 <- as.numeric(gsub("c", "" ,args$expression_values3))
+if (!is.null(args$expression_values3)) { colnames(tab)[e3] <- "e3" }
 
 
 ##### map uniprotID to entrez geneID
@@ -205,23 +206,29 @@ if (is.null(args$pathways_id)){
 
 
 ##### build matrix to map on KEGG pathway (kgml : KEGG xml)
-if (!is.null(args$e1)&is.null(args$e2)&is.null(args$e3)){
-  mat <- tab$e1
-  names(tab$e1) <- tab$geneID
-} else if (!is.null(args$e1)&!is.null(args$e2)&is.null(args$e3)){
-  mat <- cbind(tab$e1,tab$e2)
-  names(mat) <- tab$geneID
-}else if (!is.null(args$e1)&!is.null(args$e2)&!is.null(args$e3)){
-  mat <- cbind(tab$e1,tab$e2,tab$e3)
-  names(mat) <- tab$geneID
+if (!is.null(args$expression_values1)&is.null(args$expression_values2)&is.null(args$expression_values3)){
+  mat <- as.data.frame(cbind(tab$e1)[which(!is.na(tab$geneID)),])
+  row.names(mat) <- tab$geneID[which(!is.na(tab$geneID))]
+} else if (!is.null(args$expression_values1)&!is.null(args$expression_values2)&is.null(args$expression_values3)){
+  mat <- as.data.frame(cbind(tab$e1,tab$e2)[which(!is.na(tab$geneID)),])
+  row.names(mat) <- tab$geneID[which(!is.na(tab$geneID))]
+}else if (!is.null(args$expression_values1)&!is.null(args$expression_values2)&!is.null(args$expression_values3)){
+  mat <- as.data.frame(cbind(tab$e1,tab$e2,tab$e3)[which(!is.na(tab$geneID)),])
+  row.names(mat) <- tab$geneID[which(!is.na(tab$geneID))]
 } else {
   mat <- geneID
 }
 
 
 #### simulation data test
-#sim <- sim.mol.data(mol.type = c("gene", "gene.ko", "cpd")[1], id.type = NULL, species="hsa", discrete = FALSE, nmol = 1000, nexp = 1, rand.seed=100)
-#mat <- sim[1:length(geneID)]
+#exp1 <- sim.mol.data(mol.type = c("gene", "gene.ko", "cpd")[1], id.type = NULL, species="hsa", discrete = FALSE, nmol = 161, nexp = 1, rand.seed=100)
+#exp2 <- sim.mol.data(mol.type = c("gene", "gene.ko", "cpd")[1], id.type = NULL, species="hsa", discrete = FALSE, nmol = 161, nexp = 1, rand.seed=50)
+#exp3 <- sim.mol.data(mol.type = c("gene", "gene.ko", "cpd")[1], id.type = NULL, species="hsa", discrete = FALSE, nmol = 161, nexp = 1, rand.seed=10)
+#tab <- cbind(tab,exp1,exp2,exp3)
+
+#write.table(tab, file='/home/dchristiany/proteore_project/ProteoRE/tools/pathview/Lacombe_sim_expression_data.tsv', quote=FALSE, sep='\t',row.names = FALSE)
+
+#mat <- exp1[1:nrow(tab)]
 #names(mat) <- geneID
 
 
@@ -265,3 +272,9 @@ for (id in ids) {
            #is.signal=TRUE)
 }
 
+########using keggview.native
+
+#xml.file=system.file("extdata", "hsa00010.xml", package = "pathview")
+#node.data=node.info("/home/dchristiany/hsa00010.xml")
+#plot.data.gene=node.map(mol.data=test, node.data, node.types="gene")
+#colors =node.color(plot.data = plot.data.gene[,1:9])
