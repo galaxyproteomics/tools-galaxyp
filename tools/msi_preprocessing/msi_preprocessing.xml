@@ -1,4 +1,4 @@
-<tool id="mass_spectrometry_imaging_preprocessing" name="MSI preprocessing" version="1.10.0.1">
+<tool id="mass_spectrometry_imaging_preprocessing" name="MSI preprocessing" version="1.10.0.2">
     <description>
         mass spectrometry imaging preprocessing
     </description>
@@ -6,7 +6,7 @@
         <requirement type="package" version="1.10.0">bioconductor-cardinal</requirement>
         <requirement type="package" version="2.2.1">r-gridextra</requirement>
         <requirement type="package" version="0.20-35">r-lattice</requirement>
-        <requirement type="package" version="3.34.9">bioconductor-limma</requirement>
+        <!--requirement type="package" version="3.34.9">bioconductor-limma</requirement-->
     </requirements>
     <command detect_errors="exit_code">
     <![CDATA[
@@ -34,10 +34,10 @@
 library(Cardinal)
 library(gridExtra)
 library(lattice)
-library(limma)
+###library(limma)
 
 #if $infile.ext == 'imzml'
-    msidata = readImzML('infile')
+    msidata <- readImzML('infile', mass.accuracy=$accuracy, units.accuracy = "$units")
 #elif $infile.ext == 'analyze75'
     msidata = readAnalyze('infile')
 #else
@@ -52,45 +52,14 @@ load(fileName)
 get(ls()[ls() != "fileName"])
 }
 
-######################### preparations for optional QC report #################
-
-#if $outputs.outputs_select == "quality_control":
-
-    ### values for QC table:
+######################### preparations for QC report #################
 
     maxfeatures = length(features(msidata))
     medianpeaks = median(colSums(spectra(msidata)[]>0))
     medint = round(median(spectra(msidata)[]), digits=2)
     TICs = round(mean(colSums(spectra(msidata)[])), digits=1)
-    QC_numbers= data.frame(rawdata = c(maxfeatures, medianpeaks, medint, TICs))
-    vectorofactions = "rawdata"
-
-    ### Read tabular file with calibrant m/z: 
-
-    calibrant_list = read.delim("$outputs.calibrant_file", header = FALSE, stringsAsFactors = FALSE)
-
-    ### calculate how many input calibrant m/z are valid: 
-
-    inputcalibrants = calibrant_list[calibrant_list[,$outputs.calibrants_column]>min(mz(msidata)) & calibrant_list[,$outputs.calibrants_column]<max(mz(msidata)),$outputs.calibrants_column]
-    number_calibrants_in = length(calibrant_list[,$outputs.calibrants_column])
-    number_calibrants_valid = length(inputcalibrants)
-
-    ### Quality control report
-
-    pdf("Preprocessing.pdf", fonts = "Times", pointsize = 12)
-    plot(0,type='n',axes=FALSE,ann=FALSE)
-    title(main=paste("Quality control during preprocessing \n", "Filename:", "$infile.display_name"))
-    title(main=paste0("\n\n\n\n Number valid m/z in ", "$outputs.calibrant_file.display_name",": ", number_calibrants_valid, "/", number_calibrants_in))
-
-    for (calibrant in inputcalibrants)
-        {currentimage = image(msidata , mz=calibrant, strip = strip.custom(bg="lightgrey",
-                       par.strip.text=list(col="black", cex=.9)),lattice=TRUE, 
-                       scales = list(draw = FALSE), plusminus = $outputs.plusminus_dalton, main="raw")
-        assign(paste("rawdata",calibrant, sep="_"), currentimage)}
-
-        current_plot_raw = vector(length(inputcalibrants), mode='list')
-
-#end if
+    QC_numbers= data.frame(inputdata = c(maxfeatures, medianpeaks, medint, TICs))
+    vectorofactions = "inputdata"
 
 ############################### Preprocessing steps ###########################
 ###############################################################################
@@ -105,27 +74,15 @@ get(ls()[ls() != "fileName"])
 
         msidata = normalize(msidata, method="tic")
 
-        ############################### optional QC ###########################
+        ############################### QC ###########################
 
-        #if $outputs.outputs_select == "quality_control":
-
-            ### values for QC table:
             maxfeatures = length(features(msidata))
             medianpeaks = median(colSums(spectra(msidata)[]>0))
             medint = round(median(spectra(msidata)[]), digits=2)
             TICs = round(mean(colSums(spectra(msidata)[])), digits=1)
             normalized = c(maxfeatures, medianpeaks, medint, TICs)
             QC_numbers= cbind(QC_numbers, normalized)
-
-            ### preparation for QC plots
             vectorofactions = append(vectorofactions, "normalized")
-            for (calibrant in inputcalibrants)
-                {currentimage = image(msidata , mz=calibrant, strip = strip.custom(bg="lightgrey",
-                               par.strip.text=list(col="black", cex=.9)),lattice=TRUE, 
-                               scales = list(draw = FALSE), plusminus = $outputs.plusminus_dalton, main="normalized")
-                assign(paste("normalized",calibrant, sep="_"), currentimage)}
-
-        #end if
 
 ############################### Baseline reduction ###########################
 
@@ -135,28 +92,15 @@ get(ls()[ls() != "fileName"])
 
         msidata = reduceBaseline(msidata, method="median", blocks=$method.methods_conditional.blocks_baseline)
 
-        ############################### optional QC ###########################
+        ############################### QC ###########################
 
-        #if $outputs.outputs_select == "quality_control":
-
-            ### values for QC table:
             maxfeatures = length(features(msidata))
             medianpeaks = median(colSums(spectra(msidata)[]>0))
             medint = round(median(spectra(msidata)[]), digits=2)
             TICs = round(mean(colSums(spectra(msidata)[])), digits=1)
             baseline= c(maxfeatures, medianpeaks, medint, TICs)
             QC_numbers= cbind(QC_numbers, baseline)
-
-            ### preparation for QC plots
-            vectorofactions = append(vectorofactions, "baseline_rem")
-
-            for (calibrant in inputcalibrants)
-            {currentimage = image(msidata , mz=calibrant, strip = strip.custom(bg="lightgrey",
-                               par.strip.text=list(col="black", cex=.9)),lattice=TRUE, 
-                               scales = list(draw = FALSE), plusminus = $outputs.plusminus_dalton, main="baseline removed")
-            assign(paste("baseline_rem",calibrant, sep="_"), currentimage)}
-
-        #end if
+            vectorofactions = append(vectorofactions, "baseline red.")
 
 ############################### Smoothing ###########################
 
@@ -180,28 +124,15 @@ get(ls()[ls() != "fileName"])
 
         #end if
 
-        ############################### optional QC ###########################
+        ############################### QC ###########################
 
-        #if $outputs.outputs_select == "quality_control":
-            
-            ### values for QC table:
             maxfeatures = length(features(msidata))
             medianpeaks = median(colSums(spectra(msidata)[]>0))
             medint = round(median(spectra(msidata)[]), digits=2)
             TICs = round(mean(colSums(spectra(msidata)[])), digits=1)
             smoothed= c(maxfeatures, medianpeaks, medint, TICs)
             QC_numbers= cbind(QC_numbers, smoothed)
-
-            ### preparation for QC plots
             vectorofactions = append(vectorofactions, "smoothed")
-
-            for (calibrant in inputcalibrants)
-                {currentimage = image(msidata , mz=calibrant, strip = strip.custom(bg="lightgrey",
-                               par.strip.text=list(col="black", cex=.9)),lattice=TRUE, 
-                               scales = list(draw = FALSE), plusminus = $outputs.plusminus_dalton, main="smoothed")
-                assign(paste("smoothed",calibrant, sep="_"), currentimage)}
-
-        #end if
 
 ############################### Peak picking ###########################
 
@@ -226,28 +157,15 @@ get(ls()[ls() != "fileName"])
 
         #end if
 
-        ############################### optional QC ###########################
+        ############################### QC ###########################
 
-        #if $outputs.outputs_select == "quality_control":
-
-            ### values for QC table:
             maxfeatures = length(features(msidata))
             medianpeaks = median(colSums(spectra(msidata)[]>0))
             medint = round(median(spectra(msidata)[]), digits=2)
             TICs = round(mean(colSums(spectra(msidata)[])), digits=1)
             picked= c(maxfeatures, medianpeaks, medint, TICs)
             QC_numbers= cbind(QC_numbers, picked)
-
-            ### preparation for QC plots
             vectorofactions = append(vectorofactions, "picked")
-
-            for (calibrant in inputcalibrants)
-                {currentimage = image(msidata , mz=calibrant, strip = strip.custom(bg="lightgrey",
-                               par.strip.text=list(col="black", cex=.9)),lattice=TRUE, 
-                               scales = list(draw = FALSE), plusminus = $outputs.plusminus_dalton, main="picked")
-                assign(paste("picked",calibrant, sep="_"), currentimage)}
-
-        #end if
 
 ############################### Peak alignment ###########################
 
@@ -285,27 +203,15 @@ get(ls()[ls() != "fileName"])
 
        #end if
 
-        ############################### optional QC ###########################
-        #if $outputs.outputs_select == "quality_control":
+        ############################### QC ###########################
 
-            ### values for QC table:
             maxfeatures = length(features(msidata))
             medianpeaks = median(colSums(spectra(msidata)[]>0))
             medint = round(median(spectra(msidata)[]), digits=2)
             TICs = round(mean(colSums(spectra(msidata)[])), digits=1)
             aligned= c(maxfeatures, medianpeaks, medint, TICs)
             QC_numbers= cbind(QC_numbers, aligned)
-
-            ### preparation for QC plots
             vectorofactions = append(vectorofactions, "aligned")
-
-            for (calibrant in inputcalibrants)
-                {currentimage = image(msidata , mz=calibrant, strip = strip.custom(bg="lightgrey",
-                               par.strip.text=list(col="black", cex=.9)),lattice=TRUE, 
-                               scales = list(draw = FALSE), plusminus = $outputs.plusminus_dalton, main="aligned")
-                assign(paste("aligned",calibrant, sep="_"), currentimage)}
-
-        #end if
 
 ############################### Peak filtering ###########################
 
@@ -314,28 +220,15 @@ get(ls()[ls() != "fileName"])
 
         msidata = peakFilter(msidata, method='freq', freq.min = $method.methods_conditional.frequ_filtering)
 
-        ############################### optional QC ###########################
+        ############################### QC ###########################
 
-        #if $outputs.outputs_select == "quality_control":
-
-            ### values for QC table:
             maxfeatures = length(features(msidata))
             medianpeaks = median(colSums(spectra(msidata)[]>0))
             medint = round(median(spectra(msidata)[]), digits=2)
             TICs = round(mean(colSums(spectra(msidata)[])), digits=1)
             filtered= c(maxfeatures, medianpeaks, medint, TICs)
             QC_numbers= cbind(QC_numbers, filtered)
-
-            ### preparation for QC plots
             vectorofactions = append(vectorofactions, "filtered")
-
-            for (calibrant in inputcalibrants)
-                {currentimage = image(msidata , mz=calibrant, strip = strip.custom(bg="lightgrey",
-                               par.strip.text=list(col="black", cex=.9)),lattice=TRUE, 
-                               scales = list(draw = FALSE), plusminus = $outputs.plusminus_dalton, main="filtered")
-                assign(paste("filtered",calibrant, sep="_"), currentimage)}
-
-        #end if
 
 ############################### Data reduction ###########################
 
@@ -368,116 +261,136 @@ get(ls()[ls() != "fileName"])
             #end if
 
             msidata = reduceDimension(msidata, method="peaks", ref=peak_reference, type="$method.methods_conditional.methods_for_reduction.peaks_type")
-
         #end if
+        ############################### QC ###########################
 
-        ############################### optional QC ###########################
-
-        #if $outputs.outputs_select == "quality_control":
-
-            ### values for QC table:
             maxfeatures = length(features(msidata))
             medianpeaks = median(colSums(spectra(msidata)[]>0))
             medint = round(median(spectra(msidata)[]), digits=2)
             TICs = round(mean(colSums(spectra(msidata)[])), digits=1)
             reduced= c(maxfeatures, medianpeaks, medint, TICs)
             QC_numbers= cbind(QC_numbers, reduced)
-
-            ### preparation for QC plots
             vectorofactions = append(vectorofactions, "reduced")
-
-            for (calibrant in inputcalibrants)
-                {currentimage = image(msidata , mz=calibrant, strip = strip.custom(bg="lightgrey",
-                               par.strip.text=list(col="black", cex=.9)),lattice=TRUE, 
-                               scales = list(draw = FALSE), plusminus = $outputs.plusminus_dalton, main="reduced")
-                assign(paste("reduced",calibrant, sep="_"), currentimage)}
-
-        #end if
 
     ############################### Transformation ###########################
 
-    ####elif str( $method.methods_conditional.preprocessing_method) == 'Transformation':
-        ###print('Transformation')
+    #elif str( $method.methods_conditional.preprocessing_method) == 'Transformation':
+        print('Transformation')
 
-        ####if str( $method.methods_conditional.transf_conditional.trans_type) == 'log2':
-            ####print('log2 transformation')
+        #if str( $method.methods_conditional.transf_conditional.trans_type) == 'log2':
+            print('log2 transformation')
 
-            ###spectra(msidata)[spectra(msidata) ==0] = NA
-            ###print(paste0("Number of 0 which were converted into NA:",sum(is.na(spectra(msidata)))))
-            ###spectra(msidata) = log2(spectra(msidata))
+            spectra(msidata)[][spectra(msidata)[] ==0] = NA
+            print(paste0("Number of 0 which were converted into NA:",sum(is.na(spectra(msidata)[]))))
+            spectra(msidata)[] = log2(spectra(msidata)[])
 
-        ####elif str( $method.methods_conditional.transf_conditional.trans_type) == 'sqrt':
-            ###print('squareroot transformation')
+        #elif str( $method.methods_conditional.transf_conditional.trans_type) == 'sqrt':
+            print('squareroot transformation')
 
-            ###spectra(msidata) = sqrt(spectra(msidata))
+            spectra(msidata)[] = sqrt(spectra(msidata)[])
 
-       ###end if
+       #end if
 
-        ############################### optional QC ###########################
+        ############################### QC ###########################
 
-        #if $outputs.outputs_select == "quality_control":
-
-            ### values for QC table:
             maxfeatures = length(features(msidata))
             medianpeaks = median(colSums(spectra(msidata)[]>0), na.rm=TRUE)
             medint = round(median(spectra(msidata)[], na.rm=TRUE), digits=2)
             TICs = round(mean(colSums(spectra(msidata)[]), na.rm=TRUE), digits=1)
             transformed= c(maxfeatures, medianpeaks, medint, TICs)
             QC_numbers= cbind(QC_numbers, transformed)
-
-            ### preparation for QC plots
             vectorofactions = append(vectorofactions, "transformed")
 
-            for (calibrant in inputcalibrants)
-                {currentimage = image(msidata , mz=calibrant, strip = strip.custom(bg="lightgrey",
-                               par.strip.text=list(col="black", cex=.9)),lattice=TRUE, 
-                               scales = list(draw = FALSE), plusminus = $outputs.plusminus_dalton, main="transformed")
-                assign(paste("transformed",calibrant, sep="_"), currentimage)}
-
         #end if
-
-     ############################### optional QC ###########################
-
-        #if $outputs.outputs_select == "quality_control":
-
-            ### values for QC table:
-            maxfeatures = length(features(msidata))
-            medianpeaks = median(colSums(spectra(msidata)[]>0))
-            medint = round(median(spectra(msidata)[]), digits=2)
-            TICs = round(mean(colSums(spectra(msidata)[])), digits=1)
-            sample_norm= c(maxfeatures, medianpeaks, medint, TICs)
-            QC_numbers= cbind(QC_numbers, sample_norm)
-
-            ### preparation for QC plots
-            vectorofactions = append(vectorofactions, "sample_norm")
-
-            for (calibrant in inputcalibrants)
-                {currentimage = image(msidata , mz=calibrant, strip = strip.custom(bg="lightgrey",
-                               par.strip.text=list(col="black", cex=.9)),lattice=TRUE, 
-                               scales = list(draw = FALSE), plusminus = $outputs.plusminus_dalton, main="sample normalized")
-                assign(paste("sample_norm",calibrant, sep="_"), currentimage)}
-
-        #end if
-
-    #end if
 #end for
 
-###################### Outputs: RData, tabular and QC report ###################
-###############################################################################
+############# Outputs: summar matrix, RData, tabular and QC report #############
+################################################################################
+## optional summarized matrix
+    print('Summarized matrix')
+
+#if "mean" in str($summary_type).split(","):
+    print("mean matrix")
+    if (!is.null(levels(msidata\$combined_sample))){
+
+        sample_matrix = matrix(,ncol=0, nrow=nrow(msidata))
+        count = 1
+        for (subsample in levels(msidata\$combined_sample)){
+        subsample_pixels = msidata[,msidata\$combined_sample == subsample]
+        subsample_calc = apply(spectra(subsample_pixels)[],1,mean, na.rm=TRUE)
+        sample_matrix = cbind(sample_matrix, subsample_calc)
+        count = count+1
+        }
+        rownames(sample_matrix) = mz(msidata)
+        colnames(sample_matrix) = levels(msidata\$combined_sample)
+        write.table(sample_matrix, file="$summarized_output_mean", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+    }else{
+        full_sample_calc = as.data.frame(apply(spectra(msidata)[],1,mean, na.rm=TRUE))
+        rownames(full_sample_calc) = mz(msidata)
+        colnames(full_sample_calc) = "$infile.display_name"
+        write.table(full_sample_calc, file="$summarized_output_mean", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+    }
+
+#end if
+
+#if "median" in str($summary_type).split(","):
+    print("median matrix")
+    if (!is.null(levels(msidata\$combined_sample))){
+        sample_matrix = matrix(,ncol=0, nrow=nrow(msidata))
+        count = 1
+        for (subsample in levels(msidata\$combined_sample)){
+        subsample_pixels = msidata[,msidata\$combined_sample == subsample]
+        subsample_calc = apply(spectra(subsample_pixels)[],1,median, na.rm=TRUE)
+        sample_matrix = cbind(sample_matrix, subsample_calc)
+        count = count+1
+        }
+
+        rownames(sample_matrix) = mz(msidata)
+        colnames(sample_matrix) = levels(msidata\$combined_sample)
+        write.table(sample_matrix, file="$summarized_output_median", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+    }else{
+        full_sample_calc = apply(spectra(msidata)[],1,median, na.rm=TRUE)
+        rownames(full_sample_calc) = mz(msidata)
+        colnames(full_sample_calc) = "$infile.display_name"
+        write.table(full_sample_calc, file="$summarized_output_mean", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+    }
+#end if
+
+#if "sd" in str($summary_type).split(","):
+    print("sd matrix")
+    if (!is.null(levels(msidata\$combined_sample))){
+        sample_matrix = matrix(,ncol=0, nrow=nrow(msidata))
+        count = 1
+        for (subsample in levels(msidata\$combined_sample)){
+        subsample_pixels = msidata[,msidata\$combined_sample == subsample]
+        subsample_calc = apply(spectra(subsample_pixels)[],1,sd, na.rm=TRUE)
+        sample_matrix = cbind(sample_matrix, subsample_calc)
+        count = count+1
+        }
+
+        rownames(sample_matrix) = mz(msidata)
+        colnames(sample_matrix) = levels(msidata\$combined_sample)
+        write.table(sample_matrix, file="$summarized_output_sd", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+    }else{
+        full_sample_calc = apply(spectra(msidata)[],1,sd, na.rm=TRUE)
+        rownames(full_sample_calc) = mz(msidata)
+        colnames(full_sample_calc) = "$infile.display_name"
+        write.table(full_sample_calc, file="$summarized_output_mean", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+    }
+#end if
 
 ## save as (.RData)
 save(msidata, file="$msidata_preprocessed")
 
-print(paste0("Number of NAs in intensity matrix: ", sum(is.na(spectra(msidata)))))
+print(paste0("Number of NAs in intensity matrix: ", sum(is.na(spectra(msidata)[]))))
 
 ## save output matrix
 #if $output_matrix:
 
-
     if (length(features(msidata))> 0)
         {
         ## save as intensity matrix
-        spectramatrix = spectra(msidata)
+        spectramatrix = spectra(msidata)[]
         rownames(spectramatrix) = mz(msidata)
         newmatrix = rbind(pixels(msidata), spectramatrix)
         write.table(newmatrix[2:nrow(newmatrix),], file="$matrixasoutput", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
@@ -490,28 +403,25 @@ print(paste0("Number of NAs in intensity matrix: ", sum(is.na(spectra(msidata)))
 #end if
 
 ## save QC report
-#if $outputs.outputs_select == "quality_control":
 
+    pdf("Preprocessing.pdf", fonts = "Times", pointsize = 12)
+    plot(0,type='n',axes=FALSE,ann=FALSE)
+    title(main=paste("Quality control during preprocessing \n", "Filename:", "$infile.display_name"))
     rownames(QC_numbers) = c("# features", "median # peaks", "median intensity", "median TIC")
     grid.table(t(QC_numbers))
-
-    for (calibrant in inputcalibrants)
-        {imagelist = list()
-        for (numberprepro in 1:length(vectorofactions)){
-            imagelist[[numberprepro]] = get(paste(vectorofactions[numberprepro],calibrant, sep="_"))}
-            do.call(grid.arrange,imagelist)}
-
     dev.off()
-
-#end if
-
 
     ]]></configfile>
     </configfiles>
     <inputs>
         <param name="infile" type="data" format="imzml,rdata,danalyze75"
-            label="MSI rawdata as imzml, analyze7.5 or Cardinal MSImageSet saved as RData"
+            label="MSI data as imzml, analyze7.5 or Cardinal MSImageSet saved as RData"
             help="load imzml and ibd file by uploading composite datatype imzml"/>
+        <param name="accuracy" type="float" value="50" label="Only for processed imzML files: enter mass accuracy to which the m/z values will be binned" help="This should be set to the native accuracy of the mass spectrometer, if known"/>
+        <param name="units" display="radio" type="select" label="Only for processed imzML files: unit of the mass accuracy" help="either m/z or ppm">
+            <option value="mz" >mz</option>
+            <option value="ppm" selected="True" >ppm</option>
+        </param>
         <repeat name="methods" title="Preprocessing" min="1" max="50">
             <conditional name="methods_conditional">
                 <param name="preprocessing_method" type="select" label="Select the preprocessing methods you want to apply">
@@ -522,8 +432,7 @@ print(paste0("Number of NAs in intensity matrix: ", sum(is.na(spectra(msidata)))
                     <option value="Peak_alignment">Peak alignment</option>
                     <option value="Peak_filtering">Peak filtering</option>
                     <option value="Data_reduction">Data reduction</option>
-                    <!--option value="Transformation">Transformation</option-->
-
+                    <option value="Transformation">Transformation</option>
                 </param>
                 <when value="Normalization"/>
                 <when value="Baseline_reduction">
@@ -669,7 +578,7 @@ print(paste0("Number of NAs in intensity matrix: ", sum(is.na(spectra(msidata)))
                         </when>
                     </conditional>
                 </when>
-                <!--when value="Transformation">
+                <when value="Transformation">
                     <conditional name="transf_conditional">
                         <param name="trans_type" type="select" label="Choose which intensity transformation you want to apply" help="logarithm base 2 (log2) or squareroot (sqrt)">
                             <option value="log2" selected="True">log2</option>
@@ -678,36 +587,34 @@ print(paste0("Number of NAs in intensity matrix: ", sum(is.na(spectra(msidata)))
                             <when value="log2"/>
                             <when value="sqrt"/>
                     </conditional>
-                </when-->
+                </when>
             </conditional>
         </repeat>
-        <conditional name="outputs">
-            <param name="outputs_select" type="select" label="Quality control output">
-                <option value="quality_control" selected="True">yes</option>
-                <option value="no_quality_control">no</option>
-            </param>
-            <when value="quality_control">
-                <param name="calibrant_file" type="data" format="tabular"
-                 label="Provide a list of m/z, which will be plotted in the quality control report"
-                 help="Use internal calibrant m/z"/>
-                 <param name="calibrants_column" data_ref="calibrant_file" label="Column with m/z" type="data_column"/>
-                 <param name="plusminus_dalton" value="0.25" type="text" label="M/z range" help="Plusminus m/z window in Dalton"/>
-            </when>
-            <when value="no_quality_control"/>
-        </conditional>
-        <param name="output_matrix" type="boolean" display="radio" label="Intensity matrix output"/>
+        <param name="summary_type" type="select" display="checkboxes" multiple="true" label="Summarize all pixels of a sample and calculate the mean, median or standard deviation">
+            <option value="mean">mean</option>
+            <option value="median">median</option>
+            <option value="sd">standard deviation</option>
+        </param>
+        <param name="output_matrix" type="boolean" label="Intensity matrix output"/>
     </inputs>
     <outputs>
         <data format="rdata" name="msidata_preprocessed" label="$infile.display_name preprocessed"/>
-        <data format="pdf" name="QC_plots" from_work_dir="Preprocessing.pdf" label = "$infile.display_name preprocessed_QC">
-            <filter>outputs["outputs_select"] == "quality_control"</filter>
+        <data format="pdf" name="QC_plots" from_work_dir="Preprocessing.pdf" label = "$infile.display_name preprocessed_QC"/>
+        <data format="tabular" name="summarized_output_mean" label="$infile.display_name mean_matrix">
+            <filter>summary_type and "mean" in summary_type</filter>
+        </data>
+        <data format="tabular" name="summarized_output_median" label="$infile.display_name median_matrix">
+            <filter>summary_type and "median" in summary_type</filter>
+        </data>
+        <data format="tabular" name="summarized_output_sd" label="$infile.display_name sd_matrix">
+            <filter>summary_type and "sd" in summary_type</filter>
         </data>
         <data format="tabular" name="matrixasoutput" label="$infile.display_name preprocessed_matrix">
             <filter>output_matrix</filter>
         </data>
     </outputs>
     <tests>
-        <test expect_num_outputs="2">
+        <test expect_num_outputs="3">
             <param name="infile" value="" ftype="imzml">
                 <composite_data value="Example_Continuous.imzML"/>
                 <composite_data value="Example_Continuous.ibd"/>
@@ -749,21 +656,21 @@ print(paste0("Number of NAs in intensity matrix: ", sum(is.na(spectra(msidata)))
                     <param name="frequ_filtering" value="2"/>
                 </conditional>
             </repeat>
-            <!--repeat name="methods">
+            <repeat name="methods">
                 <conditional name="methods_conditional">
                     <param name="preprocessing_method" value="Transformation"/>
                         <conditional name="transf_conditional">
                             <param name="trans_type" value="sqrt"/>
                         </conditional>
                 </conditional>
-            </repeat-->
-            <param name="outputs_select" value="no_quality_control"/>
+            </repeat>
             <param name="output_matrix" value="True"/>
             <output name="msidata_preprocessed" file="preprocessing_results1.RData" compare="sim_size"/>
             <output name="matrixasoutput" file="preprocessing_results1.txt"/>
+            <output name="QC_plots" file="preprocessing_results1.pdf" compare="sim_size"/>
         </test>
-        <test expect_num_outputs="3">
-            <param name="infile" value="preprocessed.RData" ftype="rdata"/>
+        <test expect_num_outputs="4">
+            <param name="infile" value="123_combined.RData" ftype="rdata"/>
             <repeat name="methods">
                 <conditional name="methods_conditional">
                     <param name="preprocessing_method" value="Peak_picking"/>
@@ -783,16 +690,13 @@ print(paste0("Number of NAs in intensity matrix: ", sum(is.na(spectra(msidata)))
                     </conditional>
                 </conditional>
             </repeat>
-            <param name="outputs_select" value="quality_control"/>
-            <param name="calibrant_file" ftype="tabular" value="inputcalibrantfile1.tabular"/>
-            <param name="calibrants_column" value="1"/>
-            <param name="plusminus_dalton" value="0.25"/>
-            <param name="output_matrix" value="True"/>
+            <param name="summary_type" value="median,sd"/>
             <output name="msidata_preprocessed" file="preprocessing_results2.RData" compare="sim_size"/>
-            <output name="matrixasoutput" file="preprocessing_results2.txt" lines_diff="2"/>
+            <output name="summarized_output_median" file="preprocessing_median2.txt" lines_diff="2"/>
+            <output name="summarized_output_sd" file="preprocessing_sd2.txt" lines_diff="2"/>
             <output name="QC_plots" file="preprocessing_results2.pdf" compare="sim_size"/>
         </test>
-        <test expect_num_outputs="2">
+        <test expect_num_outputs="3">
             <param name="infile" value="" ftype="analyze75">
                 <composite_data value="Analyze75.hdr"/>
                 <composite_data value="Analyze75.img"/>
@@ -819,14 +723,12 @@ print(paste0("Number of NAs in intensity matrix: ", sum(is.na(spectra(msidata)))
                     </conditional>
                 </conditional>
             </repeat>
-            <param name="outputs_select" value="quality_control"/>
-            <param name="calibrant_file" ftype="tabular" value="inputcalibrantfile2.tabular"/>
-            <param name="calibrants_column" value="1"/>
-            <param name="plusminus_dalton" value="0.25"/>
+            <param name="summary_type" value="mean"/>
             <output name="msidata_preprocessed" file="preprocessing_results3.RData" compare="sim_size"/>
             <output name="QC_plots" file="preprocessing_results3.pdf" compare="sim_size"/>
+            <output name="summarized_output_mean" file="preprocessing_mean3.txt" lines_diff="2"/>
         </test>
-        <test expect_num_outputs="2">
+        <test expect_num_outputs="3">
             <param name="infile" value="" ftype="analyze75">
                 <composite_data value="Analyze75.hdr"/>
                 <composite_data value="Analyze75.img"/>
@@ -843,12 +745,12 @@ print(paste0("Number of NAs in intensity matrix: ", sum(is.na(spectra(msidata)))
                     <param name="bin_width" value="0.1"/>
                 </conditional>
             </repeat>
-            <param name="outputs_select" value="no_quality_control"/>
             <param name="output_matrix" value="True"/>
             <output name="msidata_preprocessed" file="preprocessing_results4.RData" compare="sim_size"/>
             <output name="matrixasoutput" file="preprocessing_results4.txt"/>
+            <output name="QC_plots" file="preprocessing_results4.pdf" compare="sim_size"/>
         </test>
-        <test expect_num_outputs="3">
+        <test expect_num_outputs="2">
             <param name="infile" value="" ftype="imzml">
                 <composite_data value="Example_Continuous.imzML"/>
                 <composite_data value="Example_Continuous.ibd"/>
@@ -862,13 +764,7 @@ print(paste0("Number of NAs in intensity matrix: ", sum(is.na(spectra(msidata)))
                         </conditional>
                 </conditional>
             </repeat>
-            <param name="outputs_select" value="quality_control"/>
-            <param name="calibrant_file" ftype="tabular" value="inputcalibrantfile1.tabular"/>
-            <param name="calibrants_column" value="1"/>
-            <param name="plusminus_dalton" value="0.25"/>
-            <param name="output_matrix" value="True"/>
-            <output name="msidata_preprocessed" file="preprocessing_results5.RData" compare="sim_size"/>
-            <output name="matrixasoutput" file="preprocessing_results5.txt"/>
+             <output name="msidata_preprocessed" file="preprocessing_results5.RData" compare="sim_size"/>
             <output name="QC_plots" file="preprocessing_results5.pdf" compare="sim_size"/>
         </test>
     </tests>
@@ -899,7 +795,7 @@ Options:
 Output: 
 
 - imzML file, preprocessed
-- optional: pdf with heatmap of m/z of interest after each preprocessing step
+- pdf with key values after each processing step
 - optional: intensity matrix as tabular file (intensities for m/z in rows and pixel in columns)
 
 Tip: 

@@ -1,10 +1,12 @@
-<tool id="mass_spectrometry_imaging_mzplots" name="MSI plot spectra" version="1.10.0.1">
+<tool id="mass_spectrometry_imaging_mzplots" name="MSI plot spectra" version="1.10.0.2">
     <description>
         mass spectrometry imaging mass spectra plots
     </description>
     <requirements>
         <requirement type="package" version="1.10.0">bioconductor-cardinal</requirement>
         <requirement type="package" version="2.2.1">r-gridextra</requirement>
+        <requirement type="package" version="2.2.1">r-ggplot2</requirement>
+        <requirement type="package" version="0.5.0">r-scales</requirement>
     </requirements>
     <command detect_errors="exit_code">
     <![CDATA[
@@ -29,11 +31,11 @@
 
 library(Cardinal)
 library(gridExtra)
-
-## Read MALDI Imaging dataset
+library(ggplot2)
+library(scales)
 
 #if $infile.ext == 'imzml'
-    msidata = readImzML('infile')
+    msidata <- readImzML('infile', mass.accuracy=$accuracy, units.accuracy = "$units")
 #elif $infile.ext == 'analyze75'
     msidata = readAnalyze('infile')
 #else
@@ -71,9 +73,9 @@ NumemptyTIC = sum(TICs == 0)
 
 ## Processing informations
 processinginfo = processingData(msidata)
-centroidedinfo = processinginfo@centroided # TRUE or FALSE
+centroidedinfo = processinginfo@centroided
 
-## if TRUE write processinginfo if no write FALSE
+## if TRUE write processinginfo if FALSE write FALSE
 
 ## normalization
 if (length(processinginfo@normalization) == 0) {
@@ -101,7 +103,7 @@ if (length(processinginfo@peakPicking) == 0) {
 }
 
 properties = c("Number of m/z features",
-               "Range of m/z values [Da]",
+               "Range of m/z values",
                "Number of pixels", 
                "Range of x coordinates", 
                "Range of y coordinates",
@@ -208,35 +210,111 @@ if (npeaks > 0){
     ###########################################################################
 
     #elif str( $pixel_conditional.pixel_type) == 'sample_pixel':
-        print("sample_pixel")
+        print("sample pixels")
 
         ##################### I) Sample: plot full mass spectrum ##############
 
-        plot(msidata, pixel=1:ncol(msidata), pixel.groups=msidata\$combined_sample, key=TRUE, col=c("blue", "orange", "green", "red", "yellow", "grey"), superpose=TRUE)
+        ## coloured plot with mean over all spectra for combined_sample, otherwise only 1 black plot
+        if (!is.null(levels(msidata\$combined_sample))){
+            print("combined samples")
+
+                    ## overview plot over combined sample, in case more than 10 combined_samples legend has to be taken from this plot
+                    number_combined = length(levels(msidata\$combined_sample))
+
+                    ## the more combined_samples a file has the smaller will be the legend
+                    if (number_combined<20){
+                        legend_size = 10
+                    }else if (number_combined>20 && number_combined<40){
+                        legend_size = 9
+                    }else if (number_combined>40 && number_combined<60){
+                        legend_size = 8
+                    }else if (number_combined>60 && number_combined<100){
+                        legend_size = 7
+                    }else{
+                        legend_size = 6
+                    }
+
+                    position_df = cbind(coord(msidata)[,1:2], msidata\$combined_sample)
+                    colnames(position_df)[3] = "sample_name"
+
+                    combine_plot = ggplot(position_df, aes(x=x, y=y, fill=sample_name))+
+                           geom_tile() +
+                           coord_fixed()+
+                           ggtitle("Spatial orientation of combined data")+
+                           theme_bw()+
+                           theme(plot.title = element_text(hjust = 0.5))+
+                           theme(text=element_text(family="ArialMT", face="bold", size=12))+
+                           theme(legend.position="bottom",legend.direction="vertical")+
+                           theme(legend.key.size = unit(0.2, "line"), legend.text = element_text(size = legend_size))+
+                           guides(fill=guide_legend(ncol=5,byrow=TRUE))
+                    coord_labels = aggregate(cbind(x,y)~sample_name, data=position_df, mean)
+                    coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$sample_name)
+                    for(file_count in 1:nrow(coord_labels))
+                        {combine_plot = combine_plot + annotate("text",x=coord_labels[file_count,"x"],
+                        y=coord_labels[file_count,"y"],label=toString(coord_labels[file_count,4]))}
+
+                    print(combine_plot)
+
+                    ## print legend only for less than 10 samples
+                    if (length(levels(msidata\$combined_sample)) < 10){
+                        key_legend = TRUE
+                    }else{key_legend = FALSE}
+
+            plot(msidata, pixel=1:ncol(msidata), pixel.groups=msidata\$combined_sample, key=key_legend, col=hue_pal()(length(levels(msidata\$combined_sample))),superpose=TRUE)
+        }else{
+            plot(msidata, pixel=1:ncol(msidata), key=TRUE)}
 
         ##################### II) Sample: plot zoom-in mass spectrum ##########
 
         #if $pixel_conditional.zoomed_sample:
             #for $token in $pixel_conditional.zoomed_sample:
+                print("zoomed sample pixels")
 
                 minmasspixel = features(msidata, mz=$token.xlimmin)
                 maxmasspixel = features(msidata, mz=$token.xlimmax)
 
-                plot(msidata[minmasspixel:maxmasspixel,], pixel=1:ncol(msidata),
-                xlim= c($token.xlimmin,$token.xlimmax),pixel.groups=msidata\$combined_sample,
-                key=TRUE,col=c("blue", "orange", "green", "red", "yellow", "grey"), superpose=TRUE)
+                ## coloured plot with mean over all spectra for combined_sample, otherwise only 1 black plot
+                if (!is.null(levels(msidata\$combined_sample))){
+                    print("combined samples")
+                    plot(msidata[minmasspixel:maxmasspixel,], pixel=1:ncol(msidata),
+                    xlim= c($token.xlimmin,$token.xlimmax),pixel.groups=msidata\$combined_sample,
+                    key=key_legend,col=hue_pal()(length(levels(msidata\$combined_sample))), superpose=TRUE)
+                }else{
+                    plot(msidata[minmasspixel:maxmasspixel,], pixel=1:ncol(msidata), key=TRUE, xlim= c($token.xlimmin,$token.xlimmax))}
 
             #end for
         #end if
-
-        pixeldf = data.frame(table(msidata\$combined_sample))
+        if (!is.null(levels(msidata\$combined_sample))){
+            pixeldf = data.frame(table(msidata\$combined_sample))
+        }else{
+            pixeldf = data.frame("$filename", ncol(msidata))}
         colnames(pixeldf) = c("sample name", "number of pixels")
 
     #end if
 
+    ### overview table of pixels or samples:
     plot(0,type='n',axes=FALSE,ann=FALSE)
     title(main="Overview of chosen pixel:")
-    grid.table(pixeldf, rows= NULL)
+
+    ### for more than 20 combined samples print only 20 samples per page:
+    if (is.null(levels(msidata\$combined_sample))){
+        grid.table(pixeldf, rows= NULL)
+    }else if (length(levels(msidata\$combined_sample)) <= 20){
+        grid.table(pixeldf, rows= NULL)
+    }else{
+        grid.table(pixeldf[1:20,], rows= NULL)
+        mincount = 21
+        maxcount = 40
+        for (count20 in 1:(ceiling(nrow(pixeldf)/20)-1)){
+            plot(0,type='n',axes=FALSE,ann=FALSE)
+            if (maxcount <= nrow(pixeldf)){
+                grid.table(pixeldf[mincount:maxcount,], rows= NULL)
+                mincount = mincount+20
+                maxcount = maxcount+20
+            }else{### stop last page with last sample otherwise NA in table
+                grid.table(pixeldf[mincount:nrow(pixeldf),], rows= NULL)} 
+        }
+    }
 
     dev.off()
 
@@ -249,6 +327,11 @@ if (npeaks > 0){
     <inputs>
         <param name="infile" type="data" format="imzml,rdata,analyze75" label="Inputfile as imzML, Analyze7.5 or Cardinal MSImageSet saved as RData"
             help="Upload composite datatype imzml (ibd+imzML) or analyze75 (hdr+img+t2m) or regular upload .RData (Cardinal MSImageSet)"/>
+        <param name="accuracy" type="float" value="50" label="Only for processed imzML files: enter mass accuracy to which the m/z values will be binned" help="This should be set to the native accuracy of the mass spectrometer, if known"/>
+        <param name="units" display="radio" type="select" label="Only for processed imzML files: unit of the mass accuracy" help="either m/z or ppm">
+            <option value="mz" >mz</option>
+            <option value="ppm" selected="True" >ppm</option>
+        </param>
         <param name="filename" type="text" value="" label="Title" help="will appear in the pdf output. If nothing given it will take the dataset name"/>
         <conditional name="pixel_conditional">
             <param name="pixel_type" type="select" label="Select if you want to plot the mass spectrum of a single pixel or of all pixels of a sample">
@@ -353,8 +436,23 @@ if (npeaks > 0){
                         <param name="inputx" value="2"/>
                         <param name="inputy" value="2"/>
                     </repeat>
-                </conditional>
+            </conditional>
             <output name="plots" file="Plot_analyze75.pdf" compare="sim_size" delta="20000"/>
+        </test>
+        <test>
+            <param name="infile" value="" ftype="analyze75">
+                <composite_data value="Analyze75.hdr"/>
+                <composite_data value="Analyze75.img"/>
+                <composite_data value="Analyze75.t2m"/>
+            </param>
+            <conditional name="pixel_conditional">
+                <param name="pixel_type" value="sample_pixel"/>
+                    <repeat name="zoomed_sample">
+                         <param name="xlimmin" value="1250"/>
+                         <param name="xlimmax" value="1270"/>
+                     </repeat>
+            </conditional>
+            <output name="plots" file="Plot_analyze75_allpixels.pdf" compare="sim_size" delta="20000"/>
         </test>
         <test>
             <param name="infile" value="123_combined.RData" ftype="rdata"/>
@@ -364,23 +462,19 @@ if (npeaks > 0){
                          <param name="xlimmin" value="350"/>
                          <param name="xlimmax" value="360"/>
                      </repeat>
-                </conditional>
+            </conditional>
             <output name="plots" file="Plot_rdata.pdf" compare="sim_size" delta="20000"/>
         </test>
         <test>
             <param name="infile" value="empty_spectra.rdata" ftype="rdata"/>
-            <param name="plusminusinDalton" value="0.1"/>
-            <param name="inputx" value="1"/>
-            <param name="inputy" value="1"/>
-            <repeat name="repeatpixel">
-                <param name="plusminusinDalton" value="0.25"/>
-                <param name="inputx" value="2"/>
-                <param name="inputy" value="2"/>
-               <repeat name="zoomedplot">
-                    <param name="xlimmin" value="1000"/>
-                    <param name="xlimmax" value="1050"/>
-                </repeat>
-            </repeat>
+            <conditional name="pixel_conditional">
+                <param name="pixel_type" value="single_pixel"/>
+                    <repeat name="repeatpixel">
+                        <param name="plusminusinDalton" value="0.1"/>
+                        <param name="inputx" value="1"/>
+                        <param name="inputy" value="1"/>
+                    </repeat>
+            </conditional>
             <output name="plots" file="Plot_empty_spectra.pdf" compare="sim_size" delta="20000"/>
         </test>
     </tests>
@@ -403,9 +497,8 @@ Options:
     - Enter the x and y coordinates of your pixel of interest
     - To have a visual control for the selected pixel, a heatmap of a m/z of interest will be drawn. Two intersecting lines will show the pixel location. This procedure requires an m/z of interest together with a m/z range and for the lines the colour and type.
     - Additionally zoom into mass spectra plots is possible by providing the minimum and maximum m/z value to define the limits of the plot
-- "All pixels of a sample": Returns a full average mass spectrum plot with different colours for each subfile
+- "All pixels of a sample": Returns a full average mass spectrum plot with different colours for the sample/each combined sample
 
-    - This option only works on files that have previosly been combined in the combine tool
     - Additionally zoom into mass spectra plots is possible by providing the minimum and maximum m/z value to define the limits of the plot
 
 Output:

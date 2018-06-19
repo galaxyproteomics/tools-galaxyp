@@ -1,4 +1,4 @@
-<tool id="mass_spectrometry_imaging_segmentations" name="MSI segmentation" version="1.10.0.1">
+<tool id="mass_spectrometry_imaging_segmentations" name="MSI segmentation" version="1.10.0.2">
     <description>mass spectrometry imaging spatial clustering</description>
     <requirements>
         <requirement type="package" version="1.10.0">bioconductor-cardinal</requirement>
@@ -37,13 +37,15 @@ library(lattice)
 ## Read MALDI Imaging dataset
 
 #if $infile.ext == 'imzml'
-    msidata = readImzML('infile')
+    msidata <- readImzML('infile', mass.accuracy=$accuracy, units.accuracy = "$units")
 #elif $infile.ext == 'analyze75'
     msidata = readAnalyze('infile')
 #else
     load('infile.RData')
 #end if
 
+## create full matrix to make processed imzML files compatible with segmentation
+iData(msidata) <- iData(msidata)[] 
 ###################################### file properties in numbers ##############
 
 ## Number of features (m/z)
@@ -105,7 +107,7 @@ if (length(processinginfo@peakPicking) == 0) {
 }
 
 properties = c("Number of m/z features",
-               "Range of m/z values [Da]",
+               "Range of m/z values",
                "Number of pixels", 
                "Range of x coordinates", 
                "Range of y coordinates",
@@ -157,7 +159,6 @@ grid.table(property_df, rows= NULL)
 if (npeaks > 0)
 {
 
-
 ######################## II) segmentation tools #############################
 #############################################################################
         #set $color_string = ','.join(['"%s"' % $color.feature_color for $color in $colours])
@@ -186,21 +187,28 @@ if (npeaks > 0)
             component_vector = character()
             for (numberofcomponents in 1:$segm_cond.pca_ncomp)
             {component_vector[numberofcomponents]= paste0("PC", numberofcomponents)}
-            pca = PCA(msidata, ncomp=$segm_cond.pca_ncomp, column = component_vector, superpose = FALSE, 
+            pca_result = PCA(msidata, ncomp=$segm_cond.pca_ncomp, column = component_vector, superpose = FALSE, 
             method = "$segm_cond.pca_method", scale = $segm_cond.pca_scale, layout = c(ncomp, 1))
 
-            print(image(pca, main="PCA image", lattice=lattice_input, strip = strip_input, col=colourvector))
-            print(plot(pca, main="PCA plot", lattice=lattice_input, col= colourvector, strip = strip_input))
+            ### images in pdf file
+            print(image(pca_result, main="PCA image", lattice=lattice_input, strip = strip_input, col=colourvector))
+            for (PCs in 1:$segm_cond.pca_ncomp){
+                print(image(pca_result, column = c(paste0("PC",PCs)), superpose = FALSE, col.regions = risk.colors(100)))}
+            ### plots in pdf file
+            print(plot(pca_result, main="PCA plot", lattice=lattice_input, col= colourvector, strip = strip_input))
+            for (PCs in 1:$segm_cond.pca_ncomp){
+            print(plot(pca_result, column = c(paste0("PC",PCs)), superpose = FALSE))}
 
-            pcaloadings = (pca@resultData\$ncomp\$loadings) ### loading for each m/z value
-            pcascores = (pca@resultData\$ncomp\$scores) ### scores for each pixel
+            
+            ### values in tabular files
+            pcaloadings = (pca_result@resultData\$ncomp\$loadings) ### loading for each m/z value
+            pcascores = (pca_result@resultData\$ncomp\$scores) ### scores for each pixel
 
             write.table(pcaloadings, file="$mzfeatures", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
             write.table(pcascores, file="$pixeloutput", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
 
             ## optional output as .RData
             #if $output_rdata:
-
             ## save as (.RData)
             save(pca, file="$segmentation_rdata")
 
@@ -241,12 +249,14 @@ if (npeaks > 0)
             ssc = spatialShrunkenCentroids(msidata, r=c($segm_cond.centroids_r), k=c($segm_cond.centroids_k), s=c($segm_cond.centroids_s), method="$segm_cond.centroids_method")
             print(image(ssc, key=TRUE, main="Spatial shrunken centroids", lattice=lattice_input, strip = strip_input, col= colourvector,layout=c(1,1)))
             print(plot(ssc, main="Spatial shrunken centroids plot", lattice=lattice_input, col= colourvector, strip = strip_input,layout=c($segm_cond.centroids_layout)))
+            print(plot(ssc, mode = "tstatistics",key = TRUE, lattice=lattice_input, layout = c($segm_cond.centroids_layout), main="t-statistics", col=colourvector))
+            print(plot(summary(ssc), main = "Number of segments",lattice=lattice_input))
 
             ssc_classes = data.frame(matrix(NA, nrow = pixelcount, ncol = 0))
             for (iteration in 1:length(ssc@resultData)){
             ssc_class = ((ssc@resultData)[[iteration]]\$classes)
             ssc_classes = cbind(ssc_classes, ssc_class) }
-            colnames(ssc_classes) = names((ssc@resultData)) 
+            colnames(ssc_classes) = names((ssc@resultData))
 
             ssc_toplabels =  topLabels(ssc, n=$segm_cond.centroids_toplabels)
 
@@ -273,9 +283,14 @@ if (npeaks > 0)
     ]]></configfile>
     </configfiles>
     <inputs>
-        <param name="infile" type="data" format="imzml, rdata, analyze75"
+        <param name="infile" type="data" format="imzml,rdata,analyze75"
                label="Inputfile as imzML, Analyze7.5 or Cardinal MSImageSet saved as RData"
                 help="Upload composite datatype imzml (ibd+imzML) or analyze75 (hdr+img+t2m) or regular upload .RData (Cardinal MSImageSet)"/>
+        <param name="accuracy" type="float" value="50" label="Only for processed imzML files: enter mass accuracy to which the m/z values will be binned" help="This should be set to the native accuracy of the mass spectrometer, if known"/>
+        <param name="units" display="radio" type="select" label="Only for processed imzML files: unit of the mass accuracy" help="either m/z or ppm">
+            <option value="mz" >mz</option>
+            <option value="ppm" selected="True" >ppm</option>
+        </param>
             <conditional name="segm_cond">
                 <param name="segmentationtool" type="select" label="Select the tool for spatial clustering">
                     <option value="pca" selected="True">pca</option>
@@ -322,8 +337,8 @@ if (npeaks > 0)
                            label="The sparsity thresholding parameter by which to shrink the t-statistics (s)"
                            help="As s increases, fewer m/z features (m/z values) will be used in the spatial segmentation, and only the informative m/z features will be retained. Multiple values are allowed (e.g. 1,2,3 or 2:5)"/>
                     <param name="centroids_method" type="select" display="radio" label = "The method to use to calculate the spatial smoothing kernels for the embedding. The 'gaussian' method refers to spatially-aware (SA) weights, and 'adaptive' refers to spatially-aware structurally-adaptive (SASA) weights">
-                        <option value="gaussian" selected="True">gaussian</option>
-                        <option value="adaptive">adaptive</option>
+                        <option value="gaussian">gaussian</option>
+                        <option value="adaptive" selected="True">adaptive</option>
                 </param>
                 <param name="centroids_toplabels" type="integer" value="500"
                        label="Number of toplabels (m/z) which should be written in tabular output"/>
@@ -406,7 +421,7 @@ if (npeaks > 0)
             <param name="infile" value="preprocessed.RData" ftype="rdata"/>
             <param name="segmentationtool" value="centroids"/>
             <param name="centroids_r" value="1,2"/>
-            <param name="centroids_k" value="5"/>
+            <param name="centroids_k" value="3"/>
             <param name="centroids_toplabels" value="50"/>
             <repeat name="colours">
                 <param name="feature_color" value="#0000FF"/>
@@ -444,7 +459,7 @@ Input data: 3 types of input data can be used:
 Options: 
 
 - PCA: principal component analysis
-- k-means: patially-aware k-means clustering
+- k-means: spatially-aware k-means clustering
 - spatial shrunken centroids: Allows the number of segments to decrease according to the data. This allows automatic selection of the number of clusters
 
 Output: 
