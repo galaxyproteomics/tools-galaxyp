@@ -4,7 +4,6 @@
 #output : KEGG pathway : jpeg or pdf file.
 
 suppressMessages(library("pathview"))
-#suppressMessages(library("argparse"))
 
 read_file <- function(path,header){
     file <- try(read.table(path,header=header, sep="\t",stringsAsFactors = FALSE, quote=""),silent=TRUE)
@@ -59,6 +58,7 @@ get_args <- function(){
       --expression_values3    Column containing expression values (third condition)
       --native_kegg           TRUE : native KEGG graph, FALSE : Graphviz graph
       --species               KEGG short name for species, ex : 'hsa' for human
+      --ref_pathways              File with all KEGG pathways of a species
 
       Example:
       ./PathView.R --input 'input.csv' --pathway_id '05412' --id_type 'uniprotID' --id_column 'c1' --header TRUE \n\n")
@@ -74,33 +74,6 @@ get_args <- function(){
   args <- as.list(as.character(argsDF$V2))
   names(args) <- argsDF$V1
   
-  return(args)
-}
-
-  
-argparse <- function() {
-  # create parser object
-  parser <- ArgumentParser()
-  
-  # specify our desired options 
-  # by default ArgumentParser will add an help option 
-  parser$add_argument("-i", "--input", type="character", help="path of the input  file (must contains a colum of uniprot and/or geneID accession number)")
-  parser$add_argument("-l", "--id_list", type="character", help="list of ids to use, ',' separated")
-  #parser$add_argument("-o", "--output", type="character", help="Output filename")
-  parser$add_argument("-p", "--pathways_id", type="character", help="Id(s) of pathway(s) to use, if several, semicolon separated list : 00010,05412")
-  parser$add_argument("-n", "--pathways_name", type="character", help = "Name(s) of the pathway(s) to use, if several, semicolon separated list : 'Glycolysis / Gluconeogenesis - Homo sapiens (human),Arrhythmogenic right ventricular cardiomyopathy (ARVC) - Homo sapiens (human)'")
-  parser$add_argument("-s", "--species", type="character", default='hsa', help= "KEGG short name for species, ex : 'hsa' for human")
-  parser$add_argument("-t", "--id_type", type="character", default='geneID', help="Type of accession number ('uniprotID' or 'geneID')")
-  parser$add_argument("-c", "--id_column", default="c1", type="character", help="Column containing accesion number of interest (ex : 'c1')")
-  parser$add_argument("-e1", "--expression_values1", type="character", help="Column containing expression values (first condition)")
-  parser$add_argument("-e2", "--expression_values2", type="character", help="Column containing expression values (second condition)")
-  parser$add_argument("-e3", "--expression_values3", type="character", help="Column containing expression values (third condition)")
-  parser$add_argument("--header", type="character", default="TRUE", help="Boolean, TRUE if header FALSE if not" )
-  parser$add_argument("--native_kegg", type="character", default="FALSE", help="TRUE : native KEGG graph, FALSE : Graphviz graph")
-  
-  # get command line options, if help option encountered print help and exit,
-  # otherwise if options not found on command line then set defaults, 
-  args <- parser$parse_args()
   return(args)
 }
 
@@ -125,13 +98,10 @@ remove_kegg_prefix <- function(x){
 }
 
 
-#args <- argparse()
-#print(args)
-
 args <- get_args()
 
 ###save and load args in rda file for testing
-#save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/pathview/args.Rda")
+save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/pathview/args.Rda")
 #load("/home/dchristiany/proteore_project/ProteoRE/tools/pathview/args.Rda")
 
 ###setting variables
@@ -193,7 +163,7 @@ if (is.null(args$pathways_id)){
   
   #### build data.frame of pathways
   #download.file(url = "http://rest.kegg.jp/list/pathway/hsa", destfile = "/home/dchristiany/proteore_project/ProteoRE/tools/pathview/hsa_pathways.csv")
-  hsa_pathways <- read_file(path = "/projet/galaxydev/galaxy/tools/proteore/ProteoRE/tools/pathview/hsa_pathways.csv",FALSE)
+  hsa_pathways <- read_file(path = args$ref_pathways,FALSE)
   pathways <- sapply(hsa_pathways$V1, function(x) gsub("path:","",x),USE.NAMES = FALSE)
   pathways <- cbind(sapply(pathways, function(x) substr(x,1,3), USE.NAMES = FALSE), sapply(pathways, function(x) substr(x,4,nchar(x)),USE.NAMES = FALSE))
   pathways <- cbind(pathways,sapply(hsa_pathways$V2, function(x) gsub(" - .*","",x), USE.NAMES = FALSE))  #remove the last part of the name (ex : ' - Homo sapiens (human)')
