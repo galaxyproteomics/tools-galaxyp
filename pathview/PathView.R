@@ -97,6 +97,11 @@ remove_kegg_prefix <- function(x){
   return(x)
 }
 
+clean_bad_character <- function(string)  {
+  string <- gsub("X","",string)
+  string <- gsub(" ","",string)
+  return(string)
+}
 
 args <- get_args()
 
@@ -105,9 +110,9 @@ args <- get_args()
 #load("/home/dchristiany/proteore_project/ProteoRE/tools/pathview/args.Rda")
 
 ###setting variables
-if (!is.null(args$pathways_id)) { ids <- sapply(rapply(strsplit(args$pathways_id,","),c), function(x) remove_kegg_prefix(x),USE.NAMES = FALSE)}
+if (!is.null(args$pathways_id)) { ids <- sapply(rapply(strsplit(cleand_bad_character(args$pathways_id),","),c), function(x) remove_kegg_prefix(x),USE.NAMES = FALSE)}
 if (!is.null(args$pathways_name)) {names <- as.vector(sapply(strsplit(args$pathways_name,","), function(x) concat_string(x),USE.NAMES = FALSE))}
-if (!is.null(args$id_list)) {id_list <- as.vector(strsplit(args$id_list,","))}
+if (!is.null(args$id_list)) {id_list <- as.vector(strsplit(clean_bad_character(args$id_list),","))}
 id_type <- tolower(args$id_type)
 ncol <- as.numeric(gsub("c", "" ,args$id_column))
 header <- str2bool(args$header)
