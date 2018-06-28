@@ -102,11 +102,9 @@ clusterProfiler = function() {
   # Extract OrgDb
   if (args$species=="human") {
     orgdb<-org.Hs.eg.db
-  }
-  else if (args$species=="mouse") {
+  } else if (args$species=="mouse") {
     orgdb<-org.Mm.eg.db
-  }
-  else if (args$species=="rat") {
+  } else if (args$species=="rat") {
     orgdb<-org.Rn.eg.db
   }
 
@@ -114,15 +112,13 @@ clusterProfiler = function() {
   input_type = args$input_type
   if (input_type == "text") {
     input = strsplit(args$input, "[ \t\n]+")[[1]]
-  }
-  else if (input_type == "file") {
+  } else if (input_type == "file") {
     filename = args$input
     ncol = args$ncol
     # Check ncol
     if (! as.numeric(gsub("c", "", ncol)) %% 1 == 0) {
       stop("Please enter the right format for column number: c[number]")
-    }
-    else {
+    } else {
       ncol = as.numeric(gsub("c", "", ncol))
     }
     header = args$header
@@ -144,8 +140,7 @@ clusterProfiler = function() {
     idTo<-"ENTREZID"
     gene<-bitr(input, fromType=idFrom, toType=idTo, OrgDb=orgdb)
     gene<-unique(gene$ENTREZID)
-  }
-  else if (id_type=="Entrez") {
+  } else if (id_type=="Entrez") {
     gene<-unique(input)
   }
 
@@ -164,25 +159,20 @@ clusterProfiler = function() {
       universe_type = args$universe_type
       if (universe_type == "text") {
         universe = strsplit(args$universe, "[ \t\n]+")[[1]]
-      }
-      else if (universe_type == "file") {
+      } else if (universe_type == "file") {
         universe_filename = args$universe
         universe_ncol = args$uncol
         # Check ncol
         if (! as.numeric(gsub("c", "", universe_ncol)) %% 1 == 0) {
           stop("Please enter the right format for column number: c[number]")
-        }
-        else {
+        } else {
           universe_ncol = as.numeric(gsub("c", "", universe_ncol))
         }
         universe_header = args$uheader
         # Get file content
         universe_file = readfile(universe_filename, universe_header)
         # Extract Protein IDs list
-        universe = c()
-        for (row in as.character(universe_file[,universe_ncol])) {
-          universe = c(universe, strsplit(row, ";")[[1]][1])
-        }
+        universe <- sapply(universe_file[,universe_ncol], function(x) rapply(strsplit(x,";"),c),USE.NAMES = FALSE)
       }
       universe_id_type = args$universe_id_type
       ##to initialize
@@ -191,12 +181,10 @@ clusterProfiler = function() {
         idTo<-"ENTREZID"
         universe_gene<-bitr(universe, fromType=idFrom, toType=idTo, OrgDb=orgdb)
         universe_gene<-unique(universe_gene$ENTREZID)
-      }
-      else if (universe_id_type=="Entrez") {
+      } else if (universe_id_type=="Entrez") {
         universe_gene<-unique(universe)
       }
-    }
-    else {
+    } else {
       universe_gene = NULL
     }
   }
