@@ -65,6 +65,9 @@ mapping = function() {
   args <- as.list(as.character(argsDF$V2))
   names(args) <- argsDF$V1
 
+  #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/id_converter/args.Rda")
+  load("/home/dchristiany/proteore_project/ProteoRE/tools/id_converter/args.Rda")
+  
   input_id_type = args$id_type # Uniprot, ENSG....
   list_id_input_type = args$input_type # list or file
   options = strsplit(args$target_ids, ",")[[1]]
@@ -74,7 +77,8 @@ mapping = function() {
   # Extract input IDs
   if (list_id_input_type == "list") {
     print(args$input)
-    list_id = strsplit(args$input, "[ \t\n]+")[[1]]
+    list_id = trimws(strsplit(args$input, ",")[[1]])
+    list_id = list_id[list_id != ""]    #remove empty entry
     # Remove isoform accession number (e.g. "-2")
     list_id = gsub("-.+", "", list_id)
   }
