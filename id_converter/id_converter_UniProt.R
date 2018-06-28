@@ -64,9 +64,6 @@ mapping = function() {
   argsDF <- as.data.frame(do.call("rbind", parseArgs(args)))
   args <- as.list(as.character(argsDF$V2))
   names(args) <- argsDF$V1
-
-  #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/id_converter/args.Rda")
-  load("/home/dchristiany/proteore_project/ProteoRE/tools/id_converter/args.Rda")
   
   input_id_type = args$id_type # Uniprot, ENSG....
   list_id_input_type = args$input_type # list or file
