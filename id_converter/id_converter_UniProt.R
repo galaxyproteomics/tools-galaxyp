@@ -78,14 +78,12 @@ mapping = function() {
     list_id = list_id[list_id != ""]    #remove empty entry
     # Remove isoform accession number (e.g. "-2")
     list_id = gsub("-.+", "", list_id)
-  }
-  else if (list_id_input_type == "file") {
+  } else if (list_id_input_type == "file") {
     filename = args$input
     column_number = as.numeric(gsub("c", "" ,args$column_number))
     header = args$header
     file_all = readfile(filename, header)
-    list_id = c()
-    list_id = sapply(strsplit(file_all[,column_number], ";"), "[", 1)
+    list_id = trimws(gsub("[$,\xc2\xa0]","",sapply(strsplit(file_all[,column_number], ";"), "[", 1)))
     # Remove isoform accession number (e.g. "-2")
     list_id = gsub("-.+", "", list_id)
   }
