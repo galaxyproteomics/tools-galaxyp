@@ -64,8 +64,8 @@ enrich.GO <- function(geneid, universe, orgdb, ontology, pval_cutoff, qval_cutof
 }
 
 check_ids <- function(vector,type) {
-  uniprot_pattern = "^[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9]([A-Z][A-Z0-9]{2}[0-9]){1,2}$"
-  entrez_id = "^[0-9]+|[A-Z]{1,2}_[0-9]+|[A-Z]{1,2}_[A-Z]{1,4}[0-9]+$"
+  uniprot_pattern = "^([OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9]([A-Z][A-Z0-9]{2}[0-9]){1,2})$"
+  entrez_id = "^'[0-9]+|[A-Z]{1,2}_[0-9]+|[A-Z]{1,2}_[A-Z]{1,4}[0-9]+)$"
   if (type == "entrez")
     return(grepl(entrez_id,vector))
   else if (type == "uniprot") {
