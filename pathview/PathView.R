@@ -57,8 +57,7 @@ get_args <- function(){
       --expression_values2    Column containing expression values (second condition)
       --expression_values3    Column containing expression values (third condition)
       --native_kegg           TRUE : native KEGG graph, FALSE : Graphviz graph
-      --species               KEGG short name for species, ex : 'hsa' for human
-      --ref_pathways              File with all KEGG pathways of a species
+      --ref_pathways          File with all KEGG pathways of a species
 
       Example:
       ./PathView.R --input 'input.csv' --pathway_id '05412' --id_type 'uniprotID' --id_column 'c1' --header TRUE \n\n")
@@ -103,6 +102,11 @@ clean_bad_character <- function(string)  {
   return(string)
 }
 
+#get KEGG species tag from file name (ref_file)
+get_species <- function(string) {
+  return (substring(tail(rapply(strsplit(string,"/"),c),1),1,3))
+}
+
 args <- get_args()
 
 ###save and load args in rda file for testing
@@ -118,6 +122,7 @@ ncol <- as.numeric(gsub("c", "" ,args$id_column))
 header <- str2bool(args$header)
 #output <- args$output
 native_kegg <- str2bool(args$native_kegg)
+species=get_species(args$ref_pathways)
 
 
 #read input file or list
@@ -215,7 +220,7 @@ for (id in ids) {
            #cpd.idtype = "uniprot",
            pathway.id = id,
            #pathway.name = "",
-           species = args$species, 
+           species = species, 
            kegg.dir = ".", 
            gene.idtype = "entrez", 
            #gene.annotpkg = NULL, 
