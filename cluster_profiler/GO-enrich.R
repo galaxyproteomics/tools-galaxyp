@@ -1,8 +1,8 @@
-library(clusterProfiler)
+suppressMessages(library(clusterProfiler))
 
 #library(org.Sc.sgd.db)
-library(org.Hs.eg.db)
-library(org.Mm.eg.db)
+suppressMessages(library(org.Hs.eg.db))
+suppressMessages(library(org.Mm.eg.db))
 
 # Read file and return file content as data.frame
 readfile = function(filename, header) {
@@ -63,6 +63,16 @@ enrich.GO <- function(geneid, universe, orgdb, ontology, pval_cutoff, qval_cutof
   return(ego)
 }
 
+check_ids <- function(vector,type) {
+  uniprot_pattern = "^[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9]([A-Z][A-Z0-9]{2}[0-9]){1,2}$"
+  entrez_id = "^[0-9]+|[A-Z]{1,2}_[0-9]+|[A-Z]{1,2}_[A-Z]{1,4}[0-9]+$"
+  if (type == "entrez")
+    return(grepl(entrez_id,vector))
+  else if (type == "uniprot") {
+    return(grepl(uniprot_pattern,vector))
+  }
+}
+
 clusterProfiler = function() {
   args <- commandArgs(TRUE)
   if(length(args)<1) {
@@ -98,7 +108,7 @@ clusterProfiler = function() {
   args <- as.list(as.character(argsDF$V2))
   names(args) <- argsDF$V1
   #print(args)
-
+  
   # Extract OrgDb
   if (args$species=="human") {
     orgdb<-org.Hs.eg.db
@@ -125,23 +135,24 @@ clusterProfiler = function() {
     # Get file content
     file = readfile(filename, header)
     # Extract Protein IDs list
-    input = c()
-    for (row in as.character(file[,ncol])) {
-      input = c(input, strsplit(row, ";")[[1]][1])
-    }
+    input =  sapply(as.character(file[,ncol]),function(x) rapply(strsplit(x,";"),c),USE.NAMES = FALSE)
   }
   id_type = args$id_type
   ## Get input gene list from input IDs
   #ID format Conversion 
   #This case : from UNIPROT (protein id) to ENTREZ (gene id)
   #bitr = conversion function from clusterProfiler
-  if (id_type=="Uniprot") {
+  if (id_type=="Uniprot" & any(check_ids(input,"uniprot"))) {
+    any(check_ids(input,"uniprot"))
     idFrom<-"UNIPROT"
     idTo<-"ENTREZID"
     gene<-bitr(input, fromType=idFrom, toType=idTo, OrgDb=orgdb)
     gene<-unique(gene$ENTREZID)
-  } else if (id_type=="Entrez") {
+  } else if (id_type=="Entrez" & any(check_ids(input,"entrez"))) {
     gene<-unique(input)
+  } else {
+    print(paste(id_type,"not found in your ids list, please check your IDs in input or the selected column of your input file"))
+    stop()
   }
 
   ontology <- strsplit(args$onto_opt, ",")[[1]]
@@ -176,14 +187,21 @@ clusterProfiler = function() {
       }
       universe_id_type = args$universe_id_type
       ##to initialize
-      if (universe_id_type=="Uniprot") {
+      if (universe_id_type=="Uniprot" & any(check_ids(universe,"uniprot"))) {
         idFrom<-"UNIPROT"
         idTo<-"ENTREZID"
         universe_gene<-bitr(universe, fromType=idFrom, toType=idTo, OrgDb=orgdb)
         universe_gene<-unique(universe_gene$ENTREZID)
-      } else if (universe_id_type=="Entrez") {
+      } else if (universe_id_type=="Entrez" & any(check_ids(universe,"entrez"))) {
         universe_gene<-unique(universe)
-      }
+      } else {
+        if (universe_type=="text"){
+          print(paste(universe_id_type,"not found in your background IDs list",sep=" "))
+        } else {
+          print(paste(universe_id_type,"not found in the column",universe_ncol,"of your background IDs file",sep=" "))
+        }
+        universe_gene = NULL
+      } 
     } else {
       universe_gene = NULL
     }
@@ -195,7 +213,7 @@ clusterProfiler = function() {
       ggo<-repartition.GO(gene, orgdb, onto, level, readable=TRUE)
       write.table(ggo, args$text_output, append = TRUE, sep="\t", row.names = FALSE, quote=FALSE)
     }
-    if (args$go_enrich == "true") {
+    if (args$go_enrich == "true" & !is.null(universe_gene)) {
       ego<-enrich.GO(gene, universe_gene, orgdb, onto, pval_cutoff, qval_cutoff)
       write.table(ego, args$text_output, append = TRUE, sep="\t", row.names = FALSE, quote=FALSE)
     }
