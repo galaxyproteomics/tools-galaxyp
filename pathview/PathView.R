@@ -47,8 +47,6 @@ get_args <- function(){
       --input                 path of the input  file (must contains a colum of uniprot and/or geneID accession number)
       --id_list               list of ids to use, ',' separated
       --pathways_id            Id(s) of pathway(s) to use, if several, semicolon separated list : hsa00010;hsa05412 
-      --pathways_name          Name(s) of the pathway(s) to use, if several, semicolon separated list :  
-                                'Glycolysis / Gluconeogenesis - Homo sapiens (human);Arrhythmogenic right ventricular cardiomyopathy (ARVC) - Homo sapiens (human)'
       --id_type               Type of accession number ('uniprotID' or 'geneID')
       --id_column             Column containing accesion number of interest (ex : 'c1')
       --header                Boolean, TRUE if header FALSE if not
@@ -57,7 +55,7 @@ get_args <- function(){
       --expression_values2    Column containing expression values (second condition)
       --expression_values3    Column containing expression values (third condition)
       --native_kegg           TRUE : native KEGG graph, FALSE : Graphviz graph
-      --ref_pathways          File with all KEGG pathways of a species
+      --species               KEGG species (hsa, mmu, ...)
 
       Example:
       ./PathView.R --input 'input.csv' --pathway_id '05412' --id_type 'uniprotID' --id_column 'c1' --header TRUE \n\n")
@@ -102,11 +100,6 @@ clean_bad_character <- function(string)  {
   return(string)
 }
 
-#get KEGG species tag from file name (ref_file)
-get_species <- function(string) {
-  return (substring(tail(rapply(strsplit(string,"/"),c),1),1,3))
-}
-
 args <- get_args()
 
 ###save and load args in rda file for testing
@@ -115,14 +108,14 @@ args <- get_args()
 
 ###setting variables
 if (!is.null(args$pathways_id)) { ids <- sapply(rapply(strsplit(clean_bad_character(args$pathways_id),","),c), function(x) remove_kegg_prefix(x),USE.NAMES = FALSE)}
-if (!is.null(args$pathways_name)) {names <- as.vector(sapply(strsplit(args$pathways_name,","), function(x) concat_string(x),USE.NAMES = FALSE))}
+#if (!is.null(args$pathways_name)) {names <- as.vector(sapply(strsplit(args$pathways_name,","), function(x) concat_string(x),USE.NAMES = FALSE))}
 if (!is.null(args$id_list)) {id_list <- as.vector(strsplit(clean_bad_character(args$id_list),","))}
 id_type <- tolower(args$id_type)
 ncol <- as.numeric(gsub("c", "" ,args$id_column))
 header <- str2bool(args$header)
 #output <- args$output
 native_kegg <- str2bool(args$native_kegg)
-species=get_species(args$ref_pathways)
+species=args$species
 
 
 #read input file or list
@@ -165,25 +158,6 @@ geneID = unlist(strsplit(geneID,"[;]"))
 #download.file(url = "http://rest.kegg.jp/link/pathway/hsa", destfile = "/home/dchristiany/proteore_project/ProteoRE/tools/pathview/geneID_to_hsa_pathways.csv") 
 #geneid_hsa_pathways <- read_file(path = "/home/dchristiany/proteore_project/ProteoRE/tools/pathview/geneID_to_hsa_pathways.csv",FALSE)
 #names(geneid_hsa_pathways) <- c("geneID","pathway")
-
-
-##### retrieve pathway id
-
-if (is.null(args$pathways_id)){
-  
-  #### build data.frame of pathways
-  #download.file(url = "http://rest.kegg.jp/list/pathway/hsa", destfile = "/home/dchristiany/proteore_project/ProteoRE/tools/pathview/hsa_pathways.csv")
-  hsa_pathways <- read_file(path = args$ref_pathways,FALSE)
-  pathways <- sapply(hsa_pathways$V1, function(x) gsub("path:","",x),USE.NAMES = FALSE)
-  pathways <- cbind(sapply(pathways, function(x) substr(x,1,3), USE.NAMES = FALSE), sapply(pathways, function(x) substr(x,4,nchar(x)),USE.NAMES = FALSE))
-  pathways <- cbind(pathways,sapply(hsa_pathways$V2, function(x) gsub(" - .*","",x), USE.NAMES = FALSE))  #remove the last part of the name (ex : ' - Homo sapiens (human)')
-  pathways <- cbind(pathways,sapply(pathways[,3], function(x) concat_string(x), USE.NAMES = FALSE))
-  pathways <- data.frame(pathways,stringsAsFactors = FALSE)
-  names(pathways) <- c("species","id","name","concat_name")
-
-  ids <- pathways$id[match(names,pathways$concat_name)]
-}
-
 
 ##### build matrix to map on KEGG pathway (kgml : KEGG xml)
 if (!is.null(args$expression_values1)&is.null(args$expression_values2)&is.null(args$expression_values3)){
