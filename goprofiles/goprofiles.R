@@ -1,7 +1,7 @@
 # Load necessary libraries
-library(org.Mm.eg.db)
-library(org.Hs.eg.db)
-library(goProfiles)
+library(org.Mm.eg.db,quietly = TRUE)
+library(org.Hs.eg.db,quietly = TRUE)
+library(goProfiles,quietly = TRUE)
 
 # Read file and return file content as data.frame
 readfile = function(filename, header) {
@@ -23,32 +23,37 @@ readfile = function(filename, header) {
   return(file)
 }
 
-getprofile = function(ids, id_type, level, duplicate) {
+getprofile = function(ids, id_type, level, duplicate,species) {
   ####################################################################
   # Arguments
   #   - ids: list of input IDs
   #   - id_type: type of input IDs (UniProt/ENTREZID)
   #   - level
   #   - duplicate: if the duplicated IDs should be removed or not (TRUE/FALSE)
+  #   - species
   ####################################################################
+  
+  if (species=="org.Hs.eg.db"){
+    package=org.Hs.eg.db
+  } else if (species=="org.Mm.eg.db"){
+    package=org.Mm.eg.db
+  }
   
   # Check if level is number
   if (! as.numeric(level) %% 1 == 0) {
     stop("Please enter an integer for level")
-  }
-  else {
+  } else {
     level = as.numeric(level)
   }
   #genes = as.vector(file[,ncol])
   
   # Extract Gene Entrez ID
   if (id_type == "Entrez") {
-    id = select(org.Hs.eg.db, ids, "ENTREZID", multiVals = "first")
+    id = select(package, ids, "ENTREZID", multiVals = "first")
     genes_ids = id$ENTREZID[which( ! is.na(id$ENTREZID))]
-  }
-  else {
+  } else {
     genes_ids = c()
-    id = select(org.Hs.eg.db, ids, "ENTREZID", "UNIPROT", multiVals = "first")
+    id = select(package, ids, "ENTREZID", "UNIPROT", multiVals = "first")
     if (duplicate == "TRUE") {
       id = unique(id)
     }
@@ -61,10 +66,10 @@ getprofile = function(ids, id_type, level, duplicate) {
   }
   
   # Create basic profiles
-  profile.CC = basicProfile(genes_ids, onto='CC', level=level, orgPackage="org.Hs.eg.db", empty.cats=F, ord=T, na.rm=T)
-  profile.BP = basicProfile(genes_ids, onto='BP', level=level, orgPackage="org.Hs.eg.db", empty.cats=F, ord=T, na.rm=T)
-  profile.MF = basicProfile(genes_ids, onto='MF', level=level, orgPackage="org.Hs.eg.db", empty.cats=F, ord=T, na.rm=T)
-  profile.ALL = basicProfile(genes_ids, onto='ANY', level=level, orgPackage="org.Hs.eg.db", empty.cats=F, ord=T, na.rm=T)
+  profile.CC = basicProfile(genes_ids, onto='CC', level=level, orgPackage=species, empty.cats=F, ord=T, na.rm=T)
+  profile.BP = basicProfile(genes_ids, onto='BP', level=level, orgPackage=species, empty.cats=F, ord=T, na.rm=T)
+  profile.MF = basicProfile(genes_ids, onto='MF', level=level, orgPackage=species, empty.cats=F, ord=T, na.rm=T)
+  profile.ALL = basicProfile(genes_ids, onto='ANY', level=level, orgPackage=species, empty.cats=F, ord=T, na.rm=T)
   
   # Print profile
   # printProfiles(profile)
@@ -166,7 +171,8 @@ goprofiles = function() {
         --per
         --title: title of the plot
         --duplicate: remove dupliate input IDs (true/false)
-        --text_output: text output filename \n")
+        --text_output: text output filename \n
+        --species")
     q(save="no")
   }
   
@@ -176,18 +182,19 @@ goprofiles = function() {
   args <- as.list(as.character(argsDF$V2))
   names(args) <- argsDF$V1
 
+  #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/goprofiles/args.Rda")
+  #load("/home/dchristiany/proteore_project/ProteoRE/tools/goprofiles/args.Rda")
+  
   input_type = args$input_type
   if (input_type == "text") {
     input = strsplit(args$input, "[ \t\n]+")[[1]]
-  }
-  else if (input_type == "file") {
+  } else if (input_type == "file") {
     filename = args$input
     ncol = args$ncol
     # Check ncol
     if (! as.numeric(gsub("c", "", ncol)) %% 1 == 0) {
       stop("Please enter an integer for level")
-    }
-    else {
+    } else {
       ncol = as.numeric(gsub("c", "", ncol))
     }
     header = args$header
@@ -209,8 +216,9 @@ goprofiles = function() {
   title = args$title
   duplicate = args$duplicate
   text_output = args$text_output
+  species=args$species
 
-  profiles = getprofile(input, id_type, level, duplicate)
+  profiles = getprofile(input, id_type, level, duplicate,species)
   profile.CC = profiles[1]
   #print(profile.CC)
   profile.MF = profiles[2]
