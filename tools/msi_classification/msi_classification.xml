@@ -1,0 +1,1079 @@
+<tool id="mass_spectrometry_imaging_classification" name="MSI classification" version="1.10.0.0">
+    <description>spatial classification of mass spectrometry imaging data</description>
+    <requirements>
+        <requirement type="package" version="1.10.0">bioconductor-cardinal</requirement>
+        <requirement type="package" version="2.2.1">r-gridextra</requirement>
+        <requirement type="package" version="0.20-35">r-lattice</requirement>
+        <requirement type="package" version="2.2.1">r-ggplot2</requirement>
+    </requirements>
+    <command detect_errors="exit_code">
+    <![CDATA[
+
+        #if $infile.ext == 'imzml'
+            ln -s '${infile.extra_files_path}/imzml' infile.imzML &&
+            ln -s '${infile.extra_files_path}/ibd' infile.ibd &&
+        #elif $infile.ext == 'analyze75'
+            ln -s '${infile.extra_files_path}/hdr' infile.hdr &&
+            ln -s '${infile.extra_files_path}/img' infile.img &&
+            ln -s '${infile.extra_files_path}/t2m' infile.t2m &&
+        #else
+            ln -s $infile infile.RData &&
+        #end if
+        cat '${MSI_segmentation}' &&
+        echo ${MSI_segmentation} &&
+        Rscript '${MSI_segmentation}'
+
+    ]]>
+    </command>
+    <configfiles>
+        <configfile name="MSI_segmentation"><![CDATA[
+
+
+################################# load libraries and read file #########################
+
+library(Cardinal)
+library(gridExtra)
+library(lattice)
+library(ggplot2)
+
+
+#if $infile.ext == 'imzml'
+    #if str($processed_cond.processed_file) == "processed":
+        msidata <- readImzML('infile', mass.accuracy=$processed_cond.accuracy, units.accuracy = "$processed_cond.units")
+    #else
+        msidata <- readImzML('infile')
+    #end if
+#elif $infile.ext == 'analyze75'
+    msidata = readAnalyze('infile')
+#else
+    load('infile.RData')
+#end if
+
+## function to later read RData reference files in
+
+loadRData <- function(fileName){
+#loads an RData file, and returns it
+load(fileName)
+get(ls()[ls() != "fileName"])
+}
+
+## create full matrix to make processed imzML files compatible with classification
+iData(msidata) <- iData(msidata)[] 
+
+###################################### file properties in numbers ##############
+
+## Number of features (mz)
+maxfeatures = length(features(msidata))
+## Range mz
+minmz = round(min(mz(msidata)), digits=2)
+maxmz = round(max(mz(msidata)), digits=2)
+## Number of spectra (pixels)
+pixelcount = length(pixels(msidata))
+## Range x coordinates
+minimumx = min(coord(msidata)[,1])
+maximumx = max(coord(msidata)[,1])
+## Range y coordinates
+minimumy = min(coord(msidata)[,2])
+maximumy = max(coord(msidata)[,2])
+## Range of intensities
+minint = round(min(spectra(msidata)[]), digits=2)
+maxint = round(max(spectra(msidata)[]), digits=2)
+medint = round(median(spectra(msidata)[]), digits=2)
+## Number of intensities > 0
+npeaks= sum(spectra(msidata)[]>0)
+## Spectra multiplied with mz (potential number of peaks)
+numpeaks = ncol(spectra(msidata)[])*nrow(spectra(msidata)[])
+## Percentage of intensities > 0
+percpeaks = round(npeaks/numpeaks*100, digits=2)
+## Number of empty TICs
+TICs = colSums(spectra(msidata)[]) 
+NumemptyTIC = sum(TICs == 0)
+
+
+## Processing informations
+processinginfo = processingData(msidata)
+centroidedinfo = processinginfo@centroided # TRUE or FALSE
+
+## if TRUE write processinginfo if no write FALSE
+
+## normalization
+if (length(processinginfo@normalization) == 0) {
+  normalizationinfo='FALSE'
+} else {
+  normalizationinfo=processinginfo@normalization
+}
+## smoothing
+if (length(processinginfo@smoothing) == 0) {
+  smoothinginfo='FALSE'
+} else {
+  smoothinginfo=processinginfo@smoothing
+}
+## baseline
+if (length(processinginfo@baselineReduction) == 0) {
+  baselinereductioninfo='FALSE'
+} else {
+  baselinereductioninfo=processinginfo@baselineReduction
+}
+## peak picking
+if (length(processinginfo@peakPicking) == 0) {
+  peakpickinginfo='FALSE'
+} else {
+  peakpickinginfo=processinginfo@peakPicking
+}
+
+#############################################################################
+
+properties = c("Number of mz features",
+               "Range of mz values",
+               "Number of pixels", 
+               "Range of x coordinates", 
+               "Range of y coordinates",
+               "Range of intensities", 
+               "Median of intensities",
+               "Intensities > 0",
+               "Number of empty spectra",
+               "Preprocessing", 
+               "Normalization", 
+               "Smoothing",
+               "Baseline reduction",
+               "Peak picking",
+               "Centroided")
+
+values = c(paste0(maxfeatures), 
+           paste0(minmz, " - ", maxmz), 
+           paste0(pixelcount), 
+           paste0(minimumx, " - ", maximumx),  
+           paste0(minimumy, " - ", maximumy), 
+           paste0(minint, " - ", maxint), 
+           paste0(medint),
+           paste0(percpeaks, " %"), 
+           paste0(NumemptyTIC), 
+           paste0(" "),
+           paste0(normalizationinfo),
+           paste0(smoothinginfo),
+           paste0(baselinereductioninfo),
+           paste0(peakpickinginfo),
+           paste0(centroidedinfo))
+
+property_df = data.frame(properties, values)
+
+
+######################################## PDF ###################################
+################################################################################
+################################################################################
+
+Title = "Prediction"
+
+#if str( $type_cond.type_method) == "training":
+    #if str( $type_cond.method_cond.class_method) == "PLS":
+        Title = "PLS"
+    #elif str( $type_cond.method_cond.class_method) == "OPLS":
+        Title = "OPLS"
+    #elif str( $type_cond.method_cond.class_method) == "spatialShrunkenCentroids":
+        Title = "SSC"
+    #end if
+#end if
+
+pdf("classificationpdf.pdf", fonts = "Times", pointsize = 12)
+plot(0,type='n',axes=FALSE,ann=FALSE)
+
+
+title(main=paste0(Title," for file: \n\n", "$infile.display_name"))
+
+
+
+##################### I) numbers and control plots #############################
+###############################################################################
+
+## table with values
+grid.table(property_df, rows= NULL)
+
+if (npeaks > 0){
+
+opar <- par()
+ 
+    ######################## II) Training #############################
+    #############################################################################
+    #if str( $type_cond.type_method) == "training":
+        print("training")
+
+
+        ## load y response (will be needed in every training scenario)
+
+        #if str($type_cond.y_cond.y_vector) == "y_internal":
+            y_vector = msidata\$$type_cond.y_cond.y_name
+        #elif str($type_cond.y_cond.y_vector) == "y_external":
+            y_tabular = read.delim("$type_cond.y_cond.y_data", header = FALSE, stringsAsFactors = FALSE)
+            y_vector = as.factor(y_tabular[,$type_cond.y_cond.y_column])
+            number_pixels = length(y_vector) ## should be same as in data
+        #end if
+
+    ## plot of y vector
+
+    position_df = cbind(coord(msidata)[,1:2], y_vector)
+    y_plot = ggplot(position_df, aes(x=x, y=y, fill=y_vector))+
+           geom_tile() +
+           coord_fixed()+
+           ggtitle("Distribution of the response variable y")+
+           theme_bw()+
+           theme(text=element_text(family="ArialMT", face="bold", size=15))+
+           theme(legend.position="bottom",legend.direction="vertical")+
+           guides(fill=guide_legend(ncol=4,byrow=TRUE))
+    coord_labels = aggregate(cbind(x,y)~y_vector, data=position_df, mean, na.rm=TRUE, na.action="na.pass")
+    coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$y_vector)
+    print(y_plot)
+
+
+        ######################## PLS #############################
+        #if str( $type_cond.method_cond.class_method) == "PLS":
+            print("PLS")
+
+            ######################## PLS - CV #############################
+            #if str( $type_cond.method_cond.analysis_cond.PLS_method) == "cvapply":
+                print("PLS cv")
+
+                ## folds
+                #if str($type_cond.method_cond.analysis_cond.fold_cond.fold_vector) == "fold_internal":
+
+                    fold_vector = msidata\$$type_cond.method_cond.analysis_cond.fold_cond.fold_name
+                #elif str($type_cond.method_cond.analysis_cond.fold_cond.fold_vector) == "fold_external":
+                    fold_tabular = read.delim("$type_cond.method_cond.analysis_cond.fold_cond.fold_data", header = FALSE, stringsAsFactors = FALSE)
+                    fold_vector = as.factor(fold_tabular[,$type_cond.method_cond.analysis_cond.fold_cond.fold_column])
+                    number_pixels = length(fold_vector) ## should be same as in data
+                #end if
+
+                ## plot of folds
+
+                    position_df = cbind(coord(msidata)[,1:2], fold_vector)
+                    fold_plot = ggplot(position_df, aes(x=x, y=y, fill=fold_vector))+
+                           geom_tile() +
+                           coord_fixed()+
+                           ggtitle("Distribution of the fold variable")+
+                           theme_bw()+
+                           theme(text=element_text(family="ArialMT", face="bold", size=15))+
+                           theme(legend.position="bottom",legend.direction="vertical")+
+                           guides(fill=guide_legend(ncol=4,byrow=TRUE))
+                    coord_labels = aggregate(cbind(x,y)~fold_vector, data=position_df, mean, na.rm=TRUE, na.action="na.pass")
+                    coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$fold_vector)
+                    print(fold_plot)
+
+                ## number of components
+                components = c($type_cond.method_cond.analysis_cond.plscv_comp)
+
+                ## PLS-cvApply:
+                msidata.cv.pls <- cvApply(msidata, .y = y_vector, .fold = fold_vector, .fun = "PLS", ncomp = components)
+
+                ## create table with summary
+                count = 1
+                summary_plscv = list()
+                accuracy_vector = numeric()
+                for (iteration in components){
+
+                    summary_iteration = summary(msidata.cv.pls)\$accuracy[[paste0("ncomp = ", iteration)]]
+                    summary_iteration = cbind(rownames(summary_iteration), summary_iteration) ## include rownames in table
+                    accuracy_vector[count] = summary_iteration[1,2] ## vector with accuracies to find later maximum for plot
+                    empty_row = c(paste0("ncomp = ", iteration), rep( "", length(levels(y_vector)))) ## add line with ncomp for each iteration
+                    ##rownames(labeled_iteration)[1] = paste0("ncomp = ", iteration)
+                    ##labeled_iteration = cbind(rownames(labeled_iteration), labeled_iteration)
+                    labeled_iteration = rbind(empty_row, summary_iteration)
+
+                    summary_plscv[[count]] = labeled_iteration
+                    count = count+1} ## create list with summary table for each component
+                ## create dataframe from list
+                summary_plscv = do.call(rbind, summary_plscv) 
+                summary_df = as.data.frame(summary_plscv)
+                rownames(summary_df) = NULL
+
+                ## plots
+                ## plot to find ncomp with highest accuracy
+                plot(summary(msidata.cv.pls), main="Accuracy of PLS classification")
+                ncomp_max = components[which.max(accuracy_vector)] ## find ncomp with max. accuracy
+                ## one image for each sample/fold, 4 images per page
+                image(msidata.cv.pls, model = list(ncomp = ncomp_max), layout = c(2, 2))
+
+                par(opar)   
+                ## print table with summary in pdf
+                plot(0,type='n',axes=FALSE,ann=FALSE)
+                title(main="Summary for the different components\n", adj=0.5)
+                ## summary for 4 components (20 rows) fits in one page:
+                if (length(components)<5){
+                    grid.table(summary_df, rows= NULL)
+                }else{
+                    grid.table(summary_df[1:20,], rows= NULL)
+                    mincount = 21
+                    maxcount = 40
+                    for (count20 in 1:(ceiling(nrow(summary_df)/20)-1)){
+                        plot(0,type='n',axes=FALSE,ann=FALSE)
+                        if (maxcount <= nrow(summary_df)){
+                            grid.table(summary_df[mincount:maxcount,], rows= NULL)
+                            mincount = mincount+20
+                            maxcount = maxcount+20
+                        }else{### stop last page with last sample otherwise NA in table
+                            grid.table(summary_df[mincount:nrow(summary_df),], rows= NULL)} 
+                    }
+                }
+
+                ## optional output as .RData
+                #if $output_rdata:
+                save(msidata.cv.pls, file="$classification_rdata")
+                #end if
+            ######################## PLS - analysis ###########################
+            #elif str( $type_cond.method_cond.analysis_cond.PLS_method) == "PLS_analysis":
+                print("PLS analysis")
+
+                ## number of components
+                component = c($type_cond.method_cond.analysis_cond.pls_comp)
+
+                ### pls analysis
+                msidata.pls <- PLS(msidata, y = y_vector, ncomp = component, scale=$type_cond.method_cond.analysis_cond.pls_scale)
+
+                ### plot of PLS coefficients
+                plot(msidata.pls, main="PLS coefficients per m/z")
+
+                ### summary table of PLS
+                summary_table = summary(msidata.pls)\$accuracy[[paste0("ncomp = ",component)]]
+                summary_table = cbind(rownames(summary_table), data.frame(summary_table))
+                rownames(summary_table) = NULL
+print(summary_table)
+                ###plot(0,type='n',axes=FALSE,ann=FALSE)
+                ###grid.table(test, rows= TRUE)
+
+                ### image of the best m/z
+                print(image(msidata, mz = topLabels(msidata.pls)[1,1], normalize.image = "linear", contrast.enhance = "histogram",smooth.image="gaussian", main="best m/z heatmap"))
+
+                ## m/z and pixel information output
+                pls_classes = data.frame(msidata.pls\$classes[[1]])
+                rownames(pls_classes) = names(pixels(msidata))
+                colnames(pls_classes) = "predicted diagnosis"
+                pls_toplabels = topLabels(msidata.pls, n=$type_cond.method_cond.analysis_cond.pls_toplabels)
+
+                write.table(pls_toplabels, file="$mzfeatures", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+                write.table(pls_classes, file="$pixeloutput", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+
+                ## optional output as .RData
+                #if $output_rdata:
+                save(msidata.pls, file="$classification_rdata")
+                #end if
+
+            #end if
+
+
+        ######################## OPLS #############################
+        #elif str( $type_cond.method_cond.class_method) == "OPLS":
+            print("OPLS")
+
+            ######################## OPLS -CV #############################
+            #if str( $type_cond.method_cond.opls_analysis_cond.opls_method) == "opls_cvapply":
+                print("OPLS cv")
+
+                ## folds
+                #if str($type_cond.method_cond.opls_analysis_cond.opls_fold_cond.opls_fold_vector) == "opls_fold_internal":
+                    fold_vector = msidata\$$type_cond.method_cond.opls_analysis_cond.opls_fold_cond.opls_fold_name
+                #elif str($type_cond.method_cond.opls_analysis_cond.opls_fold_cond.opls_fold_vector) == "opls_fold_external":
+                    fold_tabular = read.delim("$type_cond.method_cond.opls_analysis_cond.opls_fold_cond.opls_fold_data", header = FALSE, stringsAsFactors = FALSE)
+                    fold_vector = as.factor(fold_tabular[,$type_cond.method_cond.opls_analysis_cond.opls_fold_cond.opls_fold_column])
+                    number_pixels = length(fold_vector) ## should be same as in data
+                #end if
+
+                ## plot of folds
+
+                position_df = cbind(coord(msidata)[,1:2], fold_vector)
+                fold_plot = ggplot(position_df, aes(x=x, y=y, fill=fold_vector))+
+                       geom_tile() +
+                       coord_fixed()+
+                       ggtitle("Distribution of the fold variable")+
+                       theme_bw()+
+                       theme(text=element_text(family="ArialMT", face="bold", size=15))+
+                       theme(legend.position="bottom",legend.direction="vertical")+
+                       guides(fill=guide_legend(ncol=4,byrow=TRUE))
+                coord_labels = aggregate(cbind(x,y)~fold_vector, data=position_df, mean, na.rm=TRUE, na.action="na.pass")
+                coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$fold_vector)
+                print(fold_plot)
+
+                ## number of components
+                components = c($type_cond.method_cond.opls_analysis_cond.opls_cvcomp)
+
+                ## OPLS-cvApply:
+                msidata.cv.opls <- cvApply(msidata, .y = y_vector, .fold = fold_vector, .fun = "OPLS", ncomp = components, keep.Xnew = $type_cond.method_cond.opls_analysis_cond.xnew_cv)
+
+                ## create table with summary
+                count = 1
+                summary_oplscv = list()
+                accuracy_vector = numeric()
+                for (iteration in components){
+                    summary_iteration = summary(msidata.cv.opls)\$accuracy[[paste0("ncomp = ", iteration)]]
+                    summary_iteration = cbind(rownames(summary_iteration), summary_iteration) ## include rownames in table
+                    accuracy_vector[count] = summary_iteration[1,2] ## vector with accuracies to find later maximum for plot
+                    empty_row = c(paste0("ncomp = ", iteration), rep( "", length(levels(y_vector)))) ## add line with ncomp for each iteration
+                    ##rownames(labeled_iteration)[1] = paste0("ncomp = ", iteration)
+                    ##labeled_iteration = cbind(rownames(labeled_iteration), labeled_iteration)
+                    labeled_iteration = rbind(empty_row, summary_iteration)
+                    summary_oplscv[[count]] = labeled_iteration ## create list with summary table for each component
+                    count = count+1} 
+                ## create dataframe from list
+                summary_oplscv = do.call(rbind, summary_oplscv) 
+                summary_df = as.data.frame(summary_oplscv)
+                rownames(summary_df) = NULL
+
+                ## plots
+                ## plot to find ncomp with highest accuracy
+                plot(summary(msidata.cv.opls), main="Accuracy of OPLS classification")
+                ncomp_max = components[which.max(accuracy_vector)] ## find ncomp with max. accuracy
+                ## one image for each sample/fold, 4 images per page
+                image(msidata.cv.opls, model = list(ncomp = ncomp_max), layout = c(2, 2))
+
+                par(opar)   
+                ## print table with summary in pdf
+                plot(0,type='n',axes=FALSE,ann=FALSE)
+                title(main="Summary for the different components\n", adj=0.5)
+                ## summary for 4 components (20 rows) fits in one page:
+                if (length(components)<5){
+                    grid.table(summary_df, rows= NULL)
+                }else{
+                    grid.table(summary_df[1:20,], rows= NULL)
+                    mincount = 21
+                    maxcount = 40
+                    for (count20 in 1:(ceiling(nrow(summary_df)/20)-1)){
+                        plot(0,type='n',axes=FALSE,ann=FALSE)
+                        if (maxcount <= nrow(summary_df)){
+                            grid.table(summary_df[mincount:maxcount,], rows= NULL)
+                            mincount = mincount+20
+                            maxcount = maxcount+20
+                        }else{### stop last page with last sample otherwise NA in table
+                            grid.table(summary_df[mincount:nrow(summary_df),], rows= NULL)} 
+                    }
+                }
+
+                ## optional output as .RData
+                #if $output_rdata:
+                save(msidata.cv.opls, file="$classification_rdata")
+                #end if
+
+            ######################## OPLS -analysis ###########################
+            #elif str( $type_cond.method_cond.opls_analysis_cond.opls_method) == "opls_analysis":
+                print("OPLS analysis")
+
+                ## number of components
+                component = c($type_cond.method_cond.opls_analysis_cond.opls_comp)
+
+                ### opls analysis
+                msidata.opls <- PLS(msidata, y = y_vector, ncomp = component, scale=$type_cond.method_cond.opls_analysis_cond.opls_scale, keep.Xnew = $type_cond.method_cond.opls_analysis_cond.xnew)
+
+                ### plot of OPLS coefficients
+                plot(msidata.opls, main="OPLS coefficients per m/z")
+
+                ### summary table of OPLS
+                summary_table = summary(msidata.opls)\$accuracy[[paste0("ncomp = ",component)]]
+                summary_table = cbind(rownames(summary_table), summary_table)
+                rownames(summary_table) = NULL
+                summary_table = data.frame(summary_table)
+                print(summary_table)
+                ###plot(0,type='n',axes=FALSE,ann=FALSE)
+                ###grid.table(test, rows= TRUE)
+
+                ### image of the best m/z
+                print(image(msidata, mz = topLabels(msidata.opls)[1,1], normalize.image = "linear", contrast.enhance = "histogram",smooth.image="gaussian", main="best m/z heatmap"))
+
+                ## m/z and pixel information output
+                opls_classes = data.frame(msidata.opls\$classes[[1]])
+                rownames(opls_classes) = names(pixels(msidata))
+                colnames(opls_classes) = "predicted diagnosis"
+                opls_toplabels = topLabels(msidata.opls, n=$type_cond.method_cond.opls_analysis_cond.opls_toplabels)
+
+                write.table(opls_toplabels, file="$mzfeatures", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+                write.table(opls_classes, file="$pixeloutput", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+
+                ## optional output as .RData
+                #if $output_rdata:
+                save(msidata.opls, file="$classification_rdata")
+                #end if
+
+            #end if
+
+        ######################## SSC #############################
+        #elif str( $type_cond.method_cond.class_method) == "spatialShrunkenCentroids":
+            print("SSC")
+
+            ######################## SSC - CV #############################
+            #if str( $type_cond.method_cond.ssc_analysis_cond.ssc_method) == "ssc_cvapply":
+                print("SSC cv")
+
+                ## folds
+                #if str($type_cond.method_cond.ssc_analysis_cond.ssc_fold_cond.ssc_fold_vector) == "ssc_fold_internal":
+                    fold_vector = msidata\$$type_cond.method_cond.ssc_analysis_cond.ssc_fold_cond.ssc_fold_name
+
+                #elif str($type_cond.method_cond.ssc_analysis_cond.ssc_fold_cond.ssc_fold_vector) == "ssc_fold_external":
+                    fold_tabular = read.delim("$type_cond.method_cond.ssc_analysis_cond.ssc_fold_cond.ssc_fold_data", header = FALSE, stringsAsFactors = FALSE)
+                    fold_vector = as.factor(fold_tabular[,$type_cond.method_cond.ssc_analysis_cond.ssc_fold_cond.ssc_fold_column])
+                    number_pixels = length(fold_vector) ## should be same as in data
+                #end if
+
+                ## plot of folds
+                position_df = cbind(coord(msidata)[,1:2], fold_vector)
+                fold_plot = ggplot(position_df, aes(x=x, y=y, fill=fold_vector))+
+                       geom_tile() +
+                       coord_fixed()+
+                       ggtitle("Distribution of the fold variable")+
+                       theme_bw()+
+                       theme(text=element_text(family="ArialMT", face="bold", size=15))+
+                       theme(legend.position="bottom",legend.direction="vertical")+
+                       guides(fill=guide_legend(ncol=4,byrow=TRUE))
+                coord_labels = aggregate(cbind(x,y)~fold_vector, data=position_df, mean, na.rm=TRUE, na.action="na.pass")
+                coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$fold_vector)
+                print(fold_plot)
+
+                ## SSC-cvApply:
+                msidata.cv.ssc <- cvApply(msidata, .y = y_vector,.fold = fold_vector,.fun = "spatialShrunkenCentroids", r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method = "$type_cond.method_cond.ssc_kernel_method")
+
+                ## create table with summary
+                count = 1
+                summary_ssccv = list()
+                accuracy_vector = numeric()
+
+                for (iteration in names(msidata.cv.ssc@resultData[[1]][,1])){
+                    summary_iteration = summary(msidata.cv.ssc)\$accuracy[[iteration]]
+                    summary_iteration = cbind(rownames(summary_iteration), summary_iteration) ## include rownames in table
+                    accuracy_vector[count] = summary_iteration[1,2] ## vector with accuracies to find later maximum for plot
+                    empty_row = c(iteration, rep( "", length(levels(y_vector)))) ## add line with ncomp for each iteration
+                    labeled_iteration = rbind(empty_row, summary_iteration)
+                    summary_ssccv[[count]] = labeled_iteration ## create list with summary table for each component
+                    count = count+1
+                }
+
+                ##create dataframe from list
+                summary_ssccv = do.call(rbind, summary_ssccv) 
+                summary_df = as.data.frame(summary_ssccv)
+                rownames(summary_df) = NULL
+
+                ## plot to find parameters with highest accuracy
+                plot(summary(msidata.cv.ssc), main="Accuracy of SSC classification")
+                best_params = names(msidata.cv.ssc@resultData[[1]][,1])[which.max(accuracy_vector)] ## find parameters with max. accuracy
+                r_value = as.numeric(substring(unlist(strsplit(best_params, ","))[1], 4))
+                s_value = as.numeric(substring(unlist(strsplit(best_params, ","))[3], 5)) ## remove space
+
+                image(msidata.cv.ssc, model = list( r = r_value, s = s_value ), layout=c(2,2))
+
+                par(opar)
+                ## print table with summary in pdf
+                plot(0,type='n',axes=FALSE,ann=FALSE)
+                title(main="Summary for the different parameters\n", adj=0.5)
+                ## summary for 4 parameters (20 rows) fits in one page:
+                if (length(names(msidata.cv.ssc@resultData[[1]][,1]))<5){
+                    grid.table(summary_df, rows= NULL)
+                }else{
+                    grid.table(summary_df[1:20,], rows= NULL)
+                    mincount = 21
+                    maxcount = 40
+                    for (count20 in 1:(ceiling(nrow(summary_df)/20)-1)){
+                        plot(0,type='n',axes=FALSE,ann=FALSE)
+                        if (maxcount <= nrow(summary_df)){
+                            grid.table(summary_df[mincount:maxcount,], rows= NULL)
+                            mincount = mincount+20
+                            maxcount = maxcount+20
+                        }else{### stop last page with last sample otherwise NA in table
+                            grid.table(summary_df[mincount:nrow(summary_df),], rows= NULL)} 
+                    }
+                }
+
+                ## optional output as .RData
+                #if $output_rdata:
+                save(msidata.cv.opls, file="$classification_rdata")
+                #end if
+
+            ######################## SSC -analysis ###########################
+            #elif str( $type_cond.method_cond.ssc_analysis_cond.ssc_method) == "ssc_analysis":
+                print("SSC analysis")
+
+                ## SSC analysis
+                msidata.ssc <- spatialShrunkenCentroids(msidata, y = y_vector, .fold = fold_vector, 
+r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method = "$type_cond.method_cond.ssc_kernel_method")
+
+                plot(msidata.ssc, mode = "tstatistics", model = list("r" = c($type_cond.method_cond.ssc_r), "s" = c($type_cond.method_cond.ssc_s)))
+
+                ### summary table SSC
+
+                ##summary(msidata.ssc)\$accuracy[[names(msidata.ssc@resultData)]]
+                summary_table = summary(msidata.ssc)
+print(summary_table)
+                ##summary_table = cbind(rownames(summary_table), summary_table)
+                ##rownames(summary_table) = NULL
+
+                ###plot(0,type='n',axes=FALSE,ann=FALSE)
+                ###grid.table(summary_table, rows= TRUE)
+
+                ### image of the best m/z
+                print(image(msidata, mz = topLabels(msidata.ssc)[1,1], normalize.image = "linear", contrast.enhance = "histogram",smooth.image="gaussian", main="best m/z heatmap"))
+
+                ## m/z and pixel information output
+                ssc_classes = data.frame(msidata.ssc\$classes[[1]])
+                rownames(ssc_classes) = names(pixels(msidata))
+                colnames(ssc_classes) = "predicted diagnosis"
+                ssc_toplabels = topLabels(msidata.ssc)
+
+                write.table(ssc_toplabels, file="$mzfeatures", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+                write.table(ssc_classes, file="$pixeloutput", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+
+                ## optional output as .RData
+                #if $output_rdata:
+                save(msidata.ssc, file="$classification_rdata")
+                #end if
+
+            #end if
+        #end if
+
+
+    ######################## II) Prediction #############################
+    #############################################################################
+    #elif str( $type_cond.type_method) == "prediction":
+        print("prediction")
+
+        #if str($type_cond.new_y.new_y_values) == "no_new_y": 
+            new_y_vector = FALSE
+        #elif str($type_cond.new_y.new_y_values) == "new_y_internal":
+            new_y_vector = msidata\$$type_cond.new_y.new_y_name
+        #elif str($type_cond.new_y.new_y_values) == "new_y_external":
+            
+            new_y_tabular = read.delim("$type_cond.new_y.new_y_data", header = FALSE, stringsAsFactors = FALSE)
+            new_y_vector = new_y_tabular[,$type_cond.new_y.new_y_column]
+            number_pixels = length(new_y_vector) ## should be same as in data
+        #end if
+
+        training_data = loadRData("$type_cond.training_result")
+        prediction = predict(training_data,msidata, newy = new_y_vector)
+
+        ## optional output as .RData
+        #if $output_rdata:
+        msidata = prediction
+        save(msidata, file="$classification_rdata")
+        #end if
+    #end if
+
+    dev.off()
+}else{
+    print("Inputfile has no intensities > 0")
+    dev.off()
+}
+
+    ]]></configfile>
+    </configfiles>
+    <inputs>
+        <param name="infile" type="data" format="imzml, rdata, analyze75"
+               label="Inputfile as imzML, Analyze7.5 or Cardinal MSImageSet saved as RData"
+                help="Upload composite datatype imzml (ibd+imzML) or analyze75 (hdr+img+t2m) or regular upload .RData (Cardinal MSImageSet)"/>
+        <conditional name="processed_cond">
+            <param name="processed_file" type="select" label="Is the input file a processed imzML file ">
+                <option value="no_processed" selected="True">not a processed imzML</option>
+                <option value="processed">processed imzML</option>
+            </param>
+            <when value="no_processed"/>
+            <when value="processed">
+                <param name="accuracy" type="float" value="50" label="Mass accuracy to which the m/z values will be binned" help="This should be set to the native accuracy of the mass spectrometer, if known"/>
+                <param name="units" display="radio" type="select" label="Unit of the mass accuracy" help="either m/z or ppm">
+                    <option value="mz" >mz</option>
+                    <option value="ppm" selected="True" >ppm</option>
+                </param>
+            </when>
+        </conditional>
+
+        <conditional name="type_cond">
+            <param name="type_method" type="select" label="Analysis step to perform">
+                <option value="training" selected="True">training</option>
+                <option value="prediction">prediction</option>
+            </param>
+            <when value="training">
+
+                <conditional name="method_cond">
+                    <param name="class_method" type="select" label="Select the method for classification">
+                        <option value="PLS" selected="True">PLS</option>
+                        <option value="OPLS">OPLS</option>
+                        <option value="spatialShrunkenCentroids">spatial shrunken centroids</option>
+                    </param>
+                    <when value="PLS">
+
+                        <conditional name="analysis_cond">
+                            <param name="PLS_method" type="select" label="Crossvalidation or analysis">
+                                <option value="cvapply" selected="True">cvApply</option>
+                                <option value="PLS_analysis">PLS analysis</option>
+                            </param>
+                            <when value="cvapply">
+
+                                <param name="plscv_comp" type="text" value="1:2"
+                                       label="The number of PLS components" help="Multiple values are allowed (e.g. 1,2,3 or 2:5)"/>
+                                <conditional name="fold_cond">
+                                    <param name="fold_vector" type="select" label="Define the fold variable">
+                                        <option value="fold_internal" selected="True">dataset contains already fold</option>
+                                        <option value="fold_external">use fold from tabular file</option>
+                                    </param>
+                                    <when value="fold_internal">
+                                        <param name="fold_name" type="text" value="sample" label="Name of the pData slot where fold is stored" help="each fold must contain pixels of all categories"/>
+                                    </when>
+                                    <when value="fold_external">
+                                        <param name="fold_data" type="data" format="tabular" label="Tabular file with column for folds" help="Number of rows must be number of pixels"/>
+                                        <param name="fold_column" data_ref="fold_data" label="Column with folds" type="data_column"/>
+                                    </when>
+                                </conditional>
+                            </when>
+
+                            <when value="PLS_analysis">
+                                <param name="pls_comp" type="integer" value="5"
+                                       label="The optimal number of PLS components as indicated by cross-validations" help="Run cvApply first to optain optiaml number of PLS components"/>
+                                <param name="pls_scale" type="boolean" display="radio" label="data scaling" truevalue="TRUE" falsevalue="FALSE"/>
+                                <param name="pls_toplabels" type="integer" value="100"
+                                   label="Number of toplabels (masses) which should be written in tabular output"/>
+                            </when>
+                        </conditional>
+                    </when>
+
+                    <when value="OPLS">
+
+                        <conditional name="opls_analysis_cond">
+                            <param name="opls_method" type="select" label="Analysis step to perform">
+                                <option value="opls_cvapply" selected="True">cvApply</option>
+                                <option value="opls_analysis">OPLS analysis</option>
+                            </param>
+
+                            <when value="opls_cvapply">
+                                <param name="opls_cvcomp" type="text" value="1:2"
+                                       label="The number of OPLS components" help="Multiple values are allowed (e.g. 1,2,3 or 2:5)"/>
+                                <param name="xnew_cv" type="boolean" display="radio" truevalue="TRUE" falsevalue="FALSE" label="Keep new matrix"/>
+                                <conditional name="opls_fold_cond">
+                                    <param name="opls_fold_vector" type="select" label="Define the fold variable">
+                                        <option value="opls_fold_internal" selected="True">dataset contains already fold</option>
+                                        <option value="opls_fold_external">use fold from tabular file</option>
+                                    </param>
+                                    <when value="opls_fold_internal">
+                                        <param name="opls_fold_name" type="text" value="sample" label="Name of the pData slot where fold is stored" help="each fold must contain pixels of all categories"/>
+                                    </when>
+                                    <when value="opls_fold_external">
+                                        <param name="opls_fold_data" type="data" format="tabular" label="Tabular file with column for folds" help="Number of rows must be number of pixels"/>
+                                        <param name="opls_fold_column" data_ref="opls_fold_data" label="Column with folds" type="data_column"/>
+                                    </when>
+                                </conditional>
+                            </when>
+
+                            <when value="opls_analysis">
+                                <param name="opls_comp" type="integer" value="5"
+                                       label="The optimal number of PLS components as indicated by cross-validations" help="Run cvApply first to optain optiaml number of PLS components"/>
+                                <param name="xnew" type="boolean" display="radio" truevalue="TRUE" falsevalue="FALSE" label="Keep new matrix"/>                                
+                                <param name="opls_scale" type="select" label="data scaling" display="radio" optional="False">
+                                    <option value="TRUE">yes</option>
+                                    <option value="FALSE" selected="True">no</option>
+                               </param>
+                                <param name="opls_toplabels" type="integer" value="100"
+                                   label="Number of toplabels (features) which should be written in tabular output"/>
+                            </when>
+                        </conditional>
+                    </when>
+
+                    <when value="spatialShrunkenCentroids">
+                        <conditional name="ssc_analysis_cond">
+                            <param name="ssc_method" type="select" label="Analysis step to perform">
+                                <option value="ssc_cvapply" selected="True">cvApply</option>
+                                <option value="ssc_analysis">spatial shrunken centroids analysis</option>
+                            </param>
+                            <when value="ssc_cvapply">
+
+                                <conditional name="ssc_fold_cond">
+                                    <param name="ssc_fold_vector" type="select" label="Define the fold variable">
+                                        <option value="ssc_fold_internal" selected="True">dataset contains already fold</option>
+                                        <option value="ssc_fold_external">use fold from tabular file</option>
+                                    </param>
+                                    <when value="ssc_fold_internal">
+                                        <param name="ssc_fold_name" type="text" value="sample" label="Name of the pData slot where fold is stored" help="each fold must contain pixels of all categories"/>
+                                    </when>
+                                    <when value="ssc_fold_external">
+                                        <param name="ssc_fold_data" type="data" format="tabular" label="Tabular file with column for folds" help="Number of rows must be number of pixels"/>
+                                        <param name="ssc_fold_column" data_ref="ssc_fold_data" label="Column with folds" type="data_column"/>
+                                    </when>
+                                </conditional>
+                            </when>
+
+                            <when value="ssc_analysis">
+
+                                <param name="ssc_toplabels" type="integer" value="100"
+                                   label="Number of toplabels (features) which should be written in tabular output"/>
+                            </when>
+                        </conditional>
+                        <param name="ssc_r" type="text" value="2"
+                               label="The spatial neighborhood radius of nearby pixels to consider (r)" help="For cvapply multiple values are allowed (e.g. 1,2,3 or 2:5)"/>
+                        <param name="ssc_s" type="text" value="2"
+                               label="The sparsity thresholding parameter by which to shrink the t-statistics (s)" help="For cvapply multiple values are allowed (e.g. 1,2,3 or 2:5)"/>
+                        <param name="ssc_kernel_method" type="select" display="radio" label = "The method to use to calculate the spatial smoothing kernels for the embedding. The 'gaussian' method refers to spatially-aware (SA) weights, and 'adaptive' refers to spatially-aware structurally-adaptive (SASA) weights">
+                            <option value="gaussian">gaussian</option>
+                            <option value="adaptive" selected="True">adaptive</option>
+                        </param>
+
+                    </when>
+                </conditional>
+                <conditional name="y_cond">
+                    <param name="y_vector" type="select" label="Define the response variable y">
+                        <option value="y_internal" selected="True">dataset contains already y</option>
+                        <option value="y_external">use y from tabular file</option>
+                    </param>
+                    <when value="y_internal">
+                        <param name="y_name" type="text" value="combined_sample" label="Name of the pData slot where y is stored" help="Outputs of MSI_combine tool have 'combined_sample' as name"/>
+                    </when>
+                    <when value="y_external">
+                        <param name="y_data" type="data" format="tabular" label="Tabular file with column for y response"/>
+                        <param name="y_column" data_ref="y_data" label="Column with y response" type="data_column"/>
+                    </when>
+                </conditional>
+            </when>
+
+            <when value="prediction">
+                <param name="training_result" type="data" format="rdata" label="Result from previous classification training"/>
+                <conditional name="new_y">
+                    <param name="new_y_values" type="select" label="Define the new response y">
+                        <option value="no_new_y" >no new y response</option>
+                        <option value="new_y_internal" selected="True">dataset contains already y</option>
+                        <option value="new_y_external">use y from tabular file</option>
+                    </param>
+                    <when value="no_new_y"/>
+                    <when value="new_y_internal">
+                        <param name="new_y_name" type="text" value="combined_sample" label="Name of the pData slot where y is stored" help="data merged with MSI_combine tool has 'combined_sample' as name"/>
+                    </when>
+
+                    <when value="new_y_external">
+                        <param name="new_y_data" type="data" format="tabular" label="Tabular file with column for y response"/>
+                        <param name="new_y_column" data_ref="new_y_data" label="Column with y response" type="data_column"/>
+                    </when>
+                </conditional>
+            </when>
+        </conditional>
+        <param name="output_rdata" type="boolean" display="radio" label="Results as .RData output"/>
+    </inputs>
+    <outputs>
+        <data format="pdf" name="classification_images" from_work_dir="classificationpdf.pdf" label = "$infile.display_name classification"/>
+        <data format="tabular" name="mzfeatures" label="$infile.display_name features"/>
+        <data format="tabular" name="pixeloutput" label="$infile.display_name pixels"/>
+        <data format="rdata" name="classification_rdata" label="$infile.display_name classification">
+            <filter>output_rdata</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="3">
+            <param name="infile" value="testfile_squares.rdata" ftype="rdata"/>
+            <conditional name="type_cond">
+                <param name="type_method" value="training"/>
+                <conditional name="method_cond">
+                    <param name="class_method" value="PLS"/>
+                    <conditional name="analysis_cond">
+                        <param name="PLS_method" value="cvapply"/>
+
+                        <param name="plscv_comp" value="2:4"/>
+                        <conditional name="fold_cond">
+                            <param name="fold_vector" value="fold_external"/>
+                            <param name="fold_data" value="pixel_annotation_file1.tabular" ftype="tabular"/>
+                            <param name="fold_column" value="1"/>
+                        </conditional>
+
+                    </conditional>
+                </conditional>
+                <conditional name="y_cond">
+                    <param name="y_vector" value="y_external"/>
+                    <param name="y_data" value="pixel_annotation_file1.tabular" ftype="tabular"/>
+                    <param name="y_column" value="2"/>
+                </conditional>
+            </conditional>
+            <output name="mzfeatures" file="features_test1.tabular"/>
+            <output name="pixeloutput" file="pixels_test1.tabular"/>
+            <output name="classification_images" file="test1.pdf" compare="sim_size" delta="20000"/>
+        </test>
+
+        <test expect_num_outputs="4">
+            <param name="infile" value="testfile_squares.rdata" ftype="rdata"/>
+            <conditional name="type_cond">
+                <param name="type_method" value="training"/>
+                <conditional name="method_cond">
+                    <param name="class_method" value="PLS"/>
+                    <conditional name="analysis_cond">
+                        <param name="PLS_method" value="PLS_analysis"/>
+
+                        <param name="pls_comp" value="2"/>
+                        <param name="pls_scale" value="TRUE"/>
+                        <param name="pls_toplabels" value="100"/>
+                        <conditional name="fold_cond">
+                            <param name="fold_vector" value="fold_external"/>
+                            <param name="fold_data" value="pixel_annotation_file1.tabular" ftype="tabular"/>
+                            <param name="fold_column" value="1"/>
+                        </conditional>
+
+                    </conditional>
+                </conditional>
+                <conditional name="y_cond">
+                    <param name="y_vector" value="y_external"/>
+                    <param name="y_data" value="pixel_annotation_file1.tabular" ftype="tabular"/>
+                    <param name="y_column" value="2"/>
+                </conditional>
+            </conditional>
+            <param name="output_rdata" value="True"/>
+            <output name="mzfeatures" file="features_test2.tabular"/>
+            <output name="pixeloutput" file="pixels_test2.tabular"/>
+            <output name="classification_images" file="test2.pdf" compare="sim_size" delta="20000"/>
+            <output name="classification_rdata" file="test2.rdata" compare="sim_size" />
+        </test>
+
+        <test expect_num_outputs="3">
+            <param name="infile" value="testfile_squares.rdata" ftype="rdata"/>
+            <conditional name="type_cond">
+                <param name="type_method" value="training"/>
+                <conditional name="method_cond">
+                    <param name="class_method" value="OPLS"/>
+                    <conditional name="opls_analysis_cond">
+                        <param name="opls_method" value="opls_analysis"/>
+
+                        <param name="opls_cvcomp" value="1:2"/>
+                        <param name="xnew_cv" value="FALSE"/>
+                        <conditional name="opls_fold_cond">
+                            <param name="opls_fold_vector" value="opls_fold_external"/>
+                            <param name="opls_fold_data" ftype="tabular" value="random_factors.tabular"/>
+                            <param name="opls_fold_column" value="1"/>
+                        </conditional>
+                    </conditional>
+                </conditional>
+                <conditional name="y_cond">
+                    <param name="y_vector" value="y_external"/>
+                    <param name="y_data" value="random_factors.tabular" ftype="tabular"/>
+                    <param name="y_column" value="2"/>
+                </conditional>
+            </conditional>
+            <output name="mzfeatures" file="features_test3.tabular"/>
+            <output name="pixeloutput" file="pixels_test3.tabular"/>
+            <output name="classification_images" file="test3.pdf" compare="sim_size" delta="20000"/>
+        </test>
+
+        <test expect_num_outputs="4">
+            <param name="infile" value="testfile_squares.rdata" ftype="rdata"/>
+            <conditional name="type_cond">
+                <param name="type_method" value="training"/>
+                <conditional name="method_cond">
+                    <param name="class_method" value="OPLS"/>
+                    <conditional name="opls_analysis_cond">
+
+                        <param name="opls_method" value="opls_analysis"/>
+                        <param name="opls_comp" value="3"/>
+                        <param name="xnew" value="FALSE"/>
+                        <param name="opls_scale" value="FALSE"/>
+                        <param name="opls_toplabels" value="100"/>
+                    </conditional>
+
+                </conditional>
+                <conditional name="y_cond">
+                    <param name="y_vector" value="y_external"/>
+                    <param name="y_data" value="random_factors.tabular" ftype="tabular"/>
+                    <param name="y_column" value="2"/>
+                </conditional>
+            </conditional>
+            <param name="output_rdata" value="True"/>
+            <output name="mzfeatures" file="features_test4.tabular"/>
+            <output name="pixeloutput" file="pixels_test4.tabular"/>
+            <output name="classification_images" file="test4.pdf" compare="sim_size" delta="20000"/>
+            <output name="classification_rdata" file="test4.rdata" compare="sim_size" />
+        </test>
+
+        <test expect_num_outputs="3">
+            <param name="infile" value="testfile_squares.rdata" ftype="rdata"/>
+            <conditional name="type_cond">
+                <param name="type_method" value="training"/>
+                <conditional name="method_cond">
+                    <param name="class_method" value="spatialShrunkenCentroids"/>
+                    <conditional name="ssc_analysis_cond">
+                        <param name="ssc_method" value="ssc_cvapply"/>
+                        <conditional name="ssc_fold_cond">
+                            <param name="ssc_fold_vector" value="ssc_fold_external"/>
+                            <param name="ssc_fold_data" value="pixel_annotation_file1.tabular" ftype="tabular"/>
+                            <param name="ssc_fold_column" value="1"/>
+                        </conditional>
+                        <param name="ssc_r" value="1:2"/>
+                        <param name="ssc_s" value="2:3"/>
+                        <param name="ssc_kernel_method" value="adaptive"/>
+                    </conditional>
+                </conditional>
+                <conditional name="y_cond">
+                    <param name="y_vector" value="y_external"/>
+                    <param name="y_data" value="pixel_annotation_file1.tabular" ftype="tabular"/>
+                    <param name="y_column" value="2"/>
+                </conditional>
+            </conditional>
+            <output name="mzfeatures" file="features_test5.tabular"/>
+            <output name="pixeloutput" file="pixels_test5.tabular"/>
+            <output name="classification_images" file="test5.pdf" compare="sim_size" delta="20000"/>
+        </test>
+
+        <test expect_num_outputs="4">
+            <param name="infile" value="testfile_squares.rdata" ftype="rdata"/>
+            <conditional name="type_cond">
+                <param name="type_method" value="training"/>
+                <conditional name="method_cond">
+                    <param name="class_method" value="spatialShrunkenCentroids"/>
+                    <conditional name="ssc_analysis_cond">
+                        <param name="ssc_method" value="ssc_analysis"/>
+                        <param name="ssc_toplabels" value="100"/>
+                     </conditional>
+                    <param name="ssc_r" value="2"/>
+                    <param name="ssc_s" value="2"/>
+                    <param name="ssc_kernel_method" value="adaptive"/>
+                </conditional>
+                <conditional name="y_cond">
+                    <param name="y_vector" value="y_external"/>
+                    <param name="y_data" value="random_factors.tabular" ftype="tabular"/>
+                    <param name="y_column" value="2"/>
+                </conditional>
+            </conditional>
+            <param name="output_rdata" value="True"/>
+            <output name="mzfeatures" file="features_test6.tabular"/>
+            <output name="pixeloutput" file="pixels_test6.tabular"/>
+            <output name="classification_images" file="test6.pdf" compare="sim_size" delta="20000"/>
+            <output name="classification_rdata" file="test6.rdata" compare="sim_size" />
+        </test>
+
+        <test expect_num_outputs="4">
+            <param name="infile" value="testfile_squares.rdata" ftype="rdata"/>
+            <conditional name="type_cond">
+                <param name="type_method" value="prediction"/>
+                <param name="training_result" value="test2.rdata" ftype="rdata"/>
+                <conditional name="new_y">
+                    <param name="new_y_values" value="new_y_external"/>
+                    <param name="new_y_data" value="pixel_annotation_file1.tabular" ftype="tabular"/>
+                        <param name="new_y_column" value="2"/>
+                </conditional>
+            </conditional>
+            <param name="output_rdata" value="True"/>
+            <output name="mzfeatures" file="features_test7.tabular"/>
+            <output name="pixeloutput" file="pixels_test7.tabular"/>
+            <output name="classification_images" file="test7.pdf" compare="sim_size" delta="20000"/>
+            <output name="classification_rdata" file="test7.rdata" compare="sim_size" />
+        </test>
+
+    </tests>
+    <help>
+        <![CDATA[
+
+Cardinal is an R package that implements statistical & computational tools for analyzing mass spectrometry imaging datasets. `More information on Cardinal <http://cardinalmsi.org//>`_
+
+This tool provides three different Cardinal functions for supervised classification of mass-spectrometry imaging data.
+
+Input data: 3 types of input data can be used:
+
+- imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <https://ms-imaging.org/wp/imzml/>`_
+- Analyze7.5 (upload hdr, img and t2m file via the "composite" function)
+- Cardinal "MSImageSet" data (with variable name "msidata", saved as .RData)
+
+Options: 
+
+- PLS(-DA): partial least square (discriminant analysis)
+- O-PLS(-DA): Orthogonal partial least squares (discriminant analysis)
+- Spatial shrunken centroids
+
+Output: 
+
+- Pdf with the heatmaps and plots for the classification
+- Tabular file with information on masses and pixels: toplabels/classes (PLS, spatial shrunken centroids)
+- optional RData output to further explore the results with Cardinal in R
+
+        ]]>
+    </help>
+    <citations>
+        <citation type="doi">10.1093/bioinformatics/btv146</citation>
+    </citations>
+</tool>

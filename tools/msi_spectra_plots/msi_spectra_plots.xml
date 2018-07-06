@@ -1,4 +1,4 @@
-<tool id="mass_spectrometry_imaging_mzplots" name="MSI plot spectra" version="1.10.0.2">
+<tool id="mass_spectrometry_imaging_mzplots" name="MSI plot spectra" version="1.10.0.3">
     <description>
         mass spectrometry imaging mass spectra plots
     </description>
@@ -34,10 +34,15 @@ library(gridExtra)
 library(ggplot2)
 library(scales)
 
+
 #if $infile.ext == 'imzml'
-    msidata <- readImzML('infile', mass.accuracy=$accuracy, units.accuracy = "$units")
+    #if str($processed_cond.processed_file) == "processed":
+        msidata <- readImzML('infile', mass.accuracy=$processed_cond.accuracy, units.accuracy = "$processed_cond.units")
+    #else
+        msidata <- readImzML('infile', attach.only=TRUE)
+    #end if
 #elif $infile.ext == 'analyze75'
-    msidata = readAnalyze('infile')
+    msidata = readAnalyze('infile', attach.only=TRUE)
 #else
     load('infile.RData')
 #end if
@@ -58,18 +63,19 @@ maximumx = max(coord(msidata)[,1])
 minimumy = min(coord(msidata)[,2])
 maximumy = max(coord(msidata)[,2])
 ## Range of intensities
-minint = round(min(spectra(msidata)[]), digits=2)
-maxint = round(max(spectra(msidata)[]), digits=2)
-medint = round(median(spectra(msidata)[]), digits=2)
+minint = round(min(spectra(msidata)[], na.rm=TRUE), digits=2)
+maxint = round(max(spectra(msidata)[], na.rm=TRUE), digits=2)
+medint = round(median(spectra(msidata)[], na.rm=TRUE), digits=2)
 ## Number of intensities > 0
-npeaks= sum(spectra(msidata)[]>0)
+npeaks= sum(spectra(msidata)[]>0, na.rm=TRUE)
 ## Spectra multiplied with m/z (potential number of peaks)
 numpeaks = ncol(spectra(msidata)[])*nrow(spectra(msidata)[])
 ## Percentage of intensities > 0
 percpeaks = round(npeaks/numpeaks*100, digits=2)
 ## Number of empty TICs
-TICs = colSums(spectra(msidata)[]) 
+TICs = colSums(spectra(msidata)[], na.rm=TRUE) 
 NumemptyTIC = sum(TICs == 0)
+
 
 ## Processing informations
 processinginfo = processingData(msidata)
@@ -176,7 +182,7 @@ if (npeaks > 0){
                     print(pixelisvalid)
 
                     image(msidata, mz=$chosenpixel.inputmz, ylim = c(maximumy+(0.2*maximumy),minimumy-1),
-                    colorkey=FALSE, plusminus = $chosenpixel.plusminusinDalton, contrast.enhance = "histogram", 
+                    colorkey=FALSE, plusminus = $chosenpixel.plusminusinDalton,
                     main= paste0("x= ",$chosenpixel.inputx, ", y= ", $chosenpixel.inputy))
 
                     abline(v=$chosenpixel.inputx, col ="$chosenpixel.inputcolour", lty="$chosenpixel.inputtype", lwd=$chosenpixel.inputwidth)
@@ -189,6 +195,8 @@ if (npeaks > 0){
             ##################### IV) plot zoom-in mass spectrum ###############
 
                     #if $chosenpixel.zoomedplot:
+                            iData(msidata) <- iData(msidata)[] ## getting back data on disk 
+
                         #for $token in $chosenpixel.zoomedplot:
 
                             minmasspixel = features(msidata, mz=$token.xlimmin)
@@ -204,7 +212,6 @@ if (npeaks > 0){
         #end for
 
     colnames(pixeldf) = c("pixel coordinates", "coordinates were found in this file")
-
 
     ############################# sample pixel ################################
     ###########################################################################
@@ -260,13 +267,17 @@ if (npeaks > 0){
                         key_legend = TRUE
                     }else{key_legend = FALSE}
 
+            spectra(msidata) = is.na(spectra(msidata)[]) == 0 ## in case of NA values they will be set to zero
+
             plot(msidata, pixel=1:ncol(msidata), pixel.groups=msidata\$combined_sample, key=key_legend, col=hue_pal()(length(levels(msidata\$combined_sample))),superpose=TRUE)
         }else{
+            spectra(msidata) = is.na(spectra(msidata)[]) == 0 ## in case of NA values they will be set to zero
             plot(msidata, pixel=1:ncol(msidata), key=TRUE)}
 
         ##################### II) Sample: plot zoom-in mass spectrum ##########
 
         #if $pixel_conditional.zoomed_sample:
+            iData(msidata) <- iData(msidata)[] ## getting back data on disk 
             #for $token in $pixel_conditional.zoomed_sample:
                 print("zoomed sample pixels")
 
@@ -284,6 +295,7 @@ if (npeaks > 0){
 
             #end for
         #end if
+
         if (!is.null(levels(msidata\$combined_sample))){
             pixeldf = data.frame(table(msidata\$combined_sample))
         }else{
@@ -291,6 +303,11 @@ if (npeaks > 0){
         colnames(pixeldf) = c("sample name", "number of pixels")
 
     #end if
+
+
+############################# pixel table ######################################
+###############################################################################
+
 
     ### overview table of pixels or samples:
     plot(0,type='n',axes=FALSE,ann=FALSE)
@@ -327,16 +344,25 @@ if (npeaks > 0){
     <inputs>
         <param name="infile" type="data" format="imzml,rdata,analyze75" label="Inputfile as imzML, Analyze7.5 or Cardinal MSImageSet saved as RData"
             help="Upload composite datatype imzml (ibd+imzML) or analyze75 (hdr+img+t2m) or regular upload .RData (Cardinal MSImageSet)"/>
-        <param name="accuracy" type="float" value="50" label="Only for processed imzML files: enter mass accuracy to which the m/z values will be binned" help="This should be set to the native accuracy of the mass spectrometer, if known"/>
-        <param name="units" display="radio" type="select" label="Only for processed imzML files: unit of the mass accuracy" help="either m/z or ppm">
-            <option value="mz" >mz</option>
-            <option value="ppm" selected="True" >ppm</option>
-        </param>
+        <conditional name="processed_cond">
+            <param name="processed_file" type="select" label="Is the input file a processed imzML file ">
+                <option value="no_processed" selected="True">not a processed imzML</option>
+                <option value="processed">processed imzML</option>
+            </param>
+            <when value="no_processed"/>
+            <when value="processed">
+                <param name="accuracy" type="float" value="50" label="Mass accuracy to which the m/z values will be binned" help="This should be set to the native accuracy of the mass spectrometer, if known"/>
+                <param name="units" display="radio" type="select" label="Unit of the mass accuracy" help="either m/z or ppm">
+                    <option value="mz" >mz</option>
+                    <option value="ppm" selected="True" >ppm</option>
+                </param>
+            </when>
+        </conditional>
         <param name="filename" type="text" value="" label="Title" help="will appear in the pdf output. If nothing given it will take the dataset name"/>
         <conditional name="pixel_conditional">
-            <param name="pixel_type" type="select" label="Select if you want to plot the mass spectrum of a single pixel or of all pixels of a sample">
+            <param name="pixel_type" type="select" label="Select if you want to plot the mass spectrum of a single pixel or the average spectrum of all pixels of a sample">
                 <option value="single_pixel" selected="True">Single pixel</option>
-                <option value="sample_pixel">All pixels of a sample</option>
+                <option value="sample_pixel">Average spectrum for each sample</option>
             </param>
             <when value="single_pixel">
                 <repeat name="repeatpixel" title="Plot mass spectra for pixel of interest" min="1" max="20">

@@ -1,4 +1,4 @@
-<tool id="mass_spectrometry_imaging_combine" name="MSI combine" version="1.10.0.2">
+<tool id="mass_spectrometry_imaging_combine" name="MSI combine" version="1.10.0.3">
     <description>
         combine several mass spectrometry imaging datasets into one
     </description>
@@ -67,13 +67,18 @@ all_files = $num_infiles
 
 #for $i, $infile in enumerate($infiles):
 
-    #if $infile.ext == 'imzml'
-        msidata_$i <- readImzML('infile_${i}', mass.accuracy=$accuracy, units.accuracy = "$units")
-    #elif $infile.ext == 'analyze75'
-        msidata_$i <- readAnalyze('infile_${i}')
+#if $infile.ext == 'imzml'
+    #if str($processed_cond.processed_file) == "processed":
+        msidata_$i <- readImzML('infile_${i}', mass.accuracy=$processed_cond.accuracy, units.accuracy = "$processed_cond.units")
     #else
-        msidata_$i = loadRData('infile_${i}.RData')
+        msidata <- readImzML('infile')
     #end if
+#elif $infile.ext == 'analyze75'
+        msidata_$i <- readAnalyze('infile_${i}')
+#else
+        msidata_$i = loadRData('infile_${i}.RData')
+#end if
+
 
         sampleNames(msidata_$i) = "msidata" ## same name necessary to combine data in one single coordinate system
 
@@ -84,7 +89,7 @@ all_files = $num_infiles
         coord(msidata_$i)\$x = coord(msidata_$i)\$x + input_list[$i+1,$combine_conditional.column_x] ## shifts x coordinates according to tabular file
         coord(msidata_$i)\$y = coord(msidata_$i)\$y + input_list[$i+1,$combine_conditional.column_y] ## shifts y coordinates according to tabular file
         pixel_vector = append(pixel_vector, rep(paste($i+1, input_list[$i+1,$combine_conditional.column_names], sep="_"),times=ncol(msidata_$i))) ## stores file name for each pixel
-
+        msidata_$i\$combined_sample = rep(paste($i+1, input_list[$i+1,$combine_conditional.column_names], sep="_"),times=ncol(msidata_$i))
         pixelcoords_$i = cbind(coord(msidata_$i)[,1:2], rep($i+1,ncol(msidata_$i)))
         #silent $pixelcoords.append('pixelcoords_'+str($i))
         colnames(pixelcoords_$i)[3] = "file_number"
@@ -94,7 +99,7 @@ all_files = $num_infiles
     #elif str( $combine_conditional.combine_method ) == 'automatic_combine':
         names_vector = character()
         #set escaped_element_identifier = re.sub('[^\w\-\s\[/]]', '_', str($infile.element_identifier)) ## use name of inputfile from Galaxy
-        if (sum(spectra(msidata_$i))>0) ## use only valid files
+        if (sum(spectra(msidata_$i)[],na.rm=TRUE)>0) ## use only valid files
         {
             if (is.null(levels(msidata_$i\$combined_sample))) ### if the file was not combined before use input file name, otherwise keep combined_sample name which was assigned before
             {
@@ -123,7 +128,7 @@ all_files = $num_infiles
 
     #silent $msidata.append('msidata_'+str($i))
     valid_dataset = append(valid_dataset, 
-         (ncol(msidata_$i)>0 & nrow(msidata_$i)>0 & sum(spectra(msidata_$i))>0))
+         (ncol(msidata_$i)>0 & nrow(msidata_$i)>0 & sum(spectra(msidata_$i)[], na.rm=TRUE)>0))
 
 #end for
 
@@ -154,7 +159,7 @@ all_files = $num_infiles
            theme(text=element_text(family="ArialMT", face="bold", size=15))+
            theme(legend.position="bottom",legend.direction="vertical")+
            guides(fill=guide_legend(ncol=4,byrow=TRUE))
-    coord_labels = aggregate(cbind(x,y)~sample_name, data=position_df, mean)
+    coord_labels = aggregate(cbind(x,y)~sample_name, data=position_df, mean, na.rm=TRUE, na.action="na.pass")
     coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$sample_name)
     for(file_count in 1:nrow(coord_labels))
     {combine_plot = combine_plot + annotate("text",x=coord_labels[file_count,"x"],
@@ -177,9 +182,23 @@ all_files = $num_infiles
     #if str($combine_conditional.combination_true) == "yes_combi":
         print("combination with xy shifts")
 
-        msidata_combined = do.call(combine, list(#echo ','.join($msidata)#))
-        sample_names = as.factor(pixel_vector) ## the sample names are assigned to each pixel
-        msidata_combined\$combined_sample = sample_names ## sample names are stored in $combined_sample slot
+        ## find duplicated coordinates
+        all_coordinates = do.call(rbind, list(#echo ','.join($pixelcoords)#))
+        duplicated_coordinates= duplicated(all_coordinates[,1:2])| duplicated(all_coordinates[,1:2], fromLast=TRUE)
+print(paste0("Number of removed duplicated coordinates: ", sum(duplicated_coordinates)/2))
+        unique_coordinates = all_coordinates[!duplicated_coordinates,]
+
+        ## remove duplicated coordinates
+        datasetlist = list()
+        count = 1
+        for (usable_dataset in list(#echo ','.join($msidata)#)){
+            pixelsofinterest = pixels(usable_dataset)[names(pixels(usable_dataset)) %in% rownames(unique_coordinates)]
+            filtered_dataset = usable_dataset[,pixelsofinterest]
+            if (ncol(filtered_dataset) > 0 ){
+                datasetlist[[count]] = filtered_dataset}
+            count = count +1}
+
+        msidata_combined = do.call(combine, datasetlist)
 
         ## save as (.RData)
 
@@ -197,6 +216,8 @@ all_files = $num_infiles
         position_df = do.call(rbind, list(#echo ','.join($pixelcoords)#))
         position_df\$sample_name = as.factor(pixel_vector)
 
+print(paste0("Number of duplicated coordinates: ", sum(duplicated(position_df[,1:2]))))
+
     #end if
 
     ## create PDF to show all pixels in PDF as QC
@@ -209,7 +230,6 @@ all_files = $num_infiles
            theme_bw()+
            theme(text=element_text(family="ArialMT", face="bold", size=15))+
            theme(legend.position="bottom",legend.direction="vertical")+
-           theme(legend.key.size = unit(0.2, "line"), legend.text = element_text(size = 6))+
            guides(fill=guide_legend(ncol=5,byrow=TRUE))
     coord_labels = aggregate(cbind(x,y)~sample_name, data=position_df, mean)
     coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$sample_name)
@@ -225,15 +245,15 @@ all_files = $num_infiles
 
 #if $output_matrix:
 
-    if (length(features(msidata_combined))> 0 & length(pixels(msidata_combined)) > 0)
-    {
-        spectramatrix = spectra(msidata_combined)
-        rownames(spectramatrix) = mz(msidata_combined)
-        newmatrix = rbind(pixels(msidata_combined), spectramatrix)
-        write.table(newmatrix[2:nrow(newmatrix),], file="$matrixasoutput", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+    if (length(features(msidata))> 0 & length(pixels(msidata)) > 0){
+        spectramatrix = spectra(msidata)[]
+        spectramatrix = cbind(mz(msidata),spectramatrix)
+        newmatrix = rbind(c("mz | spectra", names(pixels(msidata))), spectramatrix)
+        write.table(newmatrix, file="$matrixasoutput", quote = FALSE, row.names = FALSE, col.names=FALSE, sep = "\t")
     }else{
         print("file has no features or pixels left")
     }
+
 #end if
 
     ]]></configfile>
@@ -242,11 +262,20 @@ all_files = $num_infiles
         <param name="infiles" type="data" multiple="true" format="imzml,rdata,analyze75"
             label="MSI data as imzml, analyze7.5 or Cardinal MSImageSet saved as RData"
             help="load imzml and ibd file by uploading composite datatype imzml"/>
-        <param name="accuracy" type="float" value="50" label="Only for processed imzML files: enter mass accuracy to which the m/z values will be binned" help="This should be set to the native accuracy of the mass spectrometer, if known"/>
-        <param name="units" display="radio" type="select" label="Only for processed imzML files: unit of the mass accuracy" help="either m/z or ppm">
-            <option value="mz" >mz</option>
-            <option value="ppm" selected="True" >ppm</option>
-        </param>
+        <conditional name="processed_cond">
+            <param name="processed_file" type="select" label="Is the input file a processed imzML file ">
+                <option value="no_processed" selected="True">not a processed imzML</option>
+                <option value="processed">processed imzML</option>
+            </param>
+            <when value="no_processed"/>
+            <when value="processed">
+                <param name="accuracy" type="float" value="50" label="Mass accuracy to which the m/z values will be binned" help="This should be set to the native accuracy of the mass spectrometer, if known"/>
+                <param name="units" display="radio" type="select" label="Unit of the mass accuracy" help="either m/z or ppm">
+                    <option value="mz" >mz</option>
+                    <option value="ppm" selected="True" >ppm</option>
+                </param>
+            </when>
+        </conditional>
         <conditional name="combine_conditional">
             <param name="combine_method" type="select" label="Select the way you want to combine multiple files" help="More detailed help can be found in the help section at the bottom">
                 <option value="automatic_combine" selected="True" >automatic combination</option>
@@ -259,7 +288,7 @@ all_files = $num_infiles
                 <param name="column_x" data_ref="coordinates_file" label="Column with values for shift in x direction" type="data_column"/>
                 <param name="column_y" data_ref="coordinates_file" label="Column with values for shift in y direction" type="data_column"/>
                 <param name="column_names" data_ref="coordinates_file" label="Column with dataset names" type="data_column"/>
-                <param name="combination_true" type="boolean" display="radio" truevalue="yes_combi" falsevalue="no_combi" label="Combine datasets" help = "Combination only works if x and y-shifts lead to unique pixel positions. If this is unknown use the No option to get an idea about the pixel overlap"/>
+                <param name="combination_true" type="boolean" display="radio" truevalue="yes_combi" falsevalue="no_combi" label="Combine datasets" help = "If there are duplicated pixels they will be deleted. If it is not clear if there are duplicated pixels, select No to get an idea about the pixel overlap"/>
             </when>
         </conditional>
     <param name="output_matrix" type="boolean" display="radio" label="Intensity matrix output"/>
@@ -333,7 +362,7 @@ Options:
 
 - "automatic combination": files are automatically arranged in a grid, subfiles are named according to input file name
 - "xy shifts by hand": each file can be moved in x and y direction according to the users need (define one tabular file in the order in which the files are loaded in the history (bottom to top) and define for each file the x and y coordinates shifts in separate columns and the file name in a third column). To test if the pixels are correctly shifted use "combine datasets: No".
-
+Combine datasets: Yes - Combines all datasets and removes all duplicated pixels (same x and y coordinates).
 
 Output: 
 

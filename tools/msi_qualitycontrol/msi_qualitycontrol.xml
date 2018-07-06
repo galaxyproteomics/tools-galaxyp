@@ -1,4 +1,4 @@
-<tool id="mass_spectrometry_imaging_qc" name="MSI Qualitycontrol" version="1.10.0.3">
+<tool id="mass_spectrometry_imaging_qc" name="MSI Qualitycontrol" version="1.10.0.4">
     <description>
         mass spectrometry imaging QC
     </description>
@@ -54,6 +54,10 @@ library(scales)
 ## create full matrix to make processed imzML files compatible with segmentation
 iData(msidata) <- iData(msidata)[] 
 
+## remove duplicated coordinates
+print(paste0(sum(duplicated(coord(msidata))), " duplicated coordinates were removed"))
+msidata <- msidata[,!duplicated(coord(msidata))]
+
 ###################################### file properties in numbers ######################
 
 ## Number of features (m/z)
@@ -70,22 +74,22 @@ maximumx = max(coord(msidata)[,1])
 minimumy = min(coord(msidata)[,2])
 maximumy = max(coord(msidata)[,2])
 ## Range of intensities
-minint = round(min(spectra(msidata)[]), digits=2)
-maxint = round(max(spectra(msidata)[]), digits=2)
-medint = round(median(spectra(msidata)[]), digits=2)
+minint = round(min(spectra(msidata)[], na.rm=TRUE), digits=2)
+maxint = round(max(spectra(msidata)[], na.rm=TRUE), digits=2)
+medint = round(median(spectra(msidata)[], na.rm=TRUE), digits=2)
 ## Number of intensities > 0
-npeaks= sum(spectra(msidata)[]>0)
+npeaks= sum(spectra(msidata)[]>0, na.rm=TRUE)
 ## Spectra multiplied with m/z (potential number of peaks)
 numpeaks = ncol(spectra(msidata)[])*nrow(spectra(msidata)[])
 ## Percentage of intensities > 0
 percpeaks = round(npeaks/numpeaks*100, digits=2)
 ## Number of empty TICs
-TICs = colSums(spectra(msidata)[]) 
+TICs = colSums(spectra(msidata)[], na.rm=TRUE) 
 NumemptyTIC = sum(TICs == 0)
 ## Median TIC
 medTIC = round(median(TICs), digits=2)
 ## Median peaks per spectrum
-medpeaks = median(colSums(spectra(msidata)[]>0))
+medpeaks = median(colSums(spectra(msidata)[]>0, na.rm=TRUE), na.rm=TRUE)
 print(cor(TICs,colSums(spectra(msidata)[]>0), method="pearson"))
 
 ## Processing informations
@@ -211,6 +215,7 @@ grid.table(property_df, rows= NULL)
 ##############################################################################
 print("x-y images")
 
+## only do plots for file with intensity peaks
 if (npeaks > 0){
     ## function for density plots
     plot_colorByDensity = function(x1,x2,
@@ -315,14 +320,16 @@ if (npeaks > 0){
 
         filtered_data = msidata[mz(msidata) >= inputcalibrantmasses[mass]-plusminusvalues[mass] & mz(msidata) <= inputcalibrantmasses[mass]+plusminusvalues[mass],]
 
-        if (nrow(filtered_data) > 1 & sum(spectra(filtered_data)) > 0){
+        if (nrow(filtered_data) > 1 & sum(spectra(filtered_data)[],na.rm=TRUE) > 0){
 
             ## intensity of all m/z > 0
-            intensity_sum = colSums(spectra(filtered_data)) > 0
-        }else if(nrow(filtered_data) == 1 & sum(spectra(filtered_data)) > 0){
+            intensity_sum = colSums(spectra(filtered_data)[], na.rm=TRUE) > 0
+
+        }else if(nrow(filtered_data) == 1 & sum(spectra(filtered_data)[], na.rm=TRUE) > 0){
 
             ## intensity of only m/z > 0
-            intensity_sum = spectra(filtered_data) > 0
+            intensity_sum = spectra(filtered_data)[] > 0
+
         }else{
             intensity_sum = rep(FALSE, ncol(filtered_data))}
 
@@ -331,7 +338,7 @@ if (npeaks > 0){
     }
 
         ## for each pixel count TRUE (each calibrant m/z range with intensity > 0 is TRUE)
-        countvector= as.factor(colSums(pixelmatrix))
+        countvector= as.factor(colSums(pixelmatrix, na.rm=TRUE))
         countdf= cbind(coord(msidata)[,1:2], countvector) ## add pixel coordinates to counts
         mycolours = c("black","grey", "darkblue", "blue", "green" , "red", "yellow", "magenta", "olivedrab1", "lightseagreen")
 
@@ -372,9 +379,9 @@ if (npeaks > 0){
 
             ### find m/z in the two given ranges with the highest mean intensity
             ### this two m/z will be used to calculate the fold change (red line in plot)
-            maxmassrow1 = rowMeans(spectra(filtered_data1))
+            maxmassrow1 = rowMeans(spectra(filtered_data1), na.rm=TRUE)
             maxmass1 = mz(filtered_data1)[which.max(maxmassrow1)]
-            maxmassrow2 = rowMeans(spectra(filtered_data2))
+            maxmassrow2 = rowMeans(spectra(filtered_data2), na.rm=TRUE)
             maxmass2 = mz(filtered_data2)[which.max(maxmassrow2)]
 
             ### plot legend: chosen value in blue, distance in blue, max m/z in red
@@ -417,7 +424,7 @@ if (npeaks > 0){
                                         ,space = "Lab", na.value = "black", name ="FC"))
             }else{
                 plot(0,type='n',axes=FALSE,ann=FALSE)
-                title(main=paste("At least one m/z range did not contain any intensity value > 0,\n therefore no foldchange plot could be drawn"))}
+                title(main=paste("At least one m/z range did not contain any intensity > 0,\n therefore no foldchange plot could be drawn"))}
 
         #end for
     #end if
@@ -438,7 +445,7 @@ if (npeaks > 0){
     #################### 5) Number of peaks per pixel - image ##################
 
     ## here every intensity value > 0 counts as pixel
-    peaksperpixel = colSums(spectra(msidata)[]> 0)
+    peaksperpixel = colSums(spectra(msidata)[]> 0, na.rm=TRUE)
     peakscoordarray=cbind(coord(msidata)[,1:2], peaksperpixel)
 
     print(ggplot(peakscoordarray, aes(x=x, y=y, fill=peaksperpixel), colour=colo)+
@@ -486,27 +493,31 @@ if (npeaks > 0){
     theme_bw() +
     theme(plot.title = element_text(hjust = 0.5))+
     scale_fill_gradientn(colours = c("blue", "purple" , "red","orange"), space = "Lab", na.value = "black", name = "m/z", 
-      labels = as.character(pretty(highestmz_matrix\$highestmzinDa)[c(1,3,5,7)]),
-      breaks = pretty(highestmz_matrix\$highestmzinDa)[c(1,3,5,7)], limits=c(min(highestmz_matrix\$highestmzinDa), max(highestmz_matrix\$highestmzinDa)))+
+      limits=c(min(highestmz_matrix\$highestmzinDa), max(highestmz_matrix\$highestmzinDa)))+
     theme(text=element_text(family="ArialMT", face="bold", size=12)))
-
-    ## which m/z are highest
-    highestmz_peptides = names(sort(table(round(highestmz_matrix\$highestmzinDa, digits=0)), decreasing=TRUE)[1])
-    highestmz_pixel = which(round(highestmz_matrix\$highestmzinDa, digits=0) == highestmz_peptides)[1]
-
-    secondhighestmz = names(sort(table(round(highestmz_matrix\$highestmzinDa, digits=0)), decreasing=TRUE)[2]) 
-    secondhighestmz_pixel = which(round(highestmz_matrix\$highestmzinDa, digits=0) == secondhighestmz)[1]
 
     ## append list for optional tabular output with spectrum values
     colnames(highestmz_matrix)[3] = "Most abundant m/z"
     spectrum_list[[list_count]] = highestmz_matrix
 
-    ########################## 8) pca image for two components #################
+    ## tabular output of spectra values
+
+    #if $pixel_output:
+        print("pixel list")
+        pixel_df = Reduce(function(...) merge(..., by=c("x", "y"), all=T), spectrum_list)
+        write.table(pixel_df, file="$pixel_tabular_output", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+    #end if
+
+    ########################## 8) optional pca image for two components #################
+
+    #if $do_pca:
 
     pca = PCA(msidata, ncomp=2) 
     par(mfrow = c(2,1))
     plot(pca, col=c("black", "darkgrey"), main="PCA for two components")
     image(pca, col=c("black", "white"), strip=FALSE, ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy))
+
+    #end if
 
     ################## III) properties over spectra index ##########
     ##############################################################################
@@ -691,7 +702,7 @@ if (npeaks > 0){
     plot(msidata, pixel = pixels_for_plot[2], main= paste0("Spectrum at ", rownames(coord(msidata)[pixels_for_plot[2],1:2])))
     plot(msidata, pixel = pixels_for_plot[3], main= paste0("Spectrum at ", rownames(coord(msidata)[pixels_for_plot[3],1:2])))
 
-    #################### 16) Zoomed in mass spectra for calibrants##############
+    ################### 16) Zoomed in mass spectra for calibrants ##############
 
     count = 1
     differencevector = numeric()
@@ -700,7 +711,7 @@ if (npeaks > 0){
     if (length(inputcalibrantmasses) != 0){
 
     ### calculate plusminus values in m/z for each calibrant, this is used for all following plots
-    plusminusvalues = rep($plusminus_ppm/1000000, length(inputcalibrantmasses))*inputcalibrantmasses
+    plusminusvalues = rep($plusminus_ppm/1000000, length(inputcalibrantmasses)) * inputcalibrantmasses
 
         for (mass in 1:length(inputcalibrantmasses)){
 
@@ -710,6 +721,7 @@ if (npeaks > 0){
 
             ### find m/z with the highest mean intensity in m/z range (red line in plot 16) and calculate ppm difference for plot 17
             filtered_data = msidata[mz(msidata) >= inputcalibrantmasses[mass]-plusminusvalues[mass] & mz(msidata) <= inputcalibrantmasses[mass]+plusminusvalues[mass],]
+
             if (nrow(filtered_data) > 0 & sum(spectra(filtered_data)) > 0){
                 maxmassrow = rowMeans(spectra(filtered_data)) ## for each m/z average intensity is calculated
                 maxvalue = mz(filtered_data)[which.max(maxmassrow)] ### m/z with highest average intensity in m/z range
@@ -729,19 +741,19 @@ if (npeaks > 0){
 
             par(mfrow = c(2, 2), oma=c(0,0,2,0))
             plot(msidata[minmasspixel:maxmasspixel,], pixel = 1:length(pixelnumber), main= "average spectrum")
-            abline(v=c(inputcalibrantmasses[mass] -plusminusvalues[count], inputcalibrantmasses[mass] ,inputcalibrantmasses[mass] +plusminusvalues[count]), col="blue", lty=c(3,1,3))
+            abline(v=c(inputcalibrantmasses[mass] -plusminusvalues[count], inputcalibrantmasses[mass] ,inputcalibrantmasses[mass] +plusminusvalues[count]), col="blue", lty=c(3,5,3))
             abline(v=c(maxvalue), col="red", lty=2)
             abline(v=c(mzvalue), col="green2", lty=4)
             plot(msidata[minmasspixel:maxmasspixel,], pixel = pixels_for_plot[1], main=paste0("Spectrum at ", rownames(coord(msidata)[pixels_for_plot[1],1:2])))
-            abline(v=c(inputcalibrantmasses[mass] -plusminusvalues[count], inputcalibrantmasses[mass] ,inputcalibrantmasses[mass] +plusminusvalues[count]), col="blue", lty=c(3,1,3))
+            abline(v=c(inputcalibrantmasses[mass] -plusminusvalues[count], inputcalibrantmasses[mass] ,inputcalibrantmasses[mass] +plusminusvalues[count]), col="blue", lty=c(3,5,3))
             abline(v=c(maxvalue), col="red", lty=2)
             abline(v=c(mzvalue), col="green2", lty=4)
             plot(msidata[minmasspixel:maxmasspixel,], pixel = pixels_for_plot[2], main= paste0("Spectrum at ", rownames(coord(msidata)[pixels_for_plot[2],1:2])))
-            abline(v=c(inputcalibrantmasses[mass] -plusminusvalues[count], inputcalibrantmasses[mass] ,inputcalibrantmasses[mass] +plusminusvalues[count]), col="blue", lty=c(3,1,3))
+            abline(v=c(inputcalibrantmasses[mass] -plusminusvalues[count], inputcalibrantmasses[mass] ,inputcalibrantmasses[mass] +plusminusvalues[count]), col="blue", lty=c(3,5,3))
             abline(v=c(maxvalue), col="red", lty=2)
             abline(v=c(mzvalue), col="green2", lty=4)
             plot(msidata[minmasspixel:maxmasspixel,], pixel = pixels_for_plot[3], main= paste0("Spectrum at ", rownames(coord(msidata)[pixels_for_plot[3],1:2])))
-            abline(v=c(inputcalibrantmasses[mass] -plusminusvalues[count], inputcalibrantmasses[mass] ,inputcalibrantmasses[mass] +plusminusvalues[count]), col="blue", lty=c(3,1,3))
+            abline(v=c(inputcalibrantmasses[mass] -plusminusvalues[count], inputcalibrantmasses[mass] ,inputcalibrantmasses[mass] +plusminusvalues[count]), col="blue", lty=c(3,5,3))
             abline(v=c(maxvalue), col="red", lty=2)
             abline(v=c(mzvalue), col="green2", lty=4)
             title(paste0("theor. m/z: ", inputcalibrants[count,1]), col.main="blue", outer=TRUE, line=0, adj=0.074)
@@ -764,23 +776,24 @@ if (npeaks > 0){
 
     ######### 17) ppm difference input calibrant m/z and m/z with max intensity in given m/z range#########
 
-        par(mfrow = c(1, 1))
-
         ### plot the ppm difference calculated above: theor. m/z value to highest m/z value: 
 
         calibrant_names = as.character(inputcalibrants[,2])
         diff_df = data.frame(differencevector, calibrant_names)
 
         if (sum(is.na(diff_df[,1])) == nrow(diff_df)){
-            print("plot 17: no peaks in the chosen region, repeat with higher ppm range")
+                plot(0,type='n',axes=FALSE,ann=FALSE)
+                title(main=paste("plot 17: no peaks in the chosen region, repeat with higher ppm range")) ## here klammer weggenommen...
         }else{
 
-        diff_plot=ggplot(data=diff_df, aes(x=calibrant_names, y=differencevector)) + geom_bar(stat="identity", fill = "darkgray") + theme_minimal() +
-        labs(title="Difference m/z with max. average intensity vs. theor. calibrant m/z", x="calibrants", y = "Difference in ppm")+
-        theme(plot.title = element_text(hjust = 0.5))+theme(text=element_text(family="ArialMT", face="bold", size=12))+
-        geom_text(aes(label=differencevector), vjust=-0.3, size=3.5, col="blue")
+        diff_plot1=ggplot(data=diff_df, aes(x=calibrant_names, y=differencevector)) + geom_bar(stat="identity", fill = "darkgray") + theme_minimal() +
+        labs(title="Average m/z error (max. average intensity vs. theor. calibrant m/z)", x="calibrants", y = "Average m/z error in ppm")+
+        theme(plot.title = element_text(hjust = 0.5, size=14))+theme(text=element_text(family="ArialMT", face="bold", size=16))+
+        geom_text(aes(label=differencevector), vjust=-0.3, size=5.5, col="blue") +
+        theme(axis.text.x = element_text(angle = 90, hjust = 1, size=16))
 
-        print(diff_plot)}
+        print(diff_plot1)
+        }
 
     ######### 18) ppm difference input calibrant m/z and closest m/z ###########
 
@@ -790,15 +803,18 @@ if (npeaks > 0){
         calibrant_names = as.character(inputcalibrants[,2])
         diff_df = data.frame(differencevector2, calibrant_names)
 
-        diff_plot=ggplot(data=diff_df, aes(x=calibrant_names, y=differencevector2)) + geom_bar(stat="identity", fill = "darkgray") + theme_minimal() +
-        labs(title="Difference closest measured m/z vs. theor. calibrant m/z", x="calibrants", y = "Difference in ppm")+
-        theme(plot.title = element_text(hjust = 0.5))+theme(text=element_text(family="ArialMT", face="bold", size=12))+
-        geom_text(aes(label=differencevector2), vjust=-0.3, size=3.5, col="blue")
+        diff_plot2=ggplot(data=diff_df, aes(x=calibrant_names, y=differencevector2)) + geom_bar(stat="identity", fill = "darkgray") + theme_minimal() +
+        labs(title="Average m/z error (closest measured m/z vs. theor. calibrant m/z)", x="calibrants", y = "Average m/z error in ppm")+
+        theme(plot.title = element_text(hjust = 0.5, size=16))+theme(text=element_text(family="ArialMT", face="bold", size=16))+
+        geom_text(aes(label=differencevector2), vjust=-0.3, size=5.5, col="blue")+
+        theme(axis.text.x = element_text(angle = 90, hjust = 1, size=16))
 
-        print(diff_plot)
+        print(diff_plot2)
+
 
     #################### 19) ppm difference over pixels #####################
 
+    par(mfrow = c(1,1))
     mycolours = c("darkgrey", "darkblue", "blue", "green" , "red", "orange", "yellow", "magenta", "olivedrab1", "lightseagreen")
     count = 1
     ppm_df = as.data.frame(matrix(,ncol=0, nrow = ncol(msidata)))
@@ -825,35 +841,25 @@ if (npeaks > 0){
         count=count+1}
 
         if (sum(is.na(ppm_df)) == ncol(ppm_df)*nrow(ppm_df)){
-            print("plot 19: no peaks in the chosen region, repeat with higher ppm range")
+                plot(0,type='n',axes=FALSE,ann=FALSE)
+            title(main=paste("plot 19: no peaks in the chosen region, repeat with higher ppm range"))
         }else{
 
-    ### plot ppm differences over pixels (spectra index)
+            ### plot ppm differences over pixels (spectra index)
 
-    par(mar=c(4.1, 4.1, 4.1, 7.5))
-    plot(0,0,type="n", ylim=c(min(ppm_df, na.rm=TRUE),max(ppm_df, na.rm=TRUE)), xlim = c(1,ncol(filtered_data)),xlab = "Spectra index", ylab = "m/z difference in ppm", main="Difference m/z with max. average intensity vs. theor. m/z\n(per spectrum)") 
+            par(mar=c(4.1, 4.1, 4.1, 7.5))
+            plot(0,0,type="n", ylim=c(min(ppm_df, na.rm=TRUE),max(ppm_df, na.rm=TRUE)), xlim = c(1,ncol(filtered_data)),xlab = "Spectra index", ylab = "m/z difference in ppm", main="Difference m/z with max. average intensity vs. theor. m/z\n(per spectrum)") 
 
-    for (each_cal in 1:ncol(ppm_df)){
-        lines(ppm_df[,each_cal], col=mycolours[each_cal], type="p")}
-    legend("topright", inset=c(-0.25,0), xpd = TRUE, bty="n", legend=inputcalibrantmasses, col=mycolours[1:ncol(ppm_df)],lty=1)
-    abline(v=abline_vector, lty = 3)}
+            for (each_cal in 1:ncol(ppm_df)){
+                lines(ppm_df[,each_cal], col=mycolours[each_cal], type="p")}
+            legend("topright", inset=c(-0.25,0), xpd = TRUE, bty="n", legend=inputcalibrantmasses, col=mycolours[1:ncol(ppm_df)],lty=1)
+            abline(v=abline_vector, lty = 3)}
 
-    }else{print("16+17+18+19) The inputcalibrant m/z were not provided or outside the m/z range")}
-
-dev.off()
-
+    }else{print("plot 16+17+18+19) The inputcalibrant m/z were not provided or outside the m/z range")}
 }else{
     print("inputfile has no intensities > 0")
-    dev.off()
 }
-
-## tabular output of spectra values
-
-#if $pixel_output:
-    print("pixel list")
-    pixel_df = Reduce(function(...) merge(..., by=c("x", "y"), all=T), spectrum_list)
-    write.table(pixel_df, file="$pixel_tabular_output", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
-#end if
+    dev.off()
 
 
 
@@ -880,6 +886,7 @@ dev.off()
         <param name="calibrant_file" type="data" optional="true" format="tabular"
             label="File with internal calibrants" help="first column: m/z, second column: name (optional), tabular file"/>
         <param name="plusminus_ppm" value="50" type="float" label="ppm range" help="Will be added in both directions to input calibrant m/z"/>
+        <param name="do_pca" type="boolean" display="radio" label="PCA with 2 components"/>
         <repeat name="calibrantratio" title="Plot fold change of two m/z" min="0" max="10">
             <param name="mass1" value="1111" type="float" label="M/z 1" help="First m/z"/>
             <param name="mass2" value="2222" type="float" label="M/z 2" help="Second m/z"/>
@@ -908,6 +915,7 @@ dev.off()
             <param name="calibrant_file" value="inputcalibrantfile1.txt"/>
             <param name="plusminus_ppm" value="100"/>
             <param name="filename" value="Testfile_imzml"/>
+            <param name="do_pca" value="True"/>
             <repeat name="calibrantratio">
                 <param name="mass1" value="328.9"/>
                 <param name="mass2" value="398.8"/>
@@ -926,11 +934,13 @@ dev.off()
             </param>
             <param name="calibrant_file" value="inputcalibrantfile2.txt"/>
             <param name="filename" value="Testfile_analyze75"/>
+            <param name="do_pca" value="True"/>
             <output name="plots" file="QC_analyze75.pdf" compare="sim_size" delta="20000"/>
         </test>
         <test expect_num_outputs="2">
             <param name="infile" value="123_combined.RData" ftype="rdata"/>
             <param name="filename" value="Testfile_rdata"/>
+            <param name="do_pca" value="True"/>
             <param name="pixel_output" value="True"/>
             <output name="pixel_tabular_output" file="spectra_info_123_combi.txt"/>
             <output name="plots" file="QC_rdata.pdf" compare="sim_size" delta="20000"/>
@@ -939,6 +949,7 @@ dev.off()
             <param name="infile" value="empty_spectra.rdata" ftype="rdata"/>
             <param name="calibrant_file" value="inputcalibrantfile2.txt"/>
             <param name="filename" value="Testfile_rdata"/>
+            <param name="do_pca" value="False"/>
             <output name="plots" file="QC_empty_spectra.pdf" compare="sim_size" delta="20000"/>
         </test>
     </tests>

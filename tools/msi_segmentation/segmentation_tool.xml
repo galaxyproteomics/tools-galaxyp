@@ -1,4 +1,4 @@
-<tool id="mass_spectrometry_imaging_segmentations" name="MSI segmentation" version="1.10.0.2">
+<tool id="mass_spectrometry_imaging_segmentations" name="MSI segmentation" version="1.10.0.3">
     <description>mass spectrometry imaging spatial clustering</description>
     <requirements>
         <requirement type="package" version="1.10.0">bioconductor-cardinal</requirement>
@@ -37,12 +37,17 @@ library(lattice)
 ## Read MALDI Imaging dataset
 
 #if $infile.ext == 'imzml'
-    msidata <- readImzML('infile', mass.accuracy=$accuracy, units.accuracy = "$units")
+    #if str($processed_cond.processed_file) == "processed":
+        msidata <- readImzML('infile', mass.accuracy=$processed_cond.accuracy, units.accuracy = "$processed_cond.units")
+    #else
+        msidata <- readImzML('infile')
+    #end if
 #elif $infile.ext == 'analyze75'
     msidata = readAnalyze('infile')
 #else
     load('infile.RData')
 #end if
+
 
 ## create full matrix to make processed imzML files compatible with segmentation
 iData(msidata) <- iData(msidata)[] 
@@ -62,18 +67,20 @@ maximumx = max(coord(msidata)[,1])
 minimumy = min(coord(msidata)[,2])
 maximumy = max(coord(msidata)[,2])
 ## Range of intensities
-minint = round(min(spectra(msidata)[]), digits=2)
-maxint = round(max(spectra(msidata)[]), digits=2)
+minint = round(min(spectra(msidata)[],na.rm=TRUE), digits=2)
+maxint = round(max(spectra(msidata)[],na.rm=TRUE), digits=2)
 medint = round(median(spectra(msidata)[]), digits=2)
 ## Number of intensities > 0
-npeaks= sum(spectra(msidata)[]>0)
+npeaks= sum(spectra(msidata)[]>0, na.rm=TRUE)
 ## Spectra multiplied with m/z (potential number of peaks)
 numpeaks = ncol(spectra(msidata)[])*nrow(spectra(msidata)[])
 ## Percentage of intensities > 0
 percpeaks = round(npeaks/numpeaks*100, digits=2)
 ## Number of empty TICs
-TICs = colSums(spectra(msidata)[]) 
+TICs = colSums(spectra(msidata)[], na.rm=TRUE) 
 NumemptyTIC = sum(TICs == 0)
+
+
 
 ## Processing informations
 processinginfo = processingData(msidata)
@@ -193,13 +200,12 @@ if (npeaks > 0)
             ### images in pdf file
             print(image(pca_result, main="PCA image", lattice=lattice_input, strip = strip_input, col=colourvector))
             for (PCs in 1:$segm_cond.pca_ncomp){
-                print(image(pca_result, column = c(paste0("PC",PCs)), superpose = FALSE, col.regions = risk.colors(100)))}
+                print(image(pca_result, column = c(paste0("PC",PCs)), lattice=lattice_input, superpose = FALSE, col.regions = risk.colors(100)))}
             ### plots in pdf file
             print(plot(pca_result, main="PCA plot", lattice=lattice_input, col= colourvector, strip = strip_input))
             for (PCs in 1:$segm_cond.pca_ncomp){
-            print(plot(pca_result, column = c(paste0("PC",PCs)), superpose = FALSE))}
+                print(plot(pca_result, column = c(paste0("PC",PCs)),superpose = FALSE))}
 
-            
             ### values in tabular files
             pcaloadings = (pca_result@resultData\$ncomp\$loadings) ### loading for each m/z value
             pcascores = (pca_result@resultData\$ncomp\$scores) ### scores for each pixel
@@ -250,7 +256,7 @@ if (npeaks > 0)
             print(image(ssc, key=TRUE, main="Spatial shrunken centroids", lattice=lattice_input, strip = strip_input, col= colourvector,layout=c(1,1)))
             print(plot(ssc, main="Spatial shrunken centroids plot", lattice=lattice_input, col= colourvector, strip = strip_input,layout=c($segm_cond.centroids_layout)))
             print(plot(ssc, mode = "tstatistics",key = TRUE, lattice=lattice_input, layout = c($segm_cond.centroids_layout), main="t-statistics", col=colourvector))
-            print(plot(summary(ssc), main = "Number of segments",lattice=lattice_input))
+            plot(summary(ssc), main = "Number of segments")
 
             ssc_classes = data.frame(matrix(NA, nrow = pixelcount, ncol = 0))
             for (iteration in 1:length(ssc@resultData)){
@@ -286,11 +292,20 @@ if (npeaks > 0)
         <param name="infile" type="data" format="imzml,rdata,analyze75"
                label="Inputfile as imzML, Analyze7.5 or Cardinal MSImageSet saved as RData"
                 help="Upload composite datatype imzml (ibd+imzML) or analyze75 (hdr+img+t2m) or regular upload .RData (Cardinal MSImageSet)"/>
-        <param name="accuracy" type="float" value="50" label="Only for processed imzML files: enter mass accuracy to which the m/z values will be binned" help="This should be set to the native accuracy of the mass spectrometer, if known"/>
-        <param name="units" display="radio" type="select" label="Only for processed imzML files: unit of the mass accuracy" help="either m/z or ppm">
-            <option value="mz" >mz</option>
-            <option value="ppm" selected="True" >ppm</option>
-        </param>
+        <conditional name="processed_cond">
+            <param name="processed_file" type="select" label="Is the input file a processed imzML file ">
+                <option value="no_processed" selected="True">not a processed imzML</option>
+                <option value="processed">processed imzML</option>
+            </param>
+            <when value="no_processed"/>
+            <when value="processed">
+                <param name="accuracy" type="float" value="50" label="Mass accuracy to which the m/z values will be binned" help="This should be set to the native accuracy of the mass spectrometer, if known"/>
+                <param name="units" display="radio" type="select" label="Unit of the mass accuracy" help="either m/z or ppm">
+                    <option value="mz" >mz</option>
+                    <option value="ppm" selected="True" >ppm</option>
+                </param>
+            </when>
+        </conditional>
             <conditional name="segm_cond">
                 <param name="segmentationtool" type="select" label="Select the tool for spatial clustering">
                     <option value="pca" selected="True">pca</option>
