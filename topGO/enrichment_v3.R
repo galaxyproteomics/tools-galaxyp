@@ -54,6 +54,11 @@ readfile = function(filename, header) {
   return(file)
 } 
 
+check_ens_ids <- function(vector) {
+  ens_pattern = "^(ENS[A-Z]+[0-9]{11}|[A-Z]{3}[0-9]{3}[A-Za-z](-[A-Za-z])?|CG[0-9]+|[A-Z0-9]+\\.[0-9]+|YM[A-Z][0-9]{3}[a-z][0-9])$"
+  return(grepl(ens_pattern,vector))
+}
+
 '%!in%' <- function(x,y)!('%in%'(x,y))
 
 
@@ -108,8 +113,14 @@ if (typeinput=="tabfile"){
     sample = readfile(listfile, "false")
   }
   sample = sample[,column]
-
 }
+
+#check of ENS ids
+if (! any(check_ens_ids(sample))){
+  print("no ensembl gene ids found in your ids list, please check your IDs in input or the selected column of your input file")
+  stop()
+}
+
 # Launch enrichment analysis and return result data from the analysis or the null
 # object if the enrichment could not be done.
 goEnrichment = function(geneuniverse,sample,onto){
