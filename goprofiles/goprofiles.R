@@ -195,6 +195,7 @@ goprofiles = function() {
   #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/goprofiles/args.Rda")
   #load("/home/dchristiany/proteore_project/ProteoRE/tools/goprofiles/args.Rda")
   
+  id_type = args$id_type
   input_type = args$input_type
   if (input_type == "text") {
     input = strsplit(args$input, "[ \t\n]+")[[1]]
@@ -218,10 +219,9 @@ goprofiles = function() {
   }
   
   if (! any(check_ids(input,id_type))){
-    strop(paste(id_type,"not found in your ids list, please check your IDs in input or the selected column of your input file"))
+    stop(paste(id_type,"not found in your ids list, please check your IDs in input or the selected column of your input file"))
   }
   
-  id_type = args$id_type
   ontoopt = strsplit(args$onto_opt, ",")[[1]]
   #print(ontoopt)
   #plotopt = strsplit(args[3], ",")
