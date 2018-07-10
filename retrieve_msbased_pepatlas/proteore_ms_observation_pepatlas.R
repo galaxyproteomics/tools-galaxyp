@@ -71,20 +71,18 @@ main = function() {
   argsDF <- as.data.frame(do.call("rbind", parseArgs(args)))
   args <- as.list(as.character(argsDF$V2))
   names(args) <- argsDF$V1
-
+  
   # Extract input
   input_type = args$input_type
   if (input_type == "list") {
     input = strsplit(args$input, "[ \t\n]+")[[1]]
-  }
-  else if (input_type == "file") {
+  } else if (input_type == "file") {
     filename = args$input
     ncol = args$column
     # Check ncol
     if (! as.numeric(gsub("c", "", ncol)) %% 1 == 0) {
       stop("Please enter an integer for level")
-    }
-    else {
+    } else {
       ncol = as.numeric(gsub("c", "", ncol))
     }
     header = args$header
@@ -116,8 +114,7 @@ main = function() {
     names = c("Uniprot accession number", names)
     colnames(res) = names
     write.table(res, output, row.names = FALSE, sep = "\t", quote = FALSE)
-  }
-  else if (input_type == "file") {
+  } else if (input_type == "file") {
     names = c(names(file), names)
     output_content = cbind(file, res)
     colnames(output_content) = names
