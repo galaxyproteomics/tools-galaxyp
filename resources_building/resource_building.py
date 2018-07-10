@@ -49,7 +49,7 @@ def HPA_sources(data_manager_dict, tissue, target_directory):
     print (tmp[:3])
     tissue_name = tissue_name + " " + time.strftime("%d/%m/%Y")
     data_table_entry = dict(value = tissue, name = tissue_name, path = path)
-    _add_data_table_entry(data_manager_dict, data_table_entry)
+    _add_data_table_entry(data_manager_dict, data_table_entry, "proteinatlas")
 
 #######################################################################################################
 # 2. Peptide Atlas
@@ -75,12 +75,12 @@ def peptide_atlas_sources(data_manager_dict, tissue, target_directory):
     output.write(content.content)
     output.close()
     data_table_entry = dict(value = tissue_value, name = tissue_name, path = path)
-    _add_data_table_entry(data_manager_dict, data_table_entry)
+    _add_data_table_entry(data_manager_dict, data_table_entry, "peptide_atlas")
 
-def _add_data_table_entry(data_manager_dict, data_table_entry):
+def _add_data_table_entry(data_manager_dict, data_table_entry,data_table):
     data_manager_dict['data_tables'] = data_manager_dict.get('data_tables', {})
-    data_manager_dict['data_tables']['peptide_atlas'] = data_manager_dict['data_tables'].get('peptide_atlas', [])
-    data_manager_dict['data_tables']['peptide_atlas'].append(data_table_entry)
+    data_manager_dict['data_tables'][data_table] = data_manager_dict['data_tables'].get(data_table, [])
+    data_manager_dict['data_tables'][data_table].append(data_table_entry)
     return data_manager_dict
 
 #######################################################################################################
