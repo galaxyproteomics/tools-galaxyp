@@ -68,8 +68,8 @@ def peptide_atlas_sources(data_manager_dict, tissue, target_directory):
             "&QUERY_NAME=AT_GetPeptides&output_mode=tsv&apply_action=QUERY"
     content = requests.get(query)
     tissue_id = "_".join([atlas_build_id, organism_id, sample_category_id])
-    tissue_value = " ".join(tissue.split("-")[1].split("_"))
-    tissue_name = tissue_value + " " + time.strftime("%d/%m/%Y")
+    tissue_value = tissue.split("-")[1]
+    tissue_name = " ".join(tissue_value.split("_")) + " " + time.strftime("%d/%m/%Y")
     path = os.path.join(target_directory, output_file)
     output = open(path, "w")
     output.write(content.content)
