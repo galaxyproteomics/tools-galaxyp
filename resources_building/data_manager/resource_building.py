@@ -41,7 +41,7 @@ def HPA_sources(data_manager_dict, tissue, target_directory):
     elif tissue == "HPA_full_atlas":
         tissue_name = "HPA full atlas"
         url = "https://www.proteinatlas.org/download/proteinatlas.tsv.zip"
-    output_file = tissue + ".tsv"
+    output_file = tissue +"_"+ time.strftime("%d-%m-%Y") + ".tsv"
     path = os.path.join(target_directory, output_file)
     unzip(url, path)
     print(str(os.path.isfile(path)))
@@ -61,7 +61,7 @@ def peptide_atlas_sources(data_manager_dict, tissue, target_directory):
     organism_id = "2"
     # Extract sample_category_id and output filename
     sample_category_id = tissue.split("-")[0]
-    output_file = tissue.split("-")[1] + ".tsv"
+    output_file = tissue.split("-")[1] +"_"+ time.strftime("%d-%m-%Y") + ".tsv"
     query = "https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetPeptides?atlas_build_id=" + \
             atlas_build_id + "&display_options=ShowMappings&organism_id= " + \
             organism_id + "&sample_category_id=" + sample_category_id + \
