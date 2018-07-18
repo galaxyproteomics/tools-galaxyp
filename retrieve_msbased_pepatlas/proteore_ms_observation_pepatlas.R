@@ -52,16 +52,7 @@ main = function() {
     Arguments:
         --input_type: type of input (list of id or filename)
         --input: input
-        --atlas: list of tissues choosen by users 
-        --atlas_brain: path to brain atlas file
-        --atlas_heart: path to heart atlas file
-        --atlas_kidney: path to kidney atlas file
-        --atlas_liver: path to liver atlas file
-        --atlas_plasma_nonglyco: path to plasma non glyco atlas file
-        --atlas_urine: path to urine atlas file
-        --atlas_csf: path to csf atlas file
-        --column: the column number which contains Uniprot IDs
-        --header: true/false if your file contains a header
+        --atlas: list of file(s) path to use
         --output: text output filename \n")
     q(save="no")
   }
@@ -71,6 +62,9 @@ main = function() {
   argsDF <- as.data.frame(do.call("rbind", parseArgs(args)))
   args <- as.list(as.character(argsDF$V2))
   names(args) <- argsDF$V1
+  
+  #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/retrieve_msbased_pepatlas/args.Rda")
+  #load("/home/dchristiany/proteore_project/ProteoRE/tools/retrieve_msbased_pepatlas/args.Rda")
   
   # Extract input
   input_type = args$input_type
@@ -97,16 +91,23 @@ main = function() {
 
   output = args$output
 
-  # Annotations
-  names = c()
-  res = matrix(nrow=length(input), ncol=0)
-  atlas = strsplit(args$atlas,",")[[1]] # List of tissues chosen by users
-  for (tissue in atlas) {
-    arg = paste("atlas", tissue, sep = "_")
-    names = c(names, paste("Nb of times peptide Observed", tissue, sep = "_"))
-    n_observations = annotPeptideAtlas(input, args[arg][[1]])
-    res = cbind(res, n_observations)
+  #function to create a list of infos from file path
+  extract_info_from_path <- function(path) {
+    file_name=strsplit(tail(strsplit(path,"/")[[1]],n=1),"\\.")[[1]][1]
+    date=tail(strsplit(file_name,"_")[[1]],n=1)
+    tissue=paste(strsplit(file_name,"_")[[1]][1:2],collapse="_")
+    return (c(date,tissue,file_name,path))
   }
+  
+  #data_frame building
+  paths=strsplit(args$atlas,",")[[1]]
+  tmp <- sapply(paths, extract_info_from_path,USE.NAMES = FALSE)
+  df <- as.data.frame(t(as.data.frame(tmp)),row.names = c(""),stringsAsFactors = FALSE)
+  names(df) <- c("date","tissue","filename","path")
+  
+  # Annotations
+  res = sapply(df$path, function(x) annotPeptideAtlas(input, x), USE.NAMES = FALSE)
+  names=df$filename
 
   # Write output
   if (input_type == "list") {
