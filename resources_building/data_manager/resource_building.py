@@ -46,7 +46,6 @@ def HPA_sources(data_manager_dict, tissue, target_directory):
     unzip(url, path)
     print(str(os.path.isfile(path)))
     tmp=open(path,"r").readlines()
-    print (tmp[:3])
     tissue_name = tissue_name + " " + time.strftime("%d/%m/%Y")
     data_table_entry = dict(value = tissue, name = tissue_name, path = path)
     _add_data_table_entry(data_manager_dict, data_table_entry, "proteinatlas")
@@ -98,7 +97,6 @@ def main():
     filename = args.output
     params = from_json_string(open(filename).read())
     target_directory = params[ 'output_data' ][0]['extra_files_path']
-    print (target_directory)
     os.mkdir(target_directory)
 
     ## Download source files from HPA
