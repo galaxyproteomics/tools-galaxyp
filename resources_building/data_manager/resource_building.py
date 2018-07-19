@@ -73,7 +73,7 @@ def peptide_atlas_sources(data_manager_dict, tissue, target_directory):
     output = open(path, "w")
     output.write(content.content)
     output.close()
-    data_table_entry = dict(value = tissue_value, name = tissue_name, path = path)
+    data_table_entry = dict(tissue = tissue_value, name = tissue_name, value = path)
     _add_data_table_entry(data_manager_dict, data_table_entry, "peptide_atlas")
 
 def _add_data_table_entry(data_manager_dict, data_table_entry,data_table):
