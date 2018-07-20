@@ -1,8 +1,9 @@
-<tool id="mass_spectrometry_imaging_filtering" name="MSI filtering" version="1.10.0.3">
+<tool id="mass_spectrometry_imaging_filtering" name="MSI filtering" version="1.10.0.4">
     <description>tool for filtering mass spectrometry imaging data</description>
     <requirements>
         <requirement type="package" version="1.10.0">bioconductor-cardinal</requirement>
         <requirement type="package" version="2.2.1">r-gridextra</requirement>
+        <requirement type="package" version="2.2.1">r-ggplot2</requirement>
     </requirements>
     <command detect_errors="exit_code">
     <![CDATA[
@@ -32,6 +33,7 @@
 
 library(Cardinal)
 library(gridExtra)
+library(ggplot2)
 
 
 #if $infile.ext == 'imzml'
@@ -47,11 +49,7 @@ library(gridExtra)
 #end if
 
 
-########################### optional QC numbers ########################
-
-if (sum(spectra(msidata)[]>0, na.rm=TRUE) > 0)
-{
-    #if $outputs.outputs_select == "quality_control":
+########################### QC numbers ########################
 
         ## Number of features (m/z)
         maxfeatures = length(features(msidata))
@@ -80,7 +78,15 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE) > 0)
         ## Store features for QC plot
         featuresinfile = mz(msidata)
 
-    #end if
+## Next steps will only run if there are more than 0 intensities/pixels/features in the file
+
+if (sum(spectra(msidata)[]>0, na.rm=TRUE) > 0)
+{
+
+
+        ## prepare dataframe for QC of pixel distribution (will be overwritten in filtering of pixels condition)
+        position_df = cbind(coord(msidata)[,1:2], rep("$infile.element_identifier", times=ncol(msidata)))
+
 
     ###################################### Filtering of pixels #####################
     ################################################################################
@@ -90,14 +96,22 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE) > 0)
     #if str($pixels_cond.pixel_filtering) == "single_column":
         print("single column")
 
+        ## read tabular file, count number of rows (= number of pixels), count how many pixels are valid
         input_list = read.delim("$pixels_cond.single_pixels", header = FALSE, stringsAsFactors = FALSE)
-        numberpixels = length(input_list[,$pixels_cond.pixel_column])
-        valid_entries = input_list[,$pixels_cond.pixel_column] %in% names(pixels(msidata))
+        startingrow = $pixels_cond.pixel_header+1
+        numberpixels = length(startingrow:nrow(input_list))
+        valid_entries = input_list[startingrow:nrow(input_list),$pixels_cond.pixel_column] %in% names(pixels(msidata))
         validpixels = sum(valid_entries)
+        valid_annotations = input_list[valid_entries,c($pixels_cond.pixel_column, $pixels_cond.annotation_column)]
 
+        ## for valid pixels: filter file for pixels and create dataframe with x,y,annotation for QC
         if (validpixels != 0){
-            pixelsofinterest = pixels(msidata)[names(pixels(msidata)) %in% input_list[valid_entries,$pixels_cond.pixel_column]]
+            ## filter file for pixels
+            pixelsofinterest = pixels(msidata)[names(pixels(msidata)) %in% valid_annotations[,1]]
             msidata = msidata[,pixelsofinterest]
+            ## position_df for QC
+            pixel_coords = coord(msidata)[names(pixels(msidata)) %in% valid_annotations[,1],1:2]
+            position_df = cbind(pixel_coords, valid_annotations[,2])
         }else{
             msidata = msidata[,0]
             validpixels=0}
@@ -107,21 +121,22 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE) > 0)
     #elif str($pixels_cond.pixel_filtering) == "two_columns":
         print("two columns")
 
+        ## read tabular file, count number of rows (= number of pixels), extract dataframe with x,y,annotation (for QC), count number of valid pixels
         input_list = read.delim("$pixels_cond.two_columns_pixel", header = FALSE, 
         stringsAsFactors = FALSE)
-        numberpixels = length(input_list[,$pixels_cond.pixel_column_x])
+        startingrow = $pixels_cond.pixel_header+1
+        numberpixels = length(startingrow:nrow(input_list))
+        inputpixels = input_list[startingrow:nrow(input_list),c($pixels_cond.pixel_column_x, $pixels_cond.pixel_column_y, $pixels_cond.annotation_column_xy)]
+        colnames(inputpixels) = c("x", "y", "annotation")
+        position_df = merge(coord(msidata)[,1:2], inputpixels, by=c("x", "y"), all.x=TRUE)
 
-        inputpixel_x = input_list[,$pixels_cond.pixel_column_x]
-        inputpixel_y = input_list[,$pixels_cond.pixel_column_y]
-        inputpixels = cbind(inputpixel_x, inputpixel_y)
-        colnames(inputpixels) = c("x", "y")
-        valid_rows = merge(inputpixels, coord(msidata)[,1:2])
-        validpixels = nrow(valid_rows)
+        validpixels = nrow(position_df)
 
+        ## for valid pixels: filter file for pixels
         if (validpixels != 0){
             pixelvector = character()
-            for (pixel in 1:nrow(valid_rows)){
-                pixelvector[pixel] = paste0("x = ", valid_rows[pixel,1],", ", "y = ", valid_rows[pixel,2])}
+            for (pixel in 1:nrow(position_df)){
+                pixelvector[pixel] = paste0("x = ", position_df[pixel,1],", ", "y = ", position_df[pixel,2])}
             pixelsofinterest= pixels(msidata)[names(pixels(msidata)) %in% pixelvector]
             msidata = msidata[,pixelsofinterest]
         }else{
@@ -135,8 +150,7 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE) > 0)
         numberpixels = "range"
         validpixels = "range"
 
-    ## only filter pixels if at least one pixel will be left
-
+        ## only filter pixels if at least one pixel will be left
         if (sum(coord(msidata)\$x <= $pixels_cond.max_x_range & coord(msidata)\$x >= $pixels_cond.min_x_range) > 0 & sum(coord(msidata)\$y <= $pixels_cond.max_y_range & coord(msidata)\$y >= $pixels_cond.min_y_range) > 0){
 
             msidata = msidata[, coord(msidata)\$x <= $pixels_cond.max_x_range & coord(msidata)\$x >= $pixels_cond.min_x_range]
@@ -153,35 +167,42 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE) > 0)
 
     #end if
 
-
 }else{
     print("Inputfile has no intensities > 0")
-
 }
 
-###################################### filtering of features ######################
-##################################################################################
+    ################################# filtering of features ######################
+    ##############################################################################
 
-######################## Keep m/z from tabular file #########################
+    ####################### Keep m/z from tabular file #########################
 
-if (sum(spectra(msidata)[], na.rm=TRUE) > 0){
+## feature filtering only when pixels/features/intensities are left
+if (sum(spectra(msidata)[], na.rm=TRUE) > 0)
+{
 
     #if str($features_cond.features_filtering) == "features_list":
         print("feature list")
 
+        ## read tabular file, define starting row, extract and count valid features
         input_features = read.delim("$inputfeatures", header = FALSE, stringsAsFactors = FALSE)
         startingrow = $features_cond.feature_header+1
         extracted_features = input_features[startingrow:nrow(input_features),$features_cond.feature_column]
         numberfeatures = length(extracted_features)
 
+        ## find out type of tabular file (numeric or character format)
         if (grepl("m/z = ", input_features[startingrow,$features_cond.feature_column])==FALSE){
 
     ### if input is in numeric format
             if (class(extracted_features) == "numeric"){
-                ### max digits given in the input file will be used to match m/z
+                ### max digits given in the input file will be used to match m/z but the maximum is 4
                 max_digits = max(nchar(matrix(unlist(strsplit(as.character(extracted_features), "\\.")), ncol=2, byrow=TRUE)[,2]))
-                validfeatures = extracted_features %in% round(mz(msidata),max_digits)
-                featuresofinterest = features(msidata)[round(mz(msidata), digits = max_digits) %in% extracted_features[validfeatures]]
+                if (max_digits >4)
+                {
+                    max_digits = 4
+                }
+
+                validfeatures = round(extracted_features, max_digits) %in% round(mz(msidata),max_digits)
+                featuresofinterest = features(msidata)[round(mz(msidata), digits = max_digits) %in% round(extracted_features[validfeatures], max_digits)]
                 validmz = length(unique(featuresofinterest))
             }else{
                     validmz = 0
@@ -198,7 +219,7 @@ if (sum(spectra(msidata)[], na.rm=TRUE) > 0){
 
         msidata = msidata[featuresofinterest,]
 
-    ############### features within a given range are kept #########################
+    ############### features within a given range are kept #####################
 
     #elif str($features_cond.features_filtering) == "features_range":
         print("feature range")
@@ -270,9 +291,14 @@ if (sum(spectra(msidata)[], na.rm=TRUE) > 0){
     ## save msidata as Rfile
     save(msidata, file="$msidata_filtered")
 
-    #################### optional QC numbers #######################
+}else{
+    print("Inputfile or file filtered for pixels has no intensities > 0")
+    numberfeatures = NA
+    validmz = NA
+}
 
-    #if $outputs.outputs_select == "quality_control":
+    #################### QC numbers #######################
+
 
         ## Number of features (m/z)
         maxfeatures2 = length(features(msidata))
@@ -334,22 +360,37 @@ if (sum(spectra(msidata)[], na.rm=TRUE) > 0){
 
         property_df = data.frame(properties, before, filtered)
 
-    ############################### optional PDF QC ################################
+    ############################### PDF QC ################################
+
 
         pdf("filtertool_QC.pdf", fonts = "Times", pointsize = 12)
         plot(0,type='n',axes=FALSE,ann=FALSE)
         title(main=paste0("Qualitycontrol of filtering tool for file: \n\n", "$infile.display_name"))
         grid.table(property_df, rows= NULL)
 
-        ### heatmap image as visual pixel control
-        if (length(features(msidata))> 0 & length(pixels(msidata)) > 0){
-            image(msidata, mz=$outputs.inputmz, plusminus = $outputs.plusminus_dalton, contrast.enhance = "none", 
-              main= paste0($outputs.inputmz," ± ", $outputs.plusminus_dalton, " Da"), ylim = c(maximumy2+0.2*maximumy2,minimumy2-0.2*minimumy2))
+## QC report with more than value-table: only when pixels/features/intensities are left
+if (sum(spectra(msidata)[], na.rm=TRUE) > 0)
+{
+        ### visual pixel control
+
+            colnames(position_df)[3] = "annotation_name"
+            pixel_image = ggplot(position_df, aes(x=x, y=y, fill=annotation_name))+
+                   geom_tile() +
+                   coord_fixed()+
+                   ggtitle("Spatial orientation of combined data")+
+                   theme_bw()+
+                   theme(text=element_text(family="ArialMT", face="bold", size=15))+
+                   theme(legend.position="bottom",legend.direction="vertical")+
+                   guides(fill=guide_legend(ncol=4,byrow=TRUE))
+            coord_labels = aggregate(cbind(x,y)~annotation_name, data=position_df, mean, na.rm=TRUE, na.action="na.pass")
+            coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$annotation_name)
+
+            print(pixel_image)
 
             ### control features which are removed
             hist(mz(msidata), xlab="m/z", main="Kept m/z values")
             #if str($features_cond.features_filtering) == "none":
-            print("no difference histogram as no m/z filtering took place")
+                print("no difference histogram as no m/z filtering took place")
             #else:
 
                 if (isTRUE(all.equal(featuresinfile, mz(msidata)))){
@@ -357,12 +398,8 @@ if (sum(spectra(msidata)[], na.rm=TRUE) > 0){
                 }else{
                 hist(setdiff(featuresinfile, mz(msidata)), xlab="m/z", main="Removed m/z values")}
             #end if
-        }else{
-            print("file has no features or pixels left")}
 
         dev.off()
-
-    #end if
 
     ############################### optional intensity matrix ######################
 
@@ -376,7 +413,8 @@ if (sum(spectra(msidata)[], na.rm=TRUE) > 0){
     #end if
 
 }else{
-    print("Inputfile or file filtered for pixels has no intensities > 0")
+    print("Inputfile or filtered file has no intensities > 0")
+    dev.off()
 }
     ]]></configfile>
     </configfiles>
@@ -398,6 +436,7 @@ if (sum(spectra(msidata)[], na.rm=TRUE) > 0){
                 </param>
             </when>
         </conditional>
+
         <conditional name="pixels_cond">
             <param name="pixel_filtering" type="select" label="Select pixel filtering option">
                 <option value="none" selected="True">none</option>
@@ -410,12 +449,16 @@ if (sum(spectra(msidata)[], na.rm=TRUE) > 0){
                 <param name="single_pixels" type="data" format="tabular" label="Pixels in single column for filtering of MSI data"
                     help="tabular file with pixels of interest in the form x = 1, y = 1"/>
                 <param name="pixel_column" data_ref="single_pixels" label="Column with pixels" type="data_column"/>
+                <param name="annotation_column" data_ref="single_pixels" label="Column with annotations for each pixel" type="data_column"/>
+                <param name="pixel_header" label="Number of header lines to skip" value="0" type="integer"/>
             </when> 
             <when value="two_columns">
                 <param name="two_columns_pixel" type="data" format="tabular" label="Pixels in two columns for filtering of MSI data"
                     help="tabular file with pixels of interest in two separate columns"/>
                 <param name="pixel_column_x" data_ref="two_columns_pixel" label="Column with x values" type="data_column"/>
                 <param name="pixel_column_y" data_ref="two_columns_pixel" label="Column with y values" type="data_column"/>
+                <param name="annotation_column_xy" data_ref="two_columns_pixel" label="Column with annotations" type="data_column"/>
+                <param name="pixel_header" label="Number of header lines to skip" value="0" type="integer"/>
             </when> 
             <when value="pixel_range">
                 <param name="min_x_range" type="integer" value="0" label="Minimum value for x"/>
@@ -424,6 +467,7 @@ if (sum(spectra(msidata)[], na.rm=TRUE) > 0){
                 <param name="max_y_range" type="integer" value="100" label="Maximum value for y"/>
             </when> 
         </conditional>
+
         <conditional name="features_cond">
             <param name="features_filtering" type="select" label="Select feature filtering option">
                 <option value="none" selected="True">none</option>
@@ -450,26 +494,14 @@ if (sum(spectra(msidata)[], na.rm=TRUE) > 0){
                         <option value="ppm" selected="True">ppm</option>
                         <option value="Da">Da</option>
                 </param>
-            </when> 
+            </when>
         </conditional>
-        <conditional name="outputs">
-           <param name="outputs_select" type="select" label="Quality control output">
-               <option value="quality_control" selected="True">yes</option>
-               <option value="no_quality_control">no</option>
-           </param>
-           <when value="quality_control">
-              <param name="inputmz" type="float" value="1296.7" label="M/z for which a heatmap image will be drawn" help="Use a m/z which is still present in all pixels to control if the pixel filtering went well"/>
-              <param name="plusminus_dalton" value="0.25" type="float" label="Range for m/z value" help="plusminus m/z window"/>
-           </when>
-           <when value="no_quality_control"/>
-         </conditional>
          <param name="output_matrix" type="boolean" display="radio" label="Intensity matrix output"/>
     </inputs>
+
     <outputs>
         <data format="rdata" name="msidata_filtered" label="$infile.display_name filtered"/>
-        <data format="pdf" name="filtering_qc" from_work_dir="filtertool_QC.pdf" label = "$infile.display_name filtered_QC">
-            <filter>outputs["outputs_select"] == "quality_control"</filter>
-        </data>
+        <data format="pdf" name="filtering_qc" from_work_dir="filtertool_QC.pdf" label = "$infile.display_name filtered_QC"/>
         <data format="tabular" name="matrixasoutput" label="$infile.display_name filtered_matrix">
             <filter>output_matrix</filter>
         </data>
@@ -487,9 +519,6 @@ if (sum(spectra(msidata)[], na.rm=TRUE) > 0){
             <param name="inputfeatures" ftype="tabular" value = "inputfeatures.tabular"/>
             <param name="feature_column" value="2"/>
             <param name="feature_header" value="1"/>
-             <param name="outputs_select" value="quality_control"/>
-                <param name="inputmz" value="328.9"/>
-                <param name="plusminus_dalton" value="0.25"/>
             <output name="filtering_qc" file="imzml_filtered.pdf" compare="sim_size" delta="20000"/>
             <output name="msidata_filtered" file="imzml_filtered.RData" compare="sim_size" />
         </test>
@@ -503,9 +532,6 @@ if (sum(spectra(msidata)[], na.rm=TRUE) > 0){
             <param name="max_x_range" value="20"/>
             <param name="min_y_range" value="2"/>
             <param name="max_y_range" value="2"/>
-             <param name="outputs_select" value="quality_control"/>
-                <param name="inputmz" value="328.9"/>
-                <param name="plusminus_dalton" value="0.25"/>
             <output name="filtering_qc" file="imzml_filtered2.pdf" compare="sim_size" delta="20000"/>
             <output name="msidata_filtered" file="imzml_filtered2.RData" compare="sim_size" />
         </test>
@@ -522,9 +548,6 @@ if (sum(spectra(msidata)[], na.rm=TRUE) > 0){
             <param name="features_filtering" value="features_range"/>
             <param name="min_mz" value="350" />
             <param name="max_mz" value="500"/>
-             <param name="outputs_select" value="quality_control"/>
-                <param name="inputmz" value="328.9"/>
-                <param name="plusminus_dalton" value="0.25"/>
             <param name="output_matrix" value="True"/>
             <output name="filtering_qc" file="imzml_filtered3.pdf" compare="sim_size" delta="20000"/>
             <output name="msidata_filtered" file="imzml_filtered3.RData" compare="sim_size" />
@@ -539,13 +562,11 @@ if (sum(spectra(msidata)[], na.rm=TRUE) > 0){
             <param name="two_columns_pixel" ftype="tabular" value = "inputpixels_2column.tabular"/>
             <param name="pixel_column_x" value="1"/>
             <param name="pixel_column_y" value="3"/>
+            <param name="annotation_column_xy" value="2"/>
             <param name="features_filtering" value="features_list"/>
             <param name="inputfeatures" ftype="tabular" value = "inputcalibrantfile2.txt"/>
             <param name="feature_column" value="1"/>
             <param name="feature_header" value="0"/>
-             <param name="outputs_select" value="quality_control"/>
-                <param name="inputmz" value="328.9"/>
-                <param name="plusminus_dalton" value="0.25"/>
             <output name="filtering_qc" file="imzml_filtered4.pdf" compare="sim_size" delta="20000"/>
             <output name="msidata_filtered" file="imzml_filtered4.RData" compare="sim_size" />
         </test>
@@ -563,9 +584,6 @@ if (sum(spectra(msidata)[], na.rm=TRUE) > 0){
             <param name="inputfeatures" ftype="tabular" value = "featuresofinterest5.tabular"/>
             <param name="feature_column" value="1"/>
             <param name="feature_header" value="0"/>
-             <param name="outputs_select" value="quality_control"/>
-                <param name="inputmz" value="328.9"/>
-                <param name="plusminus_dalton" value="0.25"/>
             <output name="filtering_qc" file="imzml_filtered5.pdf" compare="sim_size" delta="20000"/>
             <output name="msidata_filtered" file="imzml_filtered5.RData" compare="sim_size" />
         </test>
@@ -581,11 +599,6 @@ if (sum(spectra(msidata)[], na.rm=TRUE) > 0){
             <param name="features_filtering" value="features_list"/>
             <param name="inputfeatures" ftype="tabular" value = "featuresofinterest2.tabular"/>
             <param name="feature_column" value="1"/>
-            <conditional name="outputs">
-                <param name="outputs_select" value="quality_control"/>
-                    <param name="inputmz" value="1200"/>
-                    <param name="plusminus_dalton" value="0.25"/>
-            </conditional>
             <param name="output_matrix" value="True"/>
             <output name="filtering_qc" file="analyze_filtered.pdf" compare="sim_size" delta="20000"/>
             <output name="msidata_filtered" file="analyze_filtered.RData" compare="sim_size" />
@@ -597,15 +610,10 @@ if (sum(spectra(msidata)[], na.rm=TRUE) > 0){
                 <composite_data value="Analyze75.img"/>
                 <composite_data value="Analyze75.t2m"/>
             </param>
-            <conditional name="outputs">
-                <param name="outputs_select" value="quality_control"/>
-                    <param name="inputmz" value="1200"/>
-                    <param name="plusminus_dalton" value="0.25"/>
-            </conditional>
             <output name="filtering_qc" file="analyze75_filtered2.pdf" compare="sim_size" delta="20000"/>
             <output name="msidata_filtered" file="analyze_filteredoutside.RData" compare="sim_size" />
         </test>
-        <test expect_num_outputs="2">
+        <test expect_num_outputs="3">
             <param name="infile" value="preprocessed.RData" ftype="rdata"/>
             <conditional name="outputs">
                 <param name="outputs_select" value="no_quality_control"/>
@@ -613,6 +621,7 @@ if (sum(spectra(msidata)[], na.rm=TRUE) > 0){
             <param name="output_matrix" value="True"/>
             <output name="matrixasoutput" file="rdata_matrix.tabular"/>
             <output name="msidata_filtered" file="rdata_notfiltered.RData" compare="sim_size" />
+            <output name="filtering_qc" file="rdata_notfiltered.pdf" compare="sim_size" />
         </test>
     </tests>
     <help>
@@ -631,9 +640,9 @@ Input data: 3 types of input data can be used:
 
 Options:
 
-- pixel filtering: can use a tabular file containing x and y coordinates or by defining a range for x and y by hand
+- pixel filtering/annotation: either with a tabular file containing x and y coordinates and pixel annotations or by defining a range for x and y by hand (for the latter no annotation is possible)
 - m/z feature filtering: can use a tabular file containing m/z of interest or by defining a range for the m/z values (! numeric input will be rounded to 2 digits before matching to m/z!)
-- m/z feature removing: infering m/z such as matrix contaminants can be removed by specifying their m/z in a tabular file and optionally set a window (window in ppm or m/z in which peaks should be removed)
+- m/z feature removing: perturbing m/z such as matrix contaminants can be removed by specifying their m/z in a tabular file and optionally set a window (window in ppm or m/z in which peaks should be removed)
 
 
 Output: 
