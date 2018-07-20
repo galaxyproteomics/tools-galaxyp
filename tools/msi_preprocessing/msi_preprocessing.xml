@@ -1,4 +1,4 @@
-<tool id="mass_spectrometry_imaging_preprocessing" name="MSI preprocessing" version="1.10.0.4">
+<tool id="mass_spectrometry_imaging_preprocessing" name="MSI preprocessing" version="1.10.0.5">
     <description>
         mass spectrometry imaging preprocessing
     </description>
@@ -6,6 +6,7 @@
         <requirement type="package" version="1.10.0">bioconductor-cardinal</requirement>
         <requirement type="package" version="2.2.1">r-gridextra</requirement>
         <requirement type="package" version="0.20-35">r-lattice</requirement>
+        <requirement type="package" version="2.2.1">r-ggplot2</requirement>
     </requirements>
     <command detect_errors="exit_code">
     <![CDATA[
@@ -33,6 +34,7 @@
 library(Cardinal)
 library(gridExtra)
 library(lattice)
+library(ggplot2)
 
 #if $infile.ext == 'imzml'
     #if str($processed_cond.processed_file) == "processed":
@@ -319,20 +321,39 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE)> 0){
     ## optional summarized matrix
         print('Summarized matrix')
 
+        ## optional annotation from tabular file to obtain groups over which to apply mean, median or sd (otherwise all pixels are considered to be sample)
+
+        #if str($tabular_annotation.load_annotation) == 'yes_annotation':
+
+            ## read and extract x,y,annotation information
+            input_tabular = read.delim("$tabular_annotation.annotation_file", header = $tabular_annotation.tabular_header, stringsAsFactors = FALSE)
+            annotation_input = input_tabular[,c($tabular_annotation.column_x, $tabular_annotation.column_y, $tabular_annotation.column_names)]
+            colnames(annotation_input) = c("x", "y", "annotation")
+
+            ## merge with coordinate information of msidata
+            msidata_coordinates = cbind(coord(msidata)[,1:2], c(1:ncol(msidata)))
+            colnames(msidata_coordinates)[3] = "pixel_index"
+            merged_annotation = merge(msidata_coordinates, annotation_input, by=c("x", "y"), all.x=TRUE)
+            merged_annotation[is.na(merged_annotation)] = "NA"
+            merged_annotation = merged_annotation[order(merged_annotation\$pixel_index),]
+            msidata\$annotation = as.factor(merged_annotation[,4])
+
+        #end if
+
     #if "mean" in str($summary_type).split(","):
         print("mean matrix")
-        if (!is.null(levels(msidata\$combined_sample))){
+        if (!is.null(levels(msidata\$annotation))){
 
             sample_matrix = matrix(,ncol=0, nrow=nrow(msidata))
             count = 1
-            for (subsample in levels(msidata\$combined_sample)){
-            subsample_pixels = msidata[,msidata\$combined_sample == subsample]
+            for (subsample in levels(msidata\$annotation)){
+            subsample_pixels = msidata[,msidata\$annotation == subsample]
             subsample_calc = apply(spectra(subsample_pixels)[],1,mean, na.rm=TRUE)
             sample_matrix = cbind(sample_matrix, subsample_calc)
             count = count+1
             }
             rownames(sample_matrix) = mz(msidata)
-            colnames(sample_matrix) = levels(msidata\$combined_sample)
+            colnames(sample_matrix) = levels(msidata\$annotation)
             write.table(sample_matrix, file="$summarized_output_mean", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
         }else{
             full_sample_calc = as.data.frame(apply(spectra(msidata)[],1,mean, na.rm=TRUE))
@@ -345,18 +366,21 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE)> 0){
 
     #if "median" in str($summary_type).split(","):
         print("median matrix")
-        if (!is.null(levels(msidata\$combined_sample))){
+        if (!is.null(levels(msidata\$annotation))){
             sample_matrix = matrix(,ncol=0, nrow=nrow(msidata))
             count = 1
-            for (subsample in levels(msidata\$combined_sample)){
-            subsample_pixels = msidata[,msidata\$combined_sample == subsample]
+            for (subsample in levels(msidata\$annotation)){
+
+            subsample_pixels = msidata[,msidata\$annotation == subsample] ## no idea why it does not work??? NA problem?! 
+
             subsample_calc = apply(spectra(subsample_pixels)[],1,median, na.rm=TRUE)
+
             sample_matrix = cbind(sample_matrix, subsample_calc)
             count = count+1
             }
 
             rownames(sample_matrix) = mz(msidata)
-            colnames(sample_matrix) = levels(msidata\$combined_sample)
+            colnames(sample_matrix) = levels(msidata\$annotation)
             write.table(sample_matrix, file="$summarized_output_median", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
         }else{
             full_sample_calc = as.data.frame(apply(spectra(msidata)[],1,median, na.rm=TRUE))
@@ -368,18 +392,18 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE)> 0){
 
     #if "sd" in str($summary_type).split(","):
         print("sd matrix")
-        if (!is.null(levels(msidata\$combined_sample))){
+        if (!is.null(levels(msidata\$annotation))){
             sample_matrix = matrix(,ncol=0, nrow=nrow(msidata))
             count = 1
-            for (subsample in levels(msidata\$combined_sample)){
-            subsample_pixels = msidata[,msidata\$combined_sample == subsample]
+            for (subsample in levels(msidata\$annotation)){
+            subsample_pixels = msidata[,msidata\$annotation == subsample]
             subsample_calc = apply(spectra(subsample_pixels)[],1,sd, na.rm=TRUE)
             sample_matrix = cbind(sample_matrix, subsample_calc)
             count = count+1
             }
 
             rownames(sample_matrix) = mz(msidata)
-            colnames(sample_matrix) = levels(msidata\$combined_sample)
+            colnames(sample_matrix) = levels(msidata\$annotation)
             write.table(sample_matrix, file="$summarized_output_sd", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
         }else{
 
@@ -414,6 +438,45 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE)> 0){
     title(main=paste("Quality control during preprocessing \n", "Filename:", "$infile.display_name"))
     rownames(QC_numbers) = c("# features", "median # peaks", "median intensity", "median TIC")
     grid.table(t(QC_numbers))
+
+    #if str($tabular_annotation.load_annotation) == 'yes_annotation':
+
+        ## the more annotation groups a file has the smaller will be the legend
+        number_combined = length(levels(msidata\$annotation))
+        if (number_combined<20){
+            legend_size = 10
+        }else if (number_combined>20 && number_combined<40){
+            legend_size = 9
+        }else if (number_combined>40 && number_combined<60){
+            legend_size = 8
+        }else if (number_combined>60 && number_combined<100){
+            legend_size = 7
+        }else{
+            legend_size = 6
+        }
+
+        position_df = cbind(coord(msidata)[,1:2], msidata\$annotation)
+        colnames(position_df)[3] = "sample_name"
+
+        combine_plot = ggplot(position_df, aes(x=x, y=y, fill=sample_name))+
+               geom_tile() +
+               coord_fixed()+
+               ggtitle("Spatial orientation of annotated data")+
+               theme_bw()+
+               theme(plot.title = element_text(hjust = 0.5))+
+               theme(text=element_text(family="ArialMT", face="bold", size=12))+
+               theme(legend.position="bottom",legend.direction="vertical")+
+               theme(legend.key.size = unit(0.2, "line"), legend.text = element_text(size = legend_size))+
+               guides(fill=guide_legend(ncol=5,byrow=TRUE))
+        coord_labels = aggregate(cbind(x,y)~sample_name, data=position_df, mean)
+        coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$sample_name)
+        for(file_count in 1:nrow(coord_labels))
+            {combine_plot = combine_plot + annotate("text",x=coord_labels[file_count,"x"],
+            y=coord_labels[file_count,"y"],label=toString(coord_labels[file_count,4]))}
+
+        print(combine_plot)
+    #end if
+
     dev.off()
 
 }else{
@@ -613,6 +676,21 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE)> 0){
             <option value="median">median</option>
             <option value="sd">standard deviation</option>
         </param>
+        <conditional name="tabular_annotation">
+            <param name="load_annotation" type="select" label="Use pixel annotations from tabular file to summarize pixel">
+                <option value="no_annotation" selected="True">summarize over all pixels</option>
+                <option value="yes_annotation">summarize over categories from annotation file</option>
+            </param>
+                <when value="yes_annotation">
+                    <param name="annotation_file" type="data" format="tabular" label="Use annotations from tabular file to summarize pixel"
+                    help="Tabular file with three columns: x values, y values and pixel annotations"/>
+                        <param name="column_x" data_ref="annotation_file" label="Column with x values" type="data_column"/>
+                        <param name="column_y" data_ref="annotation_file" label="Column with y values" type="data_column"/>
+                        <param name="column_names" data_ref="annotation_file" label="Column with pixel annotations" type="data_column"/>
+                        <param name="tabular_header" type="boolean" label="Tabular file contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
+                </when>
+                <when value="no_annotation"/>
+        </conditional>
         <param name="output_matrix" type="boolean" label="Intensity matrix output"/>
     </inputs>
     <outputs>
@@ -682,6 +760,9 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE)> 0){
                         </conditional>
                 </conditional>
             </repeat>
+            <conditional name="tabular_annotation">
+                <param name="load_annotation" value="no_annotation"/>
+            </conditional>
             <param name="output_matrix" value="True"/>
             <output name="msidata_preprocessed" file="preprocessing_results1.RData" compare="sim_size"/>
             <output name="matrixasoutput" file="preprocessing_results1.txt"/>
@@ -708,6 +789,14 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE)> 0){
                     </conditional>
                 </conditional>
             </repeat>
+            <conditional name="tabular_annotation">
+                <param name="load_annotation" value="yes_annotation"/>
+                <param name="annotation_file" value="pixel_annotations.tabular"/>
+                        <param name="column_x" value="1"/>
+                        <param name="column_y" value="2"/>
+                        <param name="column_names" value="3"/>
+                        <param name="tabular_header" value="FALSE"/>
+            </conditional>
             <param name="summary_type" value="median,sd"/>
             <output name="msidata_preprocessed" file="preprocessing_results2.RData" compare="sim_size"/>
             <output name="summarized_output_median" file="preprocessing_median2.txt" lines_diff="2"/>
@@ -742,6 +831,9 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE)> 0){
                 </conditional>
             </repeat>
             <param name="summary_type" value="mean"/>
+            <conditional name="tabular_annotation">
+                <param name="load_annotation" value="no_annotation"/>
+            </conditional>
             <output name="msidata_preprocessed" file="preprocessing_results3.RData" compare="sim_size"/>
             <output name="QC_overview" file="preprocessing_results3.pdf" compare="sim_size"/>
             <output name="summarized_output_mean" file="preprocessing_mean3.txt" lines_diff="2"/>
@@ -763,6 +855,9 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE)> 0){
                     <param name="bin_width" value="0.1"/>
                 </conditional>
             </repeat>
+            <conditional name="tabular_annotation">
+                <param name="load_annotation" value="no_annotation"/>
+            </conditional>
             <param name="output_matrix" value="True"/>
             <output name="msidata_preprocessed" file="preprocessing_results4.RData" compare="sim_size"/>
             <output name="matrixasoutput" file="preprocessing_results4.txt"/>
@@ -782,6 +877,9 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE)> 0){
                         </conditional>
                 </conditional>
             </repeat>
+            <conditional name="tabular_annotation">
+                <param name="load_annotation" value="no_annotation"/>
+            </conditional>
              <output name="msidata_preprocessed" file="preprocessing_results5.RData" compare="sim_size"/>
             <output name="QC_overview" file="preprocessing_results5.pdf" compare="sim_size"/>
         </test>
@@ -798,6 +896,7 @@ Input data: 3 types of input data can be used:
 - imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <https://ms-imaging.org/wp/imzml/>`_
 - Analyze7.5 (upload hdr, img and t2m file via the "composite" function)
 - Cardinal "MSImageSet" data (with variable name "msidata", saved as .RData)
+- optional: tabular file with pixel annotations: x and y values in separate columns and the corresponding annotation in a third column
 
 Options:
 
@@ -814,8 +913,9 @@ Options:
 Output: 
 
 - imzML file, preprocessed
-- pdf with key values after each processing step
+- pdf with key values after each processing step, in case of loaded annotations file overview plot of pixel annotations
 - optional: intensity matrix as tabular file (intensities for m/z in rows and pixel in columns)
+- optional: summarized intensity matrix: mean, median or standard deviation for each m/z feature; in case pixel annotations are provided the intensity values are summarized for each pixel group
 
 Tip: 
 
