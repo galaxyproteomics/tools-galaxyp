@@ -1,4 +1,4 @@
-<tool id="mass_spectrometry_imaging_qc" name="MSI Qualitycontrol" version="1.10.0.4">
+<tool id="mass_spectrometry_imaging_qc" name="MSI Qualitycontrol" version="1.10.0.5">
     <description>
         mass spectrometry imaging QC
     </description>
@@ -51,12 +51,32 @@ library(scales)
     load('infile.RData')
 #end if
 
-## create full matrix to make processed imzML files compatible with segmentation
-iData(msidata) <- iData(msidata)[] 
-
 ## remove duplicated coordinates
 print(paste0(sum(duplicated(coord(msidata))), " duplicated coordinates were removed"))
 msidata <- msidata[,!duplicated(coord(msidata))]
+
+## create full matrix to make processed imzML files compatible with segmentation and other steps
+iData(msidata) <- iData(msidata)[]
+
+## optional annotation from tabular file to obtain pixel groups (otherwise all pixels are considered to be one sample)
+
+#if str($tabular_annotation.load_annotation) == 'yes_annotation':
+
+    ## read and extract x,y,annotation information
+    input_tabular = read.delim("$tabular_annotation.annotation_file", header = TRUE, stringsAsFactors = FALSE)
+    annotation_input = input_tabular[,c($tabular_annotation.column_x, $tabular_annotation.column_y, $tabular_annotation.column_names)]
+    annotation_name = colnames(annotation_input)[3] ##extract header for annotations to later export tabular with same name
+    colnames(annotation_input) = c("x", "y", "annotation") ## rename annotations header to default name "annotation"
+
+    ## merge with coordinate information of msidata
+    msidata_coordinates = cbind(coord(msidata)[,1:2], c(1:ncol(msidata)))
+    colnames(msidata_coordinates)[3] = "pixel_index"
+    merged_annotation = merge(msidata_coordinates, annotation_input, by=c("x", "y"), all.x=TRUE)
+    merged_annotation[is.na(merged_annotation)] = "NA"
+    merged_annotation = merged_annotation[order(merged_annotation\$pixel_index),]
+    msidata\$annotation = as.factor(merged_annotation[,4])
+
+#end if
 
 ###################################### file properties in numbers ######################
 
@@ -230,8 +250,6 @@ if (npeaks > 0){
       plot(x2~x1, data=df[order(df\$dens),], ylim=ylim,xlim=xlim,pch=20,col=col,
            cex=1,xlab=xlab,ylab=ylab,las=1, main=main)}
 
-    abline_vector= -100000 ## will be filled for samples in case data is combined
-
     ## start list for optional spectrum values output
     spectrum_list = list()
     list_count = 1
@@ -240,10 +258,10 @@ if (npeaks > 0){
 
     ### only for previously combined data, same plot as in combine QC pdf
 
-    if (!is.null(levels(msidata\$combined_sample))){
-        number_combined = length(levels(msidata\$combined_sample))
+    if (!is.null(levels(msidata\$annotation))){
+        number_combined = length(levels(msidata\$annotation))
 
-        ## the more combined_samples a file has the smaller will be the legend
+        ## the more annotation groups a file has the smaller will be the legend
         if (number_combined<20){
             legend_size = 10
             cex_boxplot = 1
@@ -261,10 +279,15 @@ if (npeaks > 0){
             cex_boxplot = 0.3
         }
 
-        position_df = cbind(coord(msidata)[,1:2], msidata\$combined_sample)
-        colnames(position_df)[3] = "sample_name"
+        position_df = cbind(coord(msidata)[,1:2], msidata\$annotation)
+        colnames(position_df)[3] = annotation_name
 
-        combine_plot = ggplot(position_df, aes(x=x, y=y, fill=sample_name))+
+        ## append list for optional tabular output with spectrum values
+        spectrum_list[[list_count]] = position_df
+        list_count = list_count+1
+
+        colnames(position_df)[3] = "Annotation"
+        combine_plot = ggplot(position_df, aes(x=x, y=y, fill=Annotation))+
                geom_tile() +
                coord_fixed()+
                ggtitle("Spatial orientation of combined data")+
@@ -274,18 +297,17 @@ if (npeaks > 0){
                theme(legend.position="bottom",legend.direction="vertical")+
                theme(legend.key.size = unit(0.2, "line"), legend.text = element_text(size = legend_size))+
                guides(fill=guide_legend(ncol=5,byrow=TRUE))
-        coord_labels = aggregate(cbind(x,y)~sample_name, data=position_df, mean)
-        coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$sample_name)
-        for(file_count in 1:nrow(coord_labels))
-            {combine_plot = combine_plot + annotate("text",x=coord_labels[file_count,"x"],
-            y=coord_labels[file_count,"y"],label=toString(coord_labels[file_count,4]))}
 
         print(combine_plot)
 
-        ### find max pixelnumber per subsample to later draw ablines 
-        pixel_name_df = data.frame(pixels(msidata), msidata\$combined_sample)
+        ### order pixels according to annotation - this gives a new pixel/spectra index order according to the annotation groups 
+        pixel_name_df = data.frame(pixels(msidata), msidata\$annotation)
         colnames(pixel_name_df) = c("pixel_number", "pixel_name")
-        last_pixel = aggregate(pixel_number~pixel_name, data = pixel_name_df, max)
+
+        pixel_name_df_ordered = pixel_name_df[order(pixel_name_df\$pixel_name),]
+        pixel_name_df_ordered\$annotated_order = 1:ncol(msidata)
+        last_pixel = aggregate(annotated_order~pixel_name, data = pixel_name_df_ordered, max)
+
         pixel_vector = last_pixel[,2]
         abline_vector = pixel_vector[1:number_combined-1]
         print(abline_vector)
@@ -307,35 +329,37 @@ if (npeaks > 0){
     ################ 2) Number of calibrants per spectrum ######################
 
     ## matrix with calibrants in columns and in rows if there is peak intensity in range or not
-    pixelmatrix = matrix(ncol=ncol(msidata), nrow = 0) 
+    pixelmatrix = matrix(ncol=ncol(msidata), nrow = 0)
 
     ## plot only possible when there is at least one valid calibrant
     if (length(inputcalibrantmasses) != 0){
 
-    ## calculate plusminus values in m/z for each calibrant
-    plusminusvalues = rep($plusminus_ppm/1000000, length(inputcalibrantmasses))*inputcalibrantmasses
+        ## calculate plusminus values in m/z for each calibrant
+        plusminusvalues = rep($plusminus_ppm/1000000, length(inputcalibrantmasses))*inputcalibrantmasses
 
-    ## filter for m/z window of each calibrant and calculate if sum of peak intensities > 0
-    for (mass in 1:length(inputcalibrantmasses)){
+        ## filter for m/z window of each calibrant and calculate if sum of peak intensities > 0
 
-        filtered_data = msidata[mz(msidata) >= inputcalibrantmasses[mass]-plusminusvalues[mass] & mz(msidata) <= inputcalibrantmasses[mass]+plusminusvalues[mass],]
+        for (mass in 1:length(inputcalibrantmasses)){
 
-        if (nrow(filtered_data) > 1 & sum(spectra(filtered_data)[],na.rm=TRUE) > 0){
+            filtered_data = msidata[mz(msidata) >= inputcalibrantmasses[mass]-plusminusvalues[mass] & mz(msidata) <= inputcalibrantmasses[mass]+plusminusvalues[mass],]
 
-            ## intensity of all m/z > 0
-            intensity_sum = colSums(spectra(filtered_data)[], na.rm=TRUE) > 0
+            if (nrow(filtered_data) > 1 & sum(spectra(filtered_data)[],na.rm=TRUE) > 0){
 
-        }else if(nrow(filtered_data) == 1 & sum(spectra(filtered_data)[], na.rm=TRUE) > 0){
+                ## intensity of all m/z > 0
+                intensity_sum = colSums(spectra(filtered_data)[], na.rm=TRUE) > 0
 
-            ## intensity of only m/z > 0
-            intensity_sum = spectra(filtered_data)[] > 0
+            }else if(nrow(filtered_data) == 1 & sum(spectra(filtered_data)[], na.rm=TRUE) > 0){
 
-        }else{
-            intensity_sum = rep(FALSE, ncol(filtered_data))}
+                ## intensity of only m/z > 0
+                intensity_sum = spectra(filtered_data)[] > 0 
 
-        ## for each pixel add sum of intensity in the given m/z range
-        pixelmatrix = rbind(pixelmatrix, intensity_sum)
-    }
+            }else{
+
+                intensity_sum = rep(FALSE, ncol(filtered_data))}
+
+            ## for each pixel add sum of intensities > 0 in the given m/z range
+            pixelmatrix = rbind(pixelmatrix, intensity_sum)
+        }
 
         ## for each pixel count TRUE (each calibrant m/z range with intensity > 0 is TRUE)
         countvector= as.factor(colSums(pixelmatrix, na.rm=TRUE))
@@ -500,11 +524,12 @@ if (npeaks > 0){
     colnames(highestmz_matrix)[3] = "Most abundant m/z"
     spectrum_list[[list_count]] = highestmz_matrix
 
+
     ## tabular output of spectra values
 
     #if $pixel_output:
         print("pixel list")
-        pixel_df = Reduce(function(...) merge(..., by=c("x", "y"), all=T), spectrum_list)
+        pixel_df = Reduce(function(...) merge(..., by=c("x", "y"), all=TRUE), spectrum_list)
         write.table(pixel_df, file="$pixel_tabular_output", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
     #end if
 
@@ -512,24 +537,36 @@ if (npeaks > 0){
 
     #if $do_pca:
 
-    pca = PCA(msidata, ncomp=2) 
-    par(mfrow = c(2,1))
-    plot(pca, col=c("black", "darkgrey"), main="PCA for two components")
-    image(pca, col=c("black", "white"), strip=FALSE, ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy))
+        pca = PCA(msidata, ncomp=2) 
+        par(mfrow = c(2,1))
+        plot(pca, col=c("black", "darkgrey"), main="PCA for two components")
+        image(pca, col=c("black", "white"), strip=FALSE, ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy))
 
     #end if
 
-    ################## III) properties over spectra index ##########
-    ##############################################################################
+    ################## III) properties over spectra index ######################
+    ############################################################################
     print("properties over pixels")
     par(mfrow = c(2,1), mar=c(5,6,4,2))
 
     ########################## 9) number of peaks per spectrum #################
     ## 9a) scatterplot
-    plot_colorByDensity(pixels(msidata), peaksperpixel, ylab = "", xlab = "", main="Number of peaks per spectrum")
-    title(xlab="Spectra index", line=3)
-    title(ylab="Number of peaks", line=4)
-    abline(v=abline_vector, lty = 3)
+
+    ## order pixels according to annotation groups if annotations are provided
+    if (!is.null(levels(msidata\$annotation))){
+
+        pixel_peaks_df = cbind(pixel_name_df, peaksperpixel)
+        pixel_ordered = pixel_peaks_df[order(pixel_peaks_df\$pixel_name),] ## order pixels according to annotation group names
+        pixel_ordered\$annotation_order = 1:ncol(msidata)
+        plot_colorByDensity(pixel_ordered\$annotation_order, pixel_ordered\$peaksperpixel, ylab = "", xlab = "", main="Number of peaks per spectrum")
+        title(xlab="Spectra index ordered for annotation groups", line=3)
+        title(ylab="Number of peaks", line=4)
+        abline(v=abline_vector, lty = 3)
+    }else{
+        plot_colorByDensity(pixels(msidata), peaksperpixel, ylab = "", xlab = "", main="Number of peaks per spectrum")
+        title(xlab="Spectra index", line=3)
+        title(ylab="Number of peaks", line=4)
+    }
 
     ## 9b) histogram
 
@@ -538,20 +575,20 @@ if (npeaks > 0){
     title(ylab="Frequency = # spectra", line=4)
     abline(v=median(peaksperpixel), col="blue")
 
-    ## 9c) additional histogram to show subsample contributions
-    ## only when samples were combined before (combined_sample)
-    if (!is.null(levels(msidata\$combined_sample))){
+    ## 9c) additional histogram to show contribution of annotation groups
+    ## only when pixel annotations were loaded
+    if (!is.null(levels(msidata\$annotation))){
 
-        df_9 = data.frame(peaksperpixel, msidata\$combined_sample)
-        colnames(df_9) = c("Npeaks", "sample_name")
+        df_9 = data.frame(peaksperpixel, msidata\$annotation)
+        colnames(df_9) = c("Npeaks", "annotation")
 
-        hist_9 = ggplot(df_9, aes(x=Npeaks, fill=sample_name)) +
+        hist_9 = ggplot(df_9, aes(x=Npeaks, fill=annotation)) +
         geom_histogram()+ theme_bw()+
         theme(text=element_text(family="ArialMT", face="bold", size=12))+
         theme(plot.title = element_text(hjust = 0.5))+
         theme(legend.key.size = unit(0.2, "line"), legend.text = element_text(size = legend_size))+
         theme(legend.position="bottom",legend.direction="vertical")+
-        labs(title="Number of peaks per spectrum and sample", x="Number of peaks per spectrum", y = "Frequency = # spectra") +
+        labs(title="Number of peaks per spectrum and annotation group", x="Number of peaks per spectrum", y = "Frequency = # spectra") +
         guides(fill=guide_legend(ncol=5,byrow=TRUE))+
         geom_vline(xintercept = median(peaksperpixel), size = 1, colour = "black",linetype = "dashed")
         print(hist_9)}
@@ -560,10 +597,23 @@ if (npeaks > 0){
 
     ## 10a)density scatterplot
     par(mfrow = c(2,1), mar=c(5,6,4,2))
-    plot_colorByDensity(pixels(msidata), TICs,  ylab = "", xlab = "", main="TIC per spectrum")
-    title(xlab="Spectra index", line=3)
-    title(ylab = "Total ion chromatogram intensity", line=4)
-    abline(v=abline_vector, lty = 3)
+
+    ## order pixels according to annotation groups if annotations are provided
+    if (!is.null(levels(msidata\$annotation))){
+
+        pixel_TIC_df = cbind(pixel_name_df, TICs)
+        pixel_ordered = pixel_TIC_df[order(pixel_TIC_df\$pixel_name),] ## order pixels according to annotation group names
+        pixel_ordered\$annotation_order = 1:ncol(msidata)
+
+        plot_colorByDensity(pixel_ordered\$annotation_order, pixel_ordered\$TICs, ylab = "", xlab = "", main="TIC per spectrum")
+        title(xlab="Spectra index ordered for annotation groups", line=3)
+        title(ylab="Total ion chromatogram intensity", line=4)
+        abline(v=abline_vector, lty = 3)
+    }else{
+        plot_colorByDensity(pixels(msidata), TICs,  ylab = "", xlab = "", main="TIC per spectrum")
+        title(xlab="Spectra index", line=3)
+        title(ylab = "Total ion chromatogram intensity", line=4)
+    }
 
     ## 10b) histogram
     hist(log(TICs), main="", las=1, xlab = "log(TIC per spectrum)", ylab="")
@@ -571,28 +621,28 @@ if (npeaks > 0){
     title(ylab="Frequency = # spectra", line=4)
     abline(v=median(log(TICs[TICs>0])), col="blue")    
 
-    ## 10c) additional histogram to show subsample contributions
-    ## only when samples were combined before (combined_sample)
-    if (!is.null(levels(msidata\$combined_sample))){
-        df_10 = data.frame(log(TICs), msidata\$combined_sample)
-        colnames(df_10) = c("TICs", "sample_name")
+    ## 10c) additional histogram to show annotation contributions
+    ## only when pixel annotations were loaded
+    if (!is.null(levels(msidata\$annotation))){
+        df_10 = data.frame(log(TICs), msidata\$annotation)
+        colnames(df_10) = c("TICs", "annotation")
 
-        hist_10 = ggplot(df_10, aes(x=TICs, fill=sample_name)) +
+        hist_10 = ggplot(df_10, aes(x=TICs, fill=annotation)) +
         geom_histogram()+ theme_bw()+
         theme(text=element_text(family="ArialMT", face="bold", size=12))+
         theme(plot.title = element_text(hjust = 0.5))+
         theme(legend.position="bottom",legend.direction="vertical")+
         theme(legend.key.size = unit(0.2, "line"), legend.text = element_text(size = legend_size))+
-        labs(title="TIC per spectrum and sample", x="log(TIC per spectrum)", y = "Frequency = # spectra") +
+        labs(title="TIC per spectrum and annotation group", x="log(TIC per spectrum)", y = "Frequency = # spectra") +
         guides(fill=guide_legend(ncol=5,byrow=TRUE))+
         geom_vline(xintercept = median(log(TICs[TICs>0])), size = 1, colour = "black",linetype = "dashed")
         print(hist_10)}
 
     ################################## IV) properties over m/z ####################
     ############################################################################
-    print("propverties over m/z")
+    print("properties over m/z")
 
-    ########################## 11) Histogram on m/z values #####################
+    ########################## 11) Histogram of m/z values #####################
 
     par(mfrow = c(1, 1), cex.axis=1, cex.lab=1, mar=c(5.1,4.1,4.1,2.1))
     hist(mz(msidata), xlab = "m/z", main="Histogram of m/z values")
@@ -642,9 +692,19 @@ if (npeaks > 0){
 
     ## 14a) Median intensity over spectra
     medianint_spectra = apply(spectra(msidata), 2, median)
-    plot(medianint_spectra, main="Median intensity per spectrum",las=1, xlab="Spectra index", ylab="")
-    title(ylab="Median spectrum intensity", line=4)
-    abline(v=abline_vector, lty = 3)
+
+    ## order pixels according to annotation groups if annotations are provided
+    if (!is.null(levels(msidata\$annotation))){
+
+        pixel_median_df = cbind(pixel_name_df, medianint_spectra)
+        pixel_ordered = pixel_median_df[order(pixel_median_df\$pixel_name),] ## order pixels according to annotation group names
+        plot(pixel_ordered\$medianint_spectra, main="Median intensity per spectrum",las=1, xlab="Spectra index ordered for annotation groups", ylab="")
+        title(ylab="Median spectrum intensity", line=4)
+        abline(v=abline_vector, lty = 3)
+    }else{
+        plot(medianint_spectra, main="Median intensity per spectrum",las=1, xlab="Spectra index", ylab="")
+        title(ylab="Median spectrum intensity", line=4)
+    }
 
     ## 14b) histogram: 
     hist(log2(spectra(msidata)[]), main="", xlab = "", ylab="", las=1)
@@ -653,20 +713,20 @@ if (npeaks > 0){
     title(ylab="Frequency", line=4)
     abline(v=median(log2(spectra(msidata)[(spectra(msidata)>0)])), col="blue")
 
-    ## 14c) histogram to show subsample contribution
-    ## only for previously combined samples
-    if (!is.null(levels(msidata\$combined_sample))){
+    ## 14c) histogram to show contribution of annotation groups
+    ## only when annotation tabular was provided
+    if (!is.null(levels(msidata\$annotation))){
 
     df_13 = data.frame(matrix(,ncol=2, nrow=0))
-    for (subsample in levels(msidata\$combined_sample)){
-        log2_int_subsample = log2(spectra(msidata)[,msidata\$combined_sample==subsample])
+    for (subsample in levels(msidata\$annotation)){
+        log2_int_subsample = log2(spectra(msidata)[,msidata\$annotation==subsample])
         df_subsample = data.frame(as.numeric(log2_int_subsample))
-        df_subsample\$sample_name = subsample
+        df_subsample\$annotation = subsample
         df_13 = rbind(df_13, df_subsample)}
-    df_13\$sample_name = as.factor(df_13\$sample_name)
-    colnames(df_13) = c("logint", "sample_name")
+    df_13\$annotation = as.factor(df_13\$annotation)
+    colnames(df_13) = c("logint", "annotation")
 
-    hist_13 = ggplot(df_13, aes(x=logint, fill=sample_name)) +
+    hist_13 = ggplot(df_13, aes(x=logint, fill=annotation)) +
     geom_histogram()+ theme_bw()+
     theme(text=element_text(family="ArialMT", face="bold", size=12))+
     labs(title="Log2-transformed intensities per sample", x="log2 intensities", y = "Frequency") +
@@ -681,12 +741,12 @@ if (npeaks > 0){
     par(mfrow = c(1,1), cex.axis=1.3, cex.lab=1.3, mar=c(13.1,4.1,5.1,2.1))
 
     mean_matrix = matrix(,ncol=0, nrow = nrow(msidata))
-    for (subsample in levels(msidata\$combined_sample)){
-        mean_mz_sample = rowMeans(spectra(msidata)[,msidata\$combined_sample==subsample])
+    for (subsample in levels(msidata\$annotation)){
+        mean_mz_sample = rowMeans(spectra(msidata)[,msidata\$annotation==subsample])
         mean_matrix = cbind(mean_matrix, mean_mz_sample)}
 
-    boxplot(log2(mean_matrix), ylab = "log2 mean intensity per m/z", main="Mean intensities per m/z and sample", xaxt = "n")
-    (axis(1, at = c(1:number_combined), labels=levels(msidata\$combined_sample), cex.axis=cex_boxplot, las=2))
+    boxplot(log2(mean_matrix), ylab = "log2 mean intensity per m/z", main="Mean intensities per m/z and annotation group", xaxt = "n")
+    (axis(1, at = c(1:number_combined), labels=levels(msidata\$annotation), cex.axis=cex_boxplot, las=2))
     }
 
     ################################## VI) Mass spectra and m/z accuracy ########################
@@ -760,15 +820,15 @@ if (npeaks > 0){
             title(paste0("most abundant m/z: ", round(maxvalue, digits=4)), col.main="red", outer=TRUE, line=0, adj=0.49)
             title(paste0("closest m/z: ", round(mzvalue, digits=4)), col.main="green2", outer=TRUE, line=0, adj=0.93)
 
-            ### 16b) one large extra plot with different colours for different samples (for combined_sample only)
+            ### 16b) one large extra plot with different colours for different pixel annotation groups
 
-            if (!is.null(levels(msidata\$combined_sample))){
+            if (!is.null(levels(msidata\$annotation))){
                 if (number_combined < 10){
                     key_zoomed = TRUE
                 }else{key_zoomed = FALSE}
                 par(mfrow = c(1, 1))
-                plot(msidata[minmasspixel:maxmasspixel,], pixel=1:ncol(msidata),main="Average spectrum per sample",
-                pixel.groups=msidata\$combined_sample, key=key_zoomed, col=hue_pal()(number_combined),superpose=TRUE)
+                plot(msidata[minmasspixel:maxmasspixel,], pixel=1:ncol(msidata),main="Average spectrum per annotation group",
+                pixel.groups=msidata\$annotation, key=key_zoomed, col=hue_pal()(number_combined),superpose=TRUE)
                 abline(v=c(inputcalibrantmasses[mass] -plusminusvalues[count], inputcalibrantmasses[mass] ,inputcalibrantmasses[mass] +plusminusvalues[count]), col="black", lty=c(3,1,3))
             }
             count=count+1
@@ -812,55 +872,72 @@ if (npeaks > 0){
         print(diff_plot2)
 
 
-    #################### 19) ppm difference over pixels #####################
 
-    par(mfrow = c(1,1))
-    mycolours = c("darkgrey", "darkblue", "blue", "green" , "red", "orange", "yellow", "magenta", "olivedrab1", "lightseagreen")
-    count = 1
-    ppm_df = as.data.frame(matrix(,ncol=0, nrow = ncol(msidata)))
-    for (calibrant in inputcalibrantmasses){
-        ### find m/z with the highest mean intensity in m/z range, if no m/z in the range, all ppm differences will be NA
-        filtered_data = msidata[mz(msidata) >= calibrant-plusminusvalues[count] & mz(msidata) <= calibrant+plusminusvalues[count],]
+        #################### 19) ppm difference over pixels #####################
 
-        if (nrow(filtered_data) > 0){
-            ### filtered for m/z range, now go through it pixel by pixel to find max peak in each spectrum
-            ppm_vector = numeric()
-            for (pixel_count in 1:ncol(filtered_data)){
-                mz_max = mz(filtered_data)[which.max(spectra(filtered_data)[,pixel_count])]
+        par(mfrow = c(1,1))
+        mycolours = c("darkgrey", "darkblue", "blue", "green" , "red", "orange", "yellow", "magenta", "olivedrab1", "lightseagreen")
+        count = 1
+        ppm_df = as.data.frame(matrix(,ncol=0, nrow = ncol(msidata)))
+        for (calibrant in inputcalibrantmasses){
+            ### find m/z with the highest mean intensity in m/z range, if no m/z in the range, ppm differences for this calibrant will be NA
+            filtered_data = msidata[mz(msidata) >= calibrant-plusminusvalues[count] & mz(msidata) <= calibrant+plusminusvalues[count],]
 
-                mzdiff = mz_max - calibrant
-                ppmdiff = mzdiff/calibrant*1000000 
+            if (nrow(filtered_data) > 0){
+                ### filtered for m/z range, find max peak in each spectrum (pixel)(
+                ppm_vector = numeric()
+                for (pixel_count in 1:ncol(filtered_data)){
+                    mz_max = mz(filtered_data)[which.max(spectra(filtered_data)[,pixel_count])]
 
-                ### if maximum intensity in m/z range was 0 set ppm diff to NA (not shown in plot)
-                if (max(spectra(filtered_data)[,pixel_count]) == 0){
-                ppmdiff = NA}
-                ppm_vector[pixel_count] = ppmdiff}
-        }else{ppm_vector = rep(NA, ncol(msidata))}
+                    mzdiff = mz_max - calibrant
+                    ppmdiff = mzdiff/calibrant*1000000 
 
-        ppm_df = cbind(ppm_df, ppm_vector)
-        count=count+1}
+                    ### if maximum intensity in m/z range was 0 set ppm diff to NA (not shown in plot)
+                    if (max(spectra(filtered_data)[,pixel_count]) == 0){
+                        ppmdiff = NA}
+                    ppm_vector[pixel_count] = ppmdiff}
+
+            }else{
+                ppm_vector = rep(NA, ncol(msidata))
+            }
+
+            ppm_df = cbind(ppm_df, ppm_vector)
+            count=count+1
+        }
 
         if (sum(is.na(ppm_df)) == ncol(ppm_df)*nrow(ppm_df)){
-                plot(0,type='n',axes=FALSE,ann=FALSE)
+            plot(0,type='n',axes=FALSE,ann=FALSE)
             title(main=paste("plot 19: no peaks in the chosen region, repeat with higher ppm range"))
         }else{
 
             ### plot ppm differences over pixels (spectra index)
-
             par(mar=c(4.1, 4.1, 4.1, 7.5))
-            plot(0,0,type="n", ylim=c(min(ppm_df, na.rm=TRUE),max(ppm_df, na.rm=TRUE)), xlim = c(1,ncol(filtered_data)),xlab = "Spectra index", ylab = "m/z difference in ppm", main="Difference m/z with max. average intensity vs. theor. m/z\n(per spectrum)") 
 
-            for (each_cal in 1:ncol(ppm_df)){
-                lines(ppm_df[,each_cal], col=mycolours[each_cal], type="p")}
-            legend("topright", inset=c(-0.25,0), xpd = TRUE, bty="n", legend=inputcalibrantmasses, col=mycolours[1:ncol(ppm_df)],lty=1)
-            abline(v=abline_vector, lty = 3)}
+            ## if annotations are provided, pixel index is ordered according to annotation groups
+             if (!is.null(levels(msidata\$annotation))){
+                ppm_df_pixels =cbind(pixel_name_df, ppm_df)
+                pixel_ordered = ppm_df_pixels[order(ppm_df_pixels\$pixel_name),] ## order pixels according to annotation group names
+
+                plot(0,0,type="n", ylim=c(min(ppm_df, na.rm=TRUE),max(ppm_df, na.rm=TRUE)), xlim = c(1,ncol(filtered_data)),xlab = "Spectra index ordered for annotation groups", ylab = "m/z difference in ppm", main="Difference m/z with max. average intensity vs. theor. m/z\n(per spectrum)") 
+
+                for (each_cal in 1:ncol(ppm_df)){
+                    lines(pixel_ordered[,each_cal+2], col=mycolours[each_cal], type="p")}
+                legend("topright", inset=c(-0.25,0), xpd = TRUE, bty="n", legend=inputcalibrantmasses, col=mycolours[1:ncol(ppm_df)],lty=1)
+                abline(v=abline_vector, lty = 3)
+            }else{
+
+                plot(0,0,type="n", ylim=c(min(ppm_df, na.rm=TRUE),max(ppm_df, na.rm=TRUE)), xlim = c(1,ncol(filtered_data)),xlab = "Spectra index", ylab = "m/z difference in ppm", main="Difference m/z with max. average intensity vs. theor. m/z\n(per spectrum)") 
+
+                for (each_cal in 1:ncol(ppm_df)){
+                    lines(ppm_df[,each_cal], col=mycolours[each_cal], type="p")}
+                legend("topright", inset=c(-0.25,0), xpd = TRUE, bty="n", legend=inputcalibrantmasses, col=mycolours[1:ncol(ppm_df)],lty=1)}
+        }
 
     }else{print("plot 16+17+18+19) The inputcalibrant m/z were not provided or outside the m/z range")}
 }else{
     print("inputfile has no intensities > 0")
 }
     dev.off()
-
 
 
     ]]></configfile>
@@ -881,6 +958,20 @@ if (npeaks > 0){
                     <option value="ppm" selected="True" >ppm</option>
                 </param>
             </when>
+        </conditional>
+        <conditional name="tabular_annotation">
+            <param name="load_annotation" type="select" label="Use pixel annotation from tabular file for QC plots">
+                <option value="no_annotation" selected="True">pixels belong into one group only</option>
+                <option value="yes_annotation">use pixel annotation from a tabular file</option>
+            </param>
+                <when value="yes_annotation">
+                    <param name="annotation_file" type="data" format="tabular" label="Use annotations from tabular file"
+                    help="Tabular file with three columns: x values, y values and pixel annotations"/>
+                        <param name="column_x" data_ref="annotation_file" label="Column with x values" type="data_column"/>
+                        <param name="column_y" data_ref="annotation_file" label="Column with y values" type="data_column"/>
+                        <param name="column_names" data_ref="annotation_file" label="Column with pixel annotations" type="data_column"/>
+                </when>
+                <when value="no_annotation"/>
         </conditional>
         <param name="filename" type="text" value="" optional="true" label="Title" help="will appear as header in the quality report, if nothing given input dataset name is used"/>
         <param name="calibrant_file" type="data" optional="true" format="tabular"
@@ -912,6 +1003,9 @@ if (npeaks > 0){
                 <param name="accuracy" value="200"/>
                 <param name="units" value="ppm"/>
             </conditional>
+            <conditional name="tabular_annotation">
+                <param name="load_annotation" value="no_annotation"/>
+            </conditional>
             <param name="calibrant_file" value="inputcalibrantfile1.txt"/>
             <param name="plusminus_ppm" value="100"/>
             <param name="filename" value="Testfile_imzml"/>
@@ -926,19 +1020,34 @@ if (npeaks > 0){
             <output name="pixel_tabular_output" file="spectra_info_imzml.txt"/>
             <output name="plots" file="QC_imzml.pdf" compare="sim_size" delta="20000"/>
         </test>
+
         <test expect_num_outputs="1">
             <param name="infile" value="" ftype="analyze75">
                 <composite_data value="Analyze75.hdr"/>
                 <composite_data value="Analyze75.img"/>
                 <composite_data value="Analyze75.t2m"/>
             </param>
+            <conditional name="tabular_annotation">
+                <param name="load_annotation" value="no_annotation"/>
+            </conditional>
             <param name="calibrant_file" value="inputcalibrantfile2.txt"/>
             <param name="filename" value="Testfile_analyze75"/>
             <param name="do_pca" value="True"/>
             <output name="plots" file="QC_analyze75.pdf" compare="sim_size" delta="20000"/>
         </test>
+
         <test expect_num_outputs="2">
             <param name="infile" value="123_combined.RData" ftype="rdata"/>
+
+            <conditional name="tabular_annotation">
+                <param name="load_annotation" value="yes_annotation"/>
+                <param name="annotation_file" value="annotations_rdata.tabular"/>
+                <param name="column_x" value="1"/>
+                <param name="column_y" value="2"/>
+                <param name="column_names" value="3"/>
+            </conditional>
+            <param name="calibrant_file" value="inputcalibrantfile1.txt"/>
+            <param name="plusminus_ppm" value="100"/>
             <param name="filename" value="Testfile_rdata"/>
             <param name="do_pca" value="True"/>
             <param name="pixel_output" value="True"/>
@@ -947,6 +1056,9 @@ if (npeaks > 0){
         </test>
         <test expect_num_outputs="1">
             <param name="infile" value="empty_spectra.rdata" ftype="rdata"/>
+            <conditional name="tabular_annotation">
+                <param name="load_annotation" value="no_annotation"/>
+            </conditional>
             <param name="calibrant_file" value="inputcalibrantfile2.txt"/>
             <param name="filename" value="Testfile_rdata"/>
             <param name="do_pca" value="False"/>
@@ -964,6 +1076,7 @@ Input data: 3 types of input data can be used:
 - imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <https://ms-imaging.org/wp/imzml/>`_
 - Analyze7.5 (upload hdr, img and t2m file via the "composite" function)
 - Cardinal "MSImageSet" data (with variable name "msidata", saved as .RData)
+- optional: tabular file with pixel annotations: x and y values in separate columns and the corresponding annotation in a third column
 
 Options: 
 
@@ -973,7 +1086,7 @@ Options:
 Output: 
 
 - quality control report as pdf with key numbers and descriptive plots describing the mass spectrometry imaging data
-- optional spectra information as tabular file with numbers of calibrants (needs valid calibrants), numbers of peaks, TIC and most abundant m/z in each spectrum
+- optional spectra information as tabular file with annotation (if provided), numbers of calibrants (needs valid calibrants), numbers of peaks, TIC and most abundant m/z in each spectrum
 
 Tip: 
 
@@ -983,7 +1096,7 @@ Tip:
 
 Overview of the QC report plots:
 
-- (comb): this plots will only be drawn if several files were combined into one file with the msi_combine tool
+- (annot): this plots will only be drawn if pixel annotations are loaded via a tabular file
 - (cal): this plots will only be drawn if a tabular file with at least one valid calibrant m/z is provided
 - (FC): this plots will only be drawn if the optional fold change image is selected
 - Vertical lines in histograms represent median values. In density scatter plots the colour changes from blue to green, yellow and red the more points are overlayed.
@@ -992,7 +1105,7 @@ Overview of the QC report plots:
 
 x-y images (pixel/spectra information):
 
-- (comb) Spatial orientation of combined data: All pixels of a combined file have the same colour. 
+- (annot) Spatial orientation of annotated pixel: All pixels of one annotation group have the same colour. 
 - Pixel order: Shows the order of the pixels in the provided file. Depending on the instrument this can represent the acquisition order.
 - (cal) Number of calibrants per pixel: In every spectrum the calibrant m/z window (calibrant m/z plusminus 'ppm range') is searched for peaks (intensity > 0). Calibrants are considered present in a spectrum when they have at least one peak in their m/z window. 
 - (FC) Control of fold change plot: For both input m/z a zoomed in average spectrum is drawn with the input m/z as blue dashed line, the m/z range as blue dotted lines and the maximum intensity in the m/z window with a red line. 
@@ -1005,10 +1118,10 @@ x-y images (pixel/spectra information):
 
 Properties over spectra/pixels: 
 
-- Number of peaks per spectrum: Scatter plot and histogram showing the number of intensities > 0 for each spectrum. Dotted lines in the scatter plot separate spectra of combined samples.
-- (comb) Number of peaks per spectrum and sample: Same histogram as in plot before but with colours to show the contribution of each combined sample.
-- TIC per spectrum: Scatter plot and histogram showing the sum of all intensities per spectrum (TIC). Dotted lines in the scatter plot separate spectra of combined samples.
-- (comb) TIC per spectrum and sample: Same histogram as in plot before but with colours to show the contribution of each combined sample. 
+- Number of peaks per spectrum: Scatter plot and histogram showing the number of intensities > 0 for each spectrum. Dotted lines in the scatter plot separate spectra of different annotation groups.
+- (annot) Number of peaks per spectrum and annotation group: Same histogram as in plot before but with colours to show the contribution of each pixel annotation group.
+- TIC per spectrum: Scatter plot and histogram showing the sum of all intensities per spectrum (TIC). Dotted lines in the scatter plot separate spectra of different annotation groups.
+- (annot) TIC per spectrum and annotation group: Same histogram as in plot before but with colours to show the contribution of each pixel annotation group. 
 
 Properties over m/z features: 
 
@@ -1018,19 +1131,19 @@ Properties over m/z features:
 
 Intensity plots: 
 
-- Median intensity per spectrum: Scatter plot in which each point represents the median intensity for one spectrum. Dotted lines in the scatter plot separate spectra of combined samples.
+- Median intensity per spectrum: Scatter plot in which each point represents the median intensity for one spectrum. Dotted lines in the scatter plot separate spectra of different annotation groups.
 - Log2-transformed intensities: Histogram of log2-transformed intensities. 
-- (comb) log2-transformed intensities per sample: Same histogram as before but with colours to show the contribution of each combined sample. 
-- (comb) Mean intensities per m/z and sample: For all pixels of a sample the mean intensity for each m/z is calculated and shown as boxplot. 
+- (annot) log2-transformed intensities per annotation group: Same histogram as before but with colours to show the contribution of each pixel annotation group. 
+- (annot) Mean intensities per m/z and annotation group: For all pixels of an annotation group the mean intensity for each m/z is calculated and shown as boxplot. 
 
 Mass spectra and m/z accuracy: 
 
 - Mass spectra over the full m/z range: First plot shows the average intensities over all spectra. The other three mass spectra are from single pixels (spectra). 
 - (cal) For each calibrant four zoomed in mass spectrum are drawn: The first shows the average intensities over all spectra and the other three are single mass spectra. The theoretical calibrant m/z (taken from the input file) is represented by the dashed blue line. The dotted blue lines show the given ppm range. The green line is the m/z value that is closest to the theoretical calibrant and the red line is the m/z with the highest average intensity in the m/z window.
-- (comb) Average spectrum per sample: For each calibrant a zoomed in mass spectrum is plotted this time with the average intensities for each combined sample separately. 
+- (annot) Average spectrum per annotation group: For each calibrant a zoomed in mass spectrum is plotted this time with the average intensities for each annotation group separately. 
 - (cal) Difference m/z with max. average intensity vs. theor. calibrant m/z: The difference in ppm between the m/z with the highest average intensity and the theoretical m/z are plotted for each calibrant. This corresponds to the difference between the dashed blue line and the red line in the zoomed in mass spectra. 
 - (cal) Difference closest measured m/z vs. theor. calibrant m/z: The difference in ppm between the closest m/z value and the theoretical m/z values are plotted for each calibrant. This corresponds to the difference between the dashed blue line and the green line in the zoomed in mass spectra. 
-- (cal) Difference m/z with max. average intensity vs. theor. m/z (per spectrum): For each spectrum the ppm difference between the m/z with the highest average intensity and the theoretical m/z are plotted. The calibrants have different plotting colours. Dashed lines separate spectra of combined samples. 
+- (cal) Difference m/z with max. average intensity vs. theor. m/z (per spectrum): For each spectrum the ppm difference between the m/z with the highest average intensity and the theoretical m/z are plotted. The calibrants have different plotting colours. Dashed lines separate spectra of different annotation groups. 
 
 
         ]]>
