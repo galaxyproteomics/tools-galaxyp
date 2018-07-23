@@ -66,14 +66,15 @@ def peptide_atlas_sources(data_manager_dict, tissue, target_directory):
             organism_id + "&sample_category_id=" + sample_category_id + \
             "&QUERY_NAME=AT_GetPeptides&output_mode=tsv&apply_action=QUERY"
     content = requests.get(query)
-    tissue_id = "_".join([atlas_build_id, organism_id, sample_category_id])
+    tissue_id = "_".join([atlas_build_id, organism_id, sample_category_id,time.strftime("%d-%m-%Y")])
     tissue_value = tissue.split("-")[1]
+    tissue = tissue.split("-")[1] + "_" +time.strftime("%d-%m-%Y")
     tissue_name = " ".join(tissue_value.split("_")) + " " + time.strftime("%d/%m/%Y")
-    path = os.path.join(target_directory, output_file)
+    path = os.path.join(target_directory,output_file)
     output = open(path, "w")
     output.write(content.content)
     output.close()
-    data_table_entry = dict(tissue = tissue_value, name = tissue_name, value = path)
+    data_table_entry = dict(value = path, name = tissue_name, tissue = tissue)
     _add_data_table_entry(data_manager_dict, data_table_entry, "peptide_atlas")
 
 def _add_data_table_entry(data_manager_dict, data_table_entry,data_table):
