@@ -31,8 +31,7 @@ readfile <- function(filename, header) {
 nb_obs_PeptideAtlas <- function(input, atlas_file) {
   ## Calculate the sum of n_observations for each ID in input
   atlas = readfile(atlas_file, "true")
-  atlas$nb_obs[match(input,atlas$Uniprot_AC)]
-  return(n_observations)
+  return(atlas$nb_obs[match(input,atlas$Uniprot_AC)])
 }
 
 main = function() {
