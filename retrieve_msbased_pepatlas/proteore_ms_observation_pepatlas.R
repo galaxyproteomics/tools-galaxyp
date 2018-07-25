@@ -28,15 +28,10 @@ readfile <- function(filename, header) {
   return(file)
 }
 
-annotPeptideAtlas <- function(input, atlas_file) {
+nb_obs_PeptideAtlas <- function(input, atlas_file) {
   ## Calculate the sum of n_observations for each ID in input
   atlas = readfile(atlas_file, "true")
-  n_observations = c()
-  for (id in input) {
-    n_observations = c(n_observations, sum(atlas[which(atlas["biosequence_name"][,] == id),]$n_observations))
-  }
-  # Replace sum value 0 by NA
-  n_observations = replace(n_observations, n_observations == 0, NA)
+  atlas$nb_obs[match(input,atlas$Uniprot_AC)]
   return(n_observations)
 }
 
@@ -106,7 +101,7 @@ main = function() {
   names(df) <- c("date","tissue","filename","path")
   
   # Annotations
-  res = sapply(df$path, function(x) annotPeptideAtlas(input, x), USE.NAMES = FALSE)
+  res = sapply(df$path, function(x) nb_obs_PeptideAtlas(input, x), USE.NAMES = FALSE)
   names=df$filename
 
   # Write output
