@@ -6,6 +6,8 @@ import os
 import argparse
 import requests
 import time
+import csv
+import re
 from io import BytesIO
 from zipfile import ZipFile
 from galaxy.util.json import from_json_string, to_json_string
@@ -65,17 +67,46 @@ def peptide_atlas_sources(data_manager_dict, tissue, target_directory):
             atlas_build_id + "&display_options=ShowMappings&organism_id= " + \
             organism_id + "&sample_category_id=" + sample_category_id + \
             "&QUERY_NAME=AT_GetPeptides&output_mode=tsv&apply_action=QUERY"
-    content = requests.get(query)
+    download = requests.get(query)
+    decoded_content = download.content.decode('utf-8')
+    cr = csv.reader(decoded_content.splitlines(), delimiter='\t')
+
+    #build dictionary by only keeping uniprot accession (not isoform) as key and sum of observations as value
+    uni_dict = build_dictionary(cr)
+
     tissue_id = "_".join([atlas_build_id, organism_id, sample_category_id,time.strftime("%d-%m-%Y")])
     tissue_value = tissue.split("-")[1]
     tissue = tissue.split("-")[1] + "_" +time.strftime("%d-%m-%Y")
     tissue_name = " ".join(tissue_value.split("_")) + " " + time.strftime("%d/%m/%Y")
     path = os.path.join(target_directory,output_file)
-    output = open(path, "w")
-    output.write(content.content)
-    output.close()
+
+    with open(path,"wb") as out :
+        w = csv.writer(out,delimiter='\t')
+        w.writerows(uni_dict.items())
+        
     data_table_entry = dict(value = path, name = tissue_name, tissue = tissue)
     _add_data_table_entry(data_manager_dict, data_table_entry, "peptide_atlas")
+
+#function to count the number of observations by uniprot id
+def build_dictionary (csv) :
+    uni_dict = {} 
+    for line in csv :
+        if "-" not in line[2] and check_uniprot_access(line[2]) :
+            if line[2] in uni_dict :
+                uni_dict[line[2]] += int(line[4])
+            else : 
+                uni_dict[line[2]] = int(line[4])
+
+    return uni_dict
+
+#function to check if an id is an uniprot accession number : return True or False-
+def check_uniprot_access (id) :
+    uniprot_pattern = re.compile("[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9]([A-Z][A-Z0-9]{2}[0-9]){1,2}")
+    if uniprot_pattern.match(id) :
+        return True
+    else :
+        return False
+
 
 def _add_data_table_entry(data_manager_dict, data_table_entry,data_table):
     data_manager_dict['data_tables'] = data_manager_dict.get('data_tables', {})
