@@ -82,6 +82,7 @@ def peptide_atlas_sources(data_manager_dict, tissue, target_directory):
 
     with open(path,"wb") as out :
         w = csv.writer(out,delimiter='\t')
+        w.writerow(["Uniprot_AC","nb_obs"])
         w.writerows(uni_dict.items())
         
     data_table_entry = dict(value = path, name = tissue_name, tissue = tissue)
