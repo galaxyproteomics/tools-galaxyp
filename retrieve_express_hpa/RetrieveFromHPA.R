@@ -1,7 +1,7 @@
 
 
-select.HPAimmunohisto<-function(hpa_ref, tissue, level, reliability) {
-  load(hpa_ref)
+select_HPAimmunohisto<-function(hpa_ref, tissue, level, reliability) {
+  HPA.normal = read.table(hpa_ref,header=TRUE,sep="\t",stringsAsFactors = FALSE)
   if (tissue == "tissue") {
     tissue <- unique(HPA.normal$Tissue) 
   }
@@ -17,8 +17,8 @@ select.HPAimmunohisto<-function(hpa_ref, tissue, level, reliability) {
 
     
     
-select.HPARNAseq<-function(hpa_ref, sample) {
-  load(hpa_ref)
+select_HPARNAseq<-function(hpa_ref, sample) {
+  HPA.rnaTissue = read.table(hpa_ref,header=TRUE,sep="\t",stringsAsFactors = FALSE)
   res.rna <- subset(HPA.rnaTissue, Sample%in%sample, select = -c(Unit))
   colnames(res.rna)[which(colnames(res.rna) == 'Value')] <- 'Value (TPM unit)'
   return(res.rna)
@@ -35,7 +35,7 @@ main <- function() {
     cat("Selection and Annotation HPA
     Arguments:
         --data_source: immuno/rnaseq
-        --hpe_ref: path to reference file (HPA.normal.RData/HPA.rnaTissue.RData)
+        --hpe_ref: path to reference file normal_tissue.tsv/rna_tissue.tsv)
           if immuno:
             --tissue: list of tissues
             --level: Not detected, Low, Medium, High
@@ -60,12 +60,12 @@ main <- function() {
     level = strsplit(args$level, ",")[[1]]
     reliability = strsplit(args$reliability, ",")[[1]]
     # Calculation
-    res = select.HPAimmunohisto(hpa_ref, tissue, level, reliability)
+    res = select_HPAimmunohisto(hpa_ref, tissue, level, reliability)
   }
   else if (data_source == "rnaseq") {
     sample = strsplit(args$sample, ",")[[1]]
     # Calculation
-    res = select.HPARNAseq(hpa_ref, sample)
+    res = select_HPARNAseq(hpa_ref, sample)
   }
 
   # Write output
