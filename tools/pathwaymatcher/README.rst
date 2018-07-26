@@ -1,7 +1,7 @@
 PathwayMatcher
 =======================
 
-- Home: <https://github.com/LuisFranciscoHS/PathwayMatcher/>
+- Home: <https://github.com/PathwayAnalysisPlatform/PathwayMatcher>
 - Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/reactome_pathwaymatcher>
 - Tools ID: `reactome_pathwaymatcher`
 
