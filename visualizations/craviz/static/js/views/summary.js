@@ -9,13 +9,33 @@ define(['plugin/views/sidebar', 'plugin/lib/cytoscape', 'plugin/lib/nvd3_pie','p
 				//this.model.on('change:status', this.render, this);
 				//this.model.on('change', this.changed, this);
 				this.drawnChartIDs = [];
-				this.model.on('change:Circos data', this.drawCircosPlot, this);
+				/*this.model.on('change:Circos data', this.drawCircosPlot, this);
 				this.model.on('change:Number of noncoding variants ', this.drawPieCharts, this);
 				this.model.on('change:Number of variants', this.drawPieCharts, this);
 				this.model.on('change:Sequence Ontologies ', this.drawPieCharts, this);
 				this.model.on('change:Sequence Ontologies ', this.drawPieCharts, this);
-				this.model.on('change:Top Genes (VEST-composite-p-value)', this.drawTable, this);
+				this.model.on('change:Top Genes (VEST-composite-p-value)', this.drawTable, this);*/
+				this.model.on('change', this.checkProgress, this);
+				//this.render();
+			},
+
+			checkProgress : function(){
+				if (Object.keys(this.model.attributes).length >= 11){
+					this.drawFigures();
+				}
+			},
+
+			drawFigures : function(){
 				this.render();
+				this.drawPieCharts();
+				this.drawTable();
+				this.drawCircosPlot();
+				this.updateButton();
+			},
+
+			updateButton : function(){
+				$('.nav-tabs button:eq(0)').removeClass('loading');
+				$('.nav-tabs button:eq(0)').addClass('loaded');
 			},
 
 
@@ -37,7 +57,7 @@ define(['plugin/views/sidebar', 'plugin/lib/cytoscape', 'plugin/lib/nvd3_pie','p
 									"<div id='CircosPlot' class='bordered'><h2>Circos Plot</h2><div id='Circos-Plot'>", '</div></div>',
 									'<div class="summaryTable"><h2>Top Genes</h2><table id=','"top-genes-table">','</table></div>',
 									'<div id="sigma"></div>',
-									'<div id="ndex" class="bordered"><h2>NDEX Networks</h2><div id="cy"></div></div>',
+									//'<div id="ndex" class="bordered"><h2>NDEX Networks</h2><div id="cy"></div></div>',
 								'</div>'].join(''));
 				this.$el.append($rightCell);
 				//this.fetchNDEX();
@@ -52,7 +72,6 @@ define(['plugin/views/sidebar', 'plugin/lib/cytoscape', 'plugin/lib/nvd3_pie','p
 
 			drawPieCharts : function(){
 				console.log('Drawing pie charts');
-
 				var ID = this.graphs['Pie Charts'][0];
 				if (this.drawnChartIDs.indexOf(ID) < 0 && this.model.get('Number of noncoding variants') && this.model.get('Number of variants')){
 					this.drawPieChart({data : this.convertToKeyValuePair({'Number of noncoding variants' : this.model.get('Number of noncoding variants'),
@@ -63,7 +82,7 @@ define(['plugin/views/sidebar', 'plugin/lib/cytoscape', 'plugin/lib/nvd3_pie','p
 				}
 
 				ID = this.graphs['Pie Charts'][1];
-				if (this.drawnChartIDs.indexOf(ID) < 0 && this.model.get('Number of noncoding variants') && this.model.get('Number of variants')){
+				if (this.drawnChartIDs.indexOf(ID) < 0 && this.model.get('Cancer Genome Landscape')){
 					this.drawPieChart({data : this.convertToKeyValuePair(this.model.get('Cancer Genome Landscape')),
 									id : ID,
 									title : 'Cancer Genome Landscape'});
@@ -71,7 +90,7 @@ define(['plugin/views/sidebar', 'plugin/lib/cytoscape', 'plugin/lib/nvd3_pie','p
 				}
 
 				ID = this.graphs['Pie Charts'][2];
-				if (this.drawnChartIDs.indexOf(ID) < 0 && this.model.get('Number of noncoding variants') && this.model.get('Number of variants')){
+				if (this.drawnChartIDs.indexOf(ID) < 0 && this.model.get('Sequence Ontologies')){
 					this.drawPieChart({data : this.convertToKeyValuePair(this.model.get('Sequence Ontologies')),
 									id : ID,
 									title : 'Sequence Ontologies'});
@@ -81,20 +100,34 @@ define(['plugin/views/sidebar', 'plugin/lib/cytoscape', 'plugin/lib/nvd3_pie','p
 
 
 			drawPieChart : function(params){
-				
+				console.log('Drawing pie chart!');
 
 				var ID = params.id;
 				var data = params.data;
 				var title = params.title;
-				
+				//var myColors = ["#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"];
+				var colorScale = d3.scale.ordinal().range(["#ffd400", "#f28d00", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]).range();
+				if (ID == 'Sequence-Ontologies'){
+					//myColors = myColors.reverse();
+					 //var myColors = ["#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"];
+					 var colorScale = d3.scale.ordinal().range(["#dd186d", "#bcbd22", "#17becf"]).range();
+				} else if (ID == 'Cancer-Genome-Landscape'){
+					//var myColors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"];
+					//myColors = myColors.splice(0, parseInt(myColors.length/2));
+					var colorScale = d3.scale.ordinal().range(["#00bc09", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]).range();
+				} 
 
+				// var colorScale = d3.scale.ordinal().range(myColors);
+				//colorScale = d3.scale.category10();
+				// var colorScale = d3.scale.ordinal().range(d3.schemeCategory10);
+				//var colorScale = d3.scale.ordinal().range(["#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]).range();
 				var height = 300;
 				var width = 300;
 		 		nv.addGraph(function() {
               		var chart = nv.models.pieChart()
                   		.x(function(d) { return d.label })
                   		.y(function(d) { return d.value })
-		                  .showLabels(true)
+		                  .showLabels(true).color(colorScale)
 		                  .width(width)
 		                  .height(height);
 
@@ -112,8 +145,8 @@ define(['plugin/views/sidebar', 'plugin/lib/cytoscape', 'plugin/lib/nvd3_pie','p
 		  					.style("font-size","15px")
 		  					.text(title);
 
-              	return chart;
-            	});
+              		return chart;
+              });
 		 	},
 
 			fetchNDEX : function(){
@@ -314,7 +347,6 @@ define(['plugin/views/sidebar', 'plugin/lib/cytoscape', 'plugin/lib/nvd3_pie','p
 						paging: false,
 						'scrollX': false
 					});
-					console.log(data);
 					this.dataTable.DataTable().draw();
 				}
 			},

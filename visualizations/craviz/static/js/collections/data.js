@@ -11,10 +11,10 @@ define ([''],
 							'#Variant Additional Details Report' : 'Variant',
                             '#Non-coding Variant Report' : 'Noncoding',
                             '#Input Errors Report' : 'Error'};*/
-                this.responseNames = {'CRAVAT: Gene Level Annotation Report' : 'Gene',
-            							'CRAVAT: Variant Report' : 'Variant',
-            								'CRAVAT: Non-coding Variant Report' : 'Noncoding',
-            								'CRAVAT: Errors' : 'Error'};
+                this.responseNames = {'Gene Level Annotation' : 'Gene',
+            							'Variant' : 'Variant',
+            								'Non-coding Variant' : 'Noncoding',
+            								'Errors' : 'Error'};
                 this.datasets = [];
                 //this.findWhere({'name' : 'Variant'}).on('change:length', this.yo, this);
                 //this.at(1).on('change:length', this.yo, this);
@@ -25,10 +25,12 @@ define ([''],
 				this.report_name = config.report_name;
 				this.report_names = config.report_names;
 				this.dataset_id = config.dataset_id;
+				console.log('Dataset ID is ' + this.dataset_id);
 				this.dataset_hid = config.dataset_hid;
 				this.history_id = config.history_id;
 				this.init_index = config.index;
 				this.jobID = this.getJobID(config.peek);
+				//this.jobID = 'rsajulga' + this.jobID.slice(8,this.jobID.length);
 				//this.findWhere({'name' : 'Variant'}).on('change:length', this.yo, this);
 			},
 
@@ -52,13 +54,12 @@ define ([''],
 	            var url = '/api/histories/' + this.history_id + '/contents/dataset_collections/';
 
 	            modelCollex = this;
-	            var xhr = jQuery.getJSON(url)
+	            var xhr = jQuery.getJSON(url);
 	            xhr.done(function(response){
 	                console.log('Obtained dataset_collection info from current history');
 	                var response = response.filter( function(a) {
 	                    return a.hid == collex_hid;
 	                })
-
 	                collex_id = response[0].id;
 
 	                var xhr = jQuery.getJSON(url + collex_id);
@@ -94,10 +95,36 @@ define ([''],
                             provider : 'column',
                             limit: 1},
                         success: function(response, status, xhr){
-                        	xhr.dataset.set('All headers', (response.data[0].length == 1) ? response.data[0][0].split('$%$') : response.data[0]);
+                        	var headers = (response.data[0].length == 1) ? response.data[0][0].split('$%$') : response.data[0];
+                        	xhr.dataset.set('All headers', headers);
                         	//console.log(xhr.dataset);
                         	//view.at(0).getColumns();
+                        	xhr.dataset.set('Job ID', view.jobID);
                         	xhr.dataset.setData(xhr.id);
+
+							if (xhr.dataset.name == 'Variant'){
+	                        	var indices = []
+	                        	var gene_headers = ['ID', 'Chromosome', 'Position', 'Sequence ontology', 'Protein sequence change', 'CHASM p-value', 'VEST p-value', 'Reference base(s)', 'Alternate base(s)'];
+	                        	for (var i = 0; i < headers.length; i++){
+	                        		if (gene_headers.indexOf(headers[i]) >= 0){
+	                        			indices.push(i);
+	                        		}
+	                        	}
+	                        	//console.log(indices.join(','));
+								var xhr3 = $.ajax({
+									url: '/api/datasets/' + xhr.id,
+									contentType: 'application/json; charset=utf-8',
+									dataType : 'json',
+									'data': {data_type: 'raw_data',
+											provider : 'column',
+											limit : 100000,
+											indeces : indices.join(',')},
+									success: function(response, status, xhr){
+										xhr3.dataset.set('Gene data', response.data);
+									}
+								})
+								xhr3.dataset = xhr.dataset;
+							}
                         	//xhr.dataset.set('ID', xhr.id);
                         }
 					})
@@ -108,7 +135,8 @@ define ([''],
 				var xhr2 = $.ajax({
 						url: '/api/datasets/' + ID,
                         success: function(response, status, xhr2){
-                        	if (xhr.dataset.name != xhr2.view.responseNames[response.name] || xhr2.view.getJobID(response.peek) != xhr2.view.jobID){
+                        	//if(/(CRAVAT: [\w ]+ Report).*/.exec(response.name)){
+                        	if (xhr.dataset.name != xhr2.view.responseNames[/CRAVAT: ([\w- ]+?)( Report)? on .*/.exec(response.name)[1]] || xhr2.view.getJobID(response.peek) != xhr2.view.jobID){
                         		console.log('Wrong ID for ' + xhr.dataset.name);
                         		//view.findDataset(xhr.dataset, 1, 5);
                         		// Insert case for looking through history for correct ID
@@ -116,12 +144,14 @@ define ([''],
                         		//xhr.dataset.set('Length');
                         		var index = response.misc_blurb.search(/ lines/);
 								var number = parseInt(response.misc_blurb.slice(0,index).replace(',',''));
-								var comment_lines = xhr.dataset.name == 'Gene' ? xhr2.view.comment_lines + 1 : xhr2.view.comment_lines;
-								var length = number - comment_lines;
-								xhr.dataset.set('length', number - comment_lines);
+								//var comment_lines = xhr.dataset.name == 'Gene' ? xhr2.view.comment_lines + 1 : xhr2.view.comment_lines;
+								var comment_lines = 1;
+								//var length = number - comment_lines;
+								//console.log(number);
+								xhr.dataset.set('length', number - 1);
 								//console.log(xhr.dataset);
 								//view.at(n).set('length', parseInt(number) - view.comment_lines);
-                        	}
+	                        }
                         }
 					})
 				//xhr2.reference = xhr;

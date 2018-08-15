@@ -26,10 +26,10 @@ define(['plugin/views/loader'],
                       this.columnTypeCollection = new ColumnTypeCollection({model : this.model});
                       //this.model.on('change:headerConfig', this.renderColumnOptions, this);
                       this.render();
+                      //this.model.on('change:Job ID', this.render, this);
                   },
 
                   toggleVisibility : function(){
-                    console.log('Togglign visibility');
                     if (parseInt(this.$el.css('width')) <= 20){
                       this.$el.css('max-width', '235px');  
                       //this.$el.css('max-width', '250px');  
@@ -44,8 +44,10 @@ define(['plugin/views/loader'],
                   render : function(){
                       $sidebar = $('<div>', {class : 'sidebar'});
 
-                      var $content = $('<div>', {'class' : 'column-type-collection'});
+                      $content = $('<div>', {'class' : 'column-type-collection'});
                       $content.append(this.model.get('Job ID'));
+                      //$content.html('rsajulga_20180522_155808');
+
                       this.button = $('<button>', {'class' : 'sidebar-button'});
                       this.button.append('<');
                       $sidebar.append(this.button);
@@ -78,7 +80,7 @@ define(['plugin/views/loader'],
                                                   errorNumber : this.model.get('Number of errors'),
                                                   variantNumber : this.model.get('Number of variants'),
                                                   geneNumber : this.model.get('Number of genes'),
-                                                  sampleNumber : 'N/A',
+                                                  sampleNumber : 1,
                                                   noncodingNumber : this.model.get('Number of noncoding variants')}));
                       $sidebar.html(this.button);
                       $sidebar.append(new Box({name : 'Job Info', content: $content}).el);

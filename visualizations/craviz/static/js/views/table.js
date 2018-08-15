@@ -14,15 +14,36 @@ define([],
 				this.firstRun = true;
 				this.frameViewer = options.frameViewer;
 				this.render();
+				if (this.model.name == 'Gene'){
+					//this.model.collection.at(2).on('change:Gene Data', this.loadGeneTable, this);
+				}
 				//this.dataTable = $('#' + this.name).DataTable();
 			},
 
 			render : function(){
-				$view = $('<div>', {'class' : 'dataTableView'});
+				$view = $('<div>', {'class' : 'table-view'});
+				$table = $('<div>', {'class' : 'dataTableView'});
 
+				this.$selectedPanel = $('<div>', {'class' : 'selected-panel'});
+				$table.append(this.$selectedPanel);
 				var panelClass = this.frameViewer ? ' top-panel' : '';
-				$view.append('<div id="' + this.name + 'DataTable" class="data-table ' + panelClass +'" style="display: none;"><table id="' + this.name + '"></table></div>');	
+				$table.append('<div id="' + this.name + 'DataTable" class="data-table ' + panelClass +'" style="display: none;"><table id="' + this.name + '"></table></div>');	
+				//$table = $('<div>', {'class' : 'table-view'});
+				/*if (this.name == 'Gene'){
+				} else {
+				}*/
+				$view.append($table);
+				if (this.model.name == 'Variant'){
+					$view.append("<div class='frame'><iframe id='variantviewer'></iframe></div>");
+					//$('.frame').
+				} else if (this.model.name == 'Gene'){
+					$view.append('<table id="example"></table>');
+					console.log('Rendered gene table');
+					//this.loadGeneTable();
+				}
 				this.$el.append($view);
+				//$('.dataTableView').resizable();
+
 				//var content = '<thead><tr><th>Name</th><th>Position</th><th>Office</th><th>Extn.</th><th>Start date</th><th>Salary</th></tr></thead><tfoot><tr><th>Name</th><th>Position</th><th>Office</th><th>Extn.</th><th>Start date</th><th>Salary</th></tr></tfoot>';
 				//this.$el.append('<div id="' + this.name + 'DataTable" class="data-table ' + panelClass +'" style="display: none;"><table id="' + this.name + '">' + content + '</table></div>');	
 			},
@@ -32,6 +53,28 @@ define([],
 				this.$el.html('<div class="indicator"><h2>Retrieving Data...</h2><div class="loaderIndicator"></div></div>');
 			},
 
+			loadGeneTable : function(row_data){
+				console.log('Loading gene table!');
+				if (row_data.length >= 8){
+					var gene = row_data[8];
+				} else {
+					// Initialize table
+					console.log('Initializing table');
+					var dataset = this.model.collection.at(2).get('Gene data');
+					if (dataset){
+						var headers = this.formatToDataTableHeader(dataset.shift());
+						$('table#example').DataTable({
+							data : dataset,
+							columns : headers
+						});
+					}
+				}
+				
+				/*$('#gene-table').DataTable( {
+					data : dataset,
+					columns: headers
+				});*/
+			},
 
 			loadTable : function(ID){
 				// Initializes the table
@@ -52,9 +95,10 @@ define([],
 				}
 
 		        var allHeaders = this.model.get('All headers');
-		        //if (allHeaders.indexOf('Chromosome') > 0){
-		        //	this.model.allHeaders[allHeaders.indexOf('Chromosome')] = 'Chromo some';
-		        //}
+		        /*if (allHeaders.indexOf('Chromosome') > 0){
+		        	allHeaders[allHeaders.indexOf('Chromosome')] = 'Chromosome';
+		        	//this.model.set('All headers', allHeaders);
+		        }*/
 		        var headers = '<tr><th>' + allHeaders.join('</th><th>') + '</th></tr>';
 		        //headerHTML = '<thead>' + headers + '</thead><tfoot>' + headers + '</tfoot>';
 		        headerHTML = '<thead>' + headers + '</thead>';
@@ -126,12 +170,13 @@ define([],
 	                    },
                     },
                     deferRender:    true,
-		            scrollY:        '2000px',
+		            scrollY:        '200px',
 		            scrollCollapse: true,
 		            //scroller:       true,
 		            select : true,
 		            "order": [[sorting_index, "asc"]],
-		            scrollX: true,
+		            scrollX: '100%',
+		            "processing": true,
                     /*"bProcessing": true,
                     deferRender: true,
                     //"bServerSide": true,
@@ -150,14 +195,50 @@ define([],
 						header: true,
 						footer: true
 					},*/
+					language: {
+					   emptyTable: "No data available in table", // 
+					   loadingRecords: "Please wait .. ", // default Loading...
+					   zeroRecords: "No matching records found"
+					  },
 					columnDefs: [ {
 					 	targets : '_all',
 					 	"type" : "mystring",
 						render: function ( data, type, row ) {
-							var limit = 15;
-							return type === 'display' && data.length > limit ?
+							var limit = 8;
+							var output = data;
+							var re = new RegExp('[A-Z]+');
+							var m;
+							var index = row.indexOf(data);
+							var positions = [];
+							var position;
+							var variant = output;
+							if (type === 'display'){
+								/*output = data.length > limit ?
+									data.substr( 0, limit - 3 ) +'…' :
+						        	data;*/
+						        m = data.match(re);
+						        if (m && index == 13){
+						        	// Account for large insertions and deletions
+						        	reference = row[12];
+						        	variant = row[13];
+						        	for (var i = 0; i < variant.length; i++){
+						        		if (variant[i] != reference[i]){
+						        			positions.push(i);
+						        		}
+						        	}
+						        	positions = positions.sort(function(a,b){
+						        		return a < b;
+						        	});
+						        	for (var i = 0; i < positions.length; i++){
+						        		position = positions[i];
+						        		variant = variant.slice(0,position) + '<font color="#ff5151"><b>' + variant.slice(position, position+1) + '</b></font>' + variant.slice(position+1,variant.length);
+						        	}
+						        }
+							}
+							return variant;
+							/*return type === 'display' && data.length > limit ?
 						        data.substr( 0, limit - 3 ) +'…' :
-						        data;
+						        data;*/
 						    }
 						},
 					],
@@ -166,8 +247,11 @@ define([],
                     	console.log(view.name + ' COMPLETE');
 						$('#' + view.name + 'DataTable').show();
 						view.dataTable.DataTable().row(':eq(0)').select();
-						//$('#' + view.name + 'DataTable').draw();
+
+						if ($(view.dataTable.DataTable().column( 2 ).header()).html() == 'Chromosome'){
+							$(view.dataTable.DataTable().column( 2 ).header()).html('Chromo<br />some');
 						}
+					}
                 } );
 
 
@@ -178,12 +262,22 @@ define([],
 					view = this;
 					this.dataTable.DataTable().on('select', function (e, dt, type, indexes) {
 						if (type === 'row' ){
-							var pos = view.dataTable.DataTable().row(indexes[0]).index();
-							var data = view.dataTable.DataTable().row(pos).data();
-							view.loadViewer(data);
+							var row_pos = view.dataTable.DataTable().row(indexes[0]).index();
+							var row_data = view.dataTable.DataTable().row(row_pos).data();
+							view.loadViewer(row_data);
 						}
+						//view.loadGeneTable(row_data);
 					});
 				}
+				$('#' + this.name + ' tbody').on('click', 'td', function () {
+					view.dataTable.DataTable().cells('.selected').deselect();
+					view.dataTable.DataTable().cell( this ).select();
+					var datum = $(this).html();
+					if (datum.indexOf('<') < 0){
+						datum = view.dataTable.DataTable().cell( this ).data();
+					}
+					view.$selectedPanel.html(datum);
+				});
 
 				if (this.model.get('shownHeaders')){
 					this.refreshHeaders();
@@ -206,6 +300,7 @@ define([],
 			draw : function(){
 				if ($.fn.DataTable.isDataTable(this.dataTable)){
 					this.dataTable.DataTable().draw();
+					this.dataTable.DataTable().columns.adjust();
 				}
 			},
 
@@ -214,9 +309,9 @@ define([],
 				var value;
 				for (var i = 0; i < header.length; i++){
 					value = header[i];
-					if (value == 'Chromosome'){
+					/*if (value == 'Chromosome'){
 						value = 'Chromo some';
-					}
+					}*/
 					header_columns.push({title:value});
 				}
 				return header_columns;
@@ -249,30 +344,29 @@ define([],
 			},
 
 			renderFrame: function(){
-				this.$el.append('<div class="frame"></div>');
-				console.log(this.$el);
+				//this.$el.append('<div class="frame"></div>');
+				//console.log(this.$el);
 			},
 
 
-			loadViewer : function(row){
-				$('#variantviewer').attr('src',this.getLink(row));
-			},
-
-			getLink : function(row_data){
+			loadViewer : function(row_data){
 				var headers = this.model.get('All headers');
 				var chrom = row_data[headers.indexOf('Chromosome')];
 				var pos = row_data[headers.indexOf('Position')];
+				var strand = row_data[headers.indexOf('Strand')];
 				var ref = row_data[headers.indexOf('Reference base(s)')];
 				var alt = row_data[headers.indexOf('Alternate base(s)')];
 
-				tpl = _.template('http://staging.cravat.us/CRAVAT/variant.html?variant=<%= chr %>_<%= position %>_-_<%= ref_base %>_<%= alt_base %>');
+				tpl = _.template('http://www.cravat.us/CRAVAT/variant.html?variant=<%= chr %>_<%= position %>_<%= strand %>_<%= ref_base %>_<%= alt_base %>');
 				
 				link = tpl({chr: chrom,
+					strand: strand,
 					position: pos,
 					ref_base: ref,
 					alt_base: alt});
-				return link;
+				$('#variantviewer').attr('src',link);
 			},
+
 
 			hideColumn : function(header){
 				var table = $(this.idName + 'DataTable').DataTable();
