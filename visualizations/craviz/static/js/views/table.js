@@ -21,8 +21,12 @@ define([],
 				$view = $('<div>', {'class' : 'dataTableView'});
 
 				var panelClass = this.frameViewer ? ' top-panel' : '';
+				this.$selectedPanel = $('<div>', {'class' : 'selected-panel'});
+				$view.append(this.$selectedPanel);
 				$view.append('<div id="' + this.name + 'DataTable" class="data-table ' + panelClass +'" style="display: none;"><table id="' + this.name + '"></table></div>');	
 				this.$el.append($view);
+				//$('.dataTableView').resizable();
+
 				//var content = '<thead><tr><th>Name</th><th>Position</th><th>Office</th><th>Extn.</th><th>Start date</th><th>Salary</th></tr></thead><tfoot><tr><th>Name</th><th>Position</th><th>Office</th><th>Extn.</th><th>Start date</th><th>Salary</th></tr></tfoot>';
 				//this.$el.append('<div id="' + this.name + 'DataTable" class="data-table ' + panelClass +'" style="display: none;"><table id="' + this.name + '">' + content + '</table></div>');	
 			},
@@ -52,9 +56,10 @@ define([],
 				}
 
 		        var allHeaders = this.model.get('All headers');
-		        //if (allHeaders.indexOf('Chromosome') > 0){
-		        //	this.model.allHeaders[allHeaders.indexOf('Chromosome')] = 'Chromo some';
-		        //}
+		        /*if (allHeaders.indexOf('Chromosome') > 0){
+		        	allHeaders[allHeaders.indexOf('Chromosome')] = 'Chromosome';
+		        	//this.model.set('All headers', allHeaders);
+		        }*/
 		        var headers = '<tr><th>' + allHeaders.join('</th><th>') + '</th></tr>';
 		        //headerHTML = '<thead>' + headers + '</thead><tfoot>' + headers + '</tfoot>';
 		        headerHTML = '<thead>' + headers + '</thead>';
@@ -126,12 +131,13 @@ define([],
 	                    },
                     },
                     deferRender:    true,
-		            scrollY:        '2000px',
+		            scrollY:        '200px',
 		            scrollCollapse: true,
 		            //scroller:       true,
 		            select : true,
 		            "order": [[sorting_index, "asc"]],
-		            scrollX: true,
+		            scrollX: '100%',
+		            "processing": true,
                     /*"bProcessing": true,
                     deferRender: true,
                     //"bServerSide": true,
@@ -154,10 +160,34 @@ define([],
 					 	targets : '_all',
 					 	"type" : "mystring",
 						render: function ( data, type, row ) {
-							var limit = 15;
-							return type === 'display' && data.length > limit ?
+							var limit = 8;
+							var output = data;
+							var re = new RegExp('[A-Z]+');
+							var m;
+							var index = row.indexOf(data);
+							var position;
+							if (type === 'display'){
+								output = data.length > limit ?
+									data.substr( 0, limit - 3 ) +'…' :
+						        	data;
+						        m = data.match(re);
+						        if (m && index == 13){
+						        	// Account for large insertions and deletions
+						        	reference = row[12];
+						        	variant = row[13];
+						        	position = 0;
+						        	for (var i = 0; i < variant.length; i++){
+						        		if (variant[i] != reference[i]){
+						        			position = i;
+						        		}
+						        	}
+						        	output = variant.slice(0,position) + '<font color="red">' + variant.slice(position, position+1) + '</font>' + variant.slice(position+1,variant.length);
+						        }
+							}
+							return output;
+							/*return type === 'display' && data.length > limit ?
 						        data.substr( 0, limit - 3 ) +'…' :
-						        data;
+						        data;*/
 						    }
 						},
 					],
@@ -178,12 +208,18 @@ define([],
 					view = this;
 					this.dataTable.DataTable().on('select', function (e, dt, type, indexes) {
 						if (type === 'row' ){
-							var pos = view.dataTable.DataTable().row(indexes[0]).index();
-							var data = view.dataTable.DataTable().row(pos).data();
-							view.loadViewer(data);
+							var row_pos = view.dataTable.DataTable().row(indexes[0]).index();
+							var row_data = view.dataTable.DataTable().row(row_pos).data();
+							view.loadViewer(row_data);
 						}
 					});
 				}
+				$('#' + this.name + ' tbody').on('click', 'td', function () {
+					view.dataTable.DataTable().cells('.selected').deselect();
+					view.dataTable.DataTable().cell( this ).select();
+					//var datum = view.dataTable.DataTable().cell( this ).data();
+					view.$selectedPanel.html($(this).html());
+				});
 
 				if (this.model.get('shownHeaders')){
 					this.refreshHeaders();
@@ -206,6 +242,7 @@ define([],
 			draw : function(){
 				if ($.fn.DataTable.isDataTable(this.dataTable)){
 					this.dataTable.DataTable().draw();
+					this.dataTable.DataTable().columns.adjust();
 				}
 			},
 
@@ -265,7 +302,7 @@ define([],
 				var ref = row_data[headers.indexOf('Reference base(s)')];
 				var alt = row_data[headers.indexOf('Alternate base(s)')];
 
-				tpl = _.template('http://staging.cravat.us/CRAVAT/variant.html?variant=<%= chr %>_<%= position %>_-_<%= ref_base %>_<%= alt_base %>');
+				tpl = _.template('http://www.cravat.us/CRAVAT/variant.html?variant=<%= chr %>_<%= position %>_-_<%= ref_base %>_<%= alt_base %>');
 				
 				link = tpl({chr: chrom,
 					position: pos,
