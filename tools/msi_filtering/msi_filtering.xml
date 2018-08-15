@@ -1,4 +1,4 @@
-<tool id="mass_spectrometry_imaging_filtering" name="MSI filtering" version="1.10.0.4">
+<tool id="mass_spectrometry_imaging_filtering" name="MSI filtering" version="1.10.0.5">
     <description>tool for filtering mass spectrometry imaging data</description>
     <requirements>
         <requirement type="package" version="1.10.0">bioconductor-cardinal</requirement>
@@ -32,9 +32,8 @@
 
 
 library(Cardinal)
-library(gridExtra)
 library(ggplot2)
-
+library(gridExtra)
 
 #if $infile.ext == 'imzml'
     #if str($processed_cond.processed_file) == "processed":
@@ -86,7 +85,7 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE) > 0)
 
         ## prepare dataframe for QC of pixel distribution (will be overwritten in filtering of pixels condition)
         position_df = cbind(coord(msidata)[,1:2], rep("$infile.element_identifier", times=ncol(msidata)))
-
+        colnames(position_df)[3] = "annotation"
 
     ###################################### Filtering of pixels #####################
     ################################################################################
@@ -103,6 +102,7 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE) > 0)
         valid_entries = input_list[startingrow:nrow(input_list),$pixels_cond.pixel_column] %in% names(pixels(msidata))
         validpixels = sum(valid_entries)
         valid_annotations = input_list[valid_entries,c($pixels_cond.pixel_column, $pixels_cond.annotation_column)]
+        colnames(valid_annotations) = c("pixel_coordinates", "annotation")
 
         ## for valid pixels: filter file for pixels and create dataframe with x,y,annotation for QC
         if (validpixels != 0){
@@ -110,8 +110,16 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE) > 0)
             pixelsofinterest = pixels(msidata)[names(pixels(msidata)) %in% valid_annotations[,1]]
             msidata = msidata[,pixelsofinterest]
             ## position_df for QC
-            pixel_coords = coord(msidata)[names(pixels(msidata)) %in% valid_annotations[,1],1:2]
-            position_df = cbind(pixel_coords, valid_annotations[,2])
+
+
+            ###pixel_coords = coord(msidata)[names(pixels(msidata)) %in% valid_annotations[,1],1:2]
+            pixel_coords = cbind(rownames(coord(msidata)), coord(msidata))
+            colnames(pixel_coords)[1] = "pixel_coordinates"
+
+            ###position_df = cbind(pixel_coords, valid_annotations[,2])
+            position_df = merge(pixel_coords, valid_annotations)
+            position_df\$annotation = factor(position_df\$annotation)
+
         }else{
             msidata = msidata[,0]
             validpixels=0}
@@ -129,8 +137,9 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE) > 0)
         inputpixels = input_list[startingrow:nrow(input_list),c($pixels_cond.pixel_column_x, $pixels_cond.pixel_column_y, $pixels_cond.annotation_column_xy)]
         colnames(inputpixels) = c("x", "y", "annotation")
         position_df = merge(coord(msidata)[,1:2], inputpixels, by=c("x", "y"), all.x=TRUE)
-
         validpixels = nrow(position_df)
+        colnames(position_df)[3] = "annotation"
+        position_df\$annotation = factor(position_df\$annotation)
 
         ## for valid pixels: filter file for pixels
         if (validpixels != 0){
@@ -159,6 +168,11 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE) > 0)
             msidata = msidata[,0]
             print("no valid pixel found")}
 
+        ## update position_df for filtered pixels
+        position_df = cbind(coord(msidata)[,1:2], rep("$infile.element_identifier", times=ncol(msidata)))
+        colnames(position_df)[3] = "annotation"
+        position_df\$annotation = factor(position_df\$annotation)
+
     #elif str($pixels_cond.pixel_filtering) == "none":
         print("no pixel filtering")
 
@@ -177,7 +191,12 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE) > 0)
     ####################### Keep m/z from tabular file #########################
 
 ## feature filtering only when pixels/features/intensities are left
-if (sum(spectra(msidata)[], na.rm=TRUE) > 0)
+    npeaks_before_filtering= sum(spectra(msidata)[]>0, na.rm=TRUE)
+
+
+
+if (npeaks_before_filtering > 0)
+
 {
 
     #if str($features_cond.features_filtering) == "features_list":
@@ -369,21 +388,19 @@ if (sum(spectra(msidata)[], na.rm=TRUE) > 0)
         grid.table(property_df, rows= NULL)
 
 ## QC report with more than value-table: only when pixels/features/intensities are left
-if (sum(spectra(msidata)[], na.rm=TRUE) > 0)
+if (npeaks2 > 0)
 {
         ### visual pixel control
 
-            colnames(position_df)[3] = "annotation_name"
-            pixel_image = ggplot(position_df, aes(x=x, y=y, fill=annotation_name))+
-                   geom_tile() +
+            pixel_image = ggplot(position_df, aes(x=x, y=y, fill=annotation))+
+                   geom_tile(height = 1, width=1)+
                    coord_fixed()+
-                   ggtitle("Spatial orientation of combined data")+
+                   ggtitle("Spatial orientation of filtered pixels")+
                    theme_bw()+
-                   theme(text=element_text(family="ArialMT", face="bold", size=15))+
+                   theme(plot.title = element_text(hjust = 0.5))+
+                   theme(text=element_text(family="ArialMT", face="bold", size=12))+
                    theme(legend.position="bottom",legend.direction="vertical")+
                    guides(fill=guide_legend(ncol=4,byrow=TRUE))
-            coord_labels = aggregate(cbind(x,y)~annotation_name, data=position_df, mean, na.rm=TRUE, na.action="na.pass")
-            coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$annotation_name)
 
             print(pixel_image)
 
@@ -515,12 +532,13 @@ if (sum(spectra(msidata)[], na.rm=TRUE) > 0)
             <param name="pixel_filtering" value="single_column"/>
             <param name="single_pixels" ftype="tabular" value = "inputpixels.tabular"/>
             <param name="pixel_column" value="1"/>
+            <param name="annotation_column" value="2"/>
             <param name="features_filtering" value="features_list"/>
             <param name="inputfeatures" ftype="tabular" value = "inputfeatures.tabular"/>
             <param name="feature_column" value="2"/>
             <param name="feature_header" value="1"/>
             <output name="filtering_qc" file="imzml_filtered.pdf" compare="sim_size" delta="20000"/>
-            <output name="msidata_filtered" file="imzml_filtered.RData" compare="sim_size" />
+            <output name="msidata_filtered" file="imzml_filtered.RData" compare="sim_size"/>
         </test>
         <test expect_num_outputs="2">
             <param name="infile" value="" ftype="imzml">
@@ -533,7 +551,7 @@ if (sum(spectra(msidata)[], na.rm=TRUE) > 0)
             <param name="min_y_range" value="2"/>
             <param name="max_y_range" value="2"/>
             <output name="filtering_qc" file="imzml_filtered2.pdf" compare="sim_size" delta="20000"/>
-            <output name="msidata_filtered" file="imzml_filtered2.RData" compare="sim_size" />
+            <output name="msidata_filtered" file="imzml_filtered2.RData" compare="sim_size"/>
         </test>
         <test expect_num_outputs="3">
             <param name="infile" value="" ftype="imzml">
@@ -550,7 +568,7 @@ if (sum(spectra(msidata)[], na.rm=TRUE) > 0)
             <param name="max_mz" value="500"/>
             <param name="output_matrix" value="True"/>
             <output name="filtering_qc" file="imzml_filtered3.pdf" compare="sim_size" delta="20000"/>
-            <output name="msidata_filtered" file="imzml_filtered3.RData" compare="sim_size" />
+            <output name="msidata_filtered" file="imzml_filtered3.RData" compare="sim_size"/>
             <output name="matrixasoutput" file="imzml_matrix3.tabular"/>
         </test>
         <test expect_num_outputs="2">
@@ -563,12 +581,8 @@ if (sum(spectra(msidata)[], na.rm=TRUE) > 0)
             <param name="pixel_column_x" value="1"/>
             <param name="pixel_column_y" value="3"/>
             <param name="annotation_column_xy" value="2"/>
-            <param name="features_filtering" value="features_list"/>
-            <param name="inputfeatures" ftype="tabular" value = "inputcalibrantfile2.txt"/>
-            <param name="feature_column" value="1"/>
-            <param name="feature_header" value="0"/>
             <output name="filtering_qc" file="imzml_filtered4.pdf" compare="sim_size" delta="20000"/>
-            <output name="msidata_filtered" file="imzml_filtered4.RData" compare="sim_size" />
+            <output name="msidata_filtered" file="imzml_filtered4.RData" compare="sim_size"/>
         </test>
         <test expect_num_outputs="2">
             <param name="infile" value="" ftype="imzml">
