@@ -1,0 +1,509 @@
+<tool id="maldi_quant_preprocessing" name="MALDIquant preprocessing" version="1.18.0.0">
+    <description>
+        Preprocessing of mass-spectrometry imaging data
+    </description>
+    <macros>
+        <import>maldi_macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <command detect_errors="exit_code">
+    <![CDATA[
+        #if $infile.ext == 'imzml'
+            cp '${infile.extra_files_path}/imzml' infile.imzML &&
+            cp '${infile.extra_files_path}/ibd' infile.ibd &&
+        #elif $infile.ext == 'analyze75'
+            cp '${infile.extra_files_path}/hdr' infile.hdr &&
+            cp '${infile.extra_files_path}/img' infile.img &&
+            cp '${infile.extra_files_path}/t2m' infile.t2m &&
+            du infile.hdr &&
+            du infile.img &&
+            du -s -B1 infile.hdr &&
+        #else
+            ln -s $infile infile.RData &&
+        #end if
+        Rscript "${maldi_quant_preprocessing}" &&
+        mkdir $outfile_imzml.files_path &&
+        mv ./out.imzMl "${os.path.join($outfile_imzml.files_path, 'imzml')}" | true &&
+        mv ./out.ibd "${os.path.join($outfile_imzml.files_path, 'ibd')}" | true &&
+        echo "imzML file:" > $outfile_imzml &&
+        ls -l "$outfile_imzml.files_path" >> $outfile_imzml
+    ]]>
+    </command>
+    <configfiles>
+        <configfile name="maldi_quant_preprocessing"><![CDATA[
+
+@R_IMPORTS@
+
+#if $restriction_conditional.restriction == 'restrict':
+
+    print('Reading mask region')
+    ## Import imzML file
+
+    coordinate_matrix = as.matrix(read.delim("$restriction_conditional.coordinates_file", header = FALSE, stringsAsFactors = FALSE))[,1:2]
+
+    maldi_data = importImzMl('infile.imzML',
+                     coordinates = coordinate_matrix)
+    pixelnames = paste0("x = ", coordinates(maldi_data)[,1],", y = ", coordinates(maldi_data)[,2])
+
+#else:
+
+    print('Reading entire file')
+    #if $infile.ext == 'imzml'
+        ## Import imzML file
+        maldi_data = import( 'infile.imzML', type="imzML" )
+    #elif $infile.ext == 'analyze75'
+        ## Import analyze7.5 file
+        maldi_data = import( 'infile.hdr' )
+    #else
+        loadRData <- function(fileName){
+        #loads an RData file, and returns it
+        load(fileName)
+        get(ls()[ls() != "fileName"])
+        }
+        msidata = loadRData('infile.RData')
+
+        ## save coordinates
+        cardinal_coordinates = as.matrix(Cardinal::coord(msidata)[,1:2])
+        ## save mz values
+        cardinal_mzs = Cardinal::mz(msidata)
+        ## create MALDIquant MassSpectrum object
+        maldi_data = list()
+        for(number_spectra in 1:ncol(msidata)){
+        maldi_data[[number_spectra]] = createMassSpectrum(mass = cardinal_mzs, intensity = iData(msidata)[,number_spectra])
+        }
+
+    #end if
+
+#end if
+
+## Quality control plots during preprocessing 
+
+pdf("prepro_qc_plot.pdf", fonts = "Times", pointsize = 12)
+plot(0,type='n',axes=FALSE,ann=FALSE)
+
+## if no filename is given, name of file in Galaxy history is used
+    #set $filename = $infile.display_name
+title(main=paste("$filename"))
+
+#if str($tabular_annotation.load_annotation) == 'yes_annotation':
+    print("use annotation file")
+    ## read and extract x,y,annotation information
+    input_tabular = read.delim("$tabular_annotation.annotation_file", header = $tabular_annotation.tabular_header, stringsAsFactors = FALSE)
+    annotation_input = input_tabular[,c($tabular_annotation.column_x, $tabular_annotation.column_y, $tabular_annotation.column_names)]
+    colnames(annotation_input) = c("x", "y", "annotation") ## rename annotations header to default name "annotation"
+
+    ## merge with coordinate information of MSI data
+    coordinates_st = cbind(coordinates(maldi_data)[,1:2], c(1:length(maldi_data)))
+    colnames(coordinates_st)[3] = "pixel_index"
+    merged_annotation = merge(coordinates_st, annotation_input, by=c("x", "y"), all.x=TRUE)
+    merged_annotation[is.na(merged_annotation)] = "NA"
+    merged_annotation = merged_annotation[order(merged_annotation\$pixel_index),]
+    samples = as.factor(merged_annotation\$annotation)
+
+## print annotation overview into PDF output
+
+        ## the more annotation groups a file has the smaller will be the legend
+        number_combined = length(levels(as.factor(merged_annotation\$annotation)))
+        if (number_combined<20){
+            legend_size = 10
+        }else if (number_combined>20 && number_combined<40){
+            legend_size = 9
+        }else if (number_combined>40 && number_combined<60){
+            legend_size = 8
+        }else if (number_combined>60 && number_combined<100){
+            legend_size = 7
+        }else{
+            legend_size = 6
+        }
+
+        combine_plot = ggplot(merged_annotation, aes(x=x, y=y, fill=annotation))+
+               geom_tile() +
+               coord_fixed()+
+               ggtitle("Spatial orientation of annotated data")+
+               theme_bw()+
+               theme(plot.title = element_text(hjust = 0.5))+
+               theme(text=element_text(family="ArialMT", face="bold", size=12))+
+               theme(legend.position="bottom",legend.direction="vertical")+
+               theme(legend.key.size = unit(0.2, "line"), legend.text = element_text(size = legend_size))+
+               guides(fill=guide_legend(ncol=5,byrow=TRUE))
+
+        print(combine_plot)
+
+#end if
+
+#################### Preprocessing methods #####################################
+
+## QC plot
+avgSpectra = averageMassSpectra(maldi_data,method="mean")
+plot(avgSpectra, main="Average spectrum for input file")
+
+#for $method in $methods:
+
+    #if str( $method.methods_conditional.method ) == 'Transformation':
+
+        print('transforming')
+        ##transformation
+        maldi_data = transformIntensity(maldi_data, method="$method.methods_conditional.transform_method")
+        ## QC plot
+        avgSpectra = averageMassSpectra(maldi_data,method="mean")
+        plot(avgSpectra, main="Average spectrum after transformation")
+
+
+    #elif str( $method.methods_conditional.method ) == 'Smoothing':
+
+        print('smoothing')
+        ##smoothing
+
+        #if str($method.methods_conditional.methods_for_smoothing.smooth_method ) == 'SavitzkyGolay':
+        print('SavitzkyGolay')
+
+            maldi_data = smoothIntensity(maldi_data,
+                    method="SavitzkyGolay", polynomialOrder=$method.methods_conditional.methods_for_smoothing.polynomial,
+                    halfWindowSize=$method.methods_conditional.halfWindowSize)
+
+        #elif str($method.methods_conditional.methods_for_smoothing.smooth_method ) == 'MovingAverage':
+            print('MovingAverage')
+
+            maldi_data = smoothIntensity(maldi_data,
+                    method="MovingAverage", weighted=$method.methods_conditional.methods_for_smoothing.weighted,
+                    halfWindowSize=$method.methods_conditional.halfWindowSize)
+
+        #end if
+
+        ## QC plot
+        avgSpectra = averageMassSpectra(maldi_data,method="mean")
+        plot(avgSpectra, main="Average spectrum after smoothing")
+
+
+    #elif str( $method.methods_conditional.method ) == 'Baseline':
+
+        print('baseline removing')
+        ## Remove baseline
+
+        maldi_data = removeBaseline(maldi_data,
+            method="$method.methods_conditional.baseline_method",
+            iterations=$method.methods_conditional.iterations)
+        ## QC plot
+        avgSpectra = averageMassSpectra(maldi_data,method="mean")
+        plot(avgSpectra, main="Average spectrum after baseline removal")
+
+
+    #elif str( $method.methods_conditional.method ) == 'Calibrate':
+
+        print('calibrate')
+        ##calibrate
+
+        #if $method.methods_conditional.mass_start != 0 and $method.methods_conditional.mass_end != 0:
+        ## calibrate only given m/z range
+        maldi_data = calibrateIntensity(maldi_data,
+            method="$method.methods_conditional.calibrate_method",
+            range=c($method.methods_conditional.mass_start, $method.methods_conditional.mass_end))
+        #else:
+        maldi_data = calibrateIntensity(maldi_data,
+            method="$method.methods_conditional.calibrate_method")
+        #end if
+        ## QC plot
+        avgSpectra = averageMassSpectra(maldi_data,method="mean")
+        plot(avgSpectra, main="Average spectrum after normalization")
+
+
+    #elif str( $method.methods_conditional.method ) == 'Align':
+
+        print('align')
+        ##align spectra
+
+        #if str($method.methods_conditional.reference_for_alignment.align_ref) == 'no_reference':
+
+            maldi_data = alignSpectra(maldi_data, halfWindowSize=$method.methods_conditional.halfWindowSize,
+                SNR=$method.methods_conditional.snr,
+                tolerance=$method.methods_conditional.tolerance,
+                warpingMethod="$method.methods_conditional.warping_method")
+
+        #elif str($method.methods_conditional.reference_for_alignment.align_ref) == 'yes_reference':
+
+            ## create reference mass_vector from tabular file
+            mass_vector = read.delim("$method.methods_conditional.reference_for_alignment.reference_file", header = FALSE, stringsAsFactors = FALSE)[,1]
+            int_vector = rep(1,length(mass_vector))
+            mass_list = createMassPeaks(mass_vector, int_vector)
+
+            maldi_data = alignSpectra(maldi_data, halfWindowSize=$method.methods_conditional.halfWindowSize,
+                SNR=$method.methods_conditional.snr,
+                tolerance=$method.methods_conditional.tolerance,
+                warpingMethod="$method.methods_conditional.warping_method", 
+                reference = mass_list, allowNoMatches =$method.methods_conditional.reference_for_alignment.allow_nomatch, emptyNoMatches = $method.methods_conditional.reference_for_alignment.empty_nomatch)
+
+            #if $method.methods_conditional.reference_for_alignment.remove_empty:
+
+                #if $infile.ext == 'rdata'
+                    cardinal_coordinates = cardinal_coordinates[-findEmptyMassObjects(maldi_data),] ## remove coordinates of empty spectra for Cardinal RData input
+                #end if
+                #if str($tabular_annotation.load_annotation) == 'yes_annotation':
+                    merged_annotation = merged_annotation[-findEmptyMassObjects(maldi_data),] ## remove coordinate annotations for empty spectra
+                #end if
+                maldi_data = removeEmptyMassObjects(maldi_data)
+            #end if
+        #end if
+
+        ## QC plot
+
+        if (length(maldi_data)>0){
+            avgSpectra = averageMassSpectra(maldi_data,method="mean")
+            plot(avgSpectra, main="Average spectrum after alignment")
+        }else{"All spectra are empty"}
+
+    #end if
+#end for
+
+dev.off()
+
+## export imzML file
+if (length(maldi_data)>0){
+    #if $infile.ext == 'rdata'
+        MALDIquantForeign::exportImzMl(maldi_data, file="out.imzMl", processed=$export_processed, coordinates=cardinal_coordinates)
+    #else
+        MALDIquantForeign::exportImzMl(maldi_data, file="out.imzMl", processed=$export_processed)
+    #end if
+
+    ## export annotation tabular file
+    #if str($tabular_annotation.load_annotation) == 'yes_annotation':
+        write.table(merged_annotation, file="$annotation_output", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+    #end if
+}else{"All spectra are empty, outputfiles will be empty,too."}
+
+    ]]>
+        </configfile>
+    </configfiles>
+    <inputs>
+        <param name="infile" type="data" format="imzml,rdata" label="MS metadata" help="This file is in imzML format or Cardinal MSImageSet saved as RData"/>
+        <conditional name="restriction_conditional">
+            <param name="restriction" type="select" label="Read in only spectra of interest" help="This option only works for imzML files">
+                <option value="no_restriction" selected="True">Calculate on entire file</option>
+                <option value="restrict">Restrict to coordinates of interest</option>
+            </param>
+            <when value="restrict">
+                <param name="coordinates_file" type="data" format="tabular" label="Tabular file with coordinates which should be read" help="x-values in first column, y-values in second column"/>
+            </when>              
+            <when value="no_restriction"/>
+        </conditional>
+        <conditional name="tabular_annotation">
+            <param name="load_annotation" type="select" label="Use pixel annotation from tabular file to have updated annotation information in case empty spectra will be removed">
+                <option value="no_annotation" selected="True">use no annotation</option>
+                <option value="yes_annotation">use pixel annotation from a tabular file</option>
+            </param>
+                <when value="yes_annotation">
+                    <param name="annotation_file" type="data" format="tabular" label="Use annotations from tabular file"
+                    help="Tabular file with three columns: x values, y values and pixel annotations"/>
+                        <param name="column_x" data_ref="annotation_file" label="Column with x values" type="data_column"/>
+                        <param name="column_y" data_ref="annotation_file" label="Column with y values" type="data_column"/>
+                        <param name="column_names" data_ref="annotation_file" label="Column with pixel annotations" type="data_column"/>
+                        <param name="tabular_header" type="boolean" label="Tabular file contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
+                </when>
+                <when value="no_annotation"/>
+        </conditional>
+        <repeat name="methods" title="Method" min="1">
+            <conditional name="methods_conditional">
+                <param name="method" type="select" label="Select the method you want to apply">
+                    <option value="Transformation" selected="True">Transformation</option>
+                    <option value="Smoothing">Smoothing</option>
+                    <option value="Baseline">Baseline removal</option>
+                    <option value="Calibrate">Calibrate</option>
+                    <option value="Align">Align Spectra (warping/phase correction)</option>
+                    <validator type="empty_field" />
+                </param>
+                <when value="Transformation">
+                    <param name="transform_method" type="select" label="Select your transfprormation method">
+                        <option value="sqrt" selected="True">sqrt</option>
+                        <option value="log">log</option>
+                        <option value="log2">log2</option>
+                        <option value="log10">log10</option>
+                        <validator type="empty_field" />
+                    </param>
+                </when>
+                <when value="Smoothing">
+                    <conditional name="methods_for_smoothing">
+                        <param name="smooth_method" type="select" label="This method smoothes the intensity values of a MassSpectrum object">
+                            <option value="SavitzkyGolay" selected="True">SavitzkyGolay</option>
+                            <option value="MovingAverage">MovingAverage</option>
+                        </param>
+                        <when value="SavitzkyGolay">
+                            <param name="polynomial" value="3" type="text" label="PolynomialOrder argument to control the order of the filter"/>
+                        </when>
+                        <when value="MovingAverage">
+                            <param name="weighted" type="boolean" label="Weighted average" help = "indicates if the average should be equal weight or if it should have weights depending on the distance from the center as calculated as 1/2^abs(-halfWindowSize:halfWindowSize) with the sum of all weigths normalized to 1" truevalue="TRUE" falsevalue="FALSE"/>
+                        </when>
+                    </conditional>
+                    <param name="halfWindowSize" type="integer" value="10"
+                        label="Half window size"
+                        help="The resulting window reaches from 
+                            mass[currentIndex-halfWindowSize] to mass[currentIndex+halfWindowSize]
+                            (window size is 2*halfWindowSize+1).
+                            The best size differs depending on the selected smoothing method."/>
+                </when>
+                <when value="Baseline">
+                    <param name="baseline_method" type="select" label="Baseline removal method">
+                        <option value="SNIP" selected="True">SNIP</option>
+                        <option value="TopHat">TopHat</option>
+                        <option value="ConvexHull">ConvexHull</option>
+                        <option value="median">median</option>
+                        <validator type="empty_field" />
+                    </param>
+                    <param name="iterations" type="integer" value="100"
+                        label="Number of iterations"
+                        help=""/>
+                </when>
+                <when value="Calibrate">
+                    <param name="calibrate_method" type="select" label="Calibration method">
+                        <option value="TIC" selected="True">TIC</option>
+                        <option value="PQN">PQN</option>
+                        <option value="median">median</option>
+                        <validator type="empty_field" />
+                    </param>
+                    <param name="mass_start" type="integer" value="0"
+                        label="Start of m/z range, has to be inside m/z range" 
+                        help="Scaling factor is calculated on the mass range and applied to the whole spectrum"/>
+                    <param name="mass_end" type="integer" value="0"
+                        label="End of m/z range, has to be inside m/z range" 
+                        help="The Start and End value needs to be different from 0 to be taken into account and."/>
+                </when>
+                <when value="Align">
+                    <param name="warping_method" type="select" label="Warping methods">
+                        <option value="lowess" selected="True">Lowess</option>
+                        <option value="linear">Linear</option>
+                        <option value="quadratic">Quadratic</option>
+                        <option value="cubic">Cubic</option>
+                    </param>
+
+                    <param name="tolerance" type="float" value="0.002"
+                        label="Tolerance"
+                        help="Double, maximal relative deviation of a peak position (m/z) to be considered as identical" />
+
+                    <param name="halfWindowSize" type="integer" value="20"
+                        label="Half window size"
+                        help="The resulting window reaches from 
+                            mass[currentIndex-halfWindowSize] to mass[currentIndex+halfWindowSize]
+                            (window size is 2*halfWindowSize+1).
+                            The best size differs depending on the selected smoothing method."/>
+
+                    <param name="snr" type="integer" value="2"
+                        label="Signal-to-noise-ratio"
+                        help=""/>
+
+                    <conditional name="reference_for_alignment">
+                        <param name="align_ref" type="select" label="Reference to which the samples should be aligned" help="Use internal calibrants to perform m/z calibration">
+                            <option value="no_reference" selected="True">no reference</option>
+                            <option value="yes_reference">reference from tabular file</option>
+                        </param>
+                        <when value="no_reference"/>
+                        <when value="yes_reference">
+                            <param name="reference_file" type="data" format="tabular"
+                                label="Tabular file with m/z of internal calibrants (MassPeaks) which should be used for spectra alignment"
+                                help="calibration of m/z values to internal calibrants, at least 2 m/z per spectrum are needed"/>
+                            <param name="allow_nomatch" type="boolean" label="Don't throw an error when less than 2 reference m/z were found in a spectrum" truevalue="TRUE" falsevalue="FALSE"/>
+                            <param name="empty_nomatch" type="boolean" label="logical, if TRUE the intensity values of MassSpectrum or MassPeaks objects with missing (NA) warping functions are set to zero" truevalue="TRUE" falsevalue="FALSE"/>
+                            <param name="remove_empty" type="boolean" label="Should empty spectra be removed" truevalue="TRUE" falsevalue="FALSE"/>
+                        </when>
+                    </conditional>
+                </when>
+            </conditional>
+        </repeat>
+        <param name="export_processed" type="boolean" label="Export file as processed imzML" help="otherwise continuous imzML will be exported" truevalue="TRUE" falsevalue="FALSE"/>
+    </inputs>
+    <outputs>
+        <data format="imzml" name="outfile_imzml" label="$infile.display_name processed" />
+        <data format="pdf" name="plots" from_work_dir="prepro_qc_plot.pdf" label="$infile.display_name preprocessed QC"/>
+        <data format="tabular" name="annotation_output" label="$infile.display_name annotations">
+            <filter>tabular_annotation["load_annotation"] == 'yes_annotation'</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test>
+            <param name="infile" value="" ftype="imzml">
+                <composite_data value="Example_Continuous.imzML"/>
+                <composite_data value="Example_Continuous.ibd"/>
+            </param>
+            <conditional name="restriction_conditional">
+                <param name="restriction" value="restrict"/>
+                <param name="coordinates_file" value="restricted_pixels.tabular"/>
+            </conditional>
+            <conditional name="methods_conditional">
+                <param name="method" value="Transformation"/>
+                <param name="transform_method" value="log2"/>
+                <param name="method" value="Smoothing"/>
+                <param name="smooth_method" value="SavitzkyGolay"/>
+                <param name="method" value="Basline"/>
+                <param name="baseline_method" value ="TopHat"/>
+            </conditional>
+            <output name="outfile_imzml" file="outfile1.imzML" compare="sim_size"/>
+            <output name="outfile_imzml" file="outfile1.ibd" compare="sim_size"/>
+            <output name="plots" file="Preprocessing1_QC.pdf" compare="sim_size"/>
+        </test>
+        <test>
+            <param name="infile" value="msidata_1.RData" ftype="rdata"/>
+            <conditional name="methods_conditional">
+                <param name="method" value="Calibrate"/>
+                <param name="calibrate_method" value="PQN"/>
+            </conditional>
+            <output name="outfile_imzml" file="outfile2.imzML" compare="sim_size"/>
+            <output name="outfile_imzml" file="outfile2.ibd" compare="sim_size"/>
+            <output name="plots" file="Preprocessing2_QC.pdf" compare="sim_size"/>
+        </test>
+        <test>
+            <param name="infile" value="" ftype="imzml">
+                <composite_data value="Example_Continuous.imzML"/>
+                <composite_data value="Example_Continuous.ibd"/>
+            </param>
+            <conditional name="tabular_annotation">
+                <param name="load_annotation" value="yes_annotation"/>
+                <param name="annotation_file" value="pixel_annotations.tabular"/>
+                <param name="column_x" value="1"/>
+                <param name="column_y" value="2"/>
+                <param name="column_names" value="3"/>
+                <param name="tabular_header" value="TRUE"/>
+            </conditional>
+            <conditional name="methods_conditional">
+                <param name="method" value="Align"/>
+                <param name="warping_method" value="linear"/>
+                <param name="halfWindowSize" value="1"/>
+                <conditional name="reference_for_alignment">
+                    <param name="align_ref" value="yes_reference"/>
+                    <param name="reference_file" value="align_reference_test2.tabular" ftype="tabular"/>
+                    <param name="allow_nomatch" value="TRUE"/>
+                    <param name="remove_empty" value="TRUE"/>
+                    <param name="empty_nomatch" value="TRUE"/>
+                </conditional>
+            </conditional>
+            <output name="outfile_imzml" file="outfile3.imzML" compare="sim_size"/>
+            <output name="outfile_imzml" file="outfile3.ibd" compare="sim_size"/>
+            <output name="plots" file="Preprocessing3_QC.pdf" compare="sim_size"/>
+            <output name="annotation_output" file="annotations_output3.tabular"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+
+MALDIquant_ provides a complete analysis pipeline for MALDI-TOF and other mass spectrometry data. So far we have only implemented the functionalities for mass spectrometry imaging data.
+
+Input data: 
+
+- MSI data as imzML file (upload via the "composite" function) `Introduction to the imzml format <https://ms-imaging.org/wp/imzml/>`_
+- optinal tabular file with pixel coordinates to restrict reading of imzML file to coordinates of interest
+
+Options:
+
+- Transformation: transformation of intensities with log, log2, log10 and squareroot
+- Smoothing: Smoothing of the peaks reduces noise and improves peak detection. Available smoothing methods are SavitzkyGolay and Moving Average
+- Baseline reduction: Baseline  reduction removes background intensity generated by chemical noise (common in MALDI datasets). Available methods are SNIP, TopHat,ConvexHull and median.
+- Intensity calibration (normalization): Normalization of intensities to Total Ion Current (TIC), median spectrum, Probabilistic Quotient Normalization (PQN)
+- Spectra alignment (warping):alignment for (re)calibration of m/z values
+
+
+Output: 
+
+- imzML file (imzML format can be continuous or processed)
+- pdf with average mass spectra after each preprocessing step
+
+.. _MALDIquant: http://strimmerlab.org/software/maldiquant/
+
+        ]]>
+    </help>
+    <expand macro="citation"/>
+</tool>
