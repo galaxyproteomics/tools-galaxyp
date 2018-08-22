@@ -50,12 +50,12 @@ For example:
 You can filter your data by a column of numerical values.
 Enter the column to be use and select one operator in the list :
 
-- "="
-- "!="
-- "<"
-- "<="
-- ">"
-- ">="
+- =
+- !=
+- <
+- <=
+- >
+- >=
 
 Then enter the value to filter and specify the column to apply that option.
 If a row contains a value that correspond to your settings, it will be filtered.
