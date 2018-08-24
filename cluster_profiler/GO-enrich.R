@@ -109,6 +109,9 @@ clusterProfiler = function() {
   names(args) <- argsDF$V1
   #print(args)
   
+  #save(args,file="args.Rda")
+  load("/home/dchristiany/proteore_project/ProteoRE/tools/cluster_profiler/args.Rda")
+  
   # Extract OrgDb
   if (args$species=="human") {
     orgdb<-org.Hs.eg.db
