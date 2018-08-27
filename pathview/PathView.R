@@ -63,9 +63,6 @@ get_args <- function(){
     q(save="no")
   }
   
-  
-  #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/pathview/args.Rda")
-  #load("/home/dchristiany/proteore_project/ProteoRE/tools/pathview/args.Rda")
   parseArgs <- function(x) strsplit(sub("^--", "", x), "=")
   argsDF <- as.data.frame(do.call("rbind", parseArgs(args)))
   args <- as.list(as.character(argsDF$V2))
@@ -88,6 +85,10 @@ is.letter <- function(x) grepl("[[:alpha:]]", x)
 
 #### hsa00010 -> 00010
 remove_kegg_prefix <- function(x){
+  x = gsub(":","",x)
+  if (substr(x,1,4) == 'path'){
+    x=substr(x,5,nchar(x))
+  }
   if (is.letter(substr(x,1,3))){
     x <- substr(x,4,nchar(x))
   }
@@ -121,7 +122,7 @@ species=args$species
 #read input file or list
 if (!is.null(args$input)){
   tab <- read_file(args$input,header)
-  tab <- tab[!apply(is.na(tab) | tab == "", 1, all),] #delete empty rows
+  tab <- data.frame(tab[which(tab[ncol]!=""),])
 } else {
   tab <- data.frame(id_list)
   ncol=1
