@@ -110,7 +110,7 @@ clusterProfiler = function() {
   #print(args)
   
   #save(args,file="args.Rda")
-  load("/home/dchristiany/proteore_project/ProteoRE/tools/cluster_profiler/args.Rda")
+  #load("/home/dchristiany/proteore_project/ProteoRE/tools/cluster_profiler/args.Rda")
   
   # Extract OrgDb
   if (args$species=="human") {
