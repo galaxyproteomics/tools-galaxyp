@@ -76,15 +76,16 @@ last_col=as.numeric(substr(args$cols,3,3))
 #load("/home/dchristiany/proteore_project/ProteoRE/tools/heatmap_viz/args.Rda")
 
 
-uto <- read_file(args$input,TRUE)
+uto <- read_file(args$input,header = header)
 uto_light <- uto[,first_col:last_col]
 rownames(uto_light) <- uto[,as.numeric(args$row_names)]
 colnames(uto_light) <- sapply(colnames(uto_light),function(x) gsub("iBAQ_","",x),USE.NAMES = FALSE)
 
-if (isTRUE(header)) {
+if (header) {
   heatmaply(uto_light, file=output, margins=c(100,50,NA,0), plot_method="plotly", labRow = rownames(uto_light), labCol = names(uto_light),
           grid_gap = 0,cexCol = 1, column_text_angle = as.numeric(args$col_text_angle), width = 1000, height=1000, colors = c('blue','green','yellow','red'))
 }else{
+  names(uto_light) <-c(first_col:last_col)
   heatmaply(uto_light, file=output, margins=c(100,50,NA,0), plot_method="plotly", labRow = rownames(uto_light),
             grid_gap = 0,cexCol = 1, column_text_angle = as.numeric(args$col_text_angle), width = 1000, height=1000, colors = c('blue','green','yellow','red'))
 }
