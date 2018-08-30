@@ -56,6 +56,9 @@ get_args <- function(){
       --expression_values3    Column containing expression values (third condition)
       --native_kegg           TRUE : native KEGG graph, FALSE : Graphviz graph
       --species               KEGG species (hsa, mmu, ...)
+      --pathways_input        Tab with pathways in a column, output format of find_pathways
+      --pathway_col           Column of pathways to use
+      --header2               Boolean, TRUE if header FALSE if not
 
       Example:
       ./PathView.R --input 'input.csv' --pathway_id '05412' --id_type 'uniprotID' --id_column 'c1' --header TRUE \n\n")
@@ -108,7 +111,14 @@ args <- get_args()
 #load("/home/dchristiany/proteore_project/ProteoRE/tools/pathview/args.Rda")
 
 ###setting variables
-if (!is.null(args$pathways_id)) { ids <- sapply(rapply(strsplit(clean_bad_character(args$pathways_id),","),c), function(x) remove_kegg_prefix(x),USE.NAMES = FALSE)}
+if (!is.null(args$pathways_id)) { 
+  ids <- sapply(rapply(strsplit(clean_bad_character(args$pathways_id),","),c), function(x) remove_kegg_prefix(x),USE.NAMES = FALSE)
+}else if (!is.null(args$pathways_input)){
+  header2 <- str2bool(args$header2)
+  pathway_col <- as.numeric(gsub("c", "" ,args$pathway_col))
+  pathways_file = read_file(args$pathways_input,header2)
+  ids <- sapply(rapply(strsplit(clean_bad_character(pathways_file[,pathway_col]),","),c), function(x) remove_kegg_prefix(x),USE.NAMES = FALSE)
+}
 #if (!is.null(args$pathways_name)) {names <- as.vector(sapply(strsplit(args$pathways_name,","), function(x) concat_string(x),USE.NAMES = FALSE))}
 if (!is.null(args$id_list)) {id_list <- as.vector(strsplit(clean_bad_character(args$id_list),","))}
 id_type <- tolower(args$id_type)
@@ -117,6 +127,10 @@ header <- str2bool(args$header)
 #output <- args$output
 native_kegg <- str2bool(args$native_kegg)
 species=args$species
+#org list used in mapped2geneID
+org <- c('Hs','Mm')
+names(org) <- c('hsa','mmu')
+
 
 
 #read input file or list
@@ -140,7 +154,7 @@ if (!is.null(args$expression_values3)) { colnames(tab)[e3] <- "e3" }
 if (id_type == "uniprotid") {
   
   uniprotID = tab[,ncol]
-  mapped2geneID = id2eg(ids = uniprotID, category = "uniprot", org = "Hs", pkg.name = NULL)
+  mapped2geneID = id2eg(ids = uniprotID, category = "uniprot", org = org[[species]], pkg.name = NULL)
   geneID = mapped2geneID[,2]
   tab = cbind(tab,geneID)
 
@@ -188,6 +202,8 @@ if (!is.null(args$expression_values1)&is.null(args$expression_values2)&is.null(a
 
 
 #####mapping geneID (with or without expression values) on KEGG pathway
+plot.col.key=!is.null(tab$e1)   #if there's no exrepession data, we don't show the color key
+
 for (id in ids) {
   pathview(gene.data = mat,
            #gene.idtype = "geneID",
@@ -217,6 +233,8 @@ for (id in ids) {
            #high = list(gene = "red", cpd = "yellow"), 
            #na.col = "transparent",
            #sign.pos="bottomleft",
+           plot.col.key = plot.col.key,
+           #high = "lightgreen",
            #key.pos="topright",
            #new.signature=TRUE,
            #rankdir="LB",
