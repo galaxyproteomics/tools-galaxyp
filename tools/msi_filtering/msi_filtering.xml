@@ -1,4 +1,4 @@
-<tool id="mass_spectrometry_imaging_filtering" name="MSI filtering" version="1.10.0.6">
+<tool id="mass_spectrometry_imaging_filtering" name="MSI filtering" version="1.10.0.7">
     <description>tool for filtering mass spectrometry imaging data</description>
     <requirements>
         <requirement type="package" version="1.10.0">bioconductor-cardinal</requirement>
@@ -134,27 +134,27 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE) > 0)
     #elif str($pixels_cond.pixel_filtering) == "two_columns":
         print("two columns")
 
-        ## read tabular file, count number of rows (= number of pixels), extract dataframe with x,y,annotation (for QC), count number of valid pixels
+        ## read tabular file
         input_list = read.delim("$pixels_cond.two_columns_pixel", header = FALSE, 
         stringsAsFactors = FALSE)
         startingrow = $pixels_cond.pixel_header+1
         numberpixels = length(startingrow:nrow(input_list))
         inputpixels = input_list[startingrow:nrow(input_list),c($pixels_cond.pixel_column_x, $pixels_cond.pixel_column_y, $pixels_cond.annotation_column_xy)]
+
+        ## rewrite into x = 1, y = 1 format and filter msidata, count validpixels
+        pixelvector = character()
+        for (pixel in 1:nrow(inputpixels)){
+            pixelvector[pixel] = paste0("x = ", inputpixels[pixel,1],", ", "y = ", inputpixels[pixel,2])}
+        pixelsofinterest= pixels(msidata)[names(pixels(msidata)) %in% pixelvector]
+        msidata = msidata[,pixelsofinterest]
+        validpixels=ncol(msidata)
+
+        ## in case some pixels are left print annotation plot
         colnames(inputpixels) = c("x", "y", "annotation")
         position_df = merge(coord(msidata)[,1:2], inputpixels, by=c("x", "y"), all.x=TRUE)
-        validpixels = nrow(position_df)
         colnames(position_df)[3] = "annotation"
         position_df\$annotation = factor(position_df\$annotation)
 
-        ## for valid pixels: filter file for pixels
-        if (validpixels != 0){
-            pixelvector = character()
-            for (pixel in 1:nrow(position_df)){
-                pixelvector[pixel] = paste0("x = ", position_df[pixel,1],", ", "y = ", position_df[pixel,2])}
-            pixelsofinterest= pixels(msidata)[names(pixels(msidata)) %in% pixelvector]
-            msidata = msidata[,pixelsofinterest]
-        }else{
-            validpixels=0}
 
     ########### Pixels wihin x and y minima and maxima are kept ###################
 
@@ -197,7 +197,6 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE) > 0)
 
 ## feature filtering only when pixels/features/intensities are left
     npeaks_before_filtering= sum(spectra(msidata)[]>0, na.rm=TRUE)
-
 
 
 if (npeaks_before_filtering > 0)
@@ -314,11 +313,14 @@ if (npeaks_before_filtering > 0)
 
     ## save msidata as Rfile
     save(msidata, file="$msidata_filtered")
-
+        ## Number of empty TICs
+        TICs2 = colSums(spectra(msidata)[], na.rm=TRUE)
 }else{
     print("Inputfile or file filtered for pixels has no intensities > 0")
     numberfeatures = NA
     validmz = NA
+    ## Number of empty TICs
+    TICs2 = NA
 }
 
     #################### QC numbers #######################
@@ -344,7 +346,6 @@ if (npeaks_before_filtering > 0)
         ## Percentage of intensities > 0
         percpeaks2 = round(npeaks2/numpeaks2*100, digits=2)
         ## Number of empty TICs
-        TICs2 = colSums(spectra(msidata)[], na.rm=TRUE) 
         NumemptyTIC2 = sum(TICs2 == 0)
         ## median TIC
         medint2 = round(median(TICs2), digits=2)
@@ -356,7 +357,7 @@ if (npeaks_before_filtering > 0)
                        "Range of y coordinates",
                        "Intensities > 0",
                        "Median TIC per pixel",
-                       "Number of zero TICs", 
+                       "Number of empty spectra", 
                        "pixel overview", 
                        "feature overview")
 
@@ -439,8 +440,8 @@ if (npeaks2 > 0)
 
         spectramatrix = spectra(msidata)[]
         spectramatrix = cbind(mz(msidata),spectramatrix)
-        newmatrix = rbind(c("mz | spectra", names(pixels(msidata))), spectramatrix)
-        write.table(newmatrix, file="$matrixasoutput", quote = FALSE, row.names = FALSE, col.names=FALSE, sep = "\t")
+        newmatrix = rbind(c("mz", names(pixels(msidata))), spectramatrix)
+        write.table(newmatrix, file="$intensity_matrix", quote = FALSE, row.names = FALSE, col.names=FALSE, sep = "\t")
 
     #end if
 
@@ -533,8 +534,8 @@ if (npeaks2 > 0)
 
     <outputs>
         <data format="rdata" name="msidata_filtered" label="$infile.display_name filtered"/>
-        <data format="pdf" name="filtering_qc" from_work_dir="filtertool_QC.pdf" label = "$infile.display_name filtered_QC"/>
-        <data format="tabular" name="matrixasoutput" label="$infile.display_name filtered_matrix">
+        <data format="pdf" name="QC_overview" from_work_dir="filtertool_QC.pdf" label = "$infile.display_name filtered_QC"/>
+        <data format="tabular" name="intensity_matrix" label="$infile.display_name filtered_matrix">
             <filter>output_matrix</filter>
         </data>
     </outputs>
@@ -552,7 +553,7 @@ if (npeaks2 > 0)
             <param name="inputfeatures" ftype="tabular" value = "inputfeatures.tabular"/>
             <param name="feature_column" value="2"/>
             <param name="feature_header" value="1"/>
-            <output name="filtering_qc" file="imzml_filtered.pdf" compare="sim_size" delta="20000"/>
+            <output name="QC_overview" file="imzml_filtered.pdf" compare="sim_size" delta="20000"/>
             <output name="msidata_filtered" file="imzml_filtered.RData" compare="sim_size"/>
         </test>
         <test expect_num_outputs="2">
@@ -565,7 +566,7 @@ if (npeaks2 > 0)
             <param name="max_x_range" value="20"/>
             <param name="min_y_range" value="2"/>
             <param name="max_y_range" value="2"/>
-            <output name="filtering_qc" file="imzml_filtered2.pdf" compare="sim_size" delta="20000"/>
+            <output name="QC_overview" file="imzml_filtered2.pdf" compare="sim_size" delta="20000"/>
             <output name="msidata_filtered" file="imzml_filtered2.RData" compare="sim_size"/>
         </test>
         <test expect_num_outputs="3">
@@ -582,9 +583,9 @@ if (npeaks2 > 0)
             <param name="min_mz" value="350" />
             <param name="max_mz" value="500"/>
             <param name="output_matrix" value="True"/>
-            <output name="filtering_qc" file="imzml_filtered3.pdf" compare="sim_size" delta="20000"/>
+            <output name="QC_overview" file="imzml_filtered3.pdf" compare="sim_size" delta="20000"/>
             <output name="msidata_filtered" file="imzml_filtered3.RData" compare="sim_size"/>
-            <output name="matrixasoutput" file="imzml_matrix3.tabular"/>
+            <output name="intensity_matrix" file="imzml_matrix3.tabular"/>
         </test>
         <test expect_num_outputs="2">
             <param name="infile" value="" ftype="imzml">
@@ -596,7 +597,7 @@ if (npeaks2 > 0)
             <param name="pixel_column_x" value="1"/>
             <param name="pixel_column_y" value="3"/>
             <param name="annotation_column_xy" value="2"/>
-            <output name="filtering_qc" file="imzml_filtered4.pdf" compare="sim_size" delta="20000"/>
+            <output name="QC_overview" file="imzml_filtered4.pdf" compare="sim_size" delta="20000"/>
             <output name="msidata_filtered" file="imzml_filtered4.RData" compare="sim_size"/>
         </test>
         <test expect_num_outputs="2">
@@ -613,7 +614,7 @@ if (npeaks2 > 0)
             <param name="inputfeatures" ftype="tabular" value = "featuresofinterest5.tabular"/>
             <param name="feature_column" value="1"/>
             <param name="feature_header" value="0"/>
-            <output name="filtering_qc" file="imzml_filtered5.pdf" compare="sim_size" delta="20000"/>
+            <output name="QC_overview" file="imzml_filtered5.pdf" compare="sim_size" delta="20000"/>
             <output name="msidata_filtered" file="imzml_filtered5.RData" compare="sim_size" />
         </test>
         <test expect_num_outputs="3">
@@ -629,9 +630,9 @@ if (npeaks2 > 0)
             <param name="inputfeatures" ftype="tabular" value = "featuresofinterest2.tabular"/>
             <param name="feature_column" value="1"/>
             <param name="output_matrix" value="True"/>
-            <output name="filtering_qc" file="analyze_filtered.pdf" compare="sim_size" delta="20000"/>
+            <output name="QC_overview" file="analyze_filtered.pdf" compare="sim_size" delta="20000"/>
             <output name="msidata_filtered" file="analyze_filtered.RData" compare="sim_size" />
-            <output name="matrixasoutput" file="analyze_matrix.tabular"/>
+            <output name="intensity_matrix" file="analyze_matrix.tabular"/>
         </test>
         <test expect_num_outputs="2">
            <param name="infile" value="" ftype="analyze75">
@@ -639,7 +640,7 @@ if (npeaks2 > 0)
                 <composite_data value="Analyze75.img"/>
                 <composite_data value="Analyze75.t2m"/>
             </param>
-            <output name="filtering_qc" file="analyze75_filtered2.pdf" compare="sim_size" delta="20000"/>
+            <output name="QC_overview" file="analyze75_filtered2.pdf" compare="sim_size" delta="20000"/>
             <output name="msidata_filtered" file="analyze_filteredoutside.RData" compare="sim_size" />
         </test>
         <test expect_num_outputs="3">
@@ -648,9 +649,9 @@ if (npeaks2 > 0)
                 <param name="outputs_select" value="no_quality_control"/>
             </conditional>
             <param name="output_matrix" value="True"/>
-            <output name="matrixasoutput" file="rdata_matrix.tabular"/>
+            <output name="intensity_matrix" file="rdata_matrix.tabular"/>
             <output name="msidata_filtered" file="rdata_notfiltered.RData" compare="sim_size" />
-            <output name="filtering_qc" file="rdata_notfiltered.pdf" compare="sim_size" />
+            <output name="QC_overview" file="rdata_notfiltered.pdf" compare="sim_size" />
         </test>
     </tests>
     <help>
@@ -683,7 +684,7 @@ Output:
 
 Tip: 
 
-- It is recommended to use the filtering tool only for m/z which have been extracted from the same dataset. If you have m/z from dataset A and you want to use them to filter dataset B, first find the corresponding (closest) features in dataset B by using the tool "Join two files on column allowing a small difference". Afterwards use the corresponding feature m/z from dataset A to filter dataset B. 
+- It is recommended to use the filtering tool only for m/z which have been extracted from the same dataset. If the m/z values are from a different dataset, the tool "Join two files on column allowing a small difference" should be used to find corresponding m/z values, which can then be used for filtering. 
 
 
         ]]>
