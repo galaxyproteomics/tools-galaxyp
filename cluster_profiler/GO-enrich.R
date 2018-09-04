@@ -1,8 +1,6 @@
-suppressMessages(library(clusterProfiler))
+suppressMessages(library(clusterProfiler,quietly = TRUE))
 
-#library(org.Sc.sgd.db)
-suppressMessages(library(org.Hs.eg.db))
-suppressMessages(library(org.Mm.eg.db))
+#library(org.Sc.sgd.db,quietly = TRUE)
 
 # Read file and return file content as data.frame
 readfile = function(filename, header) {
@@ -43,24 +41,32 @@ enrich.GO <- function(geneid, universe, orgdb, ontology, pval_cutoff, qval_cutof
   ego<-enrichGO(gene=geneid,
                 universe=universe,
                 OrgDb=orgdb,
-                keytype="ENTREZID",
                 ont=ontology,
                 pAdjustMethod="BH",
                 pvalueCutoff=pval_cutoff,
                 qvalueCutoff=qval_cutoff,
                 readable=TRUE)
+  
+  #ego<-enrichGO(gene=gene,universe=universe_gene,OrgDb=orgdb,ont="BP",pAdjustMethod="BH",pvalueCutoff=pval_cutoff,qvalueCutoff=qval_cutoff,readable=TRUE)
+  #ego_MF<-enrichGO(gene=gene,universe=universe_gene,OrgDb=orgdb,ont="MF",pAdjustMethod="BH",pvalueCutoff=pval_cutoff,qvalueCutoff=qval_cutoff,readable=TRUE)
+  
   # Plot bar & dot plots
-  bar_name <- paste("EGO.", ontology, ".bar.png", sep = "")
-  png(bar_name)
-  p <- barplot(ego)
-  print(p)
-  dev.off()
-  dot_name <- paste("EGO.", ontology, ".dot.png", sep = "")
-  png(dot_name)
-  p <- dotplot(ego, showCategory=10)
-  print(p)
-  dev.off()
-  return(ego)
+  #if there are enriched GopTerms
+  if (length(ego$ID)>0){
+    bar_name <- paste("EGO.", ontology, ".bar.png", sep = "")
+    png(bar_name)
+    p <- barplot(ego)
+    print(p)
+    dev.off()
+    dot_name <- paste("EGO.", ontology, ".dot.png", sep = "")
+    png(dot_name)
+    p <- dotplot(ego, showCategory=10)
+    print(p)
+    dev.off()
+    return(ego)
+  } else {
+    warning(paste("No Go terms enriched (EGO) found for ",ontology,"ontology"),immediate. = TRUE,noBreaks. = TRUE,call. = FALSE)
+  }
 }
 
 check_ids <- function(vector,type) {
@@ -109,15 +115,17 @@ clusterProfiler = function() {
   names(args) <- argsDF$V1
   #print(args)
   
-  #save(args,file="args.Rda")
+  #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/cluster_profiler/args.Rda")
   #load("/home/dchristiany/proteore_project/ProteoRE/tools/cluster_profiler/args.Rda")
   
+  library(args$species, character.only = TRUE, quietly = TRUE)
+  
   # Extract OrgDb
-  if (args$species=="human") {
+  if (args$species=="org.Hs.eg.db") {
     orgdb<-org.Hs.eg.db
-  } else if (args$species=="mouse") {
+  } else if (args$species=="org.Mm.eg.db") {
     orgdb<-org.Mm.eg.db
-  } else if (args$species=="rat") {
+  } else if (args$species=="org.Sc.eg.db") {
     orgdb<-org.Rn.eg.db
   }
 
