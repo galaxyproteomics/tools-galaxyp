@@ -1,6 +1,4 @@
 # Load necessary libraries
-library(org.Mm.eg.db,quietly = TRUE)
-library(org.Hs.eg.db,quietly = TRUE)
 library(goProfiles,quietly = TRUE)
 
 # Read file and return file content as data.frame
@@ -43,11 +41,15 @@ getprofile = function(ids, id_type, level, duplicate,species) {
   #   - species
   ####################################################################
   
+  library(species, character.only = TRUE, quietly = TRUE)
+  
   if (species=="org.Hs.eg.db"){
     package=org.Hs.eg.db
   } else if (species=="org.Mm.eg.db"){
     package=org.Mm.eg.db
   }
+  
+  
   
   # Check if level is number
   if (! as.numeric(level) %% 1 == 0) {
