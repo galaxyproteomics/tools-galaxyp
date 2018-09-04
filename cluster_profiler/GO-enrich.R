@@ -52,6 +52,7 @@ enrich.GO <- function(geneid, universe, orgdb, ontology, pval_cutoff, qval_cutof
   
   # Plot bar & dot plots
   #if there are enriched GopTerms
+  print (ego$ID)
   if (length(ego$ID)>0){
     bar_name <- paste("EGO.", ontology, ".bar.png", sep = "")
     png(bar_name)
@@ -118,7 +119,7 @@ clusterProfiler = function() {
   #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/cluster_profiler/args.Rda")
   #load("/home/dchristiany/proteore_project/ProteoRE/tools/cluster_profiler/args.Rda")
   
-  library(args$species, character.only = TRUE, quietly = TRUE)
+  suppressMessages(library(args$species, character.only = TRUE, quietly = TRUE))
   
   # Extract OrgDb
   if (args$species=="org.Hs.eg.db") {
@@ -157,7 +158,7 @@ clusterProfiler = function() {
     any(check_ids(input,"uniprot"))
     idFrom<-"UNIPROT"
     idTo<-"ENTREZID"
-    gene<-bitr(input, fromType=idFrom, toType=idTo, OrgDb=orgdb)
+    suppressMessages(gene<-bitr(input, fromType=idFrom, toType=idTo, OrgDb=orgdb))
     gene<-unique(gene$ENTREZID)
   } else if (id_type=="Entrez" & any(check_ids(input,"entrez"))) {
     gene<-unique(input)
@@ -201,7 +202,7 @@ clusterProfiler = function() {
       if (universe_id_type=="Uniprot" & any(check_ids(universe,"uniprot"))) {
         idFrom<-"UNIPROT"
         idTo<-"ENTREZID"
-        universe_gene<-bitr(universe, fromType=idFrom, toType=idTo, OrgDb=orgdb)
+        suppressMessages(universe_gene<-bitr(universe, fromType=idFrom, toType=idTo, OrgDb=orgdb))
         universe_gene<-unique(universe_gene$ENTREZID)
       } else if (universe_id_type=="Entrez" & any(check_ids(universe,"entrez"))) {
         universe_gene<-unique(universe)
