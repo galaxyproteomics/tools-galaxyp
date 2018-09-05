@@ -47,12 +47,8 @@ enrich.GO <- function(geneid, universe, orgdb, ontology, pval_cutoff, qval_cutof
                 qvalueCutoff=qval_cutoff,
                 readable=TRUE)
   
-  #ego<-enrichGO(gene=gene,universe=universe_gene,OrgDb=orgdb,ont="BP",pAdjustMethod="BH",pvalueCutoff=pval_cutoff,qvalueCutoff=qval_cutoff,readable=TRUE)
-  #ego_MF<-enrichGO(gene=gene,universe=universe_gene,OrgDb=orgdb,ont="MF",pAdjustMethod="BH",pvalueCutoff=pval_cutoff,qvalueCutoff=qval_cutoff,readable=TRUE)
-  
   # Plot bar & dot plots
   #if there are enriched GopTerms
-  print (ego$ID)
   if (length(ego$ID)>0){
     bar_name <- paste("EGO.", ontology, ".bar.png", sep = "")
     png(bar_name)
