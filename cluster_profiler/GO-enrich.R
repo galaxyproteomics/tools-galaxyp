@@ -41,6 +41,7 @@ enrich.GO <- function(geneid, universe, orgdb, ontology, pval_cutoff, qval_cutof
   ego<-enrichGO(gene=geneid,
                 universe=universe,
                 OrgDb=orgdb,
+                keytype="ENTREZID",
                 ont=ontology,
                 pAdjustMethod="BH",
                 pvalueCutoff=pval_cutoff,
