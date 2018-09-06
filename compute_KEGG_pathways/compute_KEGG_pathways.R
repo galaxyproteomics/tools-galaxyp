@@ -31,9 +31,6 @@ id list ',' separated
     q(save="no")
   }
   
-  
-  #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/find_pathways/args.Rda")
-  #load("/home/dchristiany/proteore_project/ProteoRE/tools/find_pathways/args.Rda")
   parseArgs <- function(x) strsplit(sub("^--", "", x), "=")
   argsDF <- as.data.frame(do.call("rbind", parseArgs(args)))
   args <- as.list(as.character(argsDF$V2))
@@ -43,6 +40,9 @@ id list ',' separated
 }
 
 args <- get_args()
+
+#save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/compute_KEGG_pathways/args.Rda")
+#load("/home/dchristiany/proteore_project/ProteoRE/tools/compute_KEGG_pathways/args.Rda")
 
 ##function arguments :  
 ## id.ToMap = input from the user to map on the pathways = list of IDs
@@ -73,6 +73,7 @@ ID2KEGG.Mapping<- function(id.ToMap,ref) {
     
     ref_ids = get(load(ref))
     map<-lapply(ref_ids, is.element, unique(id.ToMap))
+    names(map) <- sapply(names(map), function(x) gsub("path:","",x),USE.NAMES = FALSE)    #remove the prefix "path:"
     
     in.path<-sapply(map, function(x) length(which(x==TRUE)))
     tot.path<-sapply(map, length)
@@ -87,7 +88,7 @@ ID2KEGG.Mapping<- function(id.ToMap,ref) {
     
     res<-data.frame(I(names(in.path[which(in.path!=0)])), I(name), ratio, as.numeric(in.path[which(in.path!=0)]), as.numeric(tot.path[which(in.path!=0)]))
     res <- res[order(as.numeric(res[,3]),decreasing = TRUE),]
-    colnames(res)<-c("pathID", "Desc" , "ratio mapped/total (percent)" ,"genes mapped in the path", "tot genes in the path")
+    colnames(res)<-c("pathway_ID", "Description" , "Ratio IDs mapped/total IDs (%)" ,"# genes mapped in the pathway", "# total genes present in the pathway")
     
     return(res)
     
