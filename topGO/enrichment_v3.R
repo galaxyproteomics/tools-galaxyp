@@ -250,11 +250,8 @@ createDotPlot = function(data, onto){
 	count = data$Significant
   
 	labely = paste("GO terms",onto,sep=" ")
-	png(filename="dotplot.png",res=300, width = 3200, height = 3200, units = "px")
-	sp1 = ggplot(data,aes(x=geneRatio,y=goTerms, color=values,size=count)) +geom_point() + scale_colour_gradientn(colours=c("red","violet","blue")) + xlab("Gene Ratio") + ylab(labely) + labs(color="p-values\n") 
-
-	plot(sp1)
-	dev.off()
+	ggplot(data,aes(x=geneRatio,y=goTerms, color=values,size=count)) +geom_point( ) + scale_colour_gradientn(colours=c("red","violet","blue")) + xlab("Gene Ratio") + ylab(labely) + labs(color="p-values\n" ) 
+  ggsave("dotplot.png", device = "png", dpi = 320, limitsize = TRUE, width = 15, height = 15, units="cm")
 }
 
 createBarPlot = function(data, onto){
@@ -266,12 +263,10 @@ createBarPlot = function(data, onto){
   values = as.numeric(values)
   goTerms = data$Term
 	count = data$Significant
-	png(filename="barplot.png",res=300, width = 3200, height = 3200, units = "px")
 	
 	labely = paste("GO terms",onto,sep=" ")
-  p<-ggplot(data, aes(x=goTerms, y=count,fill=values)) + ylab("Gene count") + xlab(labely) +geom_bar(stat="identity") + scale_fill_gradientn(colours=c("red","violet","blue")) + coord_flip() + labs(fill="p-values\n") 
-	plot(p)
-	dev.off()
+  ggplot(data, aes(x=goTerms, y=count,fill=values,scale(scale = 0.5))) + ylab("Gene count") + xlab(labely) +geom_bar(stat="identity") + scale_fill_gradientn(colours=c("red","violet","blue")) + coord_flip() + labs(fill="p-values\n") 
+  ggsave("barplot.png", device = "png", dpi = 320, limitsize = TRUE, width = 15, height = 15, units="cm")
 }
 
 
