@@ -204,7 +204,7 @@ mid_color = "#F3F781" #yellow
 high_color = "red"
 if (is.null(tab$e1)) {
   plot.col.key= FALSE   #if there's no exrepession data, we don't show the color key
-  high_color = "#81F7F3" #blue
+  high_color = "#81BEF7" #blue
 }
 
 for (id in ids) {
@@ -217,7 +217,7 @@ for (id in ids) {
            low = list(gene = low_color, cpd = "blue"), 
            mid = list(gene = mid_color, cpd = "transparent"), 
            high = list(gene = high_color, cpd = "yellow"), 
-           na.col="#A4A4A4", #gray
+           na.col="#D8D8D8", #gray
            cpd.data=NULL,
            plot.col.key = plot.col.key,
            pdf.size=c(9,9))
