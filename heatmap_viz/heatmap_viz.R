@@ -79,9 +79,6 @@ clean_df <- function(mat,first_col,last_col,rownames){
 #get args
 args <- get_args()
 
-###save and load args in rda file for testing
-save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/heatmap_viz/args.Rda")
-#load("/home/dchristiany/proteore_project/ProteoRE/tools/heatmap_viz/args.Rda")
 header=str2bool(args$header)
 output <- rapply(strsplit(args$output,"\\."),c) #remove extension
 output <- paste(output[1:length(output)-1],collapse=".")
