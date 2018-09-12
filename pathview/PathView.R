@@ -106,10 +106,6 @@ clean_bad_character <- function(string)  {
 
 args <- get_args()
 
-###save and load args in rda file for testing
-#save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/pathview/args.Rda")
-#load("/home/dchristiany/proteore_project/ProteoRE/tools/pathview/args.Rda")
-
 ###setting variables
 if (!is.null(args$pathways_id)) { 
   ids <- sapply(rapply(strsplit(clean_bad_character(args$pathways_id),","),c), function(x) remove_kegg_prefix(x),USE.NAMES = FALSE)
@@ -202,47 +198,29 @@ if (!is.null(args$expression_values1)&is.null(args$expression_values2)&is.null(a
 
 
 #####mapping geneID (with or without expression values) on KEGG pathway
-plot.col.key=!is.null(tab$e1)   #if there's no exrepession data, we don't show the color key
+plot.col.key= TRUE
+low_color = "green"
+mid_color = "#F3F781" #yellow
+high_color = "red"
+if (is.null(tab$e1)) {
+  plot.col.key= FALSE   #if there's no exrepession data, we don't show the color key
+  high_color = "#81F7F3" #blue
+}
 
 for (id in ids) {
   pathview(gene.data = mat,
-           #gene.idtype = "geneID",
-           #cpd.data = uniprotID,
-           #cpd.idtype = "uniprot",
            pathway.id = id,
-           #pathway.name = "",
            species = species, 
            kegg.dir = ".", 
            gene.idtype = "entrez", 
-           #gene.annotpkg = NULL, 
-           #min.nnodes = 3, 
            kegg.native = native_kegg,
-           #map.null = TRUE, 
-           #expand.node = FALSE, 
-           #split.group = FALSE, 
-           #map.symbol = TRUE, 
-           #map.cpdname = TRUE, 
-           #node.sum = "sum", 
-           #discrete=list(gene=FALSE,cpd=FALSE), 
-           #limit = list(gene = 1, cpd = 1), 
-           #bins = list(gene = 10, cpd = 10), 
-           #both.dirs = list(gene = T, cpd = T), 
-           #trans.fun = list(gene = NULL, cpd = NULL), 
-           #low = list(gene = "green", cpd = "blue"), 
-           #mid = list(gene = "gray", cpd = "gray"), 
-           #high = list(gene = "red", cpd = "yellow"), 
-           #na.col = "transparent",
-           #sign.pos="bottomleft",
+           low = list(gene = low_color, cpd = "blue"), 
+           mid = list(gene = mid_color, cpd = "transparent"), 
+           high = list(gene = high_color, cpd = "yellow"), 
+           na.col="#A4A4A4", #gray
+           cpd.data=NULL,
            plot.col.key = plot.col.key,
-           #high = "lightgreen",
-           #key.pos="topright",
-           #new.signature=TRUE,
-           #rankdir="LB",
-           #cex=0.3,
-           #text.width=15,
-           #res=300,
            pdf.size=c(9,9))
-           #is.signal=TRUE)
 }
 
 ########using keggview.native
