@@ -88,7 +88,7 @@ ID2KEGG.Mapping<- function(id.ToMap,ref) {
     
     res<-data.frame(I(names(in.path[which(in.path!=0)])), I(name), ratio, as.numeric(in.path[which(in.path!=0)]), as.numeric(tot.path[which(in.path!=0)]))
     res <- res[order(as.numeric(res[,3]),decreasing = TRUE),]
-    colnames(res)<-c("pathway_ID", "Description" , "Ratio IDs mapped/total IDs (%)" ,"# genes mapped in the pathway", "# total genes present in the pathway")
+    colnames(res)<-c("pathway_ID", "Description" , "Ratio IDs mapped/total IDs (%)" ,"nb genes mapped in the pathway", "nb total genes present in the pathway")
     
     return(res)
     
