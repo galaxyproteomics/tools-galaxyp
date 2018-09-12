@@ -33,9 +33,7 @@ get_args <- function(){
     
     q(save="no")
   }
-
-  #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/pathview/args.Rda")
-  #load("/home/dchristiany/proteore_project/ProteoRE/tools/pathview/args.Rda")
+  
   parseArgs <- function(x) strsplit(sub("^--", "", x), "=")
   argsDF <- as.data.frame(do.call("rbind", parseArgs(args)))
   args <- as.list(as.character(argsDF$V2))
@@ -45,7 +43,7 @@ get_args <- function(){
 }
 
 read_file <- function(path,header){
-  file <- try(read.table(path,header=header, sep="\t",stringsAsFactors = FALSE, quote=""),silent=TRUE)
+  file <- try(read.table(path,header=header, sep="\t",stringsAsFactors = FALSE, quote="",fill=TRUE),silent=TRUE)
   if (inherits(file,"try-error")){
     stop("File not found !")
   }else{
@@ -53,6 +51,7 @@ read_file <- function(path,header){
   }
 }
 
+#convert a string to boolean
 str2bool <- function(x){
   if (any(is.element(c("t","true"),tolower(x)))){
     return (TRUE)
@@ -63,7 +62,26 @@ str2bool <- function(x){
   }
 }
 
+#remove remaining quote 
+#remove lines with at least one empty cell in a matrix between two defined columns
+clean_df <- function(mat,first_col,last_col,rownames){
+  tmp = mat[,first_col:last_col]
+  tmp <- as.data.frame(apply(tmp,c(1,2),function(x) {ifelse(is.character(x),as.numeric(x),x)}))
+  bad_lines <- which(apply(tmp, 1, function(x) any(is.na(x))))
+  mat <- cbind(mat[,as.numeric(rownames)],tmp)
+  if (length(bad_lines) > 0) {
+    mat <- mat[- bad_lines,]
+    print(paste("lines",bad_lines, "has been removed: at least one non numeric content"))
+  }
+  return(mat)
+}
+
+#get args
 args <- get_args()
+
+###save and load args in rda file for testing
+save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/heatmap_viz/args.Rda")
+#load("/home/dchristiany/proteore_project/ProteoRE/tools/heatmap_viz/args.Rda")
 header=str2bool(args$header)
 output <- rapply(strsplit(args$output,"\\."),c) #remove extension
 output <- paste(output[1:length(output)-1],collapse=".")
@@ -71,27 +89,21 @@ output <- paste(output,args$type,sep=".")
 first_col=as.numeric(substr(args$cols,1,1))
 last_col=as.numeric(substr(args$cols,3,3))
 
-###save and load args in rda file for testing
-#save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/heatmap_viz/args.Rda")
-#load("/home/dchristiany/proteore_project/ProteoRE/tools/heatmap_viz/args.Rda")
-
-
+#cleaning data
 uto <- read_file(args$input,header = header)
-uto_light <- uto[,first_col:last_col]
-rownames(uto_light) <- uto[,as.numeric(args$row_names)]
-colnames(uto_light) <- sapply(colnames(uto_light),function(x) gsub("iBAQ_","",x),USE.NAMES = FALSE)
-
+uto <- clean_df(uto,first_col,last_col,args$row_names)
+data <- as.data.frame(uto[,-1])
+row_names = uto[,1]
 if (header) {
-  heatmaply(uto_light, file=output, margins=c(100,50,NA,0), plot_method="plotly", labRow = rownames(uto_light), labCol = names(uto_light),
-          grid_gap = 0,cexCol = 1, column_text_angle = as.numeric(args$col_text_angle), width = 1000, height=1000, colors = c('blue','green','yellow','red'))
-}else{
-  names(uto_light) <-c(first_col:last_col)
-  heatmaply(uto_light, file=output, margins=c(100,50,NA,0), plot_method="plotly", labRow = rownames(uto_light),
-            grid_gap = 0,cexCol = 1, column_text_angle = as.numeric(args$col_text_angle), width = 1000, height=1000, colors = c('blue','green','yellow','red'))
+  col_names = names(data)
+} else {
+  col_names = c(first_col:last_col)
 }
 
+#building heatmap
+heatmaply(data, file=output, margins=c(100,50,NA,0), plot_method="plotly", labRow = row_names, labCol = col_names,
+          grid_gap = 0,cexCol = 1, column_text_angle = as.numeric(args$col_text_angle), width = 1000, height=1000, colors = c('blue','green','yellow','red'))
 
-#write.table(uto_light, file = "uto_light.tsv",sep="\t",row.names = FALSE)
 
 ####heatmaply
 
