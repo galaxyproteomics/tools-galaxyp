@@ -870,17 +870,6 @@ if(mode=="logfold")
     colnames(temp_df_pe_data) = colnames(PE_df);
     multisample_boxplot(temp_df_pe_data, sampleinfo_df, outplot, "Yes", "Samples", "Protein Abundance (log)");
     
-    # TE Density plot
-    # outplot = paste(outdir,"/Density_TE_all_rep.png",sep="",collape="");
-    # cat('<br><table  border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th>Density plot: Transcriptome data</th><th>Density plot: Proteome data</th></tr>',
-    # "<tr><td align=center>", '<img src="Density_TE_all_rep.png" width=800 height=800></td>', file = htmloutfile, append = TRUE);
-    # multisample_density(TE_df, sampleinfo_df, outplot);
-
-    # PE Density plot
-    # outplot = paste(outdir,"/Density_PE_all_rep.png",sep="",collape="");
-    # cat("<td align=center>", '<img src="Density_PE_all_rep.png" width=800 height=800></td></tr></table>', file = htmloutfile, append = TRUE);
-    # multisample_density(PE_df, sampleinfo_df, outplot);
-
     # Calc TE PCA
     outplot = paste(outdir,"/PCA_TE_all_rep.png",sep="",collape="");
     multisample_PCA(TE_df, sampleinfo_df, outplot);
