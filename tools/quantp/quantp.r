@@ -29,15 +29,15 @@ singlesample_regression = function(PE_TE_data,htmloutfile, append=TRUE)
   regmodel = lm(PE_abundance~TE_abundance, data=PE_TE_data);
   regmodel_summary = summary(regmodel);
   
-  cat("<font><h3>Linear Regression model fit between Proteome and Transcriptome data</h3></font>",
-    "<p>Assuming a linear relationship between Proteome and Transcriptome data, we here fit a linear regression model.</p>",
-    '<table  border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>Parameter</font></th><th><font color=#ffcc33>Value</font></th></tr>',
+  cat("<font><h3>Linear Regression model fit between Proteome and Transcriptome data</h3></font>\n",
+    "<p>Assuming a linear relationship between Proteome and Transcriptome data, we here fit a linear regression model.</p>\n",
+    '<table  border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>Parameter</font></th><th><font color=#ffcc33>Value</font></th></tr>\n',
     file = htmloutfile, append = TRUE);
   
-  cat("<tr><td>Formula</td><td>","PE_abundance~TE_abundance","</td></tr>",
-    "<tr><td colspan='2' align='center'> <b>Coefficients</b></td>","</tr>",
-    "<tr><td>",names(regmodel$coefficients[1]),"</td><td>",regmodel$coefficients[1]," (Pvalue:", regmodel_summary$coefficients[1,4],")","</td></tr>",
-    "<tr><td>",names(regmodel$coefficients[2]),"</td><td>",regmodel$coefficients[2]," (Pvalue:", regmodel_summary$coefficients[2,4],")","</td></tr>",
+  cat("<tr><td>Formula</td><td>","PE_abundance~TE_abundance","</td></tr>\n",
+    "<tr><td colspan='2' align='center'> <b>Coefficients</b></td>","</tr>\n",
+    "<tr><td>",names(regmodel$coefficients[1]),"</td><td>",regmodel$coefficients[1]," (Pvalue:", regmodel_summary$coefficients[1,4],")","</td></tr>\n",
+    "<tr><td>",names(regmodel$coefficients[2]),"</td><td>",regmodel$coefficients[2]," (Pvalue:", regmodel_summary$coefficients[2,4],")","</td></tr>\n",
     "<tr><td colspan='2' align='center'> <b>Model parameters</b></td>","</tr>\n",
     "<tr><td>Residual standard error</td><td>",regmodel_summary$sigma," (",regmodel_summary$df[2]," degree of freedom)</td></tr>\n",
     "<tr><td>F-statistic</td><td>",regmodel_summary$fstatistic[1]," ( on ",regmodel_summary$fstatistic[2]," and  ",regmodel_summary$fstatistic[3]," degree of freedom)</td></tr>\n",
@@ -75,17 +75,17 @@ singlesample_regression = function(PE_TE_data,htmloutfile, append=TRUE)
   cat('<table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; ">', file = htmloutfile, append = TRUE);
   
     cat(
-    '<tr bgcolor="#7a0019"><th>', "<font color='#ffcc33'><h4>1) <u>Residuals vs Fitted plot</h4></font></u></th>",
-    '<th><font color=#ffcc33><h4>2) <u>Normal Q-Q plot of residuals</h4></font></u></th></tr>',
+    '<tr bgcolor="#7a0019"><th>', "<font color='#ffcc33'><h4>1) <u>Residuals vs Fitted plot</h4></font></u></th>\n",
+    '<th><font color=#ffcc33><h4>2) <u>Normal Q-Q plot of residuals</h4></font></u></th></tr>\n',
     file = htmloutfile, append = TRUE);
   
   cat(
-    '<tr><td align=center><img src="PE_TE_lm_1.png" width=600 height=600></td><td align=center><img src="PE_TE_lm_2.png" width=600 height=600></td></tr>',
+    '<tr><td align=center><img src="PE_TE_lm_1.png" width=600 height=600></td><td align=center><img src="PE_TE_lm_2.png" width=600 height=600></td></tr>\n',
     file = htmloutfile, append = TRUE);
   
   cat(
-    '<tr><td align=center>This plot checks for linear relationship assumptions.<br>If a horizontal line is observed without any distinct patterns, it indicates a linear relationship.</td>',
-    '<td align=center>This plot checks whether residuals are normally distributed or not.<br>It is good if the residuals points follow the straight dashed line i.e., do not deviate much from dashed line.</td></tr></table>',
+    '<tr><td align=center>This plot checks for linear relationship assumptions.<br>If a horizontal line is observed without any distinct patterns, it indicates a linear relationship.</td>\n',
+    '<td align=center>This plot checks whether residuals are normally distributed or not.<br>It is good if the residuals points follow the straight dashed line i.e., do not deviate much from dashed line.</td></tr></table>\n',
     file = htmloutfile, append = TRUE);
     
     
@@ -120,18 +120,18 @@ singlesample_regression = function(PE_TE_data,htmloutfile, append=TRUE)
     write.table(temp_all_data, file=outdatafile, row.names=F, sep="\t", quote=F);
   
   
-  cat('<br><h2 id="inf_obs"><font color=#ff0000>Outliers based on the residuals from regression analysis</font></h2>',
+  cat('<br><h2 id="inf_obs"><font color=#ff0000>Outliers based on the residuals from regression analysis</font></h2>\n',
     file = htmloutfile, append = TRUE);
-  cat('<table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; ">',
-  '<tr bgcolor="#7a0019"><th colspan=2><font color=#ffcc33>Residuals from Regression</font></th></tr>',
-   '<tr bgcolor="#7a0019"><th><font color=#ffcc33>Parameter</font></th><th><font color=#ffcc33>Value</font></th></tr>',
+  cat('<table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; ">\n',
+  '<tr bgcolor="#7a0019"><th colspan=2><font color=#ffcc33>Residuals from Regression</font></th></tr>\n',
+   '<tr bgcolor="#7a0019"><th><font color=#ffcc33>Parameter</font></th><th><font color=#ffcc33>Value</font></th></tr>\n',
     file = htmloutfile, append = TRUE);
     
   cat("<tr><td>Mean Residual value</td><td>",res_mean,"</td></tr>\n",
     "<tr><td>Standard deviation (Residuals)</td><td>",res_sd,"</td></tr>\n",
-    '<tr><td>Total outliers (Residual value > 2 standard deviation from the mean)</td><td>',length(tempind),' <font size=4>(<b><a href=PE_TE_outliers_residuals.txt target="_blank">Download these ',length(tempind),' data points with high residual values here</a></b>)</font></td>',
-    '<tr><td colspan=2 align=center><font size=4>(<b><a href=PE_TE_abundance_residuals.txt target="_blank">Download the complete residuals data here</a></b>)</font></td></td>',
-    "</table><br><br>",
+    '<tr><td>Total outliers (Residual value > 2 standard deviation from the mean)</td><td>',length(tempind),' <font size=4>(<b><a href=PE_TE_outliers_residuals.txt target="_blank">Download these ',length(tempind),' data points with high residual values here</a></b>)</font></td>\n',
+    '<tr><td colspan=2 align=center><font size=4>(<b><a href=PE_TE_abundance_residuals.txt target="_blank">Download the complete residuals data here</a></b>)</font></td></td>\n',
+    "</table><br><br>\n",
     file = htmloutfile, append = TRUE);
     
   #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -140,15 +140,15 @@ singlesample_regression = function(PE_TE_data,htmloutfile, append=TRUE)
   cat('<br><br><table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; ">', file = htmloutfile, append = TRUE);
 
   cat(
-    '<tr bgcolor="#7a0019"><th><font color=#ffcc33><h4>3) <u>Residuals vs Leverage plot</h4></font></u></th></tr>',
+    '<tr bgcolor="#7a0019"><th><font color=#ffcc33><h4>3) <u>Residuals vs Leverage plot</h4></font></u></th></tr>\n',
     file = htmloutfile, append = TRUE);
   
   cat(
-    '<tr><td align=center><img src="PE_TE_lm_5.png" width=600 height=600></td></tr>',
+    '<tr><td align=center><img src="PE_TE_lm_5.png" width=600 height=600></td></tr>\n',
     file = htmloutfile, append = TRUE);
   
   cat(
-    '<tr><td align=center>This plot is useful to identify any influential cases, that is outliers or extreme values.<br>They might influence the regression results upon inclusion or exclusion from the analysis.</td></tr></table><br>',
+    '<tr><td align=center>This plot is useful to identify any influential cases, that is outliers or extreme values.<br>They might influence the regression results upon inclusion or exclusion from the analysis.</td></tr></table><br>\n',
     file = htmloutfile, append = TRUE);
   
   
@@ -156,10 +156,10 @@ singlesample_regression = function(PE_TE_data,htmloutfile, append=TRUE)
   #^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   # Cook's Distance
   #^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  cat('<hr/><h2 id="inf_obs"><font color=#ff0000>INFLUENTIAL OBSERVATIONS</font></h2>',
+  cat('<hr/><h2 id="inf_obs"><font color=#ff0000>INFLUENTIAL OBSERVATIONS</font></h2>\n',
     file = htmloutfile, append = TRUE);
   cat(
-    '<p><b>Cook\'s distance</b> computes the influence of each data point/observation on the predicted outcome. i.e. this measures how much the observation is influencing the fitted values.<br>In general use, those observations that have a <b>Cook\'s distance > than ', cookdist_upper_cutoff,' times the mean</b> may be classified as <b>influential.</b></p>',
+    '<p><b>Cook\'s distance</b> computes the influence of each data point/observation on the predicted outcome. i.e. this measures how much the observation is influencing the fitted values.<br>In general use, those observations that have a <b>Cook\'s distance > than ', cookdist_upper_cutoff,' times the mean</b> may be classified as <b>influential.</b></p>\n',
     file = htmloutfile, append = TRUE);
   
   cooksd <- cooks.distance(regmodel);
@@ -191,7 +191,7 @@ singlesample_regression = function(PE_TE_data,htmloutfile, append=TRUE)
   PE_TE_data_outlier_sorted = PE_TE_data_outlier[a$ix,];
   
   cat(
-    '<table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>Parameter</font></th><th><font color=#ffcc33>Value</font></th></tr>',
+    '<table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>Parameter</font></th><th><font color=#ffcc33>Value</font></th></tr>\n',
     file = htmloutfile, append = TRUE);
   
   # Save the complete table for download (influential_observations)
@@ -209,10 +209,10 @@ singlesample_regression = function(PE_TE_data,htmloutfile, append=TRUE)
   
   
   cat("<tr><td>Mean Cook\'s distance</td><td>",mean(cooksd, na.rm=T),"</td></tr>\n",
-    "<tr><td>Total influential observations (Cook\'s distance > ",cookdist_upper_cutoff," * mean Cook\'s distance)</td><td>",length(tempind),"</td>",
+    "<tr><td>Total influential observations (Cook\'s distance > ",cookdist_upper_cutoff," * mean Cook\'s distance)</td><td>",length(tempind),"</td>\n",
     
-    "<tr><td>Observations with Cook\'s distance < ",cookdist_upper_cutoff," * mean Cook\'s distance</td><td>",length(which(cooksd<as.numeric(cookdist_upper_cutoff)*mean(cooksd, na.rm=T))),"</td>",
-    "</table><br><br>",
+    "<tr><td>Observations with Cook\'s distance < ",cookdist_upper_cutoff," * mean Cook\'s distance</td><td>",length(which(cooksd<as.numeric(cookdist_upper_cutoff)*mean(cooksd, na.rm=T))),"</td>\n",
+    "</table><br><br>\n",
     file = htmloutfile, append = TRUE);
     
     
@@ -228,13 +228,13 @@ singlesample_regression = function(PE_TE_data,htmloutfile, append=TRUE)
     suppressMessages(plot(g));
     dev.off();
     
-    cat('<table  border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>Scatterplot: Before removal</font></th><th><font color=#ffcc33>Scatterplot: After removal</font></th></tr>', file = htmloutfile, append = TRUE);
+    cat('<table  border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>Scatterplot: Before removal</font></th><th><font color=#ffcc33>Scatterplot: After removal</font></th></tr>\n', file = htmloutfile, append = TRUE);
     # Before
-    cat("<tr><td align=center><!--<font color='#ff0000'><h3>Scatter plot between Proteome and Transcriptome Abundance</h3></font>\n-->", '<img src="TE_PE_scatter.png" width=600 height=600></td>', file = htmloutfile, append = TRUE);
+    cat("<tr><td align=center><!--<font color='#ff0000'><h3>Scatter plot between Proteome and Transcriptome Abundance</h3></font>\n-->", '<img src="TE_PE_scatter.png" width=600 height=600></td>\n', file = htmloutfile, append = TRUE);
     
     # After
-    cat("<td align=center><!--<font color='#ff0000'><h3>Scatter plot between Proteome and Transcriptome Abundance, after removal of outliers/influential observations</h3></font>\n-->",
-    '<img src="AbundancePlot_scatter_without_outliers.png" width=600 height=600></td></tr>',
+    cat("<td align=center>\n",
+    '<img src="AbundancePlot_scatter_without_outliers.png" width=600 height=600></td></tr>\n',
     file = htmloutfile, append = TRUE);
     #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     
@@ -243,18 +243,17 @@ singlesample_regression = function(PE_TE_data,htmloutfile, append=TRUE)
   cor_result_spearman = cor.test(PE_TE_data_no_outlier[,"TE_abundance"], PE_TE_data_no_outlier[,"PE_abundance"], method = "spearman");
   cor_result_kendall = cor.test(PE_TE_data_no_outlier[,"TE_abundance"], PE_TE_data_no_outlier[,"PE_abundance"], method = "kendall");
   
-  cat('<tr><td>', file = htmloutfile, append=TRUE);
+  cat('<tr><td>\n', file = htmloutfile, append=TRUE);
   singlesample_cor(PE_TE_data, htmloutfile, append=TRUE);
-  cat('</td>', file = htmloutfile, append=TRUE);
+  cat('</td>\n', file = htmloutfile, append=TRUE);
   
   
-  cat('<td><table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>Parameter</font></th><th><font color=#ffcc33>Method 1</font></th><th><font color=#ffcc33>Method 2</font></th><th><font color=#ffcc33>Method 3</font></th></tr>',
+  cat('<td><table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>Parameter</font></th><th><font color=#ffcc33>Method 1</font></th><th><font color=#ffcc33>Method 2</font></th><th><font color=#ffcc33>Method 3</font></th></tr>\n',
     file = htmloutfile, append = TRUE);
   
   cat(
-    "<tr><td>Correlation method</td><td>",cor_result_pearson$method,"</td><td>",cor_result_spearman$method,"</td><td>",cor_result_kendall$method,"</td></tr>",
-    "<tr><td>Correlation coefficient</td><td>",cor_result_pearson$estimate,"</td><td>",cor_result_spearman$estimate,"</td><td>",cor_result_kendall$estimate,"</td></tr>",
-    "<!--<tr><td>Pvalue</td><td>",cor_result_pearson$p.value,"</td><td>",cor_result_spearman$p.value,"</td><td>",cor_result_kendall$p.value,"</td></tr>-->",    
+    "<tr><td>Correlation method</td><td>",cor_result_pearson$method,"</td><td>",cor_result_spearman$method,"</td><td>",cor_result_kendall$method,"</td></tr>\n",
+    "<tr><td>Correlation coefficient</td><td>",cor_result_pearson$estimate,"</td><td>",cor_result_spearman$estimate,"</td><td>",cor_result_kendall$estimate,"</td></tr>\n",
     file = htmloutfile, append = TRUE)
   cat("</table></td></tr></table>\n", file = htmloutfile, append = TRUE)
   
@@ -268,25 +267,25 @@ singlesample_regression = function(PE_TE_data,htmloutfile, append=TRUE)
   }
   
   cat("<br><br><font size=5><b><a href='PE_TE_influential_observation.txt' target='_blank'>Download the complete list of influential observations</a></b></font>&nbsp;&nbsp;&nbsp;&nbsp;",
-  "<font size=5><b><a href='PE_TE_non_influential_observation.txt' target='_blank'>Download the complete list (After removing influential points)</a></b></font><br>",
-  '<br><font color="brown"><h4>Top ',as.character(tab_n_row),' Influential observations (Cook\'s distance > ',cookdist_upper_cutoff,' * mean Cook\'s distance)</h4></font>',
+  "<font size=5><b><a href='PE_TE_non_influential_observation.txt' target='_blank'>Download the complete list (After removing influential points)</a></b></font><br>\n",
+  '<br><font color="brown"><h4>Top ',as.character(tab_n_row),' Influential observations (Cook\'s distance > ',cookdist_upper_cutoff,' * mean Cook\'s distance)</h4></font>\n',
     file = htmloutfile, append = TRUE);
   
-  cat('<table border=1 cellspacing=0 cellpadding=5> <tr bgcolor="#7a0019">', sep = "",file = htmloutfile, append = TRUE);
-  cat("<th><font color=#ffcc33>Gene</font></th><th><font color=#ffcc33>Protein Log Fold-Change</font></th><th><font color=#ffcc33>Transcript Log Fold-Change</font></th><th><font color=#ffcc33>Cook's Distance</font></th></tr>",
+  cat('<table border=1 cellspacing=0 cellpadding=5> <tr bgcolor="#7a0019">\n', sep = "",file = htmloutfile, append = TRUE);
+  cat("<th><font color=#ffcc33>Gene</font></th><th><font color=#ffcc33>Protein Log Fold-Change</font></th><th><font color=#ffcc33>Transcript Log Fold-Change</font></th><th><font color=#ffcc33>Cook's Distance</font></th></tr>\n",
     file = htmloutfile, append = TRUE);
   
   
   for(i in 1:tab_n_row)
   {
     cat(
-      '<tr>','<td>',as.character(PE_TE_data_outlier_sorted[i,1]),'</td>',
-      '<td>',format(PE_TE_data_outlier_sorted[i,2], scientific=F),'</td>',
-      '<td>',PE_TE_data_outlier_sorted[i,4],'</td>',
-      '<td>',format(PE_TE_data_outlier_sorted[i,5], scientific=F),'</td></tr>',
+      '<tr>','<td>',as.character(PE_TE_data_outlier_sorted[i,1]),'</td>\n',
+      '<td>',format(PE_TE_data_outlier_sorted[i,2], scientific=F),'</td>\n',
+      '<td>',PE_TE_data_outlier_sorted[i,4],'</td>\n',
+      '<td>',format(PE_TE_data_outlier_sorted[i,5], scientific=F),'</td></tr>\n',
       file = htmloutfile, append = TRUE);
   }
-    cat('</table><br><br>',file = htmloutfile, append = TRUE);
+    cat('</table><br><br>\n',file = htmloutfile, append = TRUE);
     
     
 }
@@ -297,7 +296,7 @@ singlesample_regression = function(PE_TE_data,htmloutfile, append=TRUE)
 # Heatmap
 #===============================================================================
 singlesample_heatmap=function(PE_TE_data, htmloutfile, hm_nclust){
-  cat('<br><table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>Heatmap of PE and TE abundance values (Hierarchical clustering)</font></th><th><font color=#ffcc33>Number of clusters to extract: ',hm_nclust,'</font></th></tr>',
+  cat('<br><table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>Heatmap of PE and TE abundance values (Hierarchical clustering)</font></th><th><font color=#ffcc33>Number of clusters to extract: ',hm_nclust,'</font></th></tr>\n',
     file = htmloutfile, append = TRUE);
   
   hc=hclust(dist(as.matrix(PE_TE_data[,c("PE_abundance","TE_abundance")])))
@@ -310,7 +309,7 @@ singlesample_heatmap=function(PE_TE_data, htmloutfile, hm_nclust){
   hmap = heatmap.2(as.matrix(PE_TE_data[,c("PE_abundance","TE_abundance")]), trace="none", cexCol=1, col=greenred(100),Colv=F, labCol=c("Proteins","Transcripts"), scale="col", hclustfun = hclust, distfun = dist);
   dev.off();
   
-  cat('<tr><td align=center colspan="2"><img src="PE_TE_heatmap.png" width=800 height=800></td></tr>',
+  cat('<tr><td align=center colspan="2"><img src="PE_TE_heatmap.png" width=800 height=800></td></tr>\n',
     file = htmloutfile, append = TRUE);
   
   
@@ -320,7 +319,7 @@ singlesample_heatmap=function(PE_TE_data, htmloutfile, hm_nclust){
   write.table(temp_PE_TE_data, file=tempoutfile, row.names=F, quote=F, sep="\t", eol="\n")
   
   
-  cat('<tr><td colspan="2" align=center><font size=5><a href="PE_TE_hc_clusterpoints.txt" target="_blank"><b>Download the hierarchical cluster list</b></a></font></td></tr></table>',
+  cat('<tr><td colspan="2" align=center><font size=5><a href="PE_TE_hc_clusterpoints.txt" target="_blank"><b>Download the hierarchical cluster list</b></a></font></td></tr></table>\n',
     file = htmloutfile, append = TRUE);
 }
 
@@ -362,7 +361,7 @@ singlesample_kmeans=function(PE_TE_data, htmloutfile, nclust){
   points(PE_TE_data_kdata[ind,"TE_abundance"], PE_TE_data_kdata[ind,"PE_abundance"], col="orange", pch=16);
   dev.off();
   
-  cat('<br><br><table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>K-mean clustering</font></th><th><font color=#ffcc33>Number of clusters: ',nclust,'</font></th></tr>',
+  cat('<br><br><table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>K-mean clustering</font></th><th><font color=#ffcc33>Number of clusters: ',nclust,'</font></th></tr>\n',
     file = htmloutfile, append = TRUE);
   
   tempind = order(k1$cluster);
@@ -370,9 +369,9 @@ singlesample_kmeans=function(PE_TE_data, htmloutfile, nclust){
   write.table(data.frame(PE_TE_data_kdata[tempind, ], Cluster=k1$cluster[tempind]), file=tempoutfile, row.names=F, quote=F, sep="\t", eol="\n")
   
   
-  cat('<tr><td colspan="2" align=center><img src="PE_TE_kmeans.png" width=800 height=800></td></tr>',
+  cat('<tr><td colspan="2" align=center><img src="PE_TE_kmeans.png" width=800 height=800></td></tr>\n',
     file = htmloutfile, append = TRUE);
-  cat('<tr><td colspan="2" align=center><font size=5><a href="PE_TE_kmeans_clusterpoints.txt" target="_blank"><b>Download the cluster list</b></a></font></td></tr></table><br><hr/>',
+  cat('<tr><td colspan="2" align=center><font size=5><a href="PE_TE_kmeans_clusterpoints.txt" target="_blank"><b>Download the cluster list</b></a></font></td></tr></table><br><hr/>\n',
     file = htmloutfile, append = TRUE);
   
 }
@@ -402,12 +401,12 @@ singlesample_cor = function(PE_TE_data, htmloutfile, append=TRUE)
   cor_result_kendall = cor.test(PE_TE_data$TE_abundance, PE_TE_data$PE_abundance, method = "kendall");
   
   cat(
-    '<table  border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>Parameter</font></th><th><font color=#ffcc33>Method 1</font></th><th><font color=#ffcc33>Method 2</font></th><th><font color=#ffcc33>Method 3</font></th></tr>',
+    '<table  border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>Parameter</font></th><th><font color=#ffcc33>Method 1</font></th><th><font color=#ffcc33>Method 2</font></th><th><font color=#ffcc33>Method 3</font></th></tr>\n',
     file = htmloutfile, append = TRUE);
   
   cat(
-    "<tr><td>Correlation method</td><td>",cor_result_pearson$method,"</td><td>",cor_result_spearman$method,"</td><td>",cor_result_kendall$method,"</td></tr>",
-    "<tr><td>Correlation coefficient</td><td>",cor_result_pearson$estimate,"</td><td>",cor_result_spearman$estimate,"</td><td>",cor_result_kendall$estimate,"</td></tr>",
+    "<tr><td>Correlation method</td><td>",cor_result_pearson$method,"</td><td>",cor_result_spearman$method,"</td><td>",cor_result_kendall$method,"</td></tr>\n",
+    "<tr><td>Correlation coefficient</td><td>",cor_result_pearson$estimate,"</td><td>",cor_result_spearman$estimate,"</td><td>",cor_result_kendall$estimate,"</td></tr>\n",
     file = htmloutfile, append = TRUE)
   cat("</table>\n", file = htmloutfile, append = TRUE);
   
@@ -525,7 +524,7 @@ PE_TE_logfold_pval = data.frame(TE_df_logfold$Gene, TE_df_logfold$LogFold, TE_pv
 colnames(PE_TE_logfold_pval) = c("Gene", "Transcript log fold-change", "p-value (transcript)", "adj p-value (transcript)", "Protein log fold-change", "p-value (protein)", "adj p-value (protein)");
 outdatafile = paste(outdir,"/PE_TE_logfold_pval.txt", sep="", collapse="");
 write.table(PE_TE_logfold_pval, file=outdatafile, row.names=F, sep="\t", quote=F);
-cat("<br><br><font size=5><b><a href='PE_TE_logfold_pval.txt' target='_blank'>Download the complete fold change data here</a></b></font><br>",
+cat("<br><br><font size=5><b><a href='PE_TE_logfold_pval.txt' target='_blank'>Download the complete fold change data here</a></b></font><br>\n",
     file = htmloutfile, append = TRUE);
 
     if(length(condition_ind)!=1)
@@ -595,10 +594,10 @@ cat("<br><br><font size=5><b><a href='PE_TE_logfold_pval.txt' target='_blank'>Do
 
 
 
-        cat('<br><table  border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>Transcript Fold-Change</font></th><th><font color=#ffcc33>Protein Fold-Change</font></th></tr>', file = htmloutfile, append = TRUE);
-            cat("<tr><td align=center>", '<img src="TE_volcano.png" width=600 height=600></td>', file = htmloutfile, append = TRUE);
+        cat('<br><table  border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>Transcript Fold-Change</font></th><th><font color=#ffcc33>Protein Fold-Change</font></th></tr>\n', file = htmloutfile, append = TRUE);
+            cat("<tr><td align=center>", '<img src="TE_volcano.png" width=600 height=600></td>\n', file = htmloutfile, append = TRUE);
             cat("<td align=center>",
-            '<img src="PE_volcano.png" width=600 height=600></td></tr></table><br>',
+            '<img src="PE_volcano.png" width=600 height=600></td></tr></table><br>\n',
             file = htmloutfile, append = TRUE);
     }else{
         cat('<br><br><b><font color=red>!!! No replicates found. Cannot perform test to check significance of differential expression. Thus, no Volcano plot generated !!!</font></b><br><br>',
@@ -726,23 +725,23 @@ if(! file.exists(outdir))
 #===============================================================================
 # Write initial data summary in html outfile
 #===============================================================================
-    cat("<html><head></head><body>", file = htmloutfile);
+    cat("<html><head></head><body>\n", file = htmloutfile);
     
-    cat("<h1><u>QuanTP: Association between abundance ratios of transcript and protein</u></h1><hr/>",
-    "<font><h3>Input data summary</h3></font>",
-    "<ul>",
-    "<li>Abbreviations used: PE (Proteome data) and TE (Transcriptome data)","</li><br>",
-    "<li>Input Proteome data dimension (Row Column): ", dim(PE_df)[1]," x ", dim(PE_df)[2],"</li>",
-    "<li>Input Transcriptome data dimension (Row Column): ", dim(TE_df)[1]," x ", dim(TE_df)[2],"</li></ul><hr/>",
+    cat("<h1><u>QuanTP: Association between abundance ratios of transcript and protein</u></h1><hr/>\n",
+    "<font><h3>Input data summary</h3></font>\n",
+    "<ul>\n",
+    "<li>Abbreviations used: PE (Proteome data) and TE (Transcriptome data)","</li><br>\n",
+    "<li>Input Proteome data dimension (Row Column): ", dim(PE_df)[1]," x ", dim(PE_df)[2],"</li>\n",
+    "<li>Input Transcriptome data dimension (Row Column): ", dim(TE_df)[1]," x ", dim(TE_df)[2],"</li></ul><hr/>\n",
     file = htmloutfile, append = TRUE);
     
-    cat("<h3 id=table_of_content>Table of Contents:</h3>",
-    "<ul>",
-    "<li><a href=#sample_dist>Sample distribution</a></li>",
-    "<li><a href=#corr_data>Correlation</a></li>",
-    "<li><a href=#regression_data>Regression analysis</a></li>",
-    "<li><a href=#inf_obs>Influential observations</a></li>",
-    "<li><a href=#cluster_data>Cluster analysis</a></li></ul><hr/>",
+    cat("<h3 id=table_of_content>Table of Contents:</h3>\n",
+    "<ul>\n",
+    "<li><a href=#sample_dist>Sample distribution</a></li>\n",
+    "<li><a href=#corr_data>Correlation</a></li>\n",
+    "<li><a href=#regression_data>Regression analysis</a></li>\n",
+    "<li><a href=#inf_obs>Influential observations</a></li>\n",
+    "<li><a href=#cluster_data>Cluster analysis</a></li></ul><hr/>\n",
     file = htmloutfile, append = TRUE);
 #===============================================================================
 # Find common samples
@@ -752,7 +751,7 @@ common_samples = intersect(sampleinfo_df[,1], colnames(TE_df)[-1]) %>% intersect
 if(length(common_samples)==0)
 {
   stop("No common samples found ");
-  cat("<b>Please check your experiment design file. Sample names (column names) in the Transcriptome and the Proteome data do not match. </b>",file = htmloutfile, append = TRUE);
+  cat("<b>Please check your experiment design file. Sample names (column names) in the Transcriptome and the Proteome data do not match. </b>\n",file = htmloutfile, append = TRUE);
 }
 
 #===============================================================================
@@ -769,7 +768,7 @@ rownames(sampleinfo_df) = sampleinfo_df[,1];
 if(nrow(TE_df) != nrow(PE_df))
 {
   stop("Number of rows in Transcriptome and Proteome data are not same i.e. they are not paired");
-  cat("<b>The correlation analysis expects paired TE and PE data i.e. (i)th gene/transcript of TE file should correspond to (i)th protein of PE file. In the current input provided there is mismatch in terms of number of rows of TE and PE file. Please make sure you provide paired data.</b>",file = htmloutfile, append = TRUE);
+  cat("<b>The correlation analysis expects paired TE and PE data i.e. (i)th gene/transcript of TE file should correspond to (i)th protein of PE file. In the current input provided there is mismatch in terms of number of rows of TE and PE file. Please make sure you provide paired data.</b>\n",file = htmloutfile, append = TRUE);
 }
 
 #===============================================================================
@@ -800,27 +799,28 @@ PE_df[is.na(PE_df)] = 0;
 #===============================================================================
 if(mode=="logfold")
 {
-  cat('<h2 id="sample_dist"><font color=#ff0000>SAMPLE DISTRIBUTION</font></h2>',
+  cat('<h2 id="sample_dist"><font color=#ff0000>SAMPLE DISTRIBUTION</font></h2>\n',
   file = htmloutfile, append = TRUE);
   
   # TE Boxplot
   outplot = paste(outdir,"/Box_TE.png",sep="",collape="");
-  cat('<table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>Boxplot: Transcriptome data</font></th><th><font color=#ffcc33>Boxplot: Proteome data</font></th></tr>',
-  "<tr><td align=center>", '<img src="Box_TE.png" width=500 height=500></td>', file = htmloutfile, append = TRUE);
+  cat('<table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; ">\n',
+  '<tr bgcolor="#7a0019"><th><font color=#ffcc33>Boxplot: Transcriptome data</font></th><th><font color=#ffcc33>Boxplot: Proteome data</font></th></tr>\n',
+  "<tr><td align=center>", '<img src="Box_TE.png" width=500 height=500></td>\n', file = htmloutfile, append = TRUE);
   multisample_boxplot(TE_df, sampleinfo_df, outplot, "Yes", "Samples", "Transcript Abundance data");
   
   # PE Boxplot
   outplot = paste(outdir,"/Box_PE.png",sep="",collape="");
-  cat("<td align=center>", '<img src="Box_PE.png" width=500 height=500></td></tr></table>', file = htmloutfile, append = TRUE);
+  cat("<td align=center>", '<img src="Box_PE.png" width=500 height=500></td></tr></table>\n', file = htmloutfile, append = TRUE);
   multisample_boxplot(PE_df, sampleinfo_df, outplot, "Yes", "Samples", "Protein Abundance data");
   
-  cat('<hr/><h2 id="corr_data"><font color=#ff0000>CORRELATION</font></h2>',
+  cat('<hr/><h2 id="corr_data"><font color=#ff0000>CORRELATION</font></h2>\n',
   file = htmloutfile, append = TRUE);
   
   # TE PE scatter
   outplot = paste(outdir,"/TE_PE_scatter.png",sep="",collape="");
-  cat('<table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>Scatter plot between Proteome and Transcriptome Abundance</font></th></tr>', file = htmloutfile, append = TRUE);
-  cat("<tr><td align=center>", '<img src="TE_PE_scatter.png" width=800 height=800></td></tr>', file = htmloutfile, append = TRUE);
+  cat('<table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>Scatter plot between Proteome and Transcriptome Abundance</font></th></tr>\n', file = htmloutfile, append = TRUE);
+  cat("<tr><td align=center>", '<img src="TE_PE_scatter.png" width=800 height=800></td></tr>\n', file = htmloutfile, append = TRUE);
   PE_TE_data = data.frame(PE_df, TE_df);
   colnames(PE_TE_data) = c("PE_ID","PE_abundance","TE_ID","TE_abundance");
   singlesample_scatter(PE_TE_data, outplot);  
@@ -828,18 +828,18 @@ if(mode=="logfold")
   # TE PE Cor
   cat("<tr><td align=center>", file = htmloutfile, append = TRUE);
   singlesample_cor(PE_TE_data, htmloutfile, append=TRUE);
-  cat('<font color="red">*Note that <u>correlation</u> is <u>sensitive to outliers</u> in the data. So it is important to analyze outliers/influential observations in the data.<br> Below we use <u>Cook\'s distance based approach</u> to identify such influential observations.</font>',
+  cat('<font color="red">*Note that <u>correlation</u> is <u>sensitive to outliers</u> in the data. So it is important to analyze outliers/influential observations in the data.<br> Below we use <u>Cook\'s distance based approach</u> to identify such influential observations.</font>\n',
     file = htmloutfile, append = TRUE);
   cat('</td></table>',
     file = htmloutfile, append = TRUE);
   
-  cat('<hr/><h2 id="regression_data"><font color=#ff0000>REGRESSION ANALYSIS</font></h2>',
+  cat('<hr/><h2 id="regression_data"><font color=#ff0000>REGRESSION ANALYSIS</font></h2>\n',
   file = htmloutfile, append = TRUE);
   
   # TE PE Regression
   singlesample_regression(PE_TE_data,htmloutfile, append=TRUE);
   
-  cat('<hr/><h2 id="cluster_data"><font color=#ff0000>CLUSTER ANALYSIS</font></h2>',
+  cat('<hr/><h2 id="cluster_data"><font color=#ff0000>CLUSTER ANALYSIS</font></h2>\n',
   file = htmloutfile, append = TRUE);
   
   # TE PE Heatmap
@@ -852,20 +852,21 @@ if(mode=="logfold")
 }else{
   if(mode=="multiple")
   {
-    cat('<h2 id="sample_dist"><font color=#ff0000>SAMPLE DISTRIBUTION</font></h2>',
+    cat('<h2 id="sample_dist"><font color=#ff0000>SAMPLE DISTRIBUTION</font></h2>\n',
     file = htmloutfile, append = TRUE);
     
     # TE Boxplot
     outplot = paste(outdir,"/Box_TE_all_rep.png",sep="",collape="");
-    cat('<table  border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>Boxplot: Transcriptome data</font></th><th><font color=#ffcc33>Boxplot: Proteome data</font></th></tr>',
-    "<tr><td align=center>", '<img src="Box_TE_all_rep.png" width=500 height=500></td>', file = htmloutfile, append = TRUE);
+    cat('<table  border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; ">\n',
+    '<tr bgcolor="#7a0019"><th><font color=#ffcc33>Boxplot: Transcriptome data</font></th><th><font color=#ffcc33>Boxplot: Proteome data</font></th></tr>\n',
+    "<tr><td align=center>", '<img src="Box_TE_all_rep.png" width=500 height=500></td>\n', file = htmloutfile, append = TRUE);
     temp_df_te_data = data.frame(TE_df[,1], log(TE_df[,2:length(TE_df)]));
     colnames(temp_df_te_data) = colnames(TE_df);
     multisample_boxplot(temp_df_te_data, sampleinfo_df, outplot, "Yes", "Samples", "Transcript Abundance (log)");
     
     # PE Boxplot
     outplot = paste(outdir,"/Box_PE_all_rep.png",sep="",collape="");
-    cat("<td align=center>", '<img src="Box_PE_all_rep.png" width=500 height=500></td></tr></table>', file = htmloutfile, append = TRUE);
+    cat("<td align=center>", '<img src="Box_PE_all_rep.png" width=500 height=500></td></tr></table>\n', file = htmloutfile, append = TRUE);
     temp_df_pe_data = data.frame(PE_df[,1], log(PE_df[,2:length(PE_df)]));
     colnames(temp_df_pe_data) = colnames(PE_df);
     multisample_boxplot(temp_df_pe_data, sampleinfo_df, outplot, "Yes", "Samples", "Protein Abundance (log)");
@@ -888,15 +889,15 @@ if(mode=="logfold")
     
     # TE Boxplot
     outplot = paste(outdir,"/Box_TE_rep.png",sep="",collape="");
-    cat('<br><font color="#ff0000"><h3>Sample wise distribution (Box plot) after using ',method,' on replicates </h3></font><table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>Boxplot: Transcriptome data</font></th><th><font color=#ffcc33>Boxplot: Proteome data</font></th></tr>',
-    "<tr><td align=center>", '<img src="Box_TE_rep.png" width=500 height=500></td>', file = htmloutfile, append = TRUE);
+    cat('<br><font color="#ff0000"><h3>Sample wise distribution (Box plot) after using ',method,' on replicates </h3></font><table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>Boxplot: Transcriptome data</font></th><th><font color=#ffcc33>Boxplot: Proteome data</font></th></tr>\n',
+    "<tr><td align=center>", '<img src="Box_TE_rep.png" width=500 height=500></td>\n', file = htmloutfile, append = TRUE);
     temp_df_te_data = data.frame(TE_df[,1], log(TE_df[,2:length(TE_df)]));
     colnames(temp_df_te_data) = colnames(TE_df);
     multisample_boxplot(temp_df_te_data, sampleinfo_df, outplot, "No", "Sample Groups", "Mean Transcript Abundance (log)");
 
     # PE Boxplot
     outplot = paste(outdir,"/Box_PE_rep.png",sep="",collape="");
-    cat("<td align=center>", '<img src="Box_PE_rep.png" width=500 height=500></td></tr></table>', file = htmloutfile, append = TRUE);
+    cat("<td align=center>", '<img src="Box_PE_rep.png" width=500 height=500></td></tr></table>\n', file = htmloutfile, append = TRUE);
     temp_df_pe_data = data.frame(PE_df[,1], log(PE_df[,2:length(PE_df)]));
     colnames(temp_df_pe_data) = colnames(PE_df);
     multisample_boxplot(temp_df_pe_data, sampleinfo_df, outplot, "No", "Sample Groups", "Mean Protein Abundance (log)");
@@ -931,13 +932,13 @@ if(mode=="logfold")
     # TE Boxplot
     outplot = paste(outdir,"/Box_TE.png",sep="",collape="");
     cat('<br><font color="#ff0000"><h3>Distribution (Box plot) of log fold change </h3></font>', file = htmloutfile, append = TRUE);
-    cat('<table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>Boxplot: Transcriptome data</font></th><th><font color=#ffcc33>Boxplot: Proteome data</font></th></tr>',
-    "<tr><td align=center>", '<img src="Box_TE.png" width=500 height=500></td>', file = htmloutfile, append = TRUE);
+    cat('<table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>Boxplot: Transcriptome data</font></th><th><font color=#ffcc33>Boxplot: Proteome data</font></th></tr>\n',
+    "<tr><td align=center>", '<img src="Box_TE.png" width=500 height=500></td>\n', file = htmloutfile, append = TRUE);
     multisample_boxplot(TE_df, sampleinfo_df, outplot, "Yes", "Sample (log2(case/control))", "Transcript Abundance fold-change (log2)");
     
     # PE Boxplot
     outplot = paste(outdir,"/Box_PE.png",sep="",collape="");
-    cat("<td align=center>", '<img src="Box_PE.png" width=500 height=500></td></tr></table>', file = htmloutfile, append = TRUE);
+    cat("<td align=center>", '<img src="Box_PE.png" width=500 height=500></td></tr></table>\n', file = htmloutfile, append = TRUE);
     multisample_boxplot(PE_df, sampleinfo_df, outplot, "Yes", "Sample (log2(case/control))", "Protein Abundance fold-change(log2)");
     
     
@@ -948,39 +949,39 @@ if(mode=="logfold")
     
     # Print PCA
     
-    cat('<br><br><table  border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>PCA plot: Transcriptome data</font></th><th><font color=#ffcc33>PCA plot: Proteome data</font></th></tr>',
-    "<tr><td align=center>", '<img src="PCA_TE_all_rep.png" width=500 height=500></td>',
-    "<td align=center>", '<img src="PCA_PE_all_rep.png" width=500 height=500></td></tr></table>', 
+    cat('<br><br><table  border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>PCA plot: Transcriptome data</font></th><th><font color=#ffcc33>PCA plot: Proteome data</font></th></tr>\n',
+    "<tr><td align=center>", '<img src="PCA_TE_all_rep.png" width=500 height=500></td>\n',
+    "<td align=center>", '<img src="PCA_PE_all_rep.png" width=500 height=500></td></tr></table>\n', 
       file = htmloutfile, append = TRUE);
     
     
     
-    cat('<hr/><h2 id="corr_data"><font color=#ff0000>CORRELATION</font></h2>',
+    cat('<hr/><h2 id="corr_data"><font color=#ff0000>CORRELATION</font></h2>\n',
     file = htmloutfile, append = TRUE);
     
     # TE PE scatter
     outplot = paste(outdir,"/TE_PE_scatter.png",sep="",collape="");
-    cat('<br><table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>Scatter plot between Proteome and Transcriptome Abundance</font></th></tr>', file = htmloutfile, append = TRUE);
-    cat("<tr><td align=center>", '<img src="TE_PE_scatter.png" width=800 height=800></td>', file = htmloutfile, append = TRUE);
+    cat('<br><table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>Scatter plot between Proteome and Transcriptome Abundance</font></th></tr>\n', file = htmloutfile, append = TRUE);
+    cat("<tr><td align=center>", '<img src="TE_PE_scatter.png" width=800 height=800></td>\n', file = htmloutfile, append = TRUE);
     PE_TE_data = data.frame(PE_df, TE_df);
     colnames(PE_TE_data) = c("PE_ID","PE_abundance","TE_ID","TE_abundance");
     singlesample_scatter(PE_TE_data, outplot);  
 
     # TE PE Cor
-    cat("<tr><td align=center>", file = htmloutfile, append = TRUE);
+    cat("<tr><td align=center>\n", file = htmloutfile, append = TRUE);
     singlesample_cor(PE_TE_data, htmloutfile, append=TRUE);
-    cat('<font color="red">*Note that <u>correlation</u> is <u>sensitive to outliers</u> in the data. So it is important to analyze outliers/influential observations in the data.<br> Below we use <u>Cook\'s distance based approach</u> to identify such influential observations.</font>',
+    cat('<font color="red">*Note that <u>correlation</u> is <u>sensitive to outliers</u> in the data. So it is important to analyze outliers/influential observations in the data.<br> Below we use <u>Cook\'s distance based approach</u> to identify such influential observations.</font>\n',
       file = htmloutfile, append = TRUE);
     cat('</td></table>',
     file = htmloutfile, append = TRUE);
     
-    cat('<hr/><h2 id="regression_data"><font color=#ff0000>REGRESSION ANALYSIS</font></h2>',
+    cat('<hr/><h2 id="regression_data"><font color=#ff0000>REGRESSION ANALYSIS</font></h2>\n',
     file = htmloutfile, append = TRUE);
     
     # TE PE Regression
     singlesample_regression(PE_TE_data,htmloutfile, append=TRUE);
     
-    cat('<hr/><h2 id="cluster_data"><font color=#ff0000>CLUSTER ANALYSIS</font></h2>',
+    cat('<hr/><h2 id="cluster_data"><font color=#ff0000>CLUSTER ANALYSIS</font></h2>\n',
     file = htmloutfile, append = TRUE);
     
     #TE PE Heatmap
@@ -991,13 +992,13 @@ if(mode=="logfold")
     
   }
 }
-cat("<h3>Go To:</h3>",
-    "<ul>",
-    "<li><a href=#sample_dist>Sample distribution</a></li>",
-    "<li><a href=#corr_data>Correlation</a></li>",
-    "<li><a href=#regression_data>Regression analysis</a></li>",
-    "<li><a href=#inf_obs>Influential observations</a></li>",
-    "<li><a href=#cluster_data>Cluster analysis</a></li></ul>",
+cat("<h3>Go To:</h3>\n",
+    "<ul>\n",
+    "<li><a href=#sample_dist>Sample distribution</a></li>\n",
+    "<li><a href=#corr_data>Correlation</a></li>\n",
+    "<li><a href=#regression_data>Regression analysis</a></li>\n",
+    "<li><a href=#inf_obs>Influential observations</a></li>\n",
+    "<li><a href=#cluster_data>Cluster analysis</a></li></ul>\n",
     "<br><a href=#>TOP</a>",
     file = htmloutfile, append = TRUE);
-cat("</body></html>", file = htmloutfile, append = TRUE);
+cat("</body></html>\n", file = htmloutfile, append = TRUE);
