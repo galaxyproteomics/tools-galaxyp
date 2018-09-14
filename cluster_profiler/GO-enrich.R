@@ -69,7 +69,7 @@ enrich.GO <- function(geneid, universe, orgdb, ontology, pval_cutoff, qval_cutof
 
 check_ids <- function(vector,type) {
   uniprot_pattern = "^([OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9]([A-Z][A-Z0-9]{2}[0-9]){1,2})$"
-  entrez_id = "^'[0-9]+|[A-Z]{1,2}_[0-9]+|[A-Z]{1,2}_[A-Z]{1,4}[0-9]+)$"
+  entrez_id = "^([0-9]+|[A-Z]{1,2}_[0-9]+|[A-Z]{1,2}_[A-Z]{1,4}[0-9]+)$"
   if (type == "entrez")
     return(grepl(entrez_id,vector))
   else if (type == "uniprot") {
@@ -214,17 +214,22 @@ clusterProfiler = function() {
     } else {
       universe_gene = NULL
     }
+  } else {
+    universe_gene = NULL
   }
 
   ##enrichGO : GO over-representation test
   for (onto in ontology) {
     if (args$go_represent == "true") {
       ggo<-repartition.GO(gene, orgdb, onto, level, readable=TRUE)
-      write.table(ggo, args$text_output, append = TRUE, sep="\t", row.names = FALSE, quote=FALSE)
+      output_path = paste("cluster_profiler_GGO_",onto,".csv",sep="")
+      write.table(ggo, output_path, sep="\t", row.names = FALSE, quote=FALSE)
     }
-    if (args$go_enrich == "true" & !is.null(universe_gene)) {
+    print (universe_gene)
+    if (args$go_enrich == "true") {
       ego<-enrich.GO(gene, universe_gene, orgdb, onto, pval_cutoff, qval_cutoff)
-      write.table(ego, args$text_output, append = TRUE, sep="\t", row.names = FALSE, quote=FALSE)
+      output_path = paste("cluster_profiler_EGO_",onto,".csv",sep="")
+      write.table(ego, output_path, append = TRUE, sep="\t", row.names = FALSE, quote=FALSE)
     }
   }
 }
