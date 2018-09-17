@@ -1,7 +1,5 @@
 suppressMessages(library(clusterProfiler,quietly = TRUE))
 
-#library(org.Sc.sgd.db,quietly = TRUE)
-
 # Read file and return file content as data.frame
 readfile = function(filename, header) {
   if (header == "true") {
@@ -28,8 +26,8 @@ repartition.GO <- function(geneid, orgdb, ontology, level=3, readable=TRUE) {
                ont=ontology, 
                level=level, 
                readable=TRUE)
-  name <- paste("GGO.", ontology, ".png", sep = "")
-  png(name)
+  name <- paste("GGO_", ontology, "_bar-plot", sep = "")
+  png(name,height = 720, width = 600)
   p <- barplot(ggo, showCategory=10)
   print(p)
   dev.off()
@@ -37,11 +35,10 @@ repartition.GO <- function(geneid, orgdb, ontology, level=3, readable=TRUE) {
 }
 
 # GO over-representation test
-enrich.GO <- function(geneid, universe, orgdb, ontology, pval_cutoff, qval_cutoff) {
+enrich.GO <- function(geneid, universe, orgdb, ontology, pval_cutoff, qval_cutoff,plot) {
   ego<-enrichGO(gene=geneid,
                 universe=universe,
                 OrgDb=orgdb,
-                keytype="ENTREZID",
                 ont=ontology,
                 pAdjustMethod="BH",
                 pvalueCutoff=pval_cutoff,
@@ -51,17 +48,22 @@ enrich.GO <- function(geneid, universe, orgdb, ontology, pval_cutoff, qval_cutof
   # Plot bar & dot plots
   #if there are enriched GopTerms
   if (length(ego$ID)>0){
-    bar_name <- paste("EGO.", ontology, ".bar.png", sep = "")
-    png(bar_name)
-    p <- barplot(ego)
-    print(p)
-    dev.off()
-    dot_name <- paste("EGO.", ontology, ".dot.png", sep = "")
-    png(dot_name)
+    if ("dotplot" %in% plot ){
+    dot_name <- paste("EGO_", ontology, "_dot-plot", sep = "")
+    png(dot_name,height = 720, width = 600)
     p <- dotplot(ego, showCategory=10)
     print(p)
     dev.off()
+    }
+
+    if ("barplot" %in% plot ){
+    bar_name <- paste("EGO_", ontology, "_bar-plot", sep = "")
+    png(bar_name,height = 720, width = 600)
+    p <- barplot(ego)
+    print(p)
+    dev.off()
     return(ego)
+    }
   } else {
     warning(paste("No Go terms enriched (EGO) found for ",ontology,"ontology"),immediate. = TRUE,noBreaks. = TRUE,call. = FALSE)
   }
@@ -103,7 +105,8 @@ clusterProfiler = function() {
         --level: 1-3
         --pval_cutoff
         --qval_cutoff
-        --text_output: text output filename \n")
+        --text_output: text output filename 
+        --plot : type of visualization, dotplot or/and barplot \n")
     q(save="no")
   }
   # Parse arguments
@@ -111,6 +114,7 @@ clusterProfiler = function() {
   argsDF <- as.data.frame(do.call("rbind", parseArgs(args)))
   args <- as.list(as.character(argsDF$V2))
   names(args) <- argsDF$V1
+  plot = unlist(strsplit(args$plot,","))
   #print(args)
   
   #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/cluster_profiler/args.Rda")
@@ -123,7 +127,7 @@ clusterProfiler = function() {
     orgdb<-org.Hs.eg.db
   } else if (args$species=="org.Mm.eg.db") {
     orgdb<-org.Mm.eg.db
-  } else if (args$species=="org.Sc.eg.db") {
+  } else if (args$species=="org.Rn.eg.db") {
     orgdb<-org.Rn.eg.db
   }
 
@@ -225,9 +229,9 @@ clusterProfiler = function() {
       output_path = paste("cluster_profiler_GGO_",onto,".csv",sep="")
       write.table(ggo, output_path, sep="\t", row.names = FALSE, quote=FALSE)
     }
-    print (universe_gene)
+
     if (args$go_enrich == "true") {
-      ego<-enrich.GO(gene, universe_gene, orgdb, onto, pval_cutoff, qval_cutoff)
+      ego<-enrich.GO(gene, universe_gene, orgdb, onto, pval_cutoff, qval_cutoff,plot)
       output_path = paste("cluster_profiler_EGO_",onto,".csv",sep="")
       write.table(ego, output_path, append = TRUE, sep="\t", row.names = FALSE, quote=FALSE)
     }
