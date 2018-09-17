@@ -20,14 +20,29 @@ readfile = function(filename, header) {
   return(file)
 }
 
+max_str_length_10_first <- function(vector){
+  vector <- as.vector(vector)
+  nb_description = length(vector)
+  if (nb_description >= 10){nb_description=10}
+  return(max(nchar(vector[1:nb_description])))
+}
+
+
 repartition.GO <- function(geneid, orgdb, ontology, level=3, readable=TRUE) {
   ggo<-groupGO(gene=geneid, 
                OrgDb = orgdb, 
                ont=ontology, 
                level=level, 
                readable=TRUE)
+  
+  if (max_str_length_10_first(ggo$Description) > 50 ){
+    width=720
+  } else {
+    width=600  
+  } 
+  
   name <- paste("GGO_", ontology, "_bar-plot", sep = "")
-  png(name,height = 720, width = 600)
+  png(name,height = 720, width = width)
   p <- barplot(ggo, showCategory=10)
   print(p)
   dev.off()
@@ -45,12 +60,18 @@ enrich.GO <- function(geneid, universe, orgdb, ontology, pval_cutoff, qval_cutof
                 qvalueCutoff=qval_cutoff,
                 readable=TRUE)
   
+  if (max_str_length_10_first(ego$Description) > 50 ){
+    width=800
+  } else {
+    width=600  
+  }
+  
   # Plot bar & dot plots
   #if there are enriched GopTerms
   if (length(ego$ID)>0){
     if ("dotplot" %in% plot ){
     dot_name <- paste("EGO_", ontology, "_dot-plot", sep = "")
-    png(dot_name,height = 720, width = 600)
+    png(dot_name,height = 720, width = width)
     p <- dotplot(ego, showCategory=10)
     print(p)
     dev.off()
@@ -58,7 +79,7 @@ enrich.GO <- function(geneid, universe, orgdb, ontology, pval_cutoff, qval_cutof
 
     if ("barplot" %in% plot ){
     bar_name <- paste("EGO_", ontology, "_bar-plot", sep = "")
-    png(bar_name,height = 720, width = 600)
+    png(bar_name,height = 720, width = width)
     p <- barplot(ego)
     print(p)
     dev.off()
