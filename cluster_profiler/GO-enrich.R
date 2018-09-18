@@ -20,6 +20,7 @@ readfile = function(filename, header) {
   return(file)
 }
 
+#return the number of character from the longest description found (from the 10 first)
 max_str_length_10_first <- function(vector){
   vector <- as.vector(vector)
   nb_description = length(vector)
@@ -27,6 +28,18 @@ max_str_length_10_first <- function(vector){
   return(max(nchar(vector[1:nb_description])))
 }
 
+width_by_max_char <- function (nb_max_char) {
+  if (nb_max_char < 50 ){
+    width=600
+  } else if (nb_max_char < 75) {
+    width=800
+  } else if (nb_max_char < 100) {
+    width=900
+  } else {
+    width=1000
+  }
+  return (width)
+}
 
 repartition.GO <- function(geneid, orgdb, ontology, level=3, readable=TRUE) {
   ggo<-groupGO(gene=geneid, 
@@ -35,12 +48,9 @@ repartition.GO <- function(geneid, orgdb, ontology, level=3, readable=TRUE) {
                level=level, 
                readable=TRUE)
   
-  if (max_str_length_10_first(ggo$Description) > 50 ){
-    width=720
-  } else {
-    width=600  
-  } 
-  
+  ggo@result$Description <- sapply(ggo@result$Description, function(x) {ifelse(nchar(x)>100, substr(x,1,100),x)},USE.NAMES = FALSE)
+  nb_max_char = max_str_length_10_first(ggo$Description)
+  width = width_by_max_char(nb_max_char)
   name <- paste("GGO_", ontology, "_bar-plot", sep = "")
   png(name,height = 720, width = width)
   p <- barplot(ggo, showCategory=10)
@@ -55,21 +65,19 @@ enrich.GO <- function(geneid, universe, orgdb, ontology, pval_cutoff, qval_cutof
                 universe=universe,
                 OrgDb=orgdb,
                 ont=ontology,
-                keytype="ENTREZID",
                 pAdjustMethod="BH",
                 pvalueCutoff=pval_cutoff,
                 qvalueCutoff=qval_cutoff,
                 readable=TRUE)
   
-  if (max_str_length_10_first(ego$Description) > 50 ){
-    width=800
-  } else {
-    width=600  
-  }
-  
   # Plot bar & dot plots
   #if there are enriched GopTerms
   if (length(ego$ID)>0){
+    
+    ego@result$Description <- sapply(ego@result$Description, function(x) {ifelse(nchar(x)>100, substr(x,1,100),x)},USE.NAMES = FALSE)
+    nb_max_char = max_str_length_10_first(ego$Description)
+    width = width_by_max_char(nb_max_char)
+    
     if ("dotplot" %in% plot ){
     dot_name <- paste("EGO_", ontology, "_dot-plot", sep = "")
     png(dot_name,height = 720, width = width)
