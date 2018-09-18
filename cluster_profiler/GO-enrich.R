@@ -47,16 +47,18 @@ repartition.GO <- function(geneid, orgdb, ontology, level=3, readable=TRUE) {
                ont=ontology, 
                level=level, 
                readable=TRUE)
-  
-  ggo@result$Description <- sapply(ggo@result$Description, function(x) {ifelse(nchar(x)>100, substr(x,1,100),x)},USE.NAMES = FALSE)
-  nb_max_char = max_str_length_10_first(ggo$Description)
-  width = width_by_max_char(nb_max_char)
-  name <- paste("GGO_", ontology, "_bar-plot", sep = "")
-  png(name,height = 720, width = width)
-  p <- barplot(ggo, showCategory=10)
-  print(p)
-  dev.off()
-  return(ggo)
+
+  if (length(ggo@result$ID) > 0 ) {
+    ggo@result$Description <- sapply(as.vector(ggo@result$Description), function(x) {ifelse(nchar(x)>100, substr(x,1,100),x)},USE.NAMES = FALSE)
+    nb_max_char = max_str_length_10_first(ggo$Description)
+    width = width_by_max_char(nb_max_char)
+    name <- paste("GGO_", ontology, "_bar-plot", sep = "")
+    png(name,height = 720, width = width)
+    p <- barplot(ggo, showCategory=10)
+    print(p)
+    dev.off()
+    return(ggo)
+  }
 }
 
 # GO over-representation test
@@ -75,6 +77,8 @@ enrich.GO <- function(geneid, universe, orgdb, ontology, pval_cutoff, qval_cutof
   #if there are enriched GopTerms
   if (length(ego$ID)>0){
     
+    print ('ego')
+    print (ego@result$Description)
     ego@result$Description <- sapply(ego@result$Description, function(x) {ifelse(nchar(x)>100, substr(x,1,100),x)},USE.NAMES = FALSE)
     nb_max_char = max_str_length_10_first(ego$Description)
     width = width_by_max_char(nb_max_char)
