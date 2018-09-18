@@ -93,7 +93,7 @@ enrich.GO <- function(geneid, universe, orgdb, ontology, pval_cutoff, qval_cutof
     if ("barplot" %in% plot ){
     bar_name <- paste("EGO_", ontology, "_bar-plot", sep = "")
     png(bar_name,height = 720, width = 600)
-    p <- barplot(ego)
+    p <- barplot(ego, showCategory=10)
     print(p)
     dev.off()
     
