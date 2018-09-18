@@ -28,6 +28,7 @@ max_str_length_10_first <- function(vector){
   return(max(nchar(vector[1:nb_description])))
 }
 
+#used before the limit was set to 50 characters
 width_by_max_char <- function (nb_max_char) {
   if (nb_max_char < 50 ){
     width=600
@@ -49,11 +50,11 @@ repartition.GO <- function(geneid, orgdb, ontology, level=3, readable=TRUE) {
                readable=TRUE)
 
   if (length(ggo@result$ID) > 0 ) {
-    ggo@result$Description <- sapply(as.vector(ggo@result$Description), function(x) {ifelse(nchar(x)>100, substr(x,1,100),x)},USE.NAMES = FALSE)
-    nb_max_char = max_str_length_10_first(ggo$Description)
-    width = width_by_max_char(nb_max_char)
+    ggo@result$Description <- sapply(as.vector(ggo@result$Description), function(x) {ifelse(nchar(x)>50, substr(x,1,50),x)},USE.NAMES = FALSE)
+    #nb_max_char = max_str_length_10_first(ggo$Description)
+    #width = width_by_max_char(nb_max_char)
     name <- paste("GGO_", ontology, "_bar-plot", sep = "")
-    png(name,height = 720, width = width)
+    png(name,height = 720, width = 600)
     p <- barplot(ggo, showCategory=10)
     print(p)
     dev.off()
@@ -77,13 +78,13 @@ enrich.GO <- function(geneid, universe, orgdb, ontology, pval_cutoff, qval_cutof
   #if there are enriched GopTerms
   if (length(ego$ID)>0){
     
-    ego@result$Description <- sapply(ego@result$Description, function(x) {ifelse(nchar(x)>100, substr(x,1,100),x)},USE.NAMES = FALSE)
-    nb_max_char = max_str_length_10_first(ego$Description)
-    width = width_by_max_char(nb_max_char)
+    ego@result$Description <- sapply(ego@result$Description, function(x) {ifelse(nchar(x)>50, substr(x,1,50),x)},USE.NAMES = FALSE)
+    #nb_max_char = max_str_length_10_first(ego$Description)
+    #width = width_by_max_char(nb_max_char)
     
     if ("dotplot" %in% plot ){
     dot_name <- paste("EGO_", ontology, "_dot-plot", sep = "")
-    png(dot_name,height = 720, width = width)
+    png(dot_name,height = 720, width = 600)
     p <- dotplot(ego, showCategory=10)
     print(p)
     dev.off()
@@ -91,7 +92,7 @@ enrich.GO <- function(geneid, universe, orgdb, ontology, pval_cutoff, qval_cutof
 
     if ("barplot" %in% plot ){
     bar_name <- paste("EGO_", ontology, "_bar-plot", sep = "")
-    png(bar_name,height = 720, width = width)
+    png(bar_name,height = 720, width = 600)
     p <- barplot(ego)
     print(p)
     dev.off()
