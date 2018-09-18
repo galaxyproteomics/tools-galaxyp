@@ -77,8 +77,6 @@ enrich.GO <- function(geneid, universe, orgdb, ontology, pval_cutoff, qval_cutof
   #if there are enriched GopTerms
   if (length(ego$ID)>0){
     
-    print ('ego')
-    print (ego@result$Description)
     ego@result$Description <- sapply(ego@result$Description, function(x) {ifelse(nchar(x)>100, substr(x,1,100),x)},USE.NAMES = FALSE)
     nb_max_char = max_str_length_10_first(ego$Description)
     width = width_by_max_char(nb_max_char)
@@ -97,8 +95,9 @@ enrich.GO <- function(geneid, universe, orgdb, ontology, pval_cutoff, qval_cutof
     p <- barplot(ego)
     print(p)
     dev.off()
-    return(ego)
+    
     }
+    return(ego)
   } else {
     warning(paste("No Go terms enriched (EGO) found for ",ontology,"ontology"),immediate. = TRUE,noBreaks. = TRUE,call. = FALSE)
   }
@@ -268,7 +267,7 @@ clusterProfiler = function() {
     if (args$go_enrich == "true") {
       ego<-enrich.GO(gene, universe_gene, orgdb, onto, pval_cutoff, qval_cutoff,plot)
       output_path = paste("cluster_profiler_EGO_",onto,".csv",sep="")
-      write.table(ego, output_path, append = TRUE, sep="\t", row.names = FALSE, quote=FALSE)
+      write.table(ego, output_path, sep="\t", row.names = FALSE, quote=FALSE)
     }
   }
 }
