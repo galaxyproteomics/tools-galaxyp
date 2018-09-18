@@ -48,7 +48,7 @@ mapping = function() {
   if("--help" %in% args) {
     cat("Selection and Annotation HPA
     Arguments:
-        --ref_file: path to reference file (human_id_mapping_file.txt)
+        --ref_file: path to reference file (id_mapping_file.txt)
         --input_type: type of input (list of id or filename)
         --id_type: type of input IDs
         --input: list of IDs (text or filename)
@@ -69,7 +69,7 @@ mapping = function() {
   list_id_input_type = args$input_type # list or file
   options = strsplit(args$target_ids, ",")[[1]]
   output = args$output
-  human_id_mapping_file = args$ref_file
+  id_mapping_file = args$ref_file
     
   # Extract input IDs
   if (list_id_input_type == "list") {
@@ -89,7 +89,7 @@ mapping = function() {
   }
 
   # Extract ID maps
-  human_id_map = read.table(human_id_mapping_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings = "", quote = "")
+  id_map = read.table(id_mapping_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings = "", quote = "")
   
   names = c()
     
@@ -98,7 +98,7 @@ mapping = function() {
 
   for (opt in options) {
     names = c(names, opt)
-    mapped = human_id_map[match(list_id, human_id_map[input_id_type][,]),][opt][,]
+    mapped = id_map[match(list_id, id_map[input_id_type][,]),][opt][,]
     res = cbind(res, matrix(mapped))
   }
      
