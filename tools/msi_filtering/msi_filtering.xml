@@ -1,4 +1,4 @@
-<tool id="mass_spectrometry_imaging_filtering" name="MSI filtering" version="1.10.0.7">
+<tool id="mass_spectrometry_imaging_filtering" name="MSI filtering" version="1.10.0.8">
     <description>tool for filtering mass spectrometry imaging data</description>
     <requirements>
         <requirement type="package" version="1.10.0">bioconductor-cardinal</requirement>
@@ -38,11 +38,14 @@ library(gridExtra)
 #if $infile.ext == 'imzml'
     #if str($processed_cond.processed_file) == "processed":
         msidata <- readImzML('infile', mass.accuracy=$processed_cond.accuracy, units.accuracy = "$processed_cond.units")
+        centroided(msidata) = $centroids
     #else
         msidata <- readImzML('infile')
+        centroided(msidata) = $centroids
     #end if
 #elif $infile.ext == 'analyze75'
     msidata = readAnalyze('infile')
+    centroided(msidata) = $centroids
 #else
     loadRData <- function(fileName){
     load(fileName)
@@ -101,10 +104,9 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE) > 0)
         print("single column")
 
         ## read tabular file, count number of rows (= number of pixels), count how many pixels are valid
-        input_list = read.delim("$pixels_cond.single_pixels", header = FALSE, stringsAsFactors = FALSE)
-        startingrow = $pixels_cond.pixel_header+1
-        numberpixels = length(startingrow:nrow(input_list))
-        valid_entries = input_list[startingrow:nrow(input_list),$pixels_cond.pixel_column] %in% names(pixels(msidata))
+        input_list = read.delim("$pixels_cond.single_pixels", header = $pixels_cond.pixel_header, stringsAsFactors = FALSE)
+        numberpixels = nrow(input_list)
+        valid_entries = input_list[,$pixels_cond.pixel_column] %in% names(pixels(msidata))
         validpixels = sum(valid_entries)
         valid_annotations = input_list[valid_entries,c($pixels_cond.pixel_column, $pixels_cond.annotation_column)]
         colnames(valid_annotations) = c("pixel_coordinates", "annotation")
@@ -135,11 +137,10 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE) > 0)
         print("two columns")
 
         ## read tabular file
-        input_list = read.delim("$pixels_cond.two_columns_pixel", header = FALSE, 
+        input_list = read.delim("$pixels_cond.two_columns_pixel", header = $pixels_cond.pixel_header, 
         stringsAsFactors = FALSE)
-        startingrow = $pixels_cond.pixel_header+1
-        numberpixels = length(startingrow:nrow(input_list))
-        inputpixels = input_list[startingrow:nrow(input_list),c($pixels_cond.pixel_column_x, $pixels_cond.pixel_column_y, $pixels_cond.annotation_column_xy)]
+        numberpixels = nrow(input_list)
+        inputpixels = input_list[,c($pixels_cond.pixel_column_x, $pixels_cond.pixel_column_y, $pixels_cond.annotation_column_xy)]
 
         ## rewrite into x = 1, y = 1 format and filter msidata, count validpixels
         pixelvector = character()
@@ -207,13 +208,12 @@ if (npeaks_before_filtering > 0)
         print("feature list")
 
         ## read tabular file, define starting row, extract and count valid features
-        input_features = read.delim("$inputfeatures", header = FALSE, stringsAsFactors = FALSE)
-        startingrow = $features_cond.feature_header+1
-        extracted_features = input_features[startingrow:nrow(input_features),$features_cond.feature_column]
+        input_features = read.delim("$inputfeatures", header = $features_cond.feature_header, stringsAsFactors = FALSE)
+        extracted_features = input_features[,$features_cond.feature_column]
         numberfeatures = length(extracted_features)
 
         ## find out type of tabular file (numeric or character format)
-        if (grepl("m/z = ", input_features[startingrow,$features_cond.feature_column])==FALSE){
+        if (grepl("m/z = ", input_features[,$features_cond.feature_column])==FALSE){
 
     ### if input is in numeric format
             if (class(extracted_features) == "numeric"){
@@ -263,12 +263,11 @@ if (npeaks_before_filtering > 0)
 
     ### Tabular file contains mz either as numbers or in the format mz = 800.01
 
-        input_features = read.delim("$inputfeatures_removal", header = FALSE, stringsAsFactors = FALSE) 
-        startingrow = $features_cond.removal_header+1
-        extracted_features = input_features[startingrow:nrow(input_features),$features_cond.removal_column]
+        input_features = read.delim("$inputfeatures_removal", header = $features_cond.removal_header, stringsAsFactors = FALSE) 
+        extracted_features = input_features[,$features_cond.removal_column]
         numberfeatures = length(extracted_features)
 
-        if (grepl("m/z = ", input_features[startingrow,$features_cond.removal_column])==TRUE){
+        if (grepl("m/z = ", input_features[,$features_cond.removal_column])==TRUE){
 
     ### if input is mz = 800 character format
             print("input is in format mz = 400")
@@ -455,6 +454,7 @@ if (npeaks2 > 0)
         <param name="infile" type="data" format="imzml,rdata,analyze75"
                label="Inputfile as imzML, Analyze7.5 or Cardinal MSImageSet saved as RData"
                 help="Upload composite datatype imzML (ibd+imzML) or analyze75 (hdr+img+t2m) or regular upload .RData (Cardinal MSImageSet)"/>
+        <param name="centroids" type="boolean" label="Is the input data centroided (picked)" help="Choose Yes if peak detection has already been done." truevalue="TRUE" falsevalue="FALSE"/>
         <conditional name="processed_cond">
             <param name="processed_file" type="select" label="Is the input file a processed imzML file ">
                 <option value="no_processed" selected="True">not a processed imzML</option>
@@ -483,7 +483,7 @@ if (npeaks2 > 0)
                     help="tabular file with pixels of interest in the form x = 1, y = 1"/>
                 <param name="pixel_column" data_ref="single_pixels" label="Column with pixels" type="data_column"/>
                 <param name="annotation_column" data_ref="single_pixels" label="Column with annotations for each pixel" type="data_column"/>
-                <param name="pixel_header" label="Number of header lines to skip" value="0" type="integer"/>
+                <param name="pixel_header" type="boolean" label="Tabular file contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
             </when> 
             <when value="two_columns">
                 <param name="two_columns_pixel" type="data" format="tabular" label="Pixels in two columns for filtering of MSI data"
@@ -491,7 +491,7 @@ if (npeaks2 > 0)
                 <param name="pixel_column_x" data_ref="two_columns_pixel" label="Column with x values" type="data_column"/>
                 <param name="pixel_column_y" data_ref="two_columns_pixel" label="Column with y values" type="data_column"/>
                 <param name="annotation_column_xy" data_ref="two_columns_pixel" label="Column with annotations" type="data_column"/>
-                <param name="pixel_header" label="Number of header lines to skip" value="0" type="integer"/>
+                <param name="pixel_header" type="boolean" label="Tabular file contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
             </when> 
             <when value="pixel_range">
                 <param name="min_x_range" type="integer" value="0" label="Minimum value for x"/>
@@ -512,7 +512,7 @@ if (npeaks2 > 0)
             <when value="features_list">
                 <param name="inputfeatures" type="data" format="tabular" label="Features for filtering of MSI data" help="tabular file with m/z of interest either as numbers (800.05) or in the form m/z = 800.05"/>
                 <param name="feature_column" data_ref="inputfeatures" label="Column with features" type="data_column"/>
-                <param name="feature_header" label="Number of header lines to skip" value="0" type="integer"/>
+                <param name="feature_header" type="boolean" label="Tabular file contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
             </when> 
             <when value="features_range">
                 <param name="min_mz" type="float" value="1" label="Minimum value for m/z"/>
@@ -521,7 +521,7 @@ if (npeaks2 > 0)
             <when value="remove_features">
                 <param name="inputfeatures_removal" type="data" format="tabular" label="Features for filtering of MSI data" help="tabular file with m/z to be removed either as numbers (800.05) or in the form m/z = 800.05"/>
                 <param name="removal_column" data_ref="inputfeatures_removal" label="Column with features" type="data_column"/>
-                <param name="removal_header" label="Number of header lines to skip" value="0" type="integer"/>
+                <param name="removal_header" type="boolean" label="Tabular file contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
                 <param name="removal_plusminus" type="float" value="20" label="Window in which m/z will be removed" help="This value will be added and substracted from the given input value"/>
                 <param name="units_removal" type="select" display = "radio" optional = "False" label="units">
                         <option value="ppm" selected="True">ppm</option>
@@ -665,7 +665,7 @@ Input data: 3 types of input data can be used:
 
 - imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <https://ms-imaging.org/wp/imzml/>`_
 - Analyze7.5 (upload hdr, img and t2m file via the "composite" function)
-- Cardinal "MSImageSet" data (with variable name "msidata", saved as .RData)
+- Cardinal "MSImageSet" data saved as .RData
 
 
 Options:
