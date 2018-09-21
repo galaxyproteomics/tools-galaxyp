@@ -30,9 +30,10 @@
 #	results file, barplot.png for the barplot image file and dotplot.png for the
 #	dotplot image file 
 
+options(warn=-1)  #TURN OFF WARNINGS !!!!!!
 
 # loading topGO library
-library(topGO)
+suppressMessages(library(topGO))
 
 # Read file and return file content as data.frame
 readfile = function(filename, header) {
@@ -87,6 +88,10 @@ names(options.args) <- unlist(options.names)
 if (length(options.args) != 12) {
     stop("Not enough/Too many arguments", call. = FALSE)
 }
+
+#save(options.args,file="/home/dchristiany/proteore_project/ProteoRE/tools/topGO/args.Rda")
+#load("/home/dchristiany/proteore_project/ProteoRE/tools/topGO/args.Rda")
+
 
 typeinput = options.args[1]
 listfile = options.args[2]
@@ -348,16 +353,15 @@ createOutputs = function(result, cut_result,text, barplot, dotplot, onto){
 	
 		createDotPlot(cut_result, onto)
 	}
-  return(TRUE)
 }
 
 
 
 # Load R library ggplot2 to plot graphs
-library(ggplot2)
+suppressMessages(library(ggplot2))
 
 # Launch enrichment analysis
-allresult = goEnrichment(geneuniverse,sample,onto)
+allresult = suppressMessages(goEnrichment(geneuniverse,sample,onto))
 result = allresult[1][[1]]
 myGOdata = allresult[2][[1]]
 if (!is.null(result)){
