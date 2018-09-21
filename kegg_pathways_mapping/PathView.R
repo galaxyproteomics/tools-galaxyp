@@ -3,6 +3,8 @@
 #input : csv file containing ids (uniprot or geneID) to map, plus parameters
 #output : KEGG pathway : jpeg or pdf file.
 
+options(warn=-1)  #TURN OFF WARNINGS !!!!!!
+
 suppressMessages(library("pathview"))
 
 read_file <- function(path,header){
@@ -106,6 +108,9 @@ clean_bad_character <- function(string)  {
 
 args <- get_args()
 
+#save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/pathview/args.Rda")
+#load("/home/dchristiany/proteore_project/ProteoRE/tools/pathview/args.Rda")
+
 ###setting variables
 if (!is.null(args$pathways_id)) { 
   ids <- sapply(rapply(strsplit(clean_bad_character(args$pathways_id),","),c), function(x) remove_kegg_prefix(x),USE.NAMES = FALSE)
@@ -124,8 +129,8 @@ header <- str2bool(args$header)
 native_kegg <- str2bool(args$native_kegg)
 species=args$species
 #org list used in mapped2geneID
-org <- c('Hs','Mm')
-names(org) <- c('hsa','mmu')
+org <- c('Hs','Mm','Rn')
+names(org) <- c('hsa','mmu','rno')
 
 
 
@@ -138,12 +143,22 @@ if (!is.null(args$input)){
   ncol=1
 }
 
+#make sure its double and name expression value columns
 e1 <- as.numeric(gsub("c", "" ,args$expression_values1))
-if (!is.null(args$expression_values1)) { colnames(tab)[e1] <- "e1" }
+if (!is.null(args$expression_values1)) { 
+  colnames(tab)[e1] <- "e1" 
+  tab$e1 <- as.double(gsub(",",".",as.character(tab$e1) ))
+  }
 e2 <- as.numeric(gsub("c", "" ,args$expression_values2))
-if (!is.null(args$expression_values2)) { colnames(tab)[e2] <- "e2" }
+if (!is.null(args$expression_values2)) { 
+  colnames(tab)[e2] <- "e2"
+  tab$e2 <- as.double(gsub(",",".",as.character(tab$e2) ))
+  }
 e3 <- as.numeric(gsub("c", "" ,args$expression_values3))
-if (!is.null(args$expression_values3)) { colnames(tab)[e3] <- "e3" }
+if (!is.null(args$expression_values3)) { 
+  colnames(tab)[e3] <- "e3"
+  tab$e3 <- as.double(gsub(",",".",as.character(tab$e3) ))
+  }
 
 
 ##### map uniprotID to entrez geneID
