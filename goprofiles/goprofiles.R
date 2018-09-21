@@ -1,5 +1,7 @@
+options(warn=-1)  #TURN OFF WARNINGS !!!!!!
+
 # Load necessary libraries
-library(goProfiles,quietly = TRUE)
+suppressMessages(library(goProfiles,quietly = TRUE))
 
 # Read file and return file content as data.frame
 readfile = function(filename, header) {
@@ -23,7 +25,7 @@ readfile = function(filename, header) {
 
 check_ids <- function(vector,type) {
   uniprot_pattern = "^([OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9]([A-Z][A-Z0-9]{2}[0-9]){1,2})$"
-  entrez_id = "^'[0-9]+|[A-Z]{1,2}_[0-9]+|[A-Z]{1,2}_[A-Z]{1,4}[0-9]+)$"
+  entrez_id = "^([0-9]+|[A-Z]{1,2}_[0-9]+|[A-Z]{1,2}_[A-Z]{1,4}[0-9]+)$"
   if (type == "Entrez"){
     return(grepl(entrez_id,vector))
   } else if (type == "UniProt") {
@@ -214,10 +216,8 @@ goprofiles = function() {
     # Get file content
     file = readfile(filename, header)
     # Extract Protein IDs list
-    input = c()
-    for (row in as.character(file[,ncol])) {
-      input = c(input, strsplit(row, ";")[[1]][1])
-    }
+    input = unlist(strsplit(file[,ncol],";"))
+    input = input [which(!is.na(input))]
   }
   
   if (! any(check_ids(input,id_type))){
