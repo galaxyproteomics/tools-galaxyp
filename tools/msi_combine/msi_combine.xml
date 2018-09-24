@@ -43,7 +43,7 @@ library(ggplot2)
 
 ## read tabular file for xy_shift option
 #if str( $combine_conditional.combine_method ) == 'xy_shifts':
-    input_list = read.delim("$combine_conditional.coordinates_file", header = FALSE, 
+    input_list = read.delim("$combine_conditional.coordinates_file", header = $combine_conditional.xy_header, 
     stringsAsFactors = FALSE)
 #end if
 
@@ -74,11 +74,14 @@ all_files = $num_infiles
     #if $infile.ext == 'imzml'
         #if str($processed_cond.processed_file) == "processed":
             msidata_$i <- readImzML('infile_${i}', mass.accuracy=$processed_cond.accuracy, units.accuracy = "$processed_cond.units")
+            centroided(msidata) = $centroids
         #else
             msidata_$i <- readImzML('infile_${i}')
+            centroided(msidata) = $centroids
         #end if
     #elif $infile.ext == 'analyze75'
             msidata_$i <- readAnalyze('infile_${i}')
+            centroided(msidata) = $centroids
     #else
             msidata_$i = loadRData('infile_${i}.RData')
     #end if
@@ -259,6 +262,8 @@ print(paste0("Number of removed duplicated coordinates after combination: ", sum
 
 ########### QC with pixels and their annotations ################################
 
+print(paste0("Number of NA in input file: ",sum(is.na(spectra(msidata)[]))))
+
 pdf("Combined_qc.pdf", width=15, height=15)
 
 ## combined plot
@@ -391,20 +396,6 @@ position_df\$sample_name = gsub("^[^_]*_","",position_df\$sample_name)
         print("No annotation tabular output because file has no features or pixels left")
     }
 
-    ####################### optional matrix output #################################
-
-    #if $output_matrix:
-
-        if (length(features(msidata))> 0 & length(pixels(msidata)) > 0){
-            spectramatrix = spectra(msidata)[]
-            spectramatrix = cbind(mz(msidata),spectramatrix)
-            newmatrix = rbind(c("mz", names(pixels(msidata))), spectramatrix)
-            write.table(newmatrix, file="$intensity_matrix", quote = FALSE, row.names = FALSE, col.names=FALSE, sep = "\t")
-        }else{
-            print("No intensity matrix output because file has no features or pixels left")
-        }
-
-    #end if
 
     ]]></configfile>
     </configfiles>
@@ -412,6 +403,7 @@ position_df\$sample_name = gsub("^[^_]*_","",position_df\$sample_name)
         <param name="infiles" type="data" multiple="true" format="imzml,rdata,analyze75"
             label="MSI data as imzml, analyze7.5 or Cardinal MSImageSet saved as RData"
             help="load imzml and ibd file by uploading composite datatype imzml"/>
+        <param name="centroids" type="boolean" label="Is the input data centroided (picked)" help="Choose Yes if peak detection has already been done." truevalue="TRUE" falsevalue="FALSE"/>
         <conditional name="processed_cond">
             <param name="processed_file" type="select" label="Is the input file a processed imzML file ">
                 <option value="no_processed" selected="True">not a processed imzML</option>
@@ -451,20 +443,17 @@ position_df\$sample_name = gsub("^[^_]*_","",position_df\$sample_name)
                 <param name="column_x" data_ref="coordinates_file" label="Column with values for shift in x direction" type="data_column"/>
                 <param name="column_y" data_ref="coordinates_file" label="Column with values for shift in y direction" type="data_column"/>
                 <param name="column_names" data_ref="coordinates_file" label="Column with dataset names" type="data_column"/>
+                <param name="xy_header" type="boolean" label="Tabular files contain a header line" truevalue="TRUE" falsevalue="FALSE"/>
             </when>
         </conditional>
-    <param name="output_matrix" type="boolean" display="radio" label="Intensity matrix output"/>
     </inputs>
     <outputs>
         <data format="rdata" name="msidata_combined" label="MSI_data_combined"/>
         <data format="pdf" name="QC_overview" from_work_dir="Combined_qc.pdf" label = "Combined_QC"/>
         <data format="tabular" name="pixel_annotations" label="Combined_pixel_annotations"/>
-        <data format="tabular" name="intensity_matrix" label="Combined_matrix">
-            <filter>output_matrix</filter>
-        </data>
     </outputs>
     <tests>
-        <test expect_num_outputs="4">
+        <test>
             <param name="infiles" value="msidata_1.RData,msidata_2.RData,msidata_3.RData" ftype="rdata"/>
             <conditional name="annotation_cond">
                 <param name="annotation_tabular" value="annotation"/>
@@ -476,13 +465,11 @@ position_df\$sample_name = gsub("^[^_]*_","",position_df\$sample_name)
             <param name="column_x" value="1"/>
             <param name="column_y" value="2"/>
             <param name="column_names" value="3"/>
-            <param name="output_matrix" value="True"/>
-            <output name="intensity_matrix" file="123_combined_matrix.tabular"/>
             <output name="pixel_annotations" file="123_annotation_output.tabular"/>
             <output name="msidata_combined" file="123_combined.RData" compare="sim_size" />
             <output name="QC_overview" file="123_combined_QC.pdf" compare="sim_size" delta="2000"/>
         </test>
-        <test expect_num_outputs="4">
+        <test>
             <param name="infiles" value="msidata_1.RData,msidata_2.RData" ftype="rdata"/>
             <conditional name="annotation_cond">
                 <param name="annotation_tabular" value="annotation"/>
@@ -490,13 +477,11 @@ position_df\$sample_name = gsub("^[^_]*_","",position_df\$sample_name)
                 <param name="tabular_header" value="TRUE"/>
             </conditional>
             <param name="combine_method" value="automatic_combine"/>
-            <param name="output_matrix" value="True"/>
-            <output name="intensity_matrix" file="12_combined_matrix.tabular"/>
             <output name="pixel_annotations" file="12_annotation_output.tabular"/>
             <output name="msidata_combined" file="12_combined.RData" compare="sim_size" />
             <output name="QC_overview" file="12_combined_QC.pdf" compare="sim_size" delta="2000"/>
         </test>
-        <test expect_num_outputs="3">
+        <test>
             <param name="infiles" value="msidata_1.RData,123_combined.RData" ftype="rdata"/>
             <conditional name="annotation_cond">
                 <param name="annotation_tabular" value="annotation"/>
@@ -504,18 +489,16 @@ position_df\$sample_name = gsub("^[^_]*_","",position_df\$sample_name)
                 <param name="tabular_header" value="TRUE"/>
             </conditional>
             <param name="combine_method" value="automatic_combine"/>
-            <param name="output_matrix" value="False"/>
             <output name="pixel_annotations" file="112_annotation_output.tabular"/>
             <output name="msidata_combined" file="112_auto_combined.RData" compare="sim_size" />
             <output name="QC_overview" file="112_auto_combined_QC.pdf" compare="sim_size" delta="2000"/>
         </test>
-        <test expect_num_outputs="3">
+        <test>
             <param name="infiles" value="msidata_2.RData,123_combined.RData" ftype="rdata"/>
             <conditional name="annotation_cond">
                 <param name="annotation_tabular" value="no_annotation"/>
             </conditional>
             <param name="combine_method" value="automatic_combine"/>
-            <param name="output_matrix" value="False"/>
             <output name="pixel_annotations" file="2123_annotation_output.tabular"/>
             <output name="msidata_combined" file="2123_auto_combined.RData" compare="sim_size" />
             <output name="QC_overview" file="2123_auto_combined_QC.pdf" compare="sim_size" delta="2000"/>
@@ -526,34 +509,62 @@ position_df\$sample_name = gsub("^[^_]*_","",position_df\$sample_name)
 
 Cardinal is an R package that implements statistical & computational tools for analyzing mass spectrometry imaging datasets. `More information on Cardinal <http://cardinalmsi.org//>`_
 
+-----
+
 This tool uses the Cardinal combine function to combine several mass spectrometry imaging data. 
 
-Input data: 3 types of input data can be used:
+**Input data**
 
-- imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <https://ms-imaging.org/wp/imzml/>`_
-- Analyze7.5 (upload hdr, img and t2m file via the "composite" function)
-- Cardinal "MSImageSet" data (with variable name "msidata", saved as .RData)
+- MSI data: 3 types of input data can be used:
+
+    - imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <https://ms-imaging.org/wp/imzml/>`_
+    - Analyze7.5 (upload hdr, img and t2m file via the "composite" function)
+    - Cardinal "MSImageSet" data saved as .RData
+- MSI data files must have the same m/z values (to obtain same m/z values for different files: filtering tool same m/z range and preprocessing tool same binning width)
+- Tabular file with pixel annotations: 
+
+    - First column x values, second column y values, at leat one and up to five columns with pixel annotations (the order of the annotation columns must be the same in all input files)
+    - The order and the number of MSI data files and annotation tabular files must be the same
+    - The file can have any column names as header (in this case set "Tabular file contains a header line" to yes) or no header at all
+
+    ::
+    
+        x_coord     y_coord    annotation1
+           1            1        healthy
+           2            1        healthy
+           3            1        disease
+          ...
+          ...
+    
+
+- For xy shifts with tabular file: Tabular file with x and y coordinates shift and file name
+
+    - Each input file is shifted in x and y direction according to this tabular file. In the example the files have about the same pixel dimensions which is smaller than 510x260.
+    - The file can have any column names as header (in this case set "Tabular file contains a header line" to yes) or no header at all
+
+    ::
+    
+        x_shift     y_shift    file name
+           0            0       file1
+          510           0       file2
+           0           260      file3
+          510          260      file4
+          ...
+          ...
+    
 
 
-Input: 
-
-- MSI data files with same m/z values (to obtain same m/z values for different files: filtering tool same m/z range and preprocessing tool same binning width)
-- Tabular files with pixel annotations need to have the x values in the first column, y values in the second column and then up to five annotations in the next columns. The order of the annotations in the columns must be the same for all files (x and y in column 1 and 2; annotation1 in column3, annotation2 in column4,...)
-- The order and the number of MSI data files and annotation tabular files must be the same
-- For xy shifts with tabular file: Tabular file with x and y coordinates shift and file name (see below)
-
-Options: 
+**Options**
 
 - "automatic combination": files are automatically arranged in a grid (duplicated pixels are allowed), subfiles are named according to the input file name
-- "xy shifts by hand": each file can be moved in x and y direction according to the users need (define one tabular file in the order in which the files are loaded in the history (bottom to top) and define for each file the x and y coordinates shifts in separate columns and the file name in a third column). The xy shift option combines all datasets and removes all duplicated pixels (same x and y coordinates).
+- "xy shifts": each file can be moved in x and y direction according to the users need (define one tabular file in the order in which the files are loaded in the history (bottom to top) and define for each file the x and y coordinates shifts in separate columns and the file name in a third column). The xy shift option combines all datasets and removes all duplicated pixels (same x and y coordinates).
 
 
-Output: 
+**Output**
 
-- single imzML file
+- single imzML file containing all valid input files
 - pdf that shows the pixel positions and annotations of the combined files
-- Tabular file with pixel annotations (x,y,column with input file names, up to five annotation columns)
-- optional: intensity matrix as tabular file (intensities for m/z in rows and pixel in columns)
+- Tabular file with pixel annotations (x,y,column with input file names and up to five annotation columns)
 
 
 ]]>
