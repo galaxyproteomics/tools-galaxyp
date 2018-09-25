@@ -216,7 +216,7 @@ goprofiles = function() {
     # Get file content
     file = readfile(filename, header)
     # Extract Protein IDs list
-    input = unlist(strsplit(file[,ncol],";"))
+    input = unlist(strsplit(as.character(file[,ncol]),";"))
     input = input [which(!is.na(input))]
   }
   
