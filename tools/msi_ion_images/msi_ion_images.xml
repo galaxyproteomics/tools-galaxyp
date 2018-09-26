@@ -1,4 +1,4 @@
-<tool id="mass_spectrometry_imaging_ion_images" name="MSI ion images" version="1.10.0.5">
+<tool id="mass_spectrometry_imaging_ion_images" name="MSI ion images" version="1.10.0.6">
     <description>
         mass spectrometry imaging m/z heatmaps
     </description>
@@ -38,11 +38,14 @@ library(lattice)
 #if $infile.ext == 'imzml'
     #if str($processed_cond.processed_file) == "processed":
         msidata <- readImzML('infile', mass.accuracy=$processed_cond.accuracy, units.accuracy = "$processed_cond.units")
+        centroided(msidata) = $centroids
     #else
         msidata <- readImzML('infile', attach.only=TRUE)
+        centroided(msidata) = $centroids
     #end if
 #elif $infile.ext == 'analyze75'
     msidata = readAnalyze('infile', attach.only=TRUE)
+    centroided(msidata) = $centroids
 #else
     loadRData <- function(fileName){
     load(fileName)
@@ -114,7 +117,7 @@ if (length(processinginfo@peakPicking) == 0) {
 
 ##################################### read and filter input m/z ##############
 
-input_list = read.delim("$massfile", header = FALSE, stringsAsFactors = FALSE)
+input_list = read.delim("$massfile", header = $massfile_header, stringsAsFactors = FALSE)
 
 ### in case input file had only one column with m/z values but not names, duplicate m/z values and use as names:
 if (ncol(input_list) == 1){
@@ -186,7 +189,7 @@ if (npeaks > 0){
 
             ###standard image
 
-            #if str($image_cond.image_type) == "standard_image":
+            #if str($image_type) == "standard_image":
                 print("standard image")
 
                 print(image(msidata, mz=inputmz[mass],plusminus = $plusminus_dalton, contrast.enhance = "$image_contrast", 
@@ -196,7 +199,7 @@ if (npeaks > 0){
 
             ###lattice image
 
-            #elif str($image_cond.image_type) == "lattice_image":
+            #elif str($image_type) == "lattice_image":
                 print("lattice image")
 
                 #if str($strip) =="TRUE": 
@@ -218,7 +221,7 @@ if (npeaks > 0){
             #end if 
 
         ## optional svg output with original coordinates
-        #if str($svg_cond.svg_pixelimage) == "yes_svg":
+        #if str($svg_pixelimage) == "yes_svg":
             print("svg pixel image")
 
             svg(file="svg_pixel_output.svg")
@@ -240,6 +243,7 @@ dev.off()
     <inputs>
         <param name="infile" type="data" format="imzml,rdata,analyze75" label="Inputfile as imzML, Analyze7.5 or Cardinal MSImageSet saved as RData"
             help="Upload composite datatype imzml (ibd+imzML) or analyze75 (hdr+img+t2m) or regular upload .RData (Cardinal MSImageSet)"/>
+        <param name="centroids" type="boolean" label="Is the input data centroided (picked)" help="Choose Yes if peak detection has already been done." truevalue="TRUE" falsevalue="FALSE"/>
         <conditional name="processed_cond">
             <param name="processed_file" type="select" label="Is the input file a processed imzML file ">
                 <option value="no_processed" selected="True">not a processed imzML</option>
@@ -256,7 +260,8 @@ dev.off()
         </conditional>
         <param name="filename" type="text" value="" label="Title" help="will appear in the pdf output. If nothing given it will take the dataset name"/>
         <param name="massfile" type="data" format="tabular" label="Tabular file with m/z and names"
-            help="first column m/z, second column m/z name, tab separated file"/>
+            help="first column m/z, optional second column with m/z name, tab separated file"/>
+        <param name="massfile_header" type="boolean" label="Tabular file contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
         <param name="image_contrast" type="select" label="Select a contrast enhancement function for the heatmap images" help="The 'histogram' equalization method flatterns the distribution of intensities. The hotspot 'suppression' method uses thresholding to reduce the intensities of hotspots">
             <option value="none" selected="True">none</option>
             <option value="suppression">suppression</option>
@@ -270,27 +275,14 @@ dev.off()
         <param name="plusminus_dalton" value="0.25" type="float" label="M/z range" help="plusminus m/z window"/>
         <param name="strip" type="boolean" checked="True" display="radio" truevalue="TRUE" falsevalue="FALSE" label="Display m/z value in plot"/>
         <param name="colorkey" type="boolean" checked="True" display="radio" truevalue="TRUE" falsevalue="FALSE" label="Display colorkey in plot"/>
-        <conditional name="image_cond">
-            <param name="image_type" type="select" label="Select the image type">
-                <option value="standard_image" selected="True">standard</option>
-                <option value="lattice_image">lattice</option>
-            </param>
-        <when value="standard_image"/>
-        <when value="lattice_image"/>
-        </conditional>
-        <conditional name="svg_cond">
-            <param name="svg_pixelimage" type="select" label="Do you want to export a heatmap with the original coordinates as svg image, the first valid m/z from tabular file is used">
-                <option value="no_svg" selected="True">No svg image export</option>
-                <option value="yes_svg">Export svg image</option>
-            </param>
-        <when value="no_svg"/>
-        <when value="yes_svg"/>
-        </conditional>
+        <param name="image_type" type="boolean" checked="True" display="radio" truevalue="standard_image" falsevalue="lattice_image" label="Standard image" help="No: lattice function is used to display image"/>
+        <param name="svg_pixelimage" type="boolean" checked="True" display="radio" truevalue="no_svg" falsevalue="yes_svg" label="Export first valid m/z from tabular file as svg"/>
     </inputs>
     <outputs>
         <data format="pdf" name="plots" from_work_dir="heatmaps.pdf" label = "$infile.display_name heatmaps"/>
         <data format="svg" name="svg_output" from_work_dir="svg_pixel_output.svg" label="$infile.display_name svg">
-            <filter>svg_cond['svg_pixelimage'] == 'yes_svg'</filter>
+            <!--filter>svg_cond['svg_pixelimage'] == 'yes_svg'</filter-->
+            <filter>svg_pixelimage=="yes_svg"</filter>
         </data>
     </outputs>
     <tests>
@@ -320,9 +312,7 @@ dev.off()
             <param name="image_smoothing" value="gaussian"/>
             <param name="strip" value="False"/>
             <param name="colorkey" value="True"/>
-            <conditional name="svg_cond">
-                <param name="svg_pixelimage" value="yes_svg"/>
-            </conditional>
+            <param name="svg_pixelimage" value="yes_svg"/>
             <output name="plots" file="Heatmaps_analyze75.pdf" compare="sim_size" delta="20000"/>
             <output name="svg_output" file="analyze75.svg" compare="sim_size" delta="20000"/>
         </test>
@@ -351,33 +341,43 @@ dev.off()
 
 Cardinal is an R package that implements statistical & computational tools for analyzing mass spectrometry imaging datasets. `More information on Cardinal <http://cardinalmsi.org//>`_
 
-This tool uses the Cardinal image function to plot the intensity distribution of interesting m/z of mass spectrometry imaging data. 
-Input data: 
+-----
 
-3 types of mass spectrometry imaging data can be used:
+This tool uses the Cardinal image function to plot the intensity distribution of m/z feature of mass spectrometry imaging data. 
 
-- imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <https://ms-imaging.org/wp/imzml/>`_
-- Analyze7.5 (upload hdr, img and t2m file via the "composite" function)
-- Cardinal "MSImageSet" data (with variable name "msidata", saved as .RData)
+**Input data**
 
-Tabular file with m/z:
+- MSI data: 3 types of input data can be used:
 
-- tab separated file (.tabular), datatype in Galaxy must be tabular otherwise file will not appear in selection window (if Galaxy auto-detection was wrong, datatype can be changed by pressing button with the pen (edit attributes))
-- first column must contain m/z (separate point numbers by point, not comma)
-- optionally a second column with names for the m/z can be provided
-- no empty fields or letters are allowed in the first column
+    - imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <https://ms-imaging.org/wp/imzml/>`_
+    - Analyze7.5 (upload hdr, img and t2m file via the "composite" function)
+    - Cardinal "MSImageSet" data saved as .RData
+- Tabular file with m/z values: 
+    - First column must contain m/z values, without empty fields or letters
+    - Optionally a second column with names for the m/z can be provided
+    - The file is allowed to have any column names as header (in this case set "Tabular file contains a header line" to yes)
 
-Output:
+    ::
+    
+            m/z
+          100.0
+          100.01
+          100.02
+           ...
+           ...    
+
+**Tips** 
+
+- In case tabular file cannot be selected in drop-down menu: Datatype in Galaxy must be tabular otherwise file will not appear in selection window (if Galaxy auto-detection was wrong, datatype can be changed by pressing the pen button (edit attributes))
+- No heatmaps are plotted when the input mass spectrometry imaging file has no intensities > 0 or all chosen m/z features are not present in the MSI dataset
+- The contrast enhance and image smoothing functions require a certain number (about 2%) of m/z features with intensities > 0 across all spectra
+- The standard image function should work for all files while the lattice function works not perfectly on every file
+
+**Output**
 
 - Pdf with the heatmap images
-- optional svg file of a mass-spectrometry imaging m/z heatmap
+- optional: svg file with the heatmap of the first valid m/z in the tabular file
 
-Troubleshooting:
-
-- no heatmaps are plotted when tabular file doesn't fulfill the criteria described above
-- no heatmaps are plotted when the input mass spectrometry imaging file has no intensities > 0
-- the contrast enhance and image smoothing functions require a certain number of m/z with intensities > 0 (empirical value > 2% of spectra)
-- the standard image function should work for all files while the lattice function works not on every file (nicely)
 
     ]]>
     </help>
