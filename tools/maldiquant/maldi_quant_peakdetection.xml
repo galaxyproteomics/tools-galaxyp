@@ -1,4 +1,4 @@
-<tool id="maldi_quant_peak_detection" name="MALDIquant peak detection" version="1.18.0.0">
+<tool id="maldi_quant_peak_detection" name="MALDIquant peak detection" version="1.18.0.1">
     <description>
         Peak detection, binning and filtering for mass-spectrometry imaging data
     </description>
@@ -15,6 +15,8 @@
             cp '${infile.extra_files_path}/hdr' infile.hdr &&
             cp '${infile.extra_files_path}/img' infile.img &&
             cp '${infile.extra_files_path}/t2m' infile.t2m &&
+        #else
+            ln -s $infile infile.RData &&
         #end if
         Rscript '${maldi_quant_peak_detection}'&&
         mkdir $outfile_imzml.files_path &&
@@ -29,36 +31,42 @@
 
 @R_IMPORTS@
 
-summarized_spectra = FALSE
+
 
 #if $restriction_conditional.restriction == 'restrict':
 
     print('Reading mask region')
+
     ## Import imzML file
-    coordinate_matrix = as.matrix(read.delim("$restriction_conditional.coordinates_file", header = FALSE, stringsAsFactors = FALSE))[,1:2]
+    coordinate_matrix = as.matrix(read.delim("$restriction_conditional.coordinates_file", header = $restriction_conditional.coordinates_header, stringsAsFactors = FALSE))[,1:2]
 
     maldi_data <- importImzMl('infile.imzML',
                      coordinates = coordinate_matrix, centroided = $centroids)
-    pixelnames = paste0("x = ", coordinates(maldi_data)[,1],", y = ", coordinates(maldi_data)[,2])
+    pixelnames = paste("xy", coordinates(maldi_data)[,1],coordinates(maldi_data)[,2], sep="_")
+
+## pixelnames in same format as in intensity matrix
+print(pixelnames)
+
 
 #else:
 
     print('Reading entire file')
     ## Import imzML file
 
-
     #if $infile.ext == 'imzml'
-
+        print('imzML file')
         #if str($centroids) == "TRUE"
             peaks <- importImzMl('infile.imzML', centroided = $centroids)
-            pixelnames = paste0("x = ", coordinates(peaks)[,1],", y = ", coordinates(peaks)[,2])
-
+            pixelnames = paste("xy", coordinates(maldi_data)[,1],coordinates(maldi_data)[,2], sep="_")
         #else
             maldi_data <- importImzMl('infile.imzML', centroided = $centroids)
-            pixelnames = paste0("x = ", coordinates(maldi_data)[,1],", y = ", coordinates(maldi_data)[,2])
+            pixelnames = paste("xy", coordinates(maldi_data)[,1],coordinates(maldi_data)[,2], sep="_")
         #end if
-    #elif $infile.ext == 'tabular'
+            coordinates_info = cbind(coordinates(maldi_data)[,1:2], c(1:length(maldi_data)))
 
+    #elif $infile.ext == 'tabular'
+        print('tabular file')
+        #set $centroids = "TRUE" ## will be used in some if conditions
         peak_tabular = read.delim("$infile", header = TRUE, stringsAsFactors = FALSE)
         peak_list = split(peak_tabular, f = peak_tabular\$spectrum) ## will be ordered according to spectrum
         pixelnames = unique(peak_tabular\$spectrum)
@@ -66,17 +74,48 @@ summarized_spectra = FALSE
         peaks = list()
         for (spectra in 1:length(peak_list))
         {
-        single_peaks = createMassPeaks(peak_list[[spectra]]\$mass, peak_list[[spectra]]\$intensity, snr=peak_list[[spectra]]\$snr)
-        peaks[[spectra]] = single_peaks
+            single_peaks = createMassPeaks(peak_list[[spectra]]\$mass, peak_list[[spectra]]\$intensity, snr=peak_list[[spectra]]\$snr)
+            peaks[[spectra]] = single_peaks
         }
 
+    #else
+        print('rdata file')
+        loadRData <- function(fileName){
+        #loads an RData file, and returns it
+        load(fileName)
+        get(ls()[ls() != "fileName"])
+        }
+        msidata = loadRData('infile.RData')
+        centroided(msidata) = $centroids
+        pixelnames = gsub(", y = ", "_", names(Cardinal::pixels(msidata)))
+        pixelnames = gsub(" = ", "y_", pixelnames)
+
+        cardinal_coordinates = as.matrix(Cardinal::coord(msidata)[,1:2])
+
+        if (centroided(msidata) == FALSE){
+            ## create mass spectrum object
+            cardinal_mzs = Cardinal::mz(msidata)
+            maldi_data = list()
+            for(number_spectra in 1:ncol(msidata)){
+                maldi_data[[number_spectra]] = createMassSpectrum(mass = cardinal_mzs, intensity = iData(msidata)[,number_spectra])
+                coordinates_info = cbind(cardinal_coordinates, c(1:length(maldi_data)))}
+            coordinates_info = cbind(cardinal_coordinates, c(1:length(maldi_data)))
+        }else{
+            peaks = list()
+            for (spectra in 1:ncol(msidata))
+            {
+                single_peaks = createMassPeaks(Cardinal::mz(msidata), Cardinal::spectra(msidata)[,spectra], snr=as.numeric(rep("NA", nrow(msidata))))
+                peaks[[spectra]] = single_peaks
+            }}
     #end if
-
-
 #end if
 
-## Quality control plots during peak detection
 
+
+## default summarized = FALSE
+summarized_spectra = FALSE
+
+## Quality control plots during peak detection
 pdf("peaks_qc_plot.pdf", fonts = "Times", pointsize = 12)
 plot(0,type='n',axes=FALSE,ann=FALSE)
 
@@ -86,18 +125,34 @@ plot(0,type='n',axes=FALSE,ann=FALSE)
 title(main=paste("$filename"))
 
 ## plot input file spectrum: 
-#if $infile.ext == 'imzml'
-
-    #if str($centroids) == "TRUE"
-            plot(peaks[[1]], main="First spectrum of input file")
-    #else
-        avgSpectra <- averageMassSpectra(maldi_data,method="mean")
-        plot(avgSpectra, main="Average spectrum of input file")
-    #end if
-#elif $infile.ext == 'tabular'
-    plot(peaks[[1]], main="First spectrum of input file")
+#if str($centroids) == "TRUE"
+        plot(peaks[[1]], main="First spectrum of input file")
+#else
+    avgSpectra <- averageMassSpectra(maldi_data,method="mean")
+    plot(avgSpectra, main="Average spectrum of input file")
 #end if
 
+
+## QC numbers for input file
+#if str($centroids) == "TRUE"
+    pixel_number = length(peaks)
+    minmz = round(min(unlist(lapply(peaks,mass))), digits=4)
+    maxmz = round(max(unlist(lapply(peaks,mass))), digits=4)
+    maxfeatures = round(length(unlist(lapply(peaks,mass)))/length(peaks), digits=2)
+    medint = round(median(unlist(lapply(peaks,intensity))), digits=2)
+    inputdata = c(minmz, maxmz,maxfeatures,  medint)
+    QC_numbers= data.frame(inputdata = c(minmz, maxmz,maxfeatures, medint))
+    vectorofactions = "inputdata"
+#else
+    pixel_number = length(maldi_data)
+    minmz = round(min(unlist(lapply(maldi_data,mass))), digits=4)
+    maxmz = round(max(unlist(lapply(maldi_data,mass))), digits=4)
+    maxfeatures = round(length(unlist(lapply(maldi_data,mass)))/length(maldi_data), digits=2)
+    medint = round(median(unlist(lapply(maldi_data,intensity))), digits=2)
+    inputdata = c(minmz, maxmz,maxfeatures,  medint)
+    QC_numbers= data.frame(inputdata = c(minmz, maxmz,maxfeatures, medint))
+    vectorofactions = "inputdata"
+#end if
 
 #if str($tabular_annotation.load_annotation) == 'yes_annotation':
 
@@ -107,10 +162,8 @@ title(main=paste("$filename"))
     colnames(annotation_input) = c("x", "y", "annotation") ## rename annotations header to default name "annotation"
 
     ## merge with coordinate information of MSI data
-
-    coordinates_st = cbind(coordinates(maldi_data)[,1:2], c(1:length(maldi_data)))
-    colnames(coordinates_st)[3] = "pixel_index"
-    merged_annotation = merge(coordinates_st, annotation_input, by=c("x", "y"), all.x=TRUE)
+    colnames(coordinates_info)[3] = "pixel_index"
+    merged_annotation = merge(coordinates_info, annotation_input, by=c("x", "y"), all.x=TRUE)
     merged_annotation[is.na(merged_annotation)] = "NA"
     merged_annotation = merged_annotation[order(merged_annotation\$pixel_index),]
     samples = as.factor(merged_annotation\$annotation)
@@ -151,14 +204,13 @@ title(main=paste("$filename"))
 
 #for $method in $methods:
 
-
     #if str( $method.methods_conditional.method ) == 'Peak_detection':
         print('peak detection')
         ##peak detection
 
         #if $method.methods_conditional.use_annotations:
             maldi_data <- averageMassSpectra(maldi_data, labels=samples,method="mean") ## use average spectra for peak picking
-            pixelnames = merged_annotation\$annotation
+            pixelnames = levels(samples)
             summarized_spectra = TRUE
 
         #end if
@@ -166,8 +218,16 @@ title(main=paste("$filename"))
         peaks <- detectPeaks(maldi_data, method="$method.methods_conditional.peak_method",
                   halfWindowSize=$method.methods_conditional.halfWindowSize,SNR=$method.methods_conditional.snr)
 
-        ## QC plot
+        ## QC plot and numbers
         plot(peaks[[1]], main="First spectrum after peak detection")
+        pixel_number = length(peaks)
+        minmz = round(min(unlist(lapply(peaks,mass))), digits=4)
+        maxmz = round(max(unlist(lapply(peaks,mass))), digits=4)
+        maxfeatures = round(length(unlist(lapply(peaks,mass)))/length(peaks), digits=2)
+        medint = round(median(unlist(lapply(peaks,intensity))), digits=2)
+        peaks_picked = c(minmz, maxmz,maxfeatures, medint)
+        QC_numbers= cbind(QC_numbers, peaks_picked)
+        vectorofactions = append(vectorofactions, "peaks_picked")
 
         if (length(peaks[!sapply(peaks, isEmpty)])>0){
             #if $infile.ext == 'imzml'
@@ -178,7 +238,7 @@ title(main=paste("$filename"))
                 featureMatrix <- intensityMatrix(peaks)
             #end if
             featureMatrix2 =cbind(pixelnames, featureMatrix)
-            colnames(featureMatrix2)[1] = c("mz | spectra")
+            colnames(featureMatrix2)[1] = c("mz")
             featureMatrix2 = t(featureMatrix2)
             write.table(featureMatrix2, file="$intensity_matrix", quote = FALSE, row.names = TRUE, col.names=FALSE, sep = "\t")
         }else{print("There are no spectra with peaks left")}
@@ -191,8 +251,15 @@ title(main=paste("$filename"))
 
         peaks = monoisotopicPeaks(peaks, minCor=$method.methods_conditional.minCor, tolerance=$method.methods_conditional.tolerance, distance=$method.methods_conditional.distance, size=$method.methods_conditional.size)
 
-        ## QC plot
+        ## QC plot and numbers
         plot(peaks[[1]], main="First spectrum after monoisotopic peaks detection")
+        minmz = round(min(unlist(lapply(peaks,mass))), digits=4)
+        maxmz = round(max(unlist(lapply(peaks,mass))), digits=4)
+        maxfeatures = round(length(unlist(lapply(peaks,mass)))/length(peaks), digits=2)
+        medint = round(median(unlist(lapply(peaks,intensity))), digits=2)
+        monoisotopes = c(minmz, maxmz,maxfeatures, medint)
+        QC_numbers= cbind(QC_numbers, monoisotopes)
+        vectorofactions = append(vectorofactions, "monoisotopes")
 
         if (length(peaks[!sapply(peaks, isEmpty)])>0){
             #if $infile.ext == 'imzml'
@@ -203,7 +270,7 @@ title(main=paste("$filename"))
                 featureMatrix <- intensityMatrix(peaks)
             #end if
             featureMatrix2 =cbind(pixelnames, featureMatrix)
-            colnames(featureMatrix2)[1] = c("mz | spectra")
+            colnames(featureMatrix2)[1] = c("mz")
             featureMatrix2 = t(featureMatrix2)
             write.table(featureMatrix2, file="$intensity_matrix", quote = FALSE, row.names = TRUE, col.names=FALSE, sep = "\t")
         }else{print("There are no spectra with peaks left")}
@@ -214,8 +281,16 @@ title(main=paste("$filename"))
         ##m/z binning
 
         peaks <- binPeaks(peaks, tolerance=$method.methods_conditional.bin_tolerance)
-        ## QC plot
+
+        ## QC plot and numbers
         plot(peaks[[1]], main="First spectrum after binning")
+        minmz = round(min(unlist(lapply(peaks,mass))), digits=4)
+        maxmz = round(max(unlist(lapply(peaks,mass))), digits=4)
+        maxfeatures = round(length(unlist(lapply(peaks,mass)))/length(peaks), digits=2)
+        medint =round( median(unlist(lapply(peaks,intensity))), digits=2)
+        binned = c(minmz, maxmz,maxfeatures, medint)
+        QC_numbers= cbind(QC_numbers, binned)
+        vectorofactions = append(vectorofactions, "binned")
 
         if (length(peaks[!sapply(peaks, isEmpty)])>0){
             #if $infile.ext == 'imzml'
@@ -229,7 +304,7 @@ title(main=paste("$filename"))
                 featureMatrix <- intensityMatrix(peaks)
             #end if
             featureMatrix2 =cbind(pixelnames, featureMatrix)
-            colnames(featureMatrix2)[1] = c("mz | spectra")
+            colnames(featureMatrix2)[1] = c("mz")
             featureMatrix2 = t(featureMatrix2)
             write.table(featureMatrix2, file="$intensity_matrix", quote = FALSE, row.names = TRUE, col.names=FALSE, sep = "\t")
         }else{print("There are no spectra with peaks left")}
@@ -256,8 +331,15 @@ title(main=paste("$filename"))
             mergeWhitelists=$method.methods_conditional.mergeWhitelists, label = samples)
         #end if
 
-        ##QC plot
+        ##QC plot and numbers
         plot(peaks[[1]], main="First spectrum after m/z filtering")
+        minmz = round(min(unlist(lapply(peaks,mass))), digits=4)
+        maxmz = round(max(unlist(lapply(peaks,mass))), digits=4)
+        maxfeatures = round(length(unlist(lapply(peaks,mass)))/length(peaks), digits=2)
+        medint = round(median(unlist(lapply(peaks,intensity))), digits=2)
+        filtered = c(minmz, maxmz,maxfeatures, medint)
+        QC_numbers= cbind(QC_numbers, filtered)
+        vectorofactions = append(vectorofactions, "filtered")
   
         if (length(peaks[!sapply(peaks, isEmpty)])>0){
             #if $infile.ext == 'imzml'
@@ -268,58 +350,67 @@ title(main=paste("$filename"))
                 featureMatrix <- intensityMatrix(peaks)
             #end if
             featureMatrix2 =cbind(pixelnames, featureMatrix)
-            colnames(featureMatrix2)[1] = c("mz | spectra")
+            colnames(featureMatrix2)[1] = c("mz")
             featureMatrix2 = t(featureMatrix2)
+        }else{print("There are no spectra with peaks left")
+              featureMatrix2 = matrix(0, ncol=1, nrow=1)}
             write.table(featureMatrix2, file="$intensity_matrix", quote = FALSE, row.names = TRUE, col.names=FALSE, sep = "\t")
-        }else{print("There are no spectra with peaks left")}
-
     #end if
 #end for
 
-        if (length(peaks[!sapply(peaks, isEmpty)])>0){
-           ## mass peaks output
-            mass_peaks = data.frame(matrix(,ncol=3, nrow=0))
-            for (spectrum in 1:length(peaks)){
-            spectrum_df = data.frame(peaks[[spectrum]]@snr, peaks[[spectrum]]@mass, peaks[[spectrum]]@intensity)
-            spectrum_df\$spectrum_id = rep(pixelnames[[spectrum]], length(peaks[[spectrum]]@mass))
-            mass_peaks = rbind(mass_peaks,spectrum_df)
-            }
-            colnames(mass_peaks) = c("snr", "mass", "intensity", "spectrum")
-            write.table(mass_peaks, file="$masspeaks", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
-        }else{print("There are no spectra with peaks left")}
+if (length(peaks[!sapply(peaks, isEmpty)])>0){
+   ## mass peaks output
+    mass_peaks = data.frame(matrix(,ncol=3, nrow=0))
+    for (spectrum in 1:length(peaks)){
+    spectrum_df = data.frame(peaks[[spectrum]]@snr, peaks[[spectrum]]@mass, peaks[[spectrum]]@intensity)
+    spectrum_df\$spectrum_id = rep(pixelnames[[spectrum]], length(peaks[[spectrum]]@mass))
+    mass_peaks = rbind(mass_peaks,spectrum_df)
+    }
+    colnames(mass_peaks) = c("snr", "mass", "intensity", "spectrum")
+    write.table(mass_peaks, file="$masspeaks", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+}else{print("There are no spectra with peaks left")}
+
+## print table with QC values
+rownames(QC_numbers) = c("min m/z", "max mz", "# features", "median\nintensity")
+plot(0,type='n',axes=FALSE,ann=FALSE)
+grid.table(t(QC_numbers))
 
 dev.off()
 
 if (summarized_spectra == FALSE){ 
     #if $infile.ext == 'imzml'
-        exportImzMl(peaks, file="out.imzMl", processed=$export_processed)
+        MALDIquantForeign::exportImzMl(peaks, file="out.imzMl", processed=$export_processed)
     #elif $infile.ext == 'tabular'
-        masspeaks_coordinates = matrix(unlist(strsplit(as.character(pixelnames), "\\,")), ncol=2, byrow=TRUE)
+        masspeaks_coordinates = matrix(unlist(strsplit(as.character(pixelnames), "\\_")), ncol=3, byrow=TRUE)
         ## extract x and y values and create the coordinate matrix in case tabular was input
-        peaklist_coordinates = unique(cbind(as.numeric(substring(masspeaks_coordinates[,1], 5, last = 1000000L)), as.numeric(substring(masspeaks_coordinates[,2], 5, last = 1000000L))))
+        peaklist_coordinates = unique(cbind(as.numeric(masspeaks_coordinates[,2]), as.numeric(masspeaks_coordinates[,3])))
         exportImzMl(peaks, file="out.imzMl", processed=$export_processed, coordinates=peaklist_coordinates)
+    #elif $infile.ext == 'rdata'
+        MALDIquantForeign::exportImzMl(peaks, file="out.imzMl", processed=$export_processed, coordinates=cardinal_coordinates)
     #end if
+
 }
 
     ]]>
         </configfile>
     </configfiles>
     <inputs>
-        <param name="infile" type="data" format="imzml,tabular" label="MS metadata" help="This file is in imzML or tabular format (peak list, peak detection cannot be run again)"/>
-        <param name="centroids" type="boolean" label="Is the imzML data centroided (picked)" help="Choose Yes if peak detection has already been done. Peak detection cannot be run again on centroided data" truevalue="TRUE" falsevalue="FALSE"/>
+        <param name="infile" type="data" format="imzml,tabular,rdata" label="Inputfile as imzML or Cardinal MSImageSet saved as RData" help="This file is in imzML or tabular format (peak list, peak detection cannot be run again) or Cardinal MSImageSet saved as RData"/>
+        <param name="centroids" type="boolean" label="Is the imzML/RData data centroided (picked)" help="Choose Yes if peak detection has already been done. Peak detection cannot be run again on centroided data" truevalue="TRUE" falsevalue="FALSE"/>
         <conditional name="restriction_conditional">
-            <param name="restriction" type="select" label="Restrict the preprocessing to coordinates of interest">
+            <param name="restriction" type="select" label="Read in only spectra of interest" help="This option only works for imzML files">
                 <option value="no_restriction" selected="True">Calculate on entire file</option>
                 <option value="restrict">Restrict to coordinates of interest</option>
             </param>
             <when value="restrict">
-                <param name="coordinates_file" type="data" format="tabular" label="Tabular file with coordinates which should be read" help="x-values in first column, y-values in second column"/>
+                <param name="coordinates_file" type="data" format="tabular" label="Tabular file with coordinates" help="x-values in first column, y-values in second column"/>
+                <param name="coordinates_header" type="boolean" label="Tabular file contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
             </when>
             <when value="no_restriction"/>
         </conditional>
 
         <conditional name="tabular_annotation">
-            <param name="load_annotation" type="select" label="Use pixel annotation from tabular file - select in peak detection or filtering step where you want to apply the annotation information">
+            <param name="load_annotation" type="select" label="Use pixel annotation from tabular file - select in peak detection or filtering step where annotation should be used">
                 <option value="no_annotation" selected="True">pixels belong into one group only</option>
                 <option value="yes_annotation">use pixel annotation from a tabular file</option>
             </param>
@@ -335,7 +426,7 @@ if (summarized_spectra == FALSE){
         </conditional>
         <repeat name="methods" title="Method" min="1">
             <conditional name="methods_conditional">
-                <param name="method" type="select" label="Select the method you want to apply">
+                <param name="method" type="select" label="Select a method">
                     <option value="Peak_detection">Peak detection</option>
                     <option value="monoisotopic_peaks">Keep only monoisotopic peaks</option>
                     <option value="Binning">Binning</option>
@@ -369,9 +460,9 @@ if (summarized_spectra == FALSE){
                 </when>
                 <when value="Filtering">
                     <param name="minFrequency" type="float" value="0.25"
-                        label="Remove all peaks which occur in less than minFrequency spectra" help="It is a relative threshold."/>
+                        label="Removal of all peaks which occur in less than minFrequency spectra" help="It is a relative threshold. The higher value from relative and absolute threshold is taken. Set one value to zero to be sure it will not be sure."/>
                     <param name="minNumber" type="float" value="1.0"
-                        label="remove all peaks which occur in less than minNumber spectra" help="It is an absolute threshold."/>
+                        label="Removal of all peaks which occur in less than minNumber spectra" help="It is an absolute threshold. The higher value from relative and absolute threshold is taken. Set one value to zero to be sure it will not be sure."/>
                     <param name="filter_annot_groups" type="boolean" label="Group wise filtering with pixel annotations. If not specified a single group is assumed or when filtering has been done group wise it will automatically be group wise when selecting filtering on all pixel" truevalue="TRUE" falsevalue="FALSE"/>
                     <param name="mergeWhitelists" type="boolean" truevalue="TRUE" falsevalue="FALSE"
                         label="mergeWhitelists" help="if FALSE the filtering criteria are applied groupwise. If TRUE peaks that survive the filtering in one group (level of labels) these peaks are also kept in other groups even if their frequencies are below minFrequency"/>
@@ -381,7 +472,7 @@ if (summarized_spectra == FALSE){
         <param name="export_processed" type="boolean" label="Export file as processed imzML" help="otherwise continuous imzML will be exported" checked="true" truevalue="TRUE" falsevalue="FALSE"/>
     </inputs>
     <outputs>
-        <data format="imzml" name="outfile_imzml" label="$infile.display_name peaks" />
+        <data format="imzml" name="outfile_imzml" label="$infile.display_name peaks"/>
         <data format="pdf" name="plots" from_work_dir="peaks_qc_plot.pdf" label = "$infile.display_name peakdetection QC"/>
         <data format="tabular" name="masspeaks" label="$infile.display_name mass_peaks"/>
         <data format="tabular" name="intensity_matrix" label="intensity_matrix"/>
@@ -414,13 +505,11 @@ if (summarized_spectra == FALSE){
             <output name="intensity_matrix" file="int1.tabular"/>
         </test>
         <test>
-            <param name="infile" value="masspeaks1_forinput.tabular"/>
+            <param name="infile" value="masspeaks3_forinput.tabular"/>
             <param name="centroids" value="TRUE"/>
              <repeat name="methods">
                 <conditional name="methods_conditional">
                 <param name="method" value="monoisotopic_peaks"/>
-                <param name="minCor" value="0.60"/>
-                <param name="tolerance" value="0.0001"/>
             </conditional>
             </repeat>
             <output name="plots" file="peakdetection2_QC.pdf" compare="sim_size"/>
@@ -457,7 +546,6 @@ if (summarized_spectra == FALSE){
             <repeat name="methods">
                 <conditional name="methods_conditional">
                     <param name="method" value="Filtering"/>
-                    <param name="bin_tolerance" value="0.01"/>
                     <param name="minFrequency" value="0.5"/>
                     <param name="minNumber" value="3"/>
                     <param name="filter_annot_groups" value="TRUE"/>
@@ -474,28 +562,64 @@ if (summarized_spectra == FALSE){
 
 MALDIquant_ provides a complete analysis pipeline for MALDI-TOF and other mass spectrometry data. So far we have only implemented the functionalities for mass spectrometry imaging data.
 
-Input data: 
+-----
 
-- MSI data as imzML or file (upload via the "composite" function) `Introduction to the imzml format <https://ms-imaging.org/wp/imzml/>`_
-- or MSI data as peak list (tabular file) with the columns named "snr", "mass", "intensity" and "spectrum". To obtain a valid imzML output file spectrum should contain the pixel coordinates in the format: "x = 1, y = 1"
-- optinal tabular file with pixel coordinates to restrict reading of imzML file to coordinates of interest
-- optional tabular file with pixel annotations. The annotations can be used to summarize pixels of an imzML file which belong to the same group and detect peaks on average spectra, further steps will be done on average spectra as well and average spectra are exported. If this option was not chosen the filtering tool can use the annotations to filter for peaks within pixel groups (select "Group wise filtering")
+**Input data**
+
+- MSI data: 3 types of input data can be used:
+
+    - imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <https://ms-imaging.org/wp/imzml/>`_
+    - Cardinal "MSImageSet" data saved as .RData
+    - MSI data as peak list (tabular file) with the columns named "snr", "mass", "intensity" and "spectrum". The spectrum has to be in the following format: xy_1_1 (for pixel coordinates x1y1). The header must have exactly the four column names.
+
+        ::    
+        
+            snr          mass      intensity   spectrum
+            5.34	304.16     0.10         xy_1_1
+            12.09	305        0.2          xy_1_1
+            6.80	306.25     0.133        xy_1_1
+            ...
+            ...    
 
 
-Options:
+- Optional:  Tabular file with pixel coordinates to restrict reading of imzML files to coordinates of interest. The file has to contain x values in the first column and y values in the second columns. Further columns are allowed. Tabular files with any header name or no header at all are supported. 
 
-- Peak detection: detection of peaks, only possible with imzML input
+    ::
+
+       x_coord     y_coord 
+         1            1    
+         2            1    
+         3            1    
+        ...
+        ...
+
+
+- Optional: Tabular file(s) containing pixel coordinates and annotation. X and y values in separate columns and the corresponding annotation in a third column. Tabular files with any header name or no header at all are supported. The annotations can be used to summarize pixels of an imzML file which belong to the same group and detect peaks on average spectra, further steps will be done on average spectra as well and average spectra are exported. If this option was not chosen the filtering tool can use the annotations to filter for peaks within pixel groups (select "Group wise filtering").
+
+    ::
+
+     x_coord     y_coord    annotation
+        1            1        healthy
+        2            1        healthy
+        3            1        disease
+       ...
+       ...
+
+
+**Options**
+
+- Peak detection: detection of peaks, only possible with profile mode input
 - Monoisotopic peaks: detection of monoisotopic peaks
-- Peak binning: After the alignment the peak positions (mass) are very similar but not identical. The binning is needed to make similar peak mass values identical.
+- Peak binning: After the alignment the peak positions (m/z) are very similar but not identical. The binning is needed to make similar peak m/z values identical.
 - Peak filtering: Removal of less frequent peaks (either with a minimum ratio or with an absolute minimum number of spectra in which the peak has to occur)
 
 
-Output: 
+**Output**
 
-- centroided processed or continuous imzML file
-- pdf with mass spectra after each preprocessing step
+- centroided imzML file (processed or continuous), except for peak picking on the average of multiple spectra
+- pdf with mass spectra plots after each preprocessing step
 - peak list (tabular file) with the columns "snr", "mass", "intensity" and "spectrum"
-- tabular file with intensity matrix (m/z in rows and spectra in columns). If the input file was imzML in profile mode the intensities before peak picking are also stored in the matrix . For all other inputs not picked values are set to NA. 
+- tabular file with intensity matrix (m/z in rows and spectra in columns). If the input file was imzML in profile mode the intensities before peak picking are also stored in the matrix . For all other inputs not picked values are set to NA. For peak picking on the average of multiple spectra, each spectra group is a column with mean intensities for each m/z
 
 .. _MALDIquant: http://strimmerlab.org/software/maldiquant/
 

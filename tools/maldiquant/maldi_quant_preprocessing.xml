@@ -1,4 +1,4 @@
-<tool id="maldi_quant_preprocessing" name="MALDIquant preprocessing" version="1.18.0.0">
+<tool id="maldi_quant_preprocessing" name="MALDIquant preprocessing" version="1.18.0.1">
     <description>
         Preprocessing of mass-spectrometry imaging data
     </description>
@@ -39,7 +39,7 @@
     print('Reading mask region')
     ## Import imzML file
 
-    coordinate_matrix = as.matrix(read.delim("$restriction_conditional.coordinates_file", header = FALSE, stringsAsFactors = FALSE))[,1:2]
+    coordinate_matrix = as.matrix(read.delim("$restriction_conditional.coordinates_file", header = $restriction_conditional.coordinates_header, stringsAsFactors = FALSE))[,1:2]
 
     maldi_data = importImzMl('infile.imzML',
                      coordinates = coordinate_matrix)
@@ -51,9 +51,11 @@
     #if $infile.ext == 'imzml'
         ## Import imzML file
         maldi_data = import( 'infile.imzML', type="imzML" )
+        coordinates_info = cbind(coordinates(maldi_data)[,1:2], c(1:length(maldi_data)))
     #elif $infile.ext == 'analyze75'
         ## Import analyze7.5 file
         maldi_data = import( 'infile.hdr' )
+        coordinates_info = cbind(coordinates(maldi_data)[,1:2], c(1:length(maldi_data)))
     #else
         loadRData <- function(fileName){
         #loads an RData file, and returns it
@@ -61,7 +63,6 @@
         get(ls()[ls() != "fileName"])
         }
         msidata = loadRData('infile.RData')
-
         ## save coordinates
         cardinal_coordinates = as.matrix(Cardinal::coord(msidata)[,1:2])
         ## save mz values
@@ -70,13 +71,14 @@
         maldi_data = list()
         for(number_spectra in 1:ncol(msidata)){
         maldi_data[[number_spectra]] = createMassSpectrum(mass = cardinal_mzs, intensity = iData(msidata)[,number_spectra])
+        coordinates_info = cbind(cardinal_coordinates, c(1:length(maldi_data)))
         }
 
     #end if
 
 #end if
 
-## Quality control plots during preprocessing 
+## Quality control plots during preprocessing
 
 pdf("prepro_qc_plot.pdf", fonts = "Times", pointsize = 12)
 plot(0,type='n',axes=FALSE,ann=FALSE)
@@ -87,15 +89,16 @@ title(main=paste("$filename"))
 
 #if str($tabular_annotation.load_annotation) == 'yes_annotation':
     print("use annotation file")
+
     ## read and extract x,y,annotation information
     input_tabular = read.delim("$tabular_annotation.annotation_file", header = $tabular_annotation.tabular_header, stringsAsFactors = FALSE)
     annotation_input = input_tabular[,c($tabular_annotation.column_x, $tabular_annotation.column_y, $tabular_annotation.column_names)]
     colnames(annotation_input) = c("x", "y", "annotation") ## rename annotations header to default name "annotation"
 
-    ## merge with coordinate information of MSI data
-    coordinates_st = cbind(coordinates(maldi_data)[,1:2], c(1:length(maldi_data)))
-    colnames(coordinates_st)[3] = "pixel_index"
-    merged_annotation = merge(coordinates_st, annotation_input, by=c("x", "y"), all.x=TRUE)
+    ## merge with coordinate information (from above) of MSI data
+    colnames(coordinates_info)[3] = "pixel_index"
+print(coordinates_info)
+    merged_annotation = merge(coordinates_info, annotation_input, by=c("x", "y"), all.x=TRUE)
     merged_annotation[is.na(merged_annotation)] = "NA"
     merged_annotation = merged_annotation[order(merged_annotation\$pixel_index),]
     samples = as.factor(merged_annotation\$annotation)
@@ -133,9 +136,19 @@ title(main=paste("$filename"))
 
 #################### Preprocessing methods #####################################
 
-## QC plot
+## QC plot on input file
 avgSpectra = averageMassSpectra(maldi_data,method="mean")
 plot(avgSpectra, main="Average spectrum for input file")
+
+pixel_number = length(maldi_data)
+minmz = round(min(unlist(lapply(maldi_data,mass))), digits=4)
+maxmz = round(max(unlist(lapply(maldi_data,mass))), digits=4)
+maxfeatures = round(length(unlist(lapply(maldi_data,mass)))/length(maldi_data), digits=2)
+medint = round(median(unlist(lapply(maldi_data,intensity))), digits=2)
+inputdata = c(minmz, maxmz,maxfeatures,  medint)
+QC_numbers= data.frame(inputdata = c(minmz, maxmz,maxfeatures, medint))
+vectorofactions = "inputdata"
+
 
 #for $method in $methods:
 
@@ -144,9 +157,17 @@ plot(avgSpectra, main="Average spectrum for input file")
         print('transforming')
         ##transformation
         maldi_data = transformIntensity(maldi_data, method="$method.methods_conditional.transform_method")
-        ## QC plot
+        ## QC plot and numbers
         avgSpectra = averageMassSpectra(maldi_data,method="mean")
         plot(avgSpectra, main="Average spectrum after transformation")
+        pixel_number = length(maldi_data)
+        minmz = round(min(unlist(lapply(maldi_data,mass))), digits=4)
+        maxmz = round(max(unlist(lapply(maldi_data,mass))), digits=4)
+        maxfeatures = round(length(unlist(lapply(maldi_data,mass)))/length(maldi_data), digits=2)
+        medint = round(median(unlist(lapply(maldi_data,intensity))), digits=2)
+        transformed = c(minmz, maxmz,maxfeatures, medint)
+        QC_numbers= cbind(QC_numbers, transformed)
+        vectorofactions = append(vectorofactions, "transformed")
 
 
     #elif str( $method.methods_conditional.method ) == 'Smoothing':
@@ -170,9 +191,17 @@ plot(avgSpectra, main="Average spectrum for input file")
 
         #end if
 
-        ## QC plot
+        ## QC plot and numbers
         avgSpectra = averageMassSpectra(maldi_data,method="mean")
         plot(avgSpectra, main="Average spectrum after smoothing")
+        pixel_number = length(maldi_data)
+        minmz = round(min(unlist(lapply(maldi_data,mass))), digits=4)
+        maxmz = round(max(unlist(lapply(maldi_data,mass))), digits=4)
+        maxfeatures = round(length(unlist(lapply(maldi_data,mass)))/length(maldi_data), digits=2)
+        medint = round(median(unlist(lapply(maldi_data,intensity))), digits=2)
+        smoothed = c(minmz, maxmz,maxfeatures, medint)
+        QC_numbers= cbind(QC_numbers, smoothed)
+        vectorofactions = append(vectorofactions, "smoothed")
 
 
     #elif str( $method.methods_conditional.method ) == 'Baseline':
@@ -180,12 +209,46 @@ plot(avgSpectra, main="Average spectrum for input file")
         print('baseline removing')
         ## Remove baseline
 
-        maldi_data = removeBaseline(maldi_data,
-            method="$method.methods_conditional.baseline_method",
-            iterations=$method.methods_conditional.iterations)
-        ## QC plot
+        #if str($method.methods_conditional.methods_for_baseline.baseline_method ) == 'SNIP':
+        print('SNIP')
+
+            maldi_data = removeBaseline(maldi_data,
+                method="SNIP",
+                iterations=$method.methods_conditional.methods_for_baseline.iterations)
+
+        #elif str($method.methods_conditional.methods_for_baseline.baseline_method ) == 'TopHat':
+        print('TopHat')
+
+            maldi_data = removeBaseline(maldi_data,
+                method="TopHat",
+                halfWindowSize=$method.methods_conditional.methods_for_baseline.tophat_halfWindowSize)
+
+        #elif str($method.methods_conditional.methods_for_baseline.baseline_method ) == 'ConvexHull':
+        print('ConvexHull')
+
+            maldi_data = removeBaseline(maldi_data,
+                method="ConvecHull")
+
+        #elif str($method.methods_conditional.methods_for_baseline.baseline_method ) == 'median':
+        print('median')
+
+            maldi_data = removeBaseline(maldi_data,
+                method="TopHat",
+                halfWindowSize=$method.methods_conditional.methods_for_baseline.median_halfWindowSize)
+
+        #end if
+
+        ## QC plot and numbers
         avgSpectra = averageMassSpectra(maldi_data,method="mean")
         plot(avgSpectra, main="Average spectrum after baseline removal")
+        pixel_number = length(maldi_data)
+        minmz = round(min(unlist(lapply(maldi_data,mass))), digits=4)
+        maxmz = round(max(unlist(lapply(maldi_data,mass))), digits=4)
+        maxfeatures = round(length(unlist(lapply(maldi_data,mass)))/length(maldi_data), digits=2)
+        medint = round(median(unlist(lapply(maldi_data,intensity))), digits=2)
+        baseline_removed = c(minmz, maxmz,maxfeatures, medint)
+        QC_numbers= cbind(QC_numbers, baseline_removed)
+        vectorofactions = append(vectorofactions, "baseline_removed")
 
 
     #elif str( $method.methods_conditional.method ) == 'Calibrate':
@@ -202,9 +265,17 @@ plot(avgSpectra, main="Average spectrum for input file")
         maldi_data = calibrateIntensity(maldi_data,
             method="$method.methods_conditional.calibrate_method")
         #end if
-        ## QC plot
+        ## QC plot and numbers
         avgSpectra = averageMassSpectra(maldi_data,method="mean")
         plot(avgSpectra, main="Average spectrum after normalization")
+        pixel_number = length(maldi_data)
+        minmz = round(min(unlist(lapply(maldi_data,mass))), digits=4)
+        maxmz = round(max(unlist(lapply(maldi_data,mass))), digits=4)
+        maxfeatures = round(length(unlist(lapply(maldi_data,mass)))/length(maldi_data), digits=2)
+        medint = round(median(unlist(lapply(maldi_data,intensity))), digits=2)
+        intensity_calibrated = c(minmz, maxmz,maxfeatures, medint)
+        QC_numbers= cbind(QC_numbers, intensity_calibrated )
+        vectorofactions = append(vectorofactions, "intensity_calibrated ")
 
 
     #elif str( $method.methods_conditional.method ) == 'Align':
@@ -213,16 +284,14 @@ plot(avgSpectra, main="Average spectrum for input file")
         ##align spectra
 
         #if str($method.methods_conditional.reference_for_alignment.align_ref) == 'no_reference':
-
             maldi_data = alignSpectra(maldi_data, halfWindowSize=$method.methods_conditional.halfWindowSize,
-                SNR=$method.methods_conditional.snr,
-                tolerance=$method.methods_conditional.tolerance,
+                SNR=$method.methods_conditional.snr, tolerance=$method.methods_conditional.tolerance,
+                allowNoMatches =$method.methods_conditional.allow_nomatch, emptyNoMatches = $method.methods_conditional.empty_nomatch,
                 warpingMethod="$method.methods_conditional.warping_method")
 
         #elif str($method.methods_conditional.reference_for_alignment.align_ref) == 'yes_reference':
-
             ## create reference mass_vector from tabular file
-            mass_vector = read.delim("$method.methods_conditional.reference_for_alignment.reference_file", header = FALSE, stringsAsFactors = FALSE)[,1]
+            mass_vector = read.delim("$method.methods_conditional.reference_for_alignment.reference_file", header = $method.methods_conditional.reference_for_alignment.reference_header, stringsAsFactors = FALSE)[,1]
             int_vector = rep(1,length(mass_vector))
             mass_list = createMassPeaks(mass_vector, int_vector)
 
@@ -230,19 +299,22 @@ plot(avgSpectra, main="Average spectrum for input file")
                 SNR=$method.methods_conditional.snr,
                 tolerance=$method.methods_conditional.tolerance,
                 warpingMethod="$method.methods_conditional.warping_method", 
-                reference = mass_list, allowNoMatches =$method.methods_conditional.reference_for_alignment.allow_nomatch, emptyNoMatches = $method.methods_conditional.reference_for_alignment.empty_nomatch)
+                reference = mass_list, allowNoMatches =$method.methods_conditional.allow_nomatch, emptyNoMatches = $method.methods_conditional.empty_nomatch)
 
-            #if $method.methods_conditional.reference_for_alignment.remove_empty:
-
-                #if $infile.ext == 'rdata'
-                    cardinal_coordinates = cardinal_coordinates[-findEmptyMassObjects(maldi_data),] ## remove coordinates of empty spectra for Cardinal RData input
-                #end if
-                #if str($tabular_annotation.load_annotation) == 'yes_annotation':
-                    merged_annotation = merged_annotation[-findEmptyMassObjects(maldi_data),] ## remove coordinate annotations for empty spectra
-                #end if
-                maldi_data = removeEmptyMassObjects(maldi_data)
-            #end if
         #end if
+
+        #if $method.methods_conditional.remove_empty:
+            print("remove empty spectra")
+
+            #if $infile.ext == 'rdata'
+                cardinal_coordinates = cardinal_coordinates[-findEmptyMassObjects(maldi_data),] ## remove coordinates of empty spectra for Cardinal RData input
+            #end if
+            #if str($tabular_annotation.load_annotation) == 'yes_annotation':
+                merged_annotation = merged_annotation[-findEmptyMassObjects(maldi_data),] ## remove coordinate annotations for empty spectra
+            #end if
+            maldi_data = removeEmptyMassObjects(maldi_data)
+        #end if
+
 
         ## QC plot
 
@@ -251,8 +323,21 @@ plot(avgSpectra, main="Average spectrum for input file")
             plot(avgSpectra, main="Average spectrum after alignment")
         }else{"All spectra are empty"}
 
+        pixel_number = length(maldi_data)
+        minmz = round(min(unlist(lapply(maldi_data,mass))), digits=4)
+        maxmz = round(max(unlist(lapply(maldi_data,mass))), digits=4)
+        maxfeatures = round(length(unlist(lapply(maldi_data,mass)))/length(maldi_data), digits=2)
+        medint = round(median(unlist(lapply(maldi_data,intensity))), digits=2)
+        spectra_aligned = c(minmz, maxmz,maxfeatures, medint)
+        QC_numbers= cbind(QC_numbers, spectra_aligned )
+        vectorofactions = append(vectorofactions, "spectra_aligned")
     #end if
+
 #end for
+
+rownames(QC_numbers) = c("min m/z", "max mz", "# features", "median\nintensity")
+plot(0,type='n',axes=FALSE,ann=FALSE)
+grid.table(t(QC_numbers))
 
 dev.off()
 
@@ -274,19 +359,20 @@ if (length(maldi_data)>0){
         </configfile>
     </configfiles>
     <inputs>
-        <param name="infile" type="data" format="imzml,rdata" label="MS metadata" help="This file is in imzML format or Cardinal MSImageSet saved as RData"/>
+        <param name="infile" type="data" format="imzml,rdata" label="Inputfile as imzML or Cardinal MSImageSet saved as RData" help="This file is in imzML format or Cardinal MSImageSet saved as RData. The file must be in profile mode, not centroided"/>
         <conditional name="restriction_conditional">
             <param name="restriction" type="select" label="Read in only spectra of interest" help="This option only works for imzML files">
                 <option value="no_restriction" selected="True">Calculate on entire file</option>
                 <option value="restrict">Restrict to coordinates of interest</option>
             </param>
             <when value="restrict">
-                <param name="coordinates_file" type="data" format="tabular" label="Tabular file with coordinates which should be read" help="x-values in first column, y-values in second column"/>
+                <param name="coordinates_file" type="data" format="tabular" label="Tabular file with coordinates" help="x-values in first column, y-values in second column"/>
+                <param name="coordinates_header" type="boolean" label="Tabular file contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
             </when>              
             <when value="no_restriction"/>
         </conditional>
         <conditional name="tabular_annotation">
-            <param name="load_annotation" type="select" label="Use pixel annotation from tabular file to have updated annotation information in case empty spectra will be removed">
+            <param name="load_annotation" type="select" label="For Cardinal RData only: Use pixel annotation from tabular file to have updated annotation information in case empty spectra will be removed">
                 <option value="no_annotation" selected="True">use no annotation</option>
                 <option value="yes_annotation">use pixel annotation from a tabular file</option>
             </param>
@@ -302,7 +388,7 @@ if (length(maldi_data)>0){
         </conditional>
         <repeat name="methods" title="Method" min="1">
             <conditional name="methods_conditional">
-                <param name="method" type="select" label="Select the method you want to apply">
+                <param name="method" type="select" label="Select a method">
                     <option value="Transformation" selected="True">Transformation</option>
                     <option value="Smoothing">Smoothing</option>
                     <option value="Baseline">Baseline removal</option>
@@ -311,7 +397,7 @@ if (length(maldi_data)>0){
                     <validator type="empty_field" />
                 </param>
                 <when value="Transformation">
-                    <param name="transform_method" type="select" label="Select your transfprormation method">
+                    <param name="transform_method" type="select" label="Select the transfprormation method">
                         <option value="sqrt" selected="True">sqrt</option>
                         <option value="log">log</option>
                         <option value="log2">log2</option>
@@ -340,16 +426,30 @@ if (length(maldi_data)>0){
                             The best size differs depending on the selected smoothing method."/>
                 </when>
                 <when value="Baseline">
-                    <param name="baseline_method" type="select" label="Baseline removal method">
-                        <option value="SNIP" selected="True">SNIP</option>
-                        <option value="TopHat">TopHat</option>
-                        <option value="ConvexHull">ConvexHull</option>
-                        <option value="median">median</option>
-                        <validator type="empty_field" />
-                    </param>
-                    <param name="iterations" type="integer" value="100"
-                        label="Number of iterations"
-                        help=""/>
+                    <conditional name="methods_for_baseline">
+                        <param name="baseline_method" type="select" label="Baseline removal method">
+                            <option value="SNIP" selected="True">SNIP</option>
+                            <option value="TopHat">TopHat</option>
+                            <option value="ConvexHull">ConvexHull</option>
+                            <option value="median">median</option>
+                            <validator type="empty_field" />
+                        </param>
+                        <when value="SNIP">
+                            <param name="iterations" type="integer" value="100"
+                        label="Number of iterations" help="The resulting window reaches from mass[cur_index-iterations] to mass[cur_index+iterations]"/>
+                        </when>
+                        <when value="TopHat">
+                            <param name="tophat_halfWindowSize" type="integer" value="10"
+                        label="Half window size" help="The resulting window reaches from 
+                            mass[currentIndex-halfWindowSize] to mass[currentIndex+halfWindowSize]"/>
+                        </when>
+                        <when value="ConvexHull"/>
+                        <when value="median">
+                            <param name="median_halfWindowSize" type="integer" value="10"
+                        label="Half window size" help="The resulting window reaches from 
+                            mass[currentIndex-halfWindowSize] to mass[currentIndex+halfWindowSize]"/>
+                        </when>
+                    </conditional>
                 </when>
                 <when value="Calibrate">
                     <param name="calibrate_method" type="select" label="Calibration method">
@@ -360,10 +460,9 @@ if (length(maldi_data)>0){
                     </param>
                     <param name="mass_start" type="integer" value="0"
                         label="Start of m/z range, has to be inside m/z range" 
-                        help="Scaling factor is calculated on the mass range and applied to the whole spectrum"/>
+                        help="Scaling factor is calculated on the mass range and applied to the whole spectrum. Start and end are not allowed to be 0"/>
                     <param name="mass_end" type="integer" value="0"
-                        label="End of m/z range, has to be inside m/z range" 
-                        help="The Start and End value needs to be different from 0 to be taken into account and."/>
+                        label="End of m/z range, has to be inside m/z range"/>
                 </when>
                 <when value="Align">
                     <param name="warping_method" type="select" label="Warping methods">
@@ -384,9 +483,10 @@ if (length(maldi_data)>0){
                             (window size is 2*halfWindowSize+1).
                             The best size differs depending on the selected smoothing method."/>
 
-                    <param name="snr" type="integer" value="2"
-                        label="Signal-to-noise-ratio"
-                        help=""/>
+                    <param name="snr" type="integer" value="2" label="Signal-to-noise-ratio"/>
+                    <param name="allow_nomatch" type="boolean" label="Don't throw an error when less than 2 reference m/z were found in a spectrum" truevalue="TRUE" falsevalue="FALSE"/>
+                    <param name="empty_nomatch" type="boolean" label="logical, if TRUE the intensity values of MassSpectrum or MassPeaks objects with missing (NA) warping functions are set to zero" truevalue="TRUE" falsevalue="FALSE"/>
+                    <param name="remove_empty" type="boolean" label="Should empty spectra be removed" truevalue="TRUE" falsevalue="FALSE" help="For Cardinal RData files this step can only be performed if pixel annotations were provided"/>
 
                     <conditional name="reference_for_alignment">
                         <param name="align_ref" type="select" label="Reference to which the samples should be aligned" help="Use internal calibrants to perform m/z calibration">
@@ -398,9 +498,7 @@ if (length(maldi_data)>0){
                             <param name="reference_file" type="data" format="tabular"
                                 label="Tabular file with m/z of internal calibrants (MassPeaks) which should be used for spectra alignment"
                                 help="calibration of m/z values to internal calibrants, at least 2 m/z per spectrum are needed"/>
-                            <param name="allow_nomatch" type="boolean" label="Don't throw an error when less than 2 reference m/z were found in a spectrum" truevalue="TRUE" falsevalue="FALSE"/>
-                            <param name="empty_nomatch" type="boolean" label="logical, if TRUE the intensity values of MassSpectrum or MassPeaks objects with missing (NA) warping functions are set to zero" truevalue="TRUE" falsevalue="FALSE"/>
-                            <param name="remove_empty" type="boolean" label="Should empty spectra be removed" truevalue="TRUE" falsevalue="FALSE"/>
+                            <param name="reference_header" type="boolean" label="Tabular file contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
                         </when>
                     </conditional>
                 </when>
@@ -409,7 +507,7 @@ if (length(maldi_data)>0){
         <param name="export_processed" type="boolean" label="Export file as processed imzML" help="otherwise continuous imzML will be exported" truevalue="TRUE" falsevalue="FALSE"/>
     </inputs>
     <outputs>
-        <data format="imzml" name="outfile_imzml" label="$infile.display_name processed" />
+        <data format="imzml" name="outfile_imzml" label="$infile.display_name preprocessed" />
         <data format="pdf" name="plots" from_work_dir="prepro_qc_plot.pdf" label="$infile.display_name preprocessed QC"/>
         <data format="tabular" name="annotation_output" label="$infile.display_name annotations">
             <filter>tabular_annotation["load_annotation"] == 'yes_annotation'</filter>
@@ -464,12 +562,12 @@ if (length(maldi_data)>0){
                 <param name="method" value="Align"/>
                 <param name="warping_method" value="linear"/>
                 <param name="halfWindowSize" value="1"/>
+                <param name="allow_nomatch" value="TRUE"/>
+                <param name="remove_empty" value="TRUE"/>
+                <param name="empty_nomatch" value="TRUE"/>
                 <conditional name="reference_for_alignment">
                     <param name="align_ref" value="yes_reference"/>
                     <param name="reference_file" value="align_reference_test2.tabular" ftype="tabular"/>
-                    <param name="allow_nomatch" value="TRUE"/>
-                    <param name="remove_empty" value="TRUE"/>
-                    <param name="empty_nomatch" value="TRUE"/>
                 </conditional>
             </conditional>
             <output name="outfile_imzml" file="outfile3.imzML" compare="sim_size"/>
@@ -482,21 +580,50 @@ if (length(maldi_data)>0){
 
 MALDIquant_ provides a complete analysis pipeline for MALDI-TOF and other mass spectrometry data. So far we have only implemented the functionalities for mass spectrometry imaging data.
 
-Input data: 
+-----
 
-- MSI data as imzML file (upload via the "composite" function) `Introduction to the imzml format <https://ms-imaging.org/wp/imzml/>`_
-- optinal tabular file with pixel coordinates to restrict reading of imzML file to coordinates of interest
+**Input data**
 
-Options:
+- MSI data: 2 types of input data can be used:
+
+    - imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <https://ms-imaging.org/wp/imzml/>`_
+    - Cardinal "MSImageSet" data saved as .RData
+- Only for Cardinal RData files and when remove empty spectra is chosen: Tabular file with coordinates annotations. Separate columns for x and y coordinates and a third column with pixel annotations. Tabular files with any header name or no header at all are supported
+- Optional: Tabular file with pixel coordinates to restrict reading of imzML files to coordinates of interest. The file has to contain x values in the first column and y values in the second columns. Further columns are allowed. Tabular files with any header name or no header at all are supported. 
+
+    ::
+
+       x_coord     y_coord 
+         1            1    
+         2            1    
+         3            1    
+        ...
+        ...
+
+- Optional: Tabular file with reference m/z for the spectra align function. At least 2 m/z values of the input list must be present in every spectrum to peform the alignment. First column must contain m/z values, without empty fields or letters. Tabular files with any header name or no header at all are supported. 
+
+    ::
+
+    
+            m/z
+          100.0
+          100.01
+          100.02
+        ...
+        ...    
+
+
+
+**Options**
 
 - Transformation: transformation of intensities with log, log2, log10 and squareroot
 - Smoothing: Smoothing of the peaks reduces noise and improves peak detection. Available smoothing methods are SavitzkyGolay and Moving Average
 - Baseline reduction: Baseline  reduction removes background intensity generated by chemical noise (common in MALDI datasets). Available methods are SNIP, TopHat,ConvexHull and median.
 - Intensity calibration (normalization): Normalization of intensities to Total Ion Current (TIC), median spectrum, Probabilistic Quotient Normalization (PQN)
-- Spectra alignment (warping):alignment for (re)calibration of m/z values
+- Spectra alignment (warping): alignment for (re)calibration of m/z values, at least two m/z per spectrum are needed for the alignment. This requirement can be skipped by setting "Don't throw an error when less than 2 reference m/z were found in a spectrum" to yes. If the not aligned spectra should be set to zero select yes in "logical, if TRUE the intensity values of MassSpectrum or MassPeaks objects with missing (NA) warping functions are set to zero". In order to remove such empty spectra set "Should empty spectra be removed" to yes. 
 
 
-Output: 
+**Output**
 
 - imzML file (imzML format can be continuous or processed)
 - pdf with average mass spectra after each preprocessing step
