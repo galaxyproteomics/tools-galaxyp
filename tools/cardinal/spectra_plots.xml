@@ -12,16 +12,7 @@
     </expand>
     <command detect_errors="exit_code">
     <![CDATA[
-        #if $infile.ext == 'imzml'
-            ln -s '${infile.extra_files_path}/imzml' infile.imzML &&
-            ln -s '${infile.extra_files_path}/ibd' infile.ibd &&
-        #elif $infile.ext == 'analyze75'
-            ln -s '${infile.extra_files_path}/hdr' infile.hdr &&
-            ln -s '${infile.extra_files_path}/img' infile.img &&
-            ln -s '${infile.extra_files_path}/t2m' infile.t2m &&
-        #else
-            ln -s $infile infile.RData &&
-        #end if
+        @INPUT_LINKING@
         cat '${MSI_mzplots}' &&
         Rscript '${MSI_mzplots}'
     ]]>
@@ -36,120 +27,9 @@ library(gridExtra)
 library(ggplot2)
 library(scales)
 
+@READING_MSIDATA@
 
-#if $infile.ext == 'imzml'
-    #if str($processed_cond.processed_file) == "processed":
-        msidata <- readImzML('infile', mass.accuracy=$processed_cond.accuracy, units.accuracy = "$processed_cond.units")
-        centroided(msidata) = $centroids
-    #else
-        msidata <- readImzML('infile', attach.only=TRUE)
-        centroided(msidata) = $centroids
-    #end if
-#elif $infile.ext == 'analyze75'
-    msidata = readAnalyze('infile', attach.only=TRUE)
-    centroided(msidata) = $centroids
-#else
-    loadRData <- function(fileName){
-    load(fileName)
-    get(ls()[ls() != "fileName"])
-    }
-    msidata = loadRData('infile.RData')
-#end if
-
-###################################### file properties in numbers ##############
-
-## Number of features (m/z)
-maxfeatures = length(features(msidata))
-## Range m/z
-minmz = round(min(mz(msidata)), digits=2)
-maxmz = round(max(mz(msidata)), digits=2)
-## Number of spectra (pixels)
-pixelcount = length(pixels(msidata))
-## Range x coordinates
-minimumx = min(coord(msidata)[,1])
-maximumx = max(coord(msidata)[,1])
-## Range y coordinates
-minimumy = min(coord(msidata)[,2])
-maximumy = max(coord(msidata)[,2])
-## Range of intensities
-minint = round(min(spectra(msidata)[], na.rm=TRUE), digits=2)
-maxint = round(max(spectra(msidata)[], na.rm=TRUE), digits=2)
-medint = round(median(spectra(msidata)[], na.rm=TRUE), digits=2)
-## Number of intensities > 0
-npeaks= sum(spectra(msidata)[]>0, na.rm=TRUE)
-## Spectra multiplied with m/z (potential number of peaks)
-numpeaks = ncol(spectra(msidata)[])*nrow(spectra(msidata)[])
-## Percentage of intensities > 0
-percpeaks = round(npeaks/numpeaks*100, digits=2)
-## Number of empty TICs
-TICs = colSums(spectra(msidata)[], na.rm=TRUE) 
-NumemptyTIC = sum(TICs == 0)
-
-
-## Processing informations
-processinginfo = processingData(msidata)
-centroidedinfo = processinginfo@centroided
-
-## if TRUE write processinginfo if FALSE write FALSE
-
-## normalization
-if (length(processinginfo@normalization) == 0) {
-  normalizationinfo='FALSE'
-} else {
-  normalizationinfo=processinginfo@normalization
-}
-## smoothing
-if (length(processinginfo@smoothing) == 0) {
-  smoothinginfo='FALSE'
-} else {
-  smoothinginfo=processinginfo@smoothing
-}
-## baseline
-if (length(processinginfo@baselineReduction) == 0) {
-  baselinereductioninfo='FALSE'
-} else {
-  baselinereductioninfo=processinginfo@baselineReduction
-}
-## peak picking
-if (length(processinginfo@peakPicking) == 0) {
-  peakpickinginfo='FALSE'
-} else {
-  peakpickinginfo=processinginfo@peakPicking
-}
-
-properties = c("Number of m/z features",
-               "Range of m/z values",
-               "Number of pixels", 
-               "Range of x coordinates", 
-               "Range of y coordinates",
-               "Range of intensities", 
-               "Median of intensities",
-               "Intensities > 0",
-               "Number of empty spectra",
-               "Preprocessing", 
-               "Normalization", 
-               "Smoothing",
-               "Baseline reduction",
-               "Peak picking",
-               "Centroided")
-
-values = c(paste0(maxfeatures), 
-           paste0(minmz, " - ", maxmz), 
-           paste0(pixelcount), 
-           paste0(minimumx, " - ", maximumx),  
-           paste0(minimumy, " - ", maximumy), 
-           paste0(minint, " - ", maxint), 
-           paste0(medint),
-           paste0(percpeaks, " %"), 
-           paste0(NumemptyTIC), 
-           paste0(" "),
-           paste0(normalizationinfo),
-           paste0(smoothinginfo),
-           paste0(baselinereductioninfo),
-           paste0(peakpickinginfo),
-           paste0(centroidedinfo))
-
-property_df = data.frame(properties, values)
+@DATA_PROPERTIES@
 
 ######################################## PDF ###################################
 ################################################################################
@@ -376,23 +256,7 @@ if (npeaks > 0){
     ]]></configfile>
     </configfiles>
     <inputs>
-        <param name="infile" type="data" format="imzml,rdata,analyze75" label="Inputfile as imzML, Analyze7.5 or Cardinal MSImageSet saved as RData"
-            help="Upload composite datatype imzml (ibd+imzML) or analyze75 (hdr+img+t2m) or regular upload .RData (Cardinal MSImageSet)"/>
-        <param name="centroids" type="boolean" label="Is the input data centroided (picked)" help="Choose Yes if peak detection has already been done." truevalue="TRUE" falsevalue="FALSE"/>
-        <conditional name="processed_cond">
-            <param name="processed_file" type="select" label="Is the input file a processed imzML file ">
-                <option value="no_processed" selected="True">not a processed imzML</option>
-                <option value="processed">processed imzML</option>
-            </param>
-            <when value="no_processed"/>
-            <when value="processed">
-                <param name="accuracy" type="float" value="50" label="Mass accuracy to which the m/z values will be binned" help="This should be set to the native accuracy of the mass spectrometer, if known"/>
-                <param name="units" display="radio" type="select" label="Unit of the mass accuracy" help="either m/z or ppm">
-                    <option value="mz" >mz</option>
-                    <option value="ppm" selected="True">ppm</option>
-                </param>
-            </when>
-        </conditional>
+        <expand macro="reading_msidata"/>
         <param name="filename" type="text" value="" label="Title" help="Will appear in the pdf output, if nothing given it will take the dataset name"/>
         <conditional name="pixel_conditional">
             <param name="pixel_type" type="select" label="Select if you want to plot the mass spectrum of a single pixel or the average spectrum of all pixels of a sample">
@@ -433,12 +297,7 @@ if (npeaks > 0){
                     <option value="yes_annotation">group pixels according to annotations</option>
                 </param>
                     <when value="yes_annotation">
-                        <param name="annotation_file" type="data" format="tabular" label="Use annotations from tabular file"
-                        help="Tabular file with three columns: x values, y values and pixel annotations"/>
-                            <param name="column_x" data_ref="annotation_file" label="Column with x values" type="data_column"/>
-                            <param name="column_y" data_ref="annotation_file" label="Column with y values" type="data_column"/>
-                            <param name="column_names" data_ref="annotation_file" label="Column with pixel annotations" type="data_column"/>
-                            <param name="tabular_header" type="boolean" label="Tabular file contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
+                        <expand macro="reading_pixel_annotations"/>
                     </when>
                     <when value="no_annotation"/>
             </conditional>
@@ -485,7 +344,7 @@ if (npeaks > 0){
                         <param name="inputy" value="1"/>
                     </repeat>
                 </conditional>
-            <output name="plots" file="Plot_imzml.pdf" compare="sim_size" delta="20000"/>
+            <output name="plots" file="Plot_imzml.pdf" compare="sim_size"/>
         </test>
         <test>
             <expand macro="infile_analyze75"/>
@@ -506,26 +365,30 @@ if (npeaks > 0){
                         <param name="inputy" value="2"/>
                     </repeat>
             </conditional>
-            <output name="plots" file="Plot_analyze75.pdf" compare="sim_size" delta="20000"/>
+            <output name="plots" file="Plot_analyze75.pdf" compare="sim_size"/>
         </test>
         <test>
             <expand macro="infile_analyze75"/>
             <conditional name="pixel_conditional">
                 <param name="pixel_type" value="sample_pixel"/>
                 <conditional name="tabular_annotation">
+
                     <param name="load_annotation" value="yes_annotation"/>
                     <param name="annotation_file" value="annotations.tabular" ftype="tabular"/>
                     <param name="column_x" value="1"/>
                     <param name="column_y" value="2"/>
                     <param name="column_names" value="4"/>
                     <param name="tabular_header" value="TRUE"/>
+
+
+
                 </conditional>
                 <repeat name="zoomed_sample">
                      <param name="xlimmin" value="1250"/>
                      <param name="xlimmax" value="1270"/>
                  </repeat>
             </conditional>
-            <output name="plots" file="Plot_analyze75_allpixels.pdf" compare="sim_size" delta="20000"/>
+            <output name="plots" file="Plot_analyze75_allpixels.pdf" compare="sim_size"/>
         </test>
         <test>
             <param name="infile" value="3_files_combined.RData" ftype="rdata"/>
@@ -536,7 +399,7 @@ if (npeaks > 0){
                          <param name="xlimmax" value="360"/>
                      </repeat>
             </conditional>
-            <output name="plots" file="Plot_rdata.pdf" compare="sim_size" delta="20000"/>
+            <output name="plots" file="Plot_rdata.pdf" compare="sim_size"/>
         </test>
         <test>
             <param name="infile" value="empty_spectra.rdata" ftype="rdata"/>
@@ -548,7 +411,7 @@ if (npeaks > 0){
                         <param name="inputy" value="1"/>
                     </repeat>
             </conditional>
-            <output name="plots" file="Plot_empty_spectra.pdf" compare="sim_size" delta="20000"/>
+            <output name="plots" file="Plot_empty_spectra.pdf" compare="sim_size"/>
         </test>
     </tests>
     <help><![CDATA[
@@ -559,28 +422,8 @@ if (npeaks > 0){
 
 This tool uses the Cardinal plot function to generate (zoomed in) mass spectra plots of mass spectrometry imaging data.
 
-
-**Input data**
-
-- MSI data: 3 types of input data can be used:
-
-    - imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <https://ms-imaging.org/wp/imzml/>`_
-    - Analyze7.5 (upload hdr, img and t2m file via the "composite" function)
-    - Cardinal "MSImageSet" data saved as .RData
-- Optional: Tabular file with pixel annotations: 
-
-    - One column with x values, one column wiht y values and one column with annotations
-    - The file can have any column names as header (in this case set "Tabular file contains a header line" to yes) or no header at all
-
-    ::
-    
-        x_coord     y_coord    annotation1
-           1            1        healthy
-           2            1        healthy
-           3            1        disease
-          ...
-          ...
-    
+@MSIDATA_INPUT_DESCRIPTION@
+@SPECTRA_TABULAR_INPUT_DESCRIPTION@
 
 **Options**
 

@@ -13,16 +13,7 @@
     <command detect_errors="exit_code">
     <![CDATA[
 
-        #if $infile.ext == 'imzml'
-            ln -s '${infile.extra_files_path}/imzml' infile.imzML &&
-            ln -s '${infile.extra_files_path}/ibd' infile.ibd &&
-        #elif $infile.ext == 'analyze75'
-            ln -s '${infile.extra_files_path}/hdr' infile.hdr &&
-            ln -s '${infile.extra_files_path}/img' infile.img &&
-            ln -s '${infile.extra_files_path}/t2m' infile.t2m &&
-        #else
-            ln -s '$infile' infile.RData &&
-        #end if
+        @INPUT_LINKING@
         cat '${cardinal_preprocessing}' &&
         Rscript '${cardinal_preprocessing}'
 
@@ -38,28 +29,7 @@ library(gridExtra)
 library(lattice)
 library(ggplot2)
 
-## function t0 read RData files in
-
-loadRData <- function(fileName){
-#loads an RData file, and returns it
-load(fileName)
-get(ls()[ls() != "fileName"])
-}
-
-#if $infile.ext == 'imzml'
-    #if str($processed_cond.processed_file) == "processed":
-        msidata <- readImzML('infile', mass.accuracy=$processed_cond.accuracy, units.accuracy = "$processed_cond.units")
-        centroided(msidata) = $centroids
-    #else
-        msidata <- readImzML('infile', attach.only=TRUE)
-        centroided(msidata) = $centroids
-    #end if
-#elif $infile.ext == 'analyze75'
-    msidata = readAnalyze('infile', attach.only=TRUE)
-    centroided(msidata) = $centroids
-#else
-    msidata = loadRData('infile.RData')
-#end if
+@READING_MSIDATA@
 
 print(paste0("Number of NA in input file: ",sum(is.na(spectra(msidata)[]))))
 
@@ -201,7 +171,7 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE)> 0){
 
             #elif str( $method.methods_conditional.align_ref_type.align_reference_datatype) == 'align_table':
 
-                align_reference_table = read.delim("$method.methods_conditional.align_ref_type.align_peaks_table", header = $method.methods_conditional.align_ref_type.align_mass_header, stringsAsFactors = FALSE)
+                align_reference_table = read.delim("$method.methods_conditional.align_ref_type.mz_tabular", header = $method.methods_conditional.align_ref_type.align_mass_header, stringsAsFactors = FALSE)
                 align_reference_column = align_reference_table[,$method.methods_conditional.align_ref_type.align_mass_column]
                 align_peak_reference = align_reference_column[align_reference_column>=min(mz(msidata)) & align_reference_column<=max(mz(msidata))]
                 if (length(align_peak_reference) == 0)
@@ -274,7 +244,7 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE)> 0){
 
                 #if str( $method.methods_conditional.methods_for_reduction.ref_type.reference_datatype) == 'table':
 
-                    reference_table = read.delim("$method.methods_conditional.methods_for_reduction.ref_type.peaks_table", header = $method.methods_conditional.methods_for_reduction.ref_type.mass_header, stringsAsFactors = FALSE)
+                    reference_table = read.delim("$method.methods_conditional.methods_for_reduction.ref_type.mz_tabular", header = $method.methods_conditional.methods_for_reduction.ref_type.mass_header, stringsAsFactors = FALSE)
                     reference_column = reference_table[,$method.methods_conditional.methods_for_reduction.ref_type.mass_column]
                     peak_reference = reference_column[reference_column>min(mz(msidata)) & reference_column<max(mz(msidata))]
 
@@ -355,24 +325,7 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE)> 0){
     ]]></configfile>
     </configfiles>
     <inputs>
-        <param name="infile" type="data" format="imzml,rdata,analyze75"
-            label="MSI data as imzml, analyze7.5 or Cardinal MSImageSet saved as RData"
-            help="Upload composite datatype imzml (ibd+imzML) or analyze75 (hdr+img+t2m) or regular upload .RData (Cardinal MSImageSet)"/>
-        <param name="centroids" type="boolean" label="Is the input data centroided (picked)" help="Choose Yes if peak detection has already been done." truevalue="TRUE" falsevalue="FALSE"/>
-        <conditional name="processed_cond">
-            <param name="processed_file" type="select" label="Is the input file a processed imzML file ">
-                <option value="no_processed" selected="True">not a processed imzML</option>
-                <option value="processed">processed imzML</option>
-            </param>
-            <when value="no_processed"/>
-            <when value="processed">
-                <param name="accuracy" type="float" value="50" label="Mass accuracy to which the m/z values will be binned" help="This should be set to the native accuracy of the mass spectrometer, if known"/>
-                <param name="units" display="radio" type="select" label="Unit of the mass accuracy" help="either m/z or ppm">
-                    <option value="mz" >mz</option>
-                    <option value="ppm" selected="True" >ppm</option>
-                </param>
-            </when>
-        </conditional>
+        <expand macro="reading_msidata"/>
         <repeat name="methods" title="Preprocessing" min="1" max="50">
             <conditional name="methods_conditional">
                 <param name="preprocessing_method" type="select" label="Preprocessing methods">
@@ -471,10 +424,7 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE)> 0){
                         </param>
                         <when value="align_noref"/>
                         <when value="align_table">
-                            <param name="align_peaks_table" type="data" format="tabular" 
-                                label="Reference m/z values to use for alignment - only these will be kept" help="One column with m/z values (without empty cells or letters)"/>
-                            <param name="align_mass_column" data_ref="align_peaks_table" label="Column with reference m/z" type="data_column"/>
-                            <param name="align_mass_header" type="boolean" label="Tabular file contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
+                            <expand macro="reading_1_column_mz_tabular" label="Tabular file with m/z features to use for alignment. Only the m/z values from the tabular file will be kept."/>
                         </when>
                         <when value="align_msidata_ref">
                             <param name="align_peaks_msidata" type="data" format="rdata," label="Picked and aligned Cardinal MSImageSet saved as RData"/>
@@ -522,10 +472,7 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE)> 0){
                                     <option value="msidata_ref">msidata file</option>
                                 </param>
                                 <when value="table">
-                                    <param name="peaks_table" type="data" format="tabular" 
-                                        label="Reference m/z values to use to reduce the dimension" help="One column with m/z values (without empty cells or letters, m/z outside m/z range are not used for filtering)"/>
-                                    <param name="mass_column" data_ref="peaks_table" label="Column with reference m/z" type="data_column"/>
-                                    <param name="mass_header" type="boolean" label="Tabular file contain a header line" truevalue="TRUE" falsevalue="FALSE"/>
+                                    <expand macro="reading_1_column_mz_tabular" label="Tabular file with m/z features to extract from input file"/>
                                 </when>
                                 <when value="msidata_ref">
                                     <param name="peaks_msidata" type="data" format="rdata," label="Picked and aligned Cardinal MSImageSet saved as RData"/>
@@ -702,24 +649,9 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE)> 0){
 
 This tool provides multiple Cardinal functions to preprocess mass spectrometry imaging data. 
 
-
-**Input data**
-
-- MSI data: 3 types of input data can be used:
-
-    - imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <https://ms-imaging.org/wp/imzml/>`_
-    - Analyze7.5 (upload hdr, img and t2m file via the "composite" function)
-    - Cardinal "MSImageSet" data saved as .RData
+@MSIDATA_INPUT_DESCRIPTION@
 - Coordinates stored as decimals rather than integers will be rounded to obtain a regular pixel grid. This might lead to duplicated coordinates which will be automatically removed before peak picking.
-- Optional: Tabular file(s) containing m/z features as reference for peak alignment or peak function in data reduction. All values of the m/z column have to be numeric, the file is allowed to have any header name or no header at all. ::
-
-     m/z  
-    100.0
-    100.01
-    100.02
-    ...
-    ...
-
+@MZ_TABULAR_INPUT_DESCRIPTION@
 
 **Options**
 

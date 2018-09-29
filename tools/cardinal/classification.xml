@@ -11,18 +11,8 @@
     <command detect_errors="exit_code">
     <![CDATA[
 
-        #if $infile.ext == 'imzml'
-            ln -s '${infile.extra_files_path}/imzml' infile.imzML &&
-            ln -s '${infile.extra_files_path}/ibd' infile.ibd &&
-        #elif $infile.ext == 'analyze75'
-            ln -s '${infile.extra_files_path}/hdr' infile.hdr &&
-            ln -s '${infile.extra_files_path}/img' infile.img &&
-            ln -s '${infile.extra_files_path}/t2m' infile.t2m &&
-        #else
-            ln -s $infile infile.RData &&
-        #end if
+        @INPUT_LINKING@
         cat '${MSI_segmentation}' &&
-        echo ${MSI_segmentation} &&
         Rscript '${MSI_segmentation}'
 
     ]]>
@@ -38,130 +28,12 @@ library(gridExtra)
 library(lattice)
 library(ggplot2)
 
-## function to read RData files independent of filename
-loadRData <- function(fileName){
-#loads an RData file, and returns it
-load(fileName)
-get(ls()[ls() != "fileName"])
-}
-
-
-#if $infile.ext == 'imzml'
-    #if str($processed_cond.processed_file) == "processed":
-        msidata <- readImzML('infile', mass.accuracy=$processed_cond.accuracy, units.accuracy = "$processed_cond.units")
-        centroided(msidata) = $centroids
-    #else
-        msidata <- readImzML('infile')
-        centroided(msidata) = $centroids
-    #end if
-#elif $infile.ext == 'analyze75'
-    msidata = readAnalyze('infile')
-    centroided(msidata) = $centroids
-#else
-    msidata = loadRData('infile.RData')
-#end if
-
+@READING_MSIDATA@
 
 ## create full matrix to make processed imzML files compatible with classification
 iData(msidata) <- iData(msidata)[] 
 
-###################################### file properties in numbers ##############
-
-## Number of features (mz)
-maxfeatures = length(features(msidata))
-## Range mz
-minmz = round(min(mz(msidata)), digits=2)
-maxmz = round(max(mz(msidata)), digits=2)
-## Number of spectra (pixels)
-pixelcount = length(pixels(msidata))
-## Range x coordinates
-minimumx = min(coord(msidata)[,1])
-maximumx = max(coord(msidata)[,1])
-## Range y coordinates
-minimumy = min(coord(msidata)[,2])
-maximumy = max(coord(msidata)[,2])
-## Range of intensities
-minint = round(min(spectra(msidata)[], na.rm=TRUE), digits=2)
-maxint = round(max(spectra(msidata)[], na.rm=TRUE), digits=2)
-medint = round(median(spectra(msidata)[], na.rm=TRUE), digits=2)
-## Number of intensities > 0
-npeaks= sum(spectra(msidata)[]>0, na.rm=TRUE)
-## Spectra multiplied with mz (potential number of peaks)
-numpeaks = ncol(spectra(msidata)[])*nrow(spectra(msidata)[])
-## Percentage of intensities > 0
-percpeaks = round(npeaks/numpeaks*100, digits=2)
-## Number of empty TICs
-TICs = colSums(spectra(msidata)[], na.rm=TRUE) 
-NumemptyTIC = sum(TICs == 0)
-
-
-## Processing informations
-processinginfo = processingData(msidata)
-centroidedinfo = processinginfo@centroided # TRUE or FALSE
-
-## if TRUE write processinginfo if no write FALSE
-
-## normalization
-if (length(processinginfo@normalization) == 0) {
-    normalizationinfo='FALSE'
-} else {
-    normalizationinfo=processinginfo@normalization
-}
-## smoothing
-if (length(processinginfo@smoothing) == 0) {
-    smoothinginfo='FALSE'
-} else {
-    smoothinginfo=processinginfo@smoothing
-}
-## baseline
-if (length(processinginfo@baselineReduction) == 0) {
-    baselinereductioninfo='FALSE'
-} else {
-    baselinereductioninfo=processinginfo@baselineReduction
-}
-## peak picking
-if (length(processinginfo@peakPicking) == 0) {
-    peakpickinginfo='FALSE'
-} else {
-    peakpickinginfo=processinginfo@peakPicking
-}
-
-#############################################################################
-
-properties = c("Number of mz features",
-               "Range of mz values",
-               "Number of pixels", 
-               "Range of x coordinates", 
-               "Range of y coordinates",
-               "Range of intensities", 
-               "Median of intensities",
-               "Intensities > 0",
-               "Number of empty spectra",
-               "Preprocessing", 
-               "Normalization", 
-               "Smoothing",
-               "Baseline reduction",
-               "Peak picking",
-               "Centroided")
-
-values = c(paste0(maxfeatures), 
-           paste0(minmz, " - ", maxmz), 
-           paste0(pixelcount), 
-           paste0(minimumx, " - ", maximumx),  
-           paste0(minimumy, " - ", maximumy), 
-           paste0(minint, " - ", maxint), 
-           paste0(medint),
-           paste0(percpeaks, " %"), 
-           paste0(NumemptyTIC), 
-           paste0(" "),
-           paste0(normalizationinfo),
-           paste0(smoothinginfo),
-           paste0(baselinereductioninfo),
-           paste0(peakpickinginfo),
-           paste0(centroidedinfo))
-
-property_df = data.frame(properties, values)
-
+@DATA_PROPERTIES@
 
 ######################################## PDF ###################################
 ################################################################################
@@ -354,11 +226,16 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)))==0){
 
                 ### m/z and pixel information output
                 pls_classes = data.frame(msidata.pls\$classes[[1]])
-                rownames(pls_classes) = names(pixels(msidata))
-                colnames(pls_classes) = "predicted condition"
+                pixel_names = gsub(", y = ", "_", names(pixels(msidata)))
+                pixel_names = gsub(" = ", "y_", pixel_names)
+                x_coordinates = matrix(unlist(strsplit(pixel_names, "_")), ncol=3, byrow=TRUE)[,2]
+                y_coordinates = matrix(unlist(strsplit(pixel_names, "_")), ncol=3, byrow=TRUE)[,3]
+
+                pls_classes2 = data.frame(pixel_names, x_coordinates, y_coordinates, pls_classes)
+                colnames(pls_classes2) = c("pixel names", "x", "y","predicted condition")
                 pls_toplabels = topLabels(msidata.pls, n=$type_cond.method_cond.analysis_cond.pls_toplabels)
-                write.table(pls_toplabels, file="$mzfeatures", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
-                write.table(pls_classes, file="$pixeloutput", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+                write.table(pls_toplabels, file="$mzfeatures", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+                write.table(pls_classes2, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
 
                 ## image with predicted classes
                 prediction_df = cbind(coord(msidata.pls)[,1:2], pls_classes)
@@ -485,11 +362,16 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)))==0){
 
                 ## m/z and pixel information output
                 opls_classes = data.frame(msidata.opls\$classes[[1]])
-                rownames(opls_classes) = names(pixels(msidata))
-                colnames(opls_classes) = "predicted condition"
+                pixel_names = gsub(", y = ", "_", names(pixels(msidata)))
+                pixel_names = gsub(" = ", "y_", pixel_names)
+                x_coordinates = matrix(unlist(strsplit(pixel_names, "_")), ncol=3, byrow=TRUE)[,2]
+                y_coordinates = matrix(unlist(strsplit(pixel_names, "_")), ncol=3, byrow=TRUE)[,3]
+                opls_classes2 = data.frame(pixel_names, x_coordinates, y_coordinates, opls_classes)
+                colnames(opls_classes2) = c("pixel names", "x", "y","predicted condition")
+
                 opls_toplabels = topLabels(msidata.opls, n=$type_cond.method_cond.opls_analysis_cond.opls_toplabels)
-                write.table(opls_toplabels, file="$mzfeatures", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
-                write.table(opls_classes, file="$pixeloutput", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+                write.table(opls_toplabels, file="$mzfeatures", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+                write.table(opls_classes2, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
 
                 ## image with predicted classes
                 prediction_df = cbind(coord(msidata.opls)[,1:2], opls_classes)
@@ -616,11 +498,15 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
 
                 ## m/z and pixel information output
                 ssc_classes = data.frame(msidata.ssc\$classes[[1]])
-                rownames(ssc_classes) = names(pixels(msidata))
-                colnames(ssc_classes) = "predicted condition"
+                pixel_names = gsub(", y = ", "_", names(pixels(msidata)))
+                pixel_names = gsub(" = ", "y_", pixel_names)
+                x_coordinates = matrix(unlist(strsplit(pixel_names, "_")), ncol=3, byrow=TRUE)[,2]
+                y_coordinates = matrix(unlist(strsplit(pixel_names, "_")), ncol=3, byrow=TRUE)[,3]
+                ssc_classes2 = data.frame(pixel_names, x_coordinates, y_coordinates, ssc_classes)
+                colnames(ssc_classes2) = c("pixel names", "x", "y","predicted condition")
                 ssc_toplabels = topLabels(msidata.ssc, n=$type_cond.method_cond.ssc_analysis_cond.ssc_toplabels)
-                write.table(ssc_toplabels, file="$mzfeatures", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
-                write.table(ssc_classes, file="$pixeloutput", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+                write.table(ssc_toplabels, file="$mzfeatures", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+                write.table(ssc_classes2, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
 
                 ## image with predicted classes
                 prediction_df = cbind(coord(msidata.ssc)[,1:2], ssc_classes)
@@ -678,11 +564,15 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
 
         ## m/z and pixel information output
         predicted_classes = data.frame(prediction\$classes[[1]])
-        rownames(predicted_classes) = names(pixels(prediction))
-        colnames(predicted_classes) = "predicted condition"
+        pixel_names = gsub(", y = ", "_", names(pixels(msidata)))
+        pixel_names = gsub(" = ", "y_", pixel_names)
+        x_coordinates = matrix(unlist(strsplit(pixel_names, "_")), ncol=3, byrow=TRUE)[,2]
+        y_coordinates = matrix(unlist(strsplit(pixel_names, "_")), ncol=3, byrow=TRUE)[,3]
+        predicted_classes2 = data.frame(pixel_names, x_coordinates, y_coordinates, predicted_classes)
+        colnames(predicted_classes2) = c("pixel names", "x", "y","predicted condition")
         predicted_toplabels = topLabels(prediction, n=$type_cond.predicted_toplabels)
-        write.table(predicted_toplabels, file="$mzfeatures", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
-        write.table(predicted_classes, file="$pixeloutput", quote = FALSE, row.names = TRUE, col.names=NA, sep = "\t")
+        write.table(predicted_toplabels, file="$mzfeatures", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+        write.table(predicted_classes2, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
 
         ## image with predicted classes
 
@@ -730,25 +620,7 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
     ]]></configfile>
     </configfiles>
     <inputs>
-        <param name="infile" type="data" format="imzml,rdata,analyze75"
-               label="Inputfile as imzML, Analyze7.5 or Cardinal MSImageSet saved as RData"
-                help="Upload composite datatype imzml (ibd+imzML) or analyze75 (hdr+img+t2m) or regular upload .RData (Cardinal MSImageSet)"/>
-        <param name="centroids" type="boolean" label="Is the input data centroided (picked)" help="Choose Yes if peak detection has already been done." truevalue="TRUE" falsevalue="FALSE"/>
-        <conditional name="processed_cond">
-            <param name="processed_file" type="select" label="Is the input file a processed imzML file ">
-                <option value="no_processed" selected="True">not a processed imzML</option>
-                <option value="processed">processed imzML</option>
-            </param>
-            <when value="no_processed"/>
-            <when value="processed">
-                <param name="accuracy" type="float" value="50" label="Mass accuracy to which the m/z values will be binned" help="This should be set to the native accuracy of the mass spectrometer, if known"/>
-                <param name="units" display="radio" type="select" label="Unit of the mass accuracy" help="either m/z or ppm">
-                    <option value="mz" >mz</option>
-                    <option value="ppm" selected="True" >ppm</option>
-                </param>
-            </when>
-        </conditional>
-
+        <expand macro="reading_msidata"/>
         <conditional name="type_cond">
             <param name="type_method" type="select" label="Analysis step to perform">
                 <option value="training" selected="True">training</option>
@@ -786,7 +658,7 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
                             <when value="PLS_analysis">
                                 <param name="pls_comp" type="integer" value="5"
                                        label="The optimal number of PLS-DA components as indicated by cross-validations" help="Run cvApply first to optain optiaml number of PLS-DA components"/>
-                                <param name="pls_scale" type="boolean" display="radio" label="data scaling" truevalue="TRUE" falsevalue="FALSE"/>
+                                <param name="pls_scale" type="boolean" label="Data scaling" truevalue="TRUE" falsevalue="FALSE"/>
                                 <param name="pls_toplabels" type="integer" value="100"
                                    label="Number of toplabels (m/z features) which should be written in tabular output"/>
                             </when>
@@ -804,17 +676,14 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
                             <when value="opls_cvapply">
                                 <param name="opls_cvcomp" type="text" value="1:2"
                                        label="The number of OPLS-DA components" help="For cvapply multiple values are allowed (e.g. 1,2,3 or 2:5)"/>
-                                <param name="xnew_cv" type="boolean" display="radio" truevalue="TRUE" falsevalue="FALSE" label="Keep new matrix"/>
+                                <param name="xnew_cv" type="boolean" truevalue="TRUE" falsevalue="FALSE" label="Keep new matrix"/>
                             </when>
 
                             <when value="opls_analysis">
                                 <param name="opls_comp" type="integer" value="5"
                                        label="The optimal number of OPLS-DA components as indicated by cross-validations" help="Run cvApply first to optain optiaml number of OPLS-DA components"/>
-                                <param name="xnew" type="boolean" display="radio" truevalue="TRUE" falsevalue="FALSE" label="Keep new matrix"/>                                
-                                <param name="opls_scale" type="select" label="data scaling" display="radio" optional="False">
-                                    <option value="TRUE">yes</option>
-                                    <option value="FALSE" selected="True">no</option>
-                               </param>
+                                <param name="xnew" type="boolean" truevalue="TRUE" falsevalue="FALSE" label="Keep new matrix"/>
+                                <param name="opls_scale" type="boolean" truevalue="TRUE" falsevalue="FALSE" label="Data scaling"/>
                                 <param name="opls_toplabels" type="integer" value="100"
                                    label="Number of toplabels (m/z features) which should be written in tabular output"/>
                             </when>
@@ -867,7 +736,7 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
                 </conditional>
             </when>
         </conditional>
-        <param name="output_rdata" type="boolean" display="radio" label="Results as .RData output" help="Can be used to generate a classification prediction on new data"/>
+        <param name="output_rdata" type="boolean" label="Results as .RData output" help="Can be used to generate a classification prediction on new data"/>
     </inputs>
     <outputs>
         <data format="pdf" name="classification_images" from_work_dir="classificationpdf.pdf" label = "${tool.name} on ${on_string}"/>
@@ -923,8 +792,8 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
             <param name="output_rdata" value="True"/>
             <output name="mzfeatures" file="features_test2.tabular"/>
             <output name="pixeloutput" file="pixels_test2.tabular"/>
-            <output name="classification_images" file="test2.pdf" compare="sim_size" delta="2000"/>
-            <output name="classification_rdata" file="test2.rdata" compare="sim_size" />
+            <output name="classification_images" file="test2.pdf" compare="sim_size"/>
+            <output name="classification_rdata" file="test2.rdata" compare="sim_size"/>
         </test>
 
         <test expect_num_outputs="3">
@@ -948,7 +817,7 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
             </conditional>
             <output name="mzfeatures" file="features_test3.tabular"/>
             <output name="pixeloutput" file="pixels_test3.tabular"/>
-            <output name="classification_images" file="test3.pdf" compare="sim_size" delta="2000"/>
+            <output name="classification_images" file="test3.pdf" compare="sim_size"/>
         </test>
 
         <test expect_num_outputs="4">
@@ -974,8 +843,8 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
             <param name="output_rdata" value="True"/>
             <output name="mzfeatures" file="features_test4.tabular"/>
             <output name="pixeloutput" file="pixels_test4.tabular"/>
-            <output name="classification_images" file="test4.pdf" compare="sim_size" delta="2000"/>
-            <output name="classification_rdata" file="test4.rdata" compare="sim_size" />
+            <output name="classification_images" file="test4.pdf" compare="sim_size"/>
+            <output name="classification_rdata" file="test4.rdata" compare="sim_size"/>
         </test>
 
         <test expect_num_outputs="3">
@@ -1000,7 +869,7 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
             </conditional>
             <output name="mzfeatures" file="features_test5.tabular"/>
             <output name="pixeloutput" file="pixels_test5.tabular"/>
-            <output name="classification_images" file="test5.pdf" compare="sim_size" delta="2000"/>
+            <output name="classification_images" file="test5.pdf" compare="sim_size"/>
         </test>
 
         <test expect_num_outputs="4">
@@ -1025,7 +894,7 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
             <param name="output_rdata" value="True"/>
             <output name="mzfeatures" file="features_test6.tabular"/>
             <output name="pixeloutput" file="pixels_test6.tabular"/>
-            <output name="classification_images" file="test6.pdf" compare="sim_size" delta="2000"/>
+            <output name="classification_images" file="test6.pdf" compare="sim_size"/>
             <output name="classification_rdata" file="test6.rdata" compare="sim_size" />
         </test>
 
@@ -1046,7 +915,7 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
             <param name="output_rdata" value="True"/>
             <output name="mzfeatures" file="features_test7.tabular"/>
             <output name="pixeloutput" file="pixels_test7.tabular"/>
-            <output name="classification_images" file="test7.pdf" compare="sim_size" delta="2000"/>
+            <output name="classification_images" file="test7.pdf" compare="sim_size"/>
             <output name="classification_rdata" file="test7.rdata" compare="sim_size" />
         </test>
     </tests>
@@ -1060,15 +929,7 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
 
 This tool provides three different Cardinal functions for supervised classification of mass-spectrometry imaging data.
 
-
-**Input data**
-
-- MSI data: 3 types of input data can be used:
-
-    - imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <https://ms-imaging.org/wp/imzml/>`_
-    - Analyze7.5 (upload hdr, img and t2m file via the "composite" function)
-    - Cardinal "MSImageSet" data saved as .RData
-
+@MSIDATA_INPUT_DESCRIPTION@
 - For training: tabular file with condition and fold for each pixel: Two columns for pixel coordinates (x and y values); one column with the condition for the pixel, which will be used for classification; for the cross validation (cvapply) another column with a fold is necessary, each fold must contain pixels of all response groups and is used for cross validation. Condition and fold columns are treated as factor to perform discriminant analysis (also when numeric values are provided).
 
     ::
