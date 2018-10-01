@@ -1,0 +1,554 @@
+<tool id="cardinal_combine" name="MSI combine" version="@VERSION@.0">
+    <description>
+        combine several mass spectrometry imaging datasets into one
+    </description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements">
+        <requirement type="package" version="3.0.0">r-ggplot2</requirement>
+    </expand>
+    <command detect_errors="exit_code">
+    <![CDATA[
+        #for $i, $infile in enumerate($infiles):
+            #if $infile.ext == 'imzml'
+                ln -s '${infile.extra_files_path}/imzml' infile_${i}.imzML &&
+                ln -s '${infile.extra_files_path}/ibd' infile_${i}.ibd &&
+            #elif $infile.ext == 'analyze75'
+                ln -s '${infile.extra_files_path}/hdr' infile_${i}.hdr &&
+                ln -s '${infile.extra_files_path}/img' infile_${i}.img &&
+                ln -s '${infile.extra_files_path}/t2m' infile_${i}.t2m &&
+            #else
+                ln -s '$infile' infile_${i}.RData &&
+            #end if
+        #end for
+        #if $annotation_cond.annotation_tabular == 'annotation'
+            #for $i, $annotation_file in enumerate($annotation_cond.annotation_files):
+                ln -s '$annotation_file' annotation_file_${i}.tabular &&
+            #end for
+        #end if
+
+        cat '${msi_combine}' &&
+        Rscript '${msi_combine}'
+
+    ]]>
+    </command>
+    <configfiles>
+        <configfile name="msi_combine"><![CDATA[
+
+#import re
+
+################ load libraries and some preparations #################
+
+library(Cardinal)
+library(ggplot2)
+
+## read tabular file for xy_shift option
+#if str( $combine_conditional.combine_method ) == 'xy_shifts':
+    input_list = read.delim("$combine_conditional.coordinates_file", header = $combine_conditional.xy_header, 
+    stringsAsFactors = FALSE)
+#end if
+
+## function to load RData and store with new variable name
+loadRData <- function(fileName){
+load(fileName)
+get(ls()[ls() != "fileName"])
+}
+
+## preparations for reading files one by one with for loop
+pixel_vector = numeric()
+x_shifts = 0
+y_shifts = 0
+max_y = numeric()
+valid_dataset = logical()
+#set $msidata = []
+#set $pixelcoords = []
+#set $num_infiles = len($infiles)
+all_files = $num_infiles
+
+
+############## reading files and changing pixel coordinates ###################
+
+#for $i, $infile in enumerate($infiles):
+
+    ## read and manipulate MSI data
+
+    #if $infile.ext == 'imzml'
+        #if str($processed_cond.processed_file) == "processed":
+            msidata_$i <- readImzML('infile_${i}', mass.accuracy=$processed_cond.accuracy, units.accuracy = "$processed_cond.units")
+            centroided(msidata) = $centroids
+        #else
+            msidata_$i <- readImzML('infile_${i}')
+            centroided(msidata) = $centroids
+        #end if
+    #elif $infile.ext == 'analyze75'
+            msidata_$i <- readAnalyze('infile_${i}')
+            centroided(msidata) = $centroids
+    #else
+            msidata_$i = loadRData('infile_${i}.RData')
+    #end if
+
+    ## remove duplicated coordinates, otherwise combine will fail
+    print(paste0(sum(duplicated(coord(msidata_$i))), " duplicated coordinates were removed from input file"))
+    msidata_${i} <- msidata_${i}[,!duplicated(coord(msidata_${i}))]
+
+    ## same name for MSI data files necessary to combine data in one single coordinate system
+    sampleNames(msidata_$i) = "msidata"
+
+
+    ## read and process annotation tabular or automatically use name of infile as annotation
+
+        ## set all pixel annotations to NA, necessary in case files were combined before with different annotations
+        msidata_$i\$column1 = rep(NA, ncol(msidata_$i))
+        msidata_$i\$column2 = rep(NA, ncol(msidata_$i))
+        msidata_$i\$column3 = rep(NA, ncol(msidata_$i))
+        msidata_$i\$column4 = rep(NA, ncol(msidata_$i))
+        msidata_$i\$column5 = rep(NA, ncol(msidata_$i))
+        msidata_$i\$combined_sample = rep(NA, ncol(msidata_$i))
+
+    #if str($annotation_cond.annotation_tabular) == 'annotation'
+        print("annotations")
+
+        ## read annotation tabular, set first two columns as x and y, merge with coordinates dataframe and order according to pixelorder in msidata
+        input_annotation = read.delim("annotation_file_${i}.tabular", header = $annotation_cond.tabular_header, stringsAsFactors = FALSE)
+
+        colnames(input_annotation)[1:2] = c("x", "y")
+        msidata_coordinates = cbind(coord(msidata_$i)[,1:2], 1:ncol(msidata_$i))
+        colnames(msidata_coordinates)[3] = "pixel_index"
+
+        ## only first 5 annotation columns are kept
+        if (ncol(input_annotation) > 7){
+            input_annotation = input_annotation[,1:7]}
+
+        annotation_df = merge(msidata_coordinates, input_annotation, by=c("x", "y"), all.x=TRUE)
+        annotation_df_8 = cbind(annotation_df, data.frame(matrix(NA,ncol=8-ncol(annotation_df), nrow=ncol(msidata_$i)))) 
+        annotation_df_8_sorted = annotation_df_8[order(annotation_df_8\$pixel_index),]## orders pixel according to msidata
+
+        ## each annotation column is assigned to the pixel in the pData slot of the MSIdata
+        msidata_$i\$column1 = annotation_df_8_sorted[,4]
+        msidata_$i\$column2 = annotation_df_8_sorted[,5]
+        msidata_$i\$column3 = annotation_df_8_sorted[,6]
+        msidata_$i\$column4 = annotation_df_8_sorted[,7]
+        msidata_$i\$column5 = annotation_df_8_sorted[,8]
+
+        ## extract columnnames from (last) annotation tabular (for QC plot names)
+        annotation_colnames = colnames(input_annotation)[-c(1,2)]
+
+    #end if
+
+
+    ################### preparation xy shifts ##########################
+
+    #if str( $combine_conditional.combine_method ) == 'xy_shifts':
+
+        ## shift coordinates according to input tabular file and store file names
+        coord(msidata_$i)\$x = coord(msidata_$i)\$x + input_list[$i+1,$combine_conditional.column_x] ## shifts x coordinates according to tabular file
+        coord(msidata_$i)\$y = coord(msidata_$i)\$y + input_list[$i+1,$combine_conditional.column_y] ## shifts y coordinates according to tabular file
+        pixel_vector = append(pixel_vector, rep(paste($i+1, input_list[$i+1,$combine_conditional.column_names], sep="_"),times=ncol(msidata_$i))) ## stores file name for each pixel
+        msidata_$i\$combined_sample = rep(paste($i+1, input_list[$i+1,$combine_conditional.column_names], sep="_"),times=ncol(msidata_$i))
+        pixelcoords_$i = cbind(coord(msidata_$i)[,1:2], rep($i+1,ncol(msidata_$i)))
+        #silent $pixelcoords.append('pixelcoords_'+str($i))
+        colnames(pixelcoords_$i)[3] = "file_number"
+
+    ################### preparation automatic combination ##########################
+
+    #elif str( $combine_conditional.combine_method ) == 'automatic_combine':
+
+        ## use name of Galaxy inputfile as combined sample annotation
+        names_vector = character()
+        #set escaped_element_identifier = re.sub('[^\w\-\s\[/]]', '_', str($infile.element_identifier))
+        if (sum(spectra(msidata_$i)[],na.rm=TRUE)>0) ## use only valid files
+        {
+            if (is.null(levels(msidata_$i\$combined_sample)))
+            {
+            names_vector = append(names_vector, rep(paste($i+1, "$escaped_element_identifier", sep="_"),ncol(msidata_$i)))
+            msidata_$i\$combined_sample = as.factor(names_vector)
+            }
+        }
+
+        ## Number of input files define grid which is row-wise filled with files
+
+        coord(msidata_$i)\$x = coord(msidata_$i)\$x - (min(coord(msidata_$i)\$x-1)) + x_shifts
+        coord(msidata_$i)\$y = coord(msidata_$i)\$y - (min(coord(msidata_$i)\$y-1)) + y_shifts
+        x_shifts = max(coord(msidata_$i)\$x) + 5
+        max_y = append(max_y, max(coord(msidata_$i)\$y))
+        all_files = $num_infiles
+        new_row = ($i+1)/ceiling(sqrt(all_files))
+        new_row%%1==0
+        if (new_row%%1==0)
+        {x_shifts = 0 ### when row is filled: x values start again at zero
+         y_shifts = max(max_y) + 5 ### when row is filled: y value increases to start a new row
+        max_y = numeric()}
+
+    #end if
+
+    ## store files to combine them later and for each file check if it is valid
+
+    #silent $msidata.append('msidata_'+str($i))
+    valid_dataset = append(valid_dataset, 
+         (ncol(msidata_$i)>0 & nrow(msidata_$i)>0 & sum(spectra(msidata_$i)[], na.rm=TRUE)>0))
+
+#end for
+
+
+###################### automatic combination ###################################
+################################################################################
+
+#if str( $combine_conditional.combine_method ) == 'automatic_combine':
+    print("automatic_combine")
+
+    ## combine only valid datasets
+
+    valid_data =  list(#echo ','.join($msidata)#)[valid_dataset]
+    msidata_combined = do.call(combine, valid_data)
+    print("Valid datasets in order of input bottom to top:")
+    print(valid_dataset)
+
+    ## create dataframe with x,y,sample_name and show all pixels in PDF as QC
+    position_df = cbind(coord(msidata_combined)[,1:2], msidata_combined\$combined_sample)
+    colnames(position_df)[3] = "sample_name"
+
+     ## save as (.RData)
+
+    msidata = msidata_combined
+    save(msidata, file="$msidata_combined")
+
+################################## xy shifts ###################################
+################################################################################
+
+#elif str( $combine_conditional.combine_method ) == 'xy_shifts':
+    print("xy_shifts")
+
+    ## in case user made mistake with xy shifts: find duplicated coordinates
+    all_coordinates = do.call(rbind, list(#echo ','.join($pixelcoords)#))
+    duplicated_coordinates= duplicated(all_coordinates[,1:2])| duplicated(all_coordinates[,1:2], fromLast=TRUE)
+print(paste0("Number of removed duplicated coordinates after combination: ", sum(duplicated_coordinates)/2))
+    unique_coordinates = all_coordinates[!duplicated_coordinates,]
+
+    ## remove duplicated coordinates
+    datasetlist = list()
+    count = 1
+    for (usable_dataset in list(#echo ','.join($msidata)#)){
+        pixelsofinterest = pixels(usable_dataset)[names(pixels(usable_dataset)) %in% rownames(unique_coordinates)]
+        filtered_dataset = usable_dataset[,pixelsofinterest]
+        if (ncol(filtered_dataset) > 0 ){
+            datasetlist[[count]] = filtered_dataset}
+        count = count +1}
+
+    msidata_combined = do.call(combine, datasetlist)
+
+    ## save as (.RData)
+
+    msidata = msidata_combined
+    save(msidata, file="$msidata_combined")
+
+    ## create x,y,sample_name dataframe for QC pdf
+
+    position_df = cbind(coord(msidata), msidata\$combined_sample)
+    colnames(position_df)[3] = "sample_name"
+
+#end if
+
+
+################################## outputs ####################################
+################################################################################
+
+########### QC with pixels and their annotations ################################
+
+print(paste0("Number of NA in input file: ",sum(is.na(spectra(msidata)[]))))
+
+pdf("Combined_qc.pdf", width=15, height=15)
+
+## combined plot
+combine_plot = ggplot(position_df, aes(x=x, y=y, fill=sample_name))+
+       geom_tile() +
+       coord_fixed()+
+       ggtitle("Spatial orientation of combined data")+
+       theme_bw()+
+       theme(text=element_text(family="ArialMT", face="bold", size=15))+
+       theme(legend.position="bottom",legend.direction="vertical")+
+       guides(fill=guide_legend(ncol=5,byrow=TRUE))
+coord_labels = aggregate(cbind(x,y)~sample_name, data=position_df, mean)
+coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$sample_name)
+for(file_count in 1:nrow(coord_labels))
+    {combine_plot = combine_plot + annotate("text",x=coord_labels[file_count,"x"],
+    y=coord_labels[file_count,"y"],label=toString(coord_labels[file_count,4]))}
+print(combine_plot)
+
+    #if str($annotation_cond.annotation_tabular) == 'annotation'
+
+        ## annotation plots
+
+        ## plot 1
+
+        column1_df = cbind(coord(msidata), msidata\$column1)
+        colnames(column1_df)[3] = "column1"
+
+        if (sum(is.na(column1_df[3])) < nrow(column1_df)){
+        column1_plot = ggplot(column1_df, aes(x=x, y=y, fill=column1))+
+               geom_tile() +
+               coord_fixed()+
+               ggtitle(paste0(annotation_colnames[1]))+
+               theme_bw()+
+               theme(text=element_text(family="ArialMT", face="bold", size=15))+
+               theme(legend.position="bottom",legend.direction="vertical")+
+               guides(fill=guide_legend(ncol=5,byrow=TRUE, title=annotation_colnames[1]))
+        print(column1_plot)}
+        ##rename columnname for output tabular file
+        colnames(column1_df)[3] = annotation_colnames[1]
+
+        ## plot 2
+        column2_df = cbind(coord(msidata), msidata\$column2)
+        colnames(column2_df)[3] = "column2"
+
+        if (sum(is.na(column2_df[3])) < nrow(column2_df)){
+        column2_plot = ggplot(column2_df, aes(x=x, y=y, fill=column2))+
+               geom_tile() +
+               coord_fixed()+
+               ggtitle(paste0(annotation_colnames[2]))+
+               theme_bw()+
+               theme(text=element_text(family="ArialMT", face="bold", size=15))+
+               theme(legend.position="bottom",legend.direction="vertical")+
+               guides(fill=guide_legend(ncol=5,byrow=TRUE, title=annotation_colnames[2]))
+        print(column2_plot)}
+        ##rename columnname for output tabular file
+        colnames(column2_df)[3] = annotation_colnames[2]
+
+        ## plot 3
+        column3_df = cbind(coord(msidata), msidata\$column3)
+        colnames(column3_df)[3] = "column3"
+        if (sum(is.na(column3_df[3])) < nrow(column3_df)){
+        column3_plot = ggplot(column3_df, aes(x=x, y=y, fill=column3))+
+               geom_tile() +
+               coord_fixed()+
+               ggtitle(paste0(annotation_colnames[3]))+
+               theme_bw()+
+               theme(text=element_text(family="ArialMT", face="bold", size=15))+
+               theme(legend.position="bottom",legend.direction="vertical")+
+               guides(fill=guide_legend(ncol=5,byrow=TRUE, title=annotation_colnames[3]))
+        print(column3_plot)}
+        ##rename columnname for output tabular file
+        colnames(column3_df)[3] = annotation_colnames[3]
+
+        ## plot 4
+        column4_df = cbind(coord(msidata), msidata\$column4)
+        colnames(column4_df)[3] = "column4"
+
+        if (sum(is.na(column4_df[3])) < nrow(column4_df)){
+        column4_plot = ggplot(column4_df, aes(x=x, y=y, fill=column4))+
+               geom_tile() +
+               coord_fixed()+
+               ggtitle(paste0(annotation_colnames[4]))+
+               theme_bw()+
+               theme(text=element_text(family="ArialMT", face="bold", size=15))+
+               theme(legend.position="bottom",legend.direction="vertical")+
+               guides(fill=guide_legend(ncol=5,byrow=TRUE, title=annotation_colnames[4]))
+        print(column4_plot)}
+        ##rename columnname for output tabular file
+        colnames(column4_df)[3] = annotation_colnames[4]
+
+        ## plot5
+
+        column5_df = cbind(coord(msidata), msidata\$column5)
+        colnames(column5_df)[3] = "column5"
+        if (sum(is.na(column5_df[3])) < nrow(column5_df)){
+        column5_plot = ggplot(column5_df, aes(x=x, y=y, fill=column5))+
+               geom_tile() +
+               coord_fixed()+
+               ggtitle(paste0(annotation_colnames[5]))+
+               theme_bw()+
+               theme(text=element_text(family="ArialMT", face="bold", size=15))+
+               theme(legend.position="bottom",legend.direction="vertical")+
+               guides(fill=guide_legend(ncol=5,byrow=TRUE, title=annotation_colnames[5]))
+        print(column5_plot)}
+        ##rename columnname for output tabular file
+        colnames(column5_df)[3] = annotation_colnames[5]
+
+    #end if
+
+    dev.off()
+
+##################### annotation tabular output ################################
+
+    if (length(features(msidata))> 0 & length(pixels(msidata)) > 0){
+
+position_df\$sample_name = gsub("^[^_]*_","",position_df\$sample_name)
+
+        #if str($annotation_cond.annotation_tabular) == 'no_annotation':
+
+            write.table(position_df, file="$pixel_annotations", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+
+        #else
+            annotation_df_list = list(position_df, column1_df, column2_df, column3_df, column4_df, column5_df)
+            combined_annotations = Reduce(function(...) merge(..., by=c("x", "y"), all=TRUE), annotation_df_list)
+            write.table(combined_annotations, file="$pixel_annotations", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+
+        #end if 
+
+    }else{
+        print("No annotation tabular output because file has no features or pixels left")
+    }
+
+
+    ]]></configfile>
+    </configfiles>
+    <inputs>
+        <param name="infiles" type="data" multiple="true" format="imzml,rdata,analyze75"
+            label="MSI data as imzml, analyze7.5 or Cardinal MSImageSet saved as RData"
+            help="load imzml and ibd file by uploading composite datatype imzml"/>
+        <param name="centroids" type="boolean" label="Is the input data centroided (picked)" help="Choose Yes if peak detection has already been done." truevalue="TRUE" falsevalue="FALSE"/>
+        <conditional name="processed_cond">
+            <param name="processed_file" type="select" label="Is the input file a processed imzML file ">
+                <option value="no_processed" selected="True">not a processed imzML</option>
+                <option value="processed">processed imzML</option>
+            </param>
+            <when value="no_processed"/>
+            <when value="processed">
+                <param name="accuracy" type="float" value="50" label="Mass accuracy to which the m/z values will be binned" help="This should be set to the native accuracy of the mass spectrometer, if known"/>
+                <param name="units" display="radio" type="select" label="Unit of the mass accuracy" help="either m/z or ppm">
+                    <option value="mz" >mz</option>
+                    <option value="ppm" selected="True" >ppm</option>
+                </param>
+            </when>
+        </conditional>
+        <conditional name="annotation_cond">
+            <param name="annotation_tabular" type="select" label="Optional annotation of pixels with tabular files">
+                <option value="no_annotation" selected="True">no annotation</option>
+                <option value="annotation">pixel annotations</option>
+            </param>
+            <when value="no_annotation"/>
+            <when value="annotation">
+                <param name="annotation_files" type="data" multiple="true" format="tabular"
+                    label="Pixel annotations tabular files"
+                    help="Same number and order of files as input files. First column x values, second column y values. Up to 5 columns with pixel annotations"/>
+                <param name="tabular_header" type="boolean" label="Tabular files contain a header line" truevalue="TRUE" falsevalue="FALSE"/>
+            </when>
+        </conditional>
+        <conditional name="combine_conditional">
+            <param name="combine_method" type="select" label="Way of combining multiple files">
+                <option value="automatic_combine" selected="True" >automatic combination</option>
+                <option value="xy_shifts">shift xy coordinates with a tabular file</option>
+            </param>
+            <when value="automatic_combine"/>
+            <when value="xy_shifts">
+                <param name="coordinates_file" type="data" format="tabular" label="datasetnames, x and y values to shift pixel coordinates before combining"
+            help="Tabular file with three columns: 1 for the filename, 1 for the x-coordinate shift and 1 for the y-coordinate shift. Pixels with the same coordinates after shifting will be deleted."/>
+                <param name="column_x" data_ref="coordinates_file" label="Column with values for shift in x direction" type="data_column"/>
+                <param name="column_y" data_ref="coordinates_file" label="Column with values for shift in y direction" type="data_column"/>
+                <param name="column_names" data_ref="coordinates_file" label="Column with dataset names" type="data_column"/>
+                <param name="xy_header" type="boolean" label="Tabular files contain a header line" truevalue="TRUE" falsevalue="FALSE"/>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data format="rdata" name="msidata_combined" label="${tool.name} on ${on_string}"/>
+        <data format="pdf" name="QC_overview" from_work_dir="Combined_qc.pdf" label = "${tool.name} on ${on_string}: QC"/>
+        <data format="tabular" name="pixel_annotations" label="${tool.name} on ${on_string}: annotations"/>
+    </outputs>
+    <tests>
+        <test>
+            <param name="infiles" value="msidata_1.RData,msidata_2.RData,msidata_3.RData" ftype="rdata"/>
+            <conditional name="annotation_cond">
+                <param name="annotation_tabular" value="annotation"/>
+                <param name="annotation_files" value="annotations_file1.tabular,annotations_file2.tabular,annotations_file3.tabular" ftype="tabular"/>
+                <param name="tabular_header" value="TRUE"/>
+            </conditional>
+            <param name="combine_method" value="xy_shifts"/>
+            <param name="coordinates_file" ftype="tabular" value="xy_coordinates.tabular"/>
+            <param name="column_x" value="1"/>
+            <param name="column_y" value="2"/>
+            <param name="column_names" value="3"/>
+            <output name="pixel_annotations" file="123_annotation_output.tabular"/>
+            <output name="msidata_combined" file="123_combined.RData" compare="sim_size" />
+            <output name="QC_overview" file="123_combined_QC.pdf" compare="sim_size"/>
+        </test>
+        <test>
+            <param name="infiles" value="msidata_1.RData,msidata_2.RData" ftype="rdata"/>
+            <conditional name="annotation_cond">
+                <param name="annotation_tabular" value="annotation"/>
+                <param name="annotation_files" value="annotations_file1.tabular,annotations_file2.tabular" ftype="tabular"/>
+                <param name="tabular_header" value="TRUE"/>
+            </conditional>
+            <param name="combine_method" value="automatic_combine"/>
+            <output name="pixel_annotations" file="12_annotation_output.tabular"/>
+            <output name="msidata_combined" file="12_combined.RData" compare="sim_size" />
+            <output name="QC_overview" file="12_combined_QC.pdf" compare="sim_size"/>
+        </test>
+        <test>
+            <param name="infiles" value="msidata_1.RData,123_combined.RData" ftype="rdata"/>
+            <conditional name="annotation_cond">
+                <param name="annotation_tabular" value="annotation"/>
+                <param name="annotation_files" value="annotations_file1.tabular,123_annotation.tabular" ftype="tabular"/>
+                <param name="tabular_header" value="TRUE"/>
+            </conditional>
+            <param name="combine_method" value="automatic_combine"/>
+            <output name="pixel_annotations" file="112_annotation_output.tabular"/>
+            <output name="msidata_combined" file="112_auto_combined.RData" compare="sim_size" />
+            <output name="QC_overview" file="112_auto_combined_QC.pdf" compare="sim_size"/>
+        </test>
+        <test>
+            <param name="infiles" value="msidata_2.RData,123_combined.RData" ftype="rdata"/>
+            <conditional name="annotation_cond">
+                <param name="annotation_tabular" value="no_annotation"/>
+            </conditional>
+            <param name="combine_method" value="automatic_combine"/>
+            <output name="pixel_annotations" file="2123_annotation_output.tabular"/>
+            <output name="msidata_combined" file="2123_auto_combined.RData" compare="sim_size" />
+            <output name="QC_overview" file="2123_auto_combined_QC.pdf" compare="sim_size"/>
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+
+@CARDINAL_DESCRIPTION@
+
+-----
+
+This tool uses the Cardinal combine function to combine several mass spectrometry imaging data. 
+
+@MSIDATA_INPUT_DESCRIPTION@
+- MSI data files must have the same m/z values (to obtain same m/z values for different files: filtering tool same m/z range and preprocessing tool same binning width)
+- Coordinates stored as decimals rather than integers will be rounded to obtain a regular pixel grid. This might lead to duplicated coordinates which will be automatically removed before the tools analysis starts. 
+@SPECTRA_TABULAR_INPUT_DESCRIPTION@
+
+- For xy shifts with tabular file: Tabular file with x and y coordinates shift and file name
+
+    - Each input file is shifted in x and y direction according to this tabular file. In the example the files have about the same pixel dimensions which is smaller than 510x260.
+    - The file can have any column names as header (in this case set "Tabular file contains a header line" to yes) or no header at all
+
+        ::
+        
+            x_shift     y_shift    file name
+               0            0       file1
+              510           0       file2
+               0           260      file3
+              510          260      file4
+              ...
+              ...
+        
+
+
+
+**Options**
+
+- "automatic combination": files are automatically arranged in a grid (duplicated pixels are allowed), subfiles are named according to the input file name
+- "xy shifts": each file can be moved in x and y direction according to the users need (define one tabular file in the order in which the files are loaded in the history (bottom to top) and define for each file the x and y coordinates shifts in separate columns and the file name in a third column as shown above). The xy shift option combines all datasets and removes all duplicated pixels (same x and y coordinates).
+
+**Tips**
+
+- The combine tools puts all samples into a common x-y-grid, therefore pixel coordinates will change. In case the pixels are already annotated, the annotations should be provided as tabular files and the tool will return an annotation file with the new pixel coordinates. This annotation file can then be used together with the combined MSI data for tools in which the annotation is required (e.g. 'MSI classification') or useful (e.g. 'MSI spectra plots').
+- In case more annotations are required: The annotation input file should have an identifier column, for example the patient_ID. A second tabular file that contains more annotations and also one column with the identifier column (e.g. 'patient_ID') can be merged to the annotation output file of this tool with the tool 'join two files' and then set the 'Column to use' parameters for both files to the identifier column. 
+
+
+
+**Output**
+
+- single imzML file containing all valid input files
+- pdf that shows the pixel positions and annotations of the combined files
+- Tabular file with pixel annotations (x,y,column with input file names and up to five annotation columns)
+
+
+]]>
+    </help>
+    <expand macro="citations"/>
+</tool>
