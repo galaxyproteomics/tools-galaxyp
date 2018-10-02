@@ -53,9 +53,7 @@ get_args <- function(){
       --id_column             Column containing accesion number of interest (ex : 'c1')
       --header                Boolean, TRUE if header FALSE if not
       --ouput                 Output filename
-      --expression_values1    Column containing expression values (first condition)
-      --expression_values2    Column containing expression values (second condition)
-      --expression_values3    Column containing expression values (third condition)
+      --fold_change_col      Column(s) containing fold change values (comma separated)
       --native_kegg           TRUE : native KEGG graph, FALSE : Graphviz graph
       --species               KEGG species (hsa, mmu, ...)
       --pathways_input        Tab with pathways in a column, output format of find_pathways
@@ -108,8 +106,8 @@ clean_bad_character <- function(string)  {
 
 args <- get_args()
 
-#save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/pathview/args.Rda")
-#load("/home/dchristiany/proteore_project/ProteoRE/tools/pathview/args.Rda")
+#save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/kegg_pathways_mapping/args.Rda")
+#load("/home/dchristiany/proteore_project/ProteoRE/tools/kegg_pathways_mapping/args.Rda")
 
 ###setting variables
 if (!is.null(args$pathways_id)) { 
@@ -128,11 +126,10 @@ header <- str2bool(args$header)
 #output <- args$output
 native_kegg <- str2bool(args$native_kegg)
 species=args$species
+fold_change_data = str2bool(args$fold_change_data)
 #org list used in mapped2geneID
 org <- c('Hs','Mm','Rn')
 names(org) <- c('hsa','mmu','rno')
-
-
 
 #read input file or list
 if (!is.null(args$input)){
@@ -143,23 +140,17 @@ if (!is.null(args$input)){
   ncol=1
 }
 
+#fold change columns
 #make sure its double and name expression value columns
-e1 <- as.numeric(gsub("c", "" ,args$expression_values1))
-if (!is.null(args$expression_values1)) { 
-  colnames(tab)[e1] <- "e1" 
-  tab$e1 <- as.double(gsub(",",".",as.character(tab$e1) ))
+if (fold_change_data){
+  fold_change <- as.integer(unlist(strsplit(gsub("c","",args$fold_change_col),",")))
+  if (length(fold_change) > 3) { fold_change= fold_change[1:3] } 
+  for (i in 1:length(fold_change)) {
+    fc_col = fold_change[i]
+    colnames(tab)[fc_col] <- paste("e",i,sep='')
+    tab[,fc_col] <- as.double(gsub(",",".",as.character(tab[,fc_col]) ))
   }
-e2 <- as.numeric(gsub("c", "" ,args$expression_values2))
-if (!is.null(args$expression_values2)) { 
-  colnames(tab)[e2] <- "e2"
-  tab$e2 <- as.double(gsub(",",".",as.character(tab$e2) ))
-  }
-e3 <- as.numeric(gsub("c", "" ,args$expression_values3))
-if (!is.null(args$expression_values3)) { 
-  colnames(tab)[e3] <- "e3"
-  tab$e3 <- as.double(gsub(",",".",as.character(tab$e3) ))
-  }
-
+}
 
 ##### map uniprotID to entrez geneID
 if (id_type == "uniprotid") {
@@ -186,19 +177,20 @@ geneID = unlist(strsplit(geneID,"[;]"))
 #names(geneid_hsa_pathways) <- c("geneID","pathway")
 
 ##### build matrix to map on KEGG pathway (kgml : KEGG xml)
-if (!is.null(args$expression_values1)&is.null(args$expression_values2)&is.null(args$expression_values3)){
-  mat <- as.data.frame(cbind(tab$e1)[which(!is.na(tab$geneID)),])
-  row.names(mat) <- tab$geneID[which(!is.na(tab$geneID))]
-} else if (!is.null(args$expression_values1)&!is.null(args$expression_values2)&is.null(args$expression_values3)){
-  mat <- as.data.frame(cbind(tab$e1,tab$e2)[which(!is.na(tab$geneID)),])
-  row.names(mat) <- tab$geneID[which(!is.na(tab$geneID))]
-}else if (!is.null(args$expression_values1)&!is.null(args$expression_values2)&!is.null(args$expression_values3)){
-  mat <- as.data.frame(cbind(tab$e1,tab$e2,tab$e3)[which(!is.na(tab$geneID)),])
-  row.names(mat) <- tab$geneID[which(!is.na(tab$geneID))]
+if (fold_change_data) {
+  if (length(fold_change) == 3){
+    mat <- as.data.frame(cbind(tab$e1,tab$e2,tab$e3)[which(!is.na(tab$geneID)),])
+    row.names(mat) <- tab$geneID[which(!is.na(tab$geneID))]
+  } else if (length(fold_change) == 2){
+    mat <- as.data.frame(cbind(tab$e1,tab$e2)[which(!is.na(tab$geneID)),])
+    row.names(mat) <- tab$geneID[which(!is.na(tab$geneID))]
+  } else {
+    mat <- as.data.frame(cbind(tab$e1)[which(!is.na(tab$geneID)),])
+    row.names(mat) <- tab$geneID[which(!is.na(tab$geneID))]
+  }
 } else {
   mat <- geneID
 }
-
 
 #### simulation data test
 #exp1 <- sim.mol.data(mol.type = c("gene", "gene.ko", "cpd")[1], id.type = NULL, species="hsa", discrete = FALSE, nmol = 161, nexp = 1, rand.seed=100)
@@ -224,10 +216,10 @@ if (is.null(tab$e1)) {
 
 for (id in ids) {
   pathview(gene.data = mat,
+           gene.idtype = "entrez", 
            pathway.id = id,
            species = species, 
            kegg.dir = ".", 
-           gene.idtype = "entrez", 
            kegg.native = native_kegg,
            low = list(gene = low_color, cpd = "blue"), 
            mid = list(gene = mid_color, cpd = "transparent"), 
