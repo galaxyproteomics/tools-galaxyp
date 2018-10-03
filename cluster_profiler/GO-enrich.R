@@ -68,7 +68,6 @@ enrich.GO <- function(geneid, universe, orgdb, ontology, pval_cutoff, qval_cutof
                 universe=universe,
                 OrgDb=orgdb,
                 ont=ontology,
-                keytype="ENTREZID",
                 pAdjustMethod="BH",
                 pvalueCutoff=pval_cutoff,
                 qvalueCutoff=qval_cutoff,
@@ -261,13 +260,13 @@ clusterProfiler = function() {
   for (onto in ontology) {
     if (args$go_represent == "true") {
       ggo<-repartition.GO(gene, orgdb, onto, level, readable=TRUE)
-      output_path = paste("cluster_profiler_GGO_",onto,".csv",sep="")
+      output_path = paste("cluster_profiler_GGO_",onto,".tsv",sep="")
       write.table(ggo, output_path, sep="\t", row.names = FALSE, quote=FALSE)
     }
 
     if (args$go_enrich == "true") {
       ego<-enrich.GO(gene, universe_gene, orgdb, onto, pval_cutoff, qval_cutoff,plot)
-      output_path = paste("cluster_profiler_EGO_",onto,".csv",sep="")
+      output_path = paste("cluster_profiler_EGO_",onto,".tsv",sep="")
       write.table(ego, output_path, sep="\t", row.names = FALSE, quote=FALSE)
     }
   }
