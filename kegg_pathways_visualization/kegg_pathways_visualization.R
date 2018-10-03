@@ -106,8 +106,8 @@ clean_bad_character <- function(string)  {
 
 args <- get_args()
 
-#save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/kegg_pathways_mapping/args.Rda")
-#load("/home/dchristiany/proteore_project/ProteoRE/tools/kegg_pathways_mapping/args.Rda")
+#save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/kegg_pathways_visualization/args.Rda")
+#load("/home/dchristiany/proteore_project/ProteoRE/tools/kegg_pathways_visualization/args.Rda")
 
 ###setting variables
 if (!is.null(args$pathways_id)) { 
