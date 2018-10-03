@@ -19,7 +19,7 @@ get_args <- function(){
       --help                  Print this test
       --input                 tab file
       --id_list               id list ',' separated
-      --id_type               type of input ids (uniprot_AC or geneID)
+      --id_type               type of input ids (kegg-id, uniprot_AC,geneID)
       --id_column             number og column containg ids of interest
       --nb_pathways           number of pathways to return
       --header                boolean
@@ -103,7 +103,7 @@ kegg_mapping<- function(id_list,id_type,ref_ids) {
     
     res<-data.frame(I(names(in.path[which(in.path!=0)])), I(name), ratio, as.numeric(in.path[which(in.path!=0)]), as.numeric(tot.path[which(in.path!=0)]))
     res <- res[order(as.numeric(res[,3]),decreasing = TRUE),]
-    colnames(res)<-c("pathway_ID", "Description" , "Ratio IDs mapped/total IDs (%)" ,"nb KEGG ID genes mapped in the pathway", "nb total of KEGG ID genes present in the pathway")
+    colnames(res)<-c("pathway_ID", "Description" , "Ratio IDs mapped/total IDs (%)" ,"nb KEGG genes IDs mapped in the pathway", "nb total of KEGG genes IDs present in the pathway")
     
     return(res)
     
