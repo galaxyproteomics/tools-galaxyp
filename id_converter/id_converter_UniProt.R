@@ -83,7 +83,7 @@ mapping = function() {
     column_number = as.numeric(gsub("c", "" ,args$column_number))
     header = args$header
     file_all = readfile(filename, header)
-    list_id = trimws(gsub("[$,\xc2\xa0]","",sapply(strsplit(file_all[,column_number], ";"), "[", 1)))
+    list_id = trimws(gsub("[$,\xc2\xa0]","",sapply(strsplit(as.character(file_all[,column_number]), ";"), "[", 1)))
     # Remove isoform accession number (e.g. "-2")
     list_id = gsub("-.+", "", list_id)
   }
