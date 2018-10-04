@@ -182,7 +182,7 @@ clusterProfiler = function() {
     # Get file content
     file = readfile(filename, header)
     # Extract Protein IDs list
-    input =  sapply(as.character(file[,ncol]),function(x) rapply(strsplit(x,";"),c),USE.NAMES = FALSE)
+    input =  unlist(sapply(as.character(file[,ncol]),function(x) rapply(strsplit(x,";"),c),USE.NAMES = FALSE))
   }
   id_type = args$id_type
   ## Get input gene list from input IDs
