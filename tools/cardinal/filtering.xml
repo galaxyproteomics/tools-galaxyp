@@ -1,0 +1,516 @@
+<tool id="cardinal_filtering" name="MSI filtering" version="@VERSION@.0">
+    <description>tool for filtering mass spectrometry imaging data</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements">
+        <requirement type="package" version="2.2.1">r-gridextra</requirement>
+        <requirement type="package" version="2.2.1">r-ggplot2</requirement>
+    </expand>
+    <command detect_errors="exit_code">
+    <![CDATA[
+
+        @INPUT_LINKING@
+        cat '${MSI_subsetting}' &&
+        Rscript '${MSI_subsetting}'
+
+    ]]>
+    </command>
+    <configfiles>
+        <configfile name="MSI_subsetting"><![CDATA[
+
+
+################################# load libraries and read file #################
+
+
+library(Cardinal)
+library(ggplot2)
+library(gridExtra)
+
+@READING_MSIDATA@
+
+
+########################### QC numbers ########################
+
+        ## Number of features (m/z)
+        maxfeatures = length(features(msidata))
+        ## Range m/z
+        minmz = round(min(mz(msidata)), digits=2)
+        maxmz = round(max(mz(msidata)), digits=2)
+        ## Number of spectra (pixels)
+        pixelcount = length(pixels(msidata))
+        ## Range x coordinates
+        minimumx = min(coord(msidata)[,1])
+        maximumx = max(coord(msidata)[,1])
+        ## Range y coordinates
+        minimumy = min(coord(msidata)[,2])
+        maximumy = max(coord(msidata)[,2])
+        ## Number of intensities > 0
+        npeaks= sum(spectra(msidata)[]>0, na.rm=TRUE)
+        ## Spectra multiplied with m/z (potential number of peaks)
+        numpeaks = ncol(spectra(msidata)[])*nrow(spectra(msidata)[])
+        ## Percentage of intensities > 0
+        percpeaks = round(npeaks/numpeaks*100, digits=2)
+        ## Number of empty TICs
+        TICs = colSums(spectra(msidata)[], na.rm=TRUE) 
+        NumemptyTIC = sum(TICs == 0)
+        ## median TIC
+        medint = round(median(TICs), digits=2)
+        ## Store features for QC plot
+        featuresinfile = mz(msidata)
+
+## Next steps will only run if there are more than 0 intensities/pixels/features in the file
+
+if (sum(spectra(msidata)[]>0, na.rm=TRUE) > 0)
+{
+
+
+        ## prepare dataframe for QC of pixel distribution (will be overwritten in filtering of pixels condition)
+        position_df = cbind(coord(msidata)[,1:2], rep("$infile.element_identifier", times=ncol(msidata)))
+        colnames(position_df)[3] = "annotation"
+
+    ###################################### Filtering of pixels #####################
+    ################################################################################
+
+    ############ Pixels in two columns format: x and y in different columns #############
+
+    #if str($pixels_cond.pixel_filtering) == "two_columns":
+        print("two columns")
+
+        ## read tabular file
+        input_list = read.delim("$pixels_cond.annotation_file", header = $pixels_cond.tabular_header, 
+        stringsAsFactors = FALSE)
+        numberpixels = nrow(input_list)
+        inputpixels = input_list[,c($pixels_cond.column_x, $pixels_cond.column_y, $pixels_cond.column_names)]
+
+        ## rewrite into x = 1, y = 1 format and filter msidata, count validpixels
+        pixelvector = character()
+        for (pixel in 1:nrow(inputpixels)){
+            pixelvector[pixel] = paste0("x = ", inputpixels[pixel,1],", ", "y = ", inputpixels[pixel,2])}
+        pixelsofinterest= pixels(msidata)[names(pixels(msidata)) %in% pixelvector]
+        msidata = msidata[,pixelsofinterest]
+        validpixels=ncol(msidata)
+
+        ## in case some pixels are left print annotation plot
+        colnames(inputpixels) = c("x", "y", "annotation")
+        position_df = merge(coord(msidata)[,1:2], inputpixels, by=c("x", "y"), all.x=TRUE)
+        colnames(position_df)[3] = "annotation"
+        position_df\$annotation = factor(position_df\$annotation)
+
+
+    ########### Pixels wihin x and y minima and maxima are kept ###################
+
+    #elif str($pixels_cond.pixel_filtering) == "pixel_range":
+        print("pixel range")
+
+        numberpixels = "range"
+        validpixels = "range"
+
+        ## only filter pixels if at least one pixel will be left
+        if (sum(coord(msidata)\$x <= $pixels_cond.max_x_range & coord(msidata)\$x >= $pixels_cond.min_x_range) > 0 & sum(coord(msidata)\$y <= $pixels_cond.max_y_range & coord(msidata)\$y >= $pixels_cond.min_y_range) > 0){
+
+            msidata = msidata[, coord(msidata)\$x <= $pixels_cond.max_x_range & coord(msidata)\$x >= $pixels_cond.min_x_range]
+            msidata = msidata[, coord(msidata)\$y <= $pixels_cond.max_y_range & coord(msidata)\$y >= $pixels_cond.min_y_range]
+        }else{
+            msidata = msidata[,0]
+            print("no valid pixel found")}
+
+        ## update position_df for filtered pixels
+        position_df = cbind(coord(msidata)[,1:2], rep("$infile.element_identifier", times=ncol(msidata)))
+        colnames(position_df)[3] = "annotation"
+        position_df\$annotation = factor(position_df\$annotation)
+
+    #elif str($pixels_cond.pixel_filtering) == "none":
+        print("no pixel filtering")
+
+        numberpixels = 0
+        validpixels = 0
+
+    #end if
+
+}else{
+    print("Inputfile has no intensities > 0")
+}
+
+    ################################# filtering of features ######################
+    ##############################################################################
+
+    ####################### Keep m/z from tabular file #########################
+
+## feature filtering only when pixels/features/intensities are left
+    npeaks_before_filtering= sum(spectra(msidata)[]>0, na.rm=TRUE)
+
+
+if (npeaks_before_filtering > 0)
+
+{
+
+    #if str($features_cond.features_filtering) == "features_list":
+        print("feature list")
+
+        ## read tabular file, define starting row, extract and count valid features
+        input_features = read.delim("$mz_tabular", header = $features_cond.feature_header, stringsAsFactors = FALSE)
+        extracted_features = input_features[,$features_cond.feature_column]
+        numberfeatures = length(extracted_features)
+        if (class(extracted_features) == "numeric"){
+            ### max digits given in the input file will be used to match m/z but the maximum is 4
+               max_digits = max(nchar(matrix(unlist(strsplit(as.character(extracted_features), "\\.")), ncol=2, byrow=TRUE)[,2]))
+               if (max_digits >4)
+               {
+               max_digits = 4
+               }
+
+            validfeatures = round(extracted_features, max_digits) %in% round(mz(msidata),max_digits)
+            featuresofinterest = features(msidata)[round(mz(msidata), digits = max_digits) %in% round(extracted_features[validfeatures], max_digits)]
+            validmz = length(unique(featuresofinterest))
+        }else{
+                validmz = 0
+                featuresofinterest = 0}
+
+        ### filter msidata for valid features
+        msidata = msidata[featuresofinterest,]
+
+    ############### features within a given range are kept #####################
+
+    #elif str($features_cond.features_filtering) == "features_range":
+        print("feature range")
+
+        numberfeatures = "range"
+        validmz = "range"
+
+        if (sum(mz(msidata) >= $features_cond.min_mz & mz(msidata) <= $features_cond.max_mz)> 0){
+            msidata = msidata[mz(msidata) >= $features_cond.min_mz & mz(msidata) <= $features_cond.max_mz,]
+        }else{ 
+            msidata = msidata[0,]
+            print("no valid mz range")}
+
+    ############### Remove m/z from tabular file #########################
+
+    #elif str($features_cond.features_filtering) == "remove_features":
+        print("remove features")
+
+        ## read tabular file, define starting row, extract and count valid features
+        input_features = read.delim("$mz_tabular", header = $features_cond.removal_header, stringsAsFactors = FALSE) 
+        extracted_features = input_features[,$features_cond.removal_column]
+        numberfeatures = length(extracted_features)
+        if (class(extracted_features) == "numeric"){
+            print("input is numeric")
+            featuresofinterest = extracted_features
+            validmz = sum(featuresofinterest <= max(mz(msidata))& featuresofinterest >= min(mz(msidata)))
+        }else{featuresofinterest = 0
+                validmz = 0}
+
+    ### Here starts removal of features: 
+        plusminus = $features_cond.removal_plusminus
+
+        mass_to_remove = numeric()
+        if (sum(featuresofinterest) > 0){
+            for (masses in featuresofinterest){
+                #if str($features_cond.units_removal) == "ppm": 
+                    plusminus = masses * $features_cond.removal_plusminus/1000000
+                #end if 
+                current_mass = which(c(mz(msidata) <= masses + plusminus & mz(msidata) >= masses - plusminus))
+                mass_to_remove = append(mass_to_remove, current_mass)}
+            msidata= msidata[-mass_to_remove, ]
+        }else{print("No features were removed as they were not fitting to m/z values and/or range")}
+
+
+    #elif str($features_cond.features_filtering) == "none":
+
+        print("no feature filtering")
+        validmz = 0
+        numberfeatures = 0
+
+    #end if
+
+    ## save msidata as Rfile
+    save(msidata, file="$msidata_filtered")
+        ## Number of empty TICs
+        TICs2 = colSums(spectra(msidata)[], na.rm=TRUE)
+}else{
+    print("Inputfile or file filtered for pixels has no intensities > 0")
+    numberfeatures = NA
+    validmz = NA
+    ## Number of empty TICs
+    TICs2 = NA
+}
+
+    #################### QC numbers #######################
+
+
+        ## Number of features (m/z)
+        maxfeatures2 = length(features(msidata))
+        ## Range m/z
+        minmz2 = round(min(mz(msidata)), digits=2)
+        maxmz2 = round(max(mz(msidata)), digits=2)
+        ## Number of spectra (pixels)
+        pixelcount2 = length(pixels(msidata))
+        ## Range x coordinates
+        minimumx2 = min(coord(msidata)[,1])
+        maximumx2 = max(coord(msidata)[,1])
+        ## Range y coordinates
+        minimumy2 = min(coord(msidata)[,2])
+        maximumy2 = max(coord(msidata)[,2])
+        ## Number of intensities > 0
+        npeaks2= sum(spectra(msidata)[]>0, na.rm=TRUE)
+        ## Spectra multiplied with m/z (potential number of peaks)
+        numpeaks2 = ncol(spectra(msidata)[])*nrow(spectra(msidata)[])
+        ## Percentage of intensities > 0
+        percpeaks2 = round(npeaks2/numpeaks2*100, digits=2)
+        ## Number of empty TICs
+        NumemptyTIC2 = sum(TICs2 == 0)
+        ## median TIC
+        medint2 = round(median(TICs2), digits=2)
+
+        properties = c("Number of m/z features",
+                       "Range of m/z values",
+                       "Number of pixels", 
+                       "Range of x coordinates", 
+                       "Range of y coordinates",
+                       "Intensities > 0",
+                       "Median TIC per pixel",
+                       "Number of empty spectra", 
+                       "pixel overview", 
+                       "feature overview")
+
+        before = c(paste0(maxfeatures), 
+                   paste0(minmz, " - ", maxmz), 
+                   paste0(pixelcount), 
+                   paste0(minimumx, " - ", maximumx), 
+                   paste0(minimumy, " - ", maximumy), 
+                   paste0(percpeaks, " %"), 
+                   paste0(medint),
+                   paste0(NumemptyTIC), 
+                   paste0("input pixels: ", numberpixels),
+                   paste0("input mz: ", numberfeatures))
+
+        filtered = c(paste0(maxfeatures2), 
+                   paste0(minmz2, " - ", maxmz2), 
+                   paste0(pixelcount2), 
+                   paste0(minimumx2, " - ", maximumx2),  
+                   paste0(minimumy2, " - ", maximumy2), 
+                   paste0(percpeaks2, " %"), 
+                   paste0(medint2),
+                   paste0(NumemptyTIC2), 
+                   paste0("valid pixels: ", validpixels),
+                   paste0("valid mz: ", validmz))
+
+        property_df = data.frame(properties, before, filtered)
+
+    ############################### PDF QC ################################
+
+
+        pdf("filtertool_QC.pdf", fonts = "Times", pointsize = 12)
+        plot(0,type='n',axes=FALSE,ann=FALSE)
+        title(main=paste0("Qualitycontrol of filtering tool for file: \n\n", "$infile.display_name"))
+        grid.table(property_df, rows= NULL)
+
+## QC report with more than value-table: only when pixels/features/intensities are left
+if (npeaks2 > 0)
+{
+        ### visual pixel control
+
+            levels(position_df\$annotation) = factor(paste(1:length(levels(position_df\$annotation)), levels(position_df\$annotation), sep="_"))
+
+            pixel_image = ggplot(position_df, aes(x=x, y=y, fill=annotation))+
+                   geom_tile(height = 1, width=1)+
+                   coord_fixed()+
+                   ggtitle("Spatial orientation of filtered pixels")+
+                   theme_bw()+
+                   theme(plot.title = element_text(hjust = 0.5))+
+                   theme(text=element_text(family="ArialMT", face="bold", size=12))+
+                   theme(legend.position="bottom",legend.direction="vertical")+
+                   theme(legend.key.size = unit(0.2, "line"), legend.text = element_text(size = 6))+
+                   guides(fill=guide_legend(ncol=4,byrow=TRUE))
+
+    coord_labels = aggregate(cbind(x,y)~annotation, data=position_df, mean, na.rm=TRUE, na.action="na.pass")
+    coord_labels\$file_number = 1:length(levels(position_df\$annotation))
+
+    for(file_count in 1:nrow(coord_labels))
+    {pixel_image = pixel_image + annotate("text",x=coord_labels[file_count,"x"],
+    y=coord_labels[file_count,"y"],label=toString(coord_labels[file_count,4]))}
+
+            print(pixel_image)
+
+            ### control features which are removed
+            hist(mz(msidata), xlab="m/z", main="Kept m/z values")
+            #if str($features_cond.features_filtering) == "none":
+                print("no difference histogram as no m/z filtering took place")
+            #else:
+
+                if (isTRUE(all.equal(featuresinfile, mz(msidata)))){
+                print("No difference in m/z values before and after filtering, no histogram drawn")
+                }else{
+                hist(setdiff(featuresinfile, mz(msidata)), xlab="m/z", main="Removed m/z values")}
+            #end if
+
+        dev.off()
+
+}else{
+    print("Inputfile or filtered file has no intensities > 0")
+    dev.off()
+}
+    ]]></configfile>
+    </configfiles>
+    <inputs>
+        <expand macro="reading_msidata"/>
+        <conditional name="pixels_cond">
+            <param name="pixel_filtering" type="select" label="Select pixel filtering option">
+                <option value="none" selected="True">none</option>
+                <option value="two_columns">list of pixel coordinates (tabular file)</option>
+                <option value="pixel_range">ranges for x and y (manually)</option>
+            </param>
+            <when value="none"/>
+            <when value="two_columns">
+                <expand macro="reading_pixel_annotations"/>
+
+
+                <param name="two_columns_pixel" type="data" format="tabular" label="Tabular file with pixel coordinates"
+                    help="Column with x values, another with y values, another with pixel annotations"/>
+                <param name="pixel_column_x" data_ref="two_columns_pixel" label="Column with x values" type="data_column"/>
+                <param name="pixel_column_y" data_ref="two_columns_pixel" label="Column with y values" type="data_column"/>
+                <param name="annotation_column_xy" data_ref="two_columns_pixel" label="Column with annotations" type="data_column"/>
+                <param name="pixel_header" type="boolean" label="Tabular file contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
+
+
+
+
+            </when> 
+            <when value="pixel_range">
+                <param name="min_x_range" type="integer" value="0" label="Minimum value for x"/>
+                <param name="max_x_range" type="integer" value="100" label="Maximum value for x"/>
+                <param name="min_y_range" type="integer" value="0" label="Minimum value for y"/>
+                <param name="max_y_range" type="integer" value="100" label="Maximum value for y"/>
+            </when> 
+        </conditional>
+
+        <conditional name="features_cond">
+            <param name="features_filtering" type="select" label="Select m/z feature filtering option">
+                <option value="none" selected="True">none</option>
+                <option value="features_list">keep a list of m/z (tabular file)</option>
+                <option value="features_range">m/z range (manually)</option>
+                <option value="remove_features">remove a list of m/z (tabular file)</option>
+            </param>
+            <when value="none"/>
+            <when value="features_list">
+                <expand macro="reading_1_column_mz_tabular" label="Tabular file with m/z features to keep"/>
+            </when> 
+            <when value="features_range">
+                <param name="min_mz" type="float" value="1" label="Minimum value for m/z"/>
+                <param name="max_mz" type="float" value="100" label="Maximum value for m/z"/>
+            </when> 
+            <when value="remove_features">
+                <expand macro="reading_1_column_mz_tabular" label="Tabular file with m/z features to remove"/>
+                <param name="removal_plusminus" type="float" value="20" label="Window in which all m/z will be removed" help="This value is the half window size, it will be added and substracted from the given input value"/>
+                <param name="units_removal" type="select" display="radio" optional  ="False" label="units">
+                        <option value="ppm" selected="True">ppm</option>
+                        <option value="Da">Da</option>
+                </param>
+            </when>
+        </conditional>
+    </inputs>
+
+    <outputs>
+        <data format="rdata" name="msidata_filtered" label="${tool.name} on ${on_string}"/>
+        <data format="pdf" name="QC_overview" from_work_dir="filtertool_QC.pdf" label = "${tool.name} on ${on_string}: QC"/>
+    </outputs>
+    <tests>
+        <test>
+            <expand macro="infile_imzml"/>
+            <param name="pixel_filtering" value="pixel_range"/>
+            <param name="min_x_range" value="10"/>
+            <param name="max_x_range" value="20"/>
+            <param name="min_y_range" value="2"/>
+            <param name="max_y_range" value="2"/>
+            <output name="QC_overview" file="imzml_filtered2.pdf" compare="sim_size"/>
+            <output name="msidata_filtered" file="imzml_filtered2.RData" compare="sim_size"/>
+        </test>
+        <test>
+            <expand macro="infile_imzml"/>
+            <param name="pixel_filtering" value="pixel_range"/>
+            <param name="min_x_range" value="1"/>
+            <param name="max_x_range" value="20"/>
+            <param name="min_y_range" value="2"/>
+            <param name="max_y_range" value="2"/>
+            <param name="features_filtering" value="features_range"/>
+            <param name="min_mz" value="350" />
+            <param name="max_mz" value="500"/>
+            <output name="QC_overview" file="imzml_filtered3.pdf" compare="sim_size"/>
+            <output name="msidata_filtered" file="imzml_filtered3.RData" compare="sim_size"/>
+        </test>
+        <test>
+            <expand macro="infile_imzml"/>
+            <param name="pixel_filtering" value="two_columns"/>
+            <param name="annotation_file" ftype="tabular" value = "inputpixels_2column.tabular"/>
+            <param name="column_x" value="1"/>
+            <param name="column_y" value="3"/>
+            <param name="column_names" value="2"/>
+            <output name="QC_overview" file="imzml_filtered4.pdf" compare="sim_size"/>
+            <output name="msidata_filtered" file="imzml_filtered4.RData" compare="sim_size"/>
+        </test>
+        <test>
+            <expand macro="infile_imzml"/>
+            <param name="pixel_filtering" value="pixel_range"/>
+            <param name="min_x_range" value="0"/>
+            <param name="max_x_range" value="10"/>
+            <param name="min_y_range" value="2"/>
+            <param name="max_y_range" value="20"/>
+            <param name="features_filtering" value="features_list"/>
+            <param name="mz_tabular" ftype="tabular" value = "featuresofinterest5.tabular"/>
+            <param name="feature_column" value="1"/>
+            <param name="feature_header" value="0"/>
+            <output name="QC_overview" file="imzml_filtered5.pdf" compare="sim_size"/>
+            <output name="msidata_filtered" file="imzml_filtered5.RData" compare="sim_size" />
+        </test>
+        <test>
+            <expand macro="infile_analyze75"/>
+            <output name="QC_overview" file="analyze75_filtered2.pdf" compare="sim_size"/>
+            <output name="msidata_filtered" file="analyze_filteredoutside.RData" compare="sim_size" />
+        </test>
+        <test>
+            <param name="infile" value="preprocessed.RData" ftype="rdata"/>
+            <conditional name="outputs">
+                <param name="outputs_select" value="no_quality_control"/>
+            </conditional>
+            <output name="msidata_filtered" file="rdata_notfiltered.RData" compare="sim_size"/>
+            <output name="QC_overview" file="rdata_notfiltered.pdf" compare="sim_size" />
+        </test>
+    </tests>
+    <help>
+        <![CDATA[
+
+@CARDINAL_DESCRIPTION@
+
+-----
+
+This tool provides options to filter (subset) pixels and m/z features of mass spectrometry imaging data.
+
+@MSIDATA_INPUT_DESCRIPTION@
+
+@SPECTRA_TABULAR_INPUT_DESCRIPTION@
+
+@MZ_TABULAR_INPUT_DESCRIPTION@
+
+**Options**
+
+- pixel filtering/annotation: either with a tabular file containing x and y coordinates and pixel annotations or by defining a range for x and y by hand (for the latter no annotation is possible). Pixel that are not present in the dataset are ignored. In case all pixels are not present in the dataset the output file will be empty and no further mz filtering will be performed. 
+- m/z feature filtering: m/z values for filtering should be either imported as a tabular file containing containing m/z of interest or by defining a range for the m/z values. m/z that are not present in the dataset are ignored. If all given m/z values or the m/z range is outside the dataset, the output file will be empty. 
+- m/z feature removing: perturbing m/z features such as matrix contaminants can be removed by specifying their m/z in a tabular file, optionally with a half window size in ppm or m/z for the window in which peaks should be removed.
+
+
+**Tips**
+
+- Numeric m/z features imported via a tabular file and m/z features of the dataset are rounded to 4 decimal points (or maximum number of decimal points of input m/z) and then matched. Therefore, it is recommended to use the filtering tool only for m/z which have been extracted from the same dataset. If the m/z values are from a different dataset, the tool "Join two files on column allowing a small difference" should be used to find corresponding m/z values, which can then be used for filtering. 
+- In case tabular file cannot be selected in drop-down menu: Datatype in Galaxy must be tabular otherwise file will not appear in selection window (if Galaxy auto-detection was wrong, datatype can be changed by pressing the pen button (edit attributes))
+
+
+**Output**
+
+- imzML file filtered for pixels and/or m/z
+- pdf with heatmap showing the pixels that are left after filtering and histograms of kept and removed m/z
+
+
+        ]]>
+    </help>
+    <expand macro="citations"/>
+</tool>

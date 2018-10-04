@@ -1,0 +1,229 @@
+<tool id="cardinal_mz_images" name="MSI mz images" version="@VERSION@.0">
+    <description>
+        mass spectrometry imaging m/z heatmaps
+    </description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements">
+        <requirement type="package" version="2.2.1">r-gridextra</requirement>
+        <requirement type="package" version="0.20-35">r-lattice</requirement>
+    </expand>
+    <command detect_errors="aggressive">
+<![CDATA[
+        @INPUT_LINKING@
+        cat '${MSI_heatmaps}' &&
+        Rscript '${MSI_heatmaps}'
+]]>
+    </command>
+    <configfiles>
+        <configfile name="MSI_heatmaps"><![CDATA[
+
+################################# load libraries and read file #################
+
+library(Cardinal)
+library(gridExtra)
+library(lattice)
+
+@READING_MSIDATA@
+
+@DATA_PROPERTIES@
+
+##################################### read and filter input m/z ##############
+
+input_list = read.delim("$calibrant_file", header = $calibrant_header, stringsAsFactors = FALSE)
+input_list = input_list[,c($mz_column, $name_column)]
+
+### calculate how many input m/z are valid: 
+inputmasses = input_list[input_list[,1]>minmz & input_list[,1]<maxmz,]
+inputmz = as.numeric(inputmasses[,1])
+inputnames = as.character(inputmasses[,2])
+
+
+############################## PDF #############################################
+################################################################################
+
+pdf("heatmaps.pdf", fonts = "Times", pointsize = 12)
+plot(0,type='n',axes=FALSE,ann=FALSE)
+#if not $filename:
+    #set $filename = $infile.display_name
+#end if
+title(main=paste("\nHeatmap images\n\n", "Filename:\n", "$filename"))
+
+new_row = data.frame(paste0(length(inputmz), "/", length(input_list[,1])), paste0("# valid m/z in \n", "$calibrant_file.display_name"))
+colnames(new_row) = c("properties", "values")
+property_df = rbind(property_df, new_row)
+
+grid.table(property_df, rows= NULL)
+
+############################# II) images ####################################
+
+### only plot images when file has peaks and valid input m/z: 
+
+if (npeaks > 0){
+    if (length(inputmz) != 0){
+        for (mass in 1:length(inputmz)){
+
+            ###standard image
+
+            #if str($image_type) == "standard_image":
+                print("standard image")
+
+                print(image(msidata, mz=inputmz[mass],plusminus = $plusminus_dalton, contrast.enhance = "$image_contrast", 
+                smooth.image = "$image_smoothing", strip=$strip, colorkey=$colorkey,ylim= c(maximumy+0.1*maximumy,minimumy-0.1*minimumy),
+                main= paste0(inputnames[mass], " (", round(inputmz[mass], digits = 2)," ± ", $plusminus_dalton, " Da)")))}
+
+
+            ###lattice image
+
+            #elif str($image_type) == "lattice_image":
+                print("lattice image")
+
+                #if str($strip) =="TRUE": 
+
+                print(image(msidata, mz=inputmz[mass], strip = strip.custom(bg="lightgrey", par.strip.text=list(col="black", cex=.9)),
+                lattice=TRUE, plusminus = $plusminus_dalton, contrast.enhance = "$image_contrast", smooth.image = "$image_smoothing", 
+                colorkey=$colorkey,ylim= c(maximumy+0.1*maximumy,minimumy-0.1*minimumy),
+                main= paste0(inputnames[mass], " (", round(inputmz[mass], digits = 2)," ± ", $plusminus_dalton, " Da)")))}
+
+                #elif str($strip) =="FALSE": 
+
+                print(image(msidata, mz=inputmz[mass], strip = $strip,
+                lattice=TRUE, plusminus = $plusminus_dalton, contrast.enhance = "$image_contrast", smooth.image = "$image_smoothing", 
+                colorkey=$colorkey,
+                main= paste0(inputnames[mass], " (", round(inputmz[mass], digits = 2)," ± ", $plusminus_dalton, " Da)")))}
+
+                #end if
+
+            #end if 
+
+        ## optional svg output with original coordinates
+        #if $svg_pixelimage:
+            print("svg pixel image")
+            svg(file="svg_pixel_output.svg")
+            par(mar=c(0,0,0,0))
+            image(msidata, mz = inputmz[1],strip=FALSE, ylim=c(maximumy, minimumy), plusminus = $plusminus_dalton,colorkey = FALSE,axes=FALSE, xlab=NA, ylab=NA,contrast.enhance = "$image_contrast", smooth.image = "$image_smoothing")
+            dev.off()
+        #end if
+
+    } else {print("The input m/z were invalid")}
+    dev.off()
+}else{
+    print("inputfile has no intensities > 0")
+dev.off()
+}
+
+
+    ]]></configfile>
+    </configfiles>
+    <inputs>
+        <expand macro="reading_msidata"/>
+        <expand macro="pdf_filename"/>
+        <expand macro="reading_2_column_mz_tabular"/>
+
+
+        <param name="image_contrast" type="select" label="Select a contrast enhancement function for the heatmap images" help="The 'histogram' equalization method flatterns the distribution of intensities. The hotspot 'suppression' method uses thresholding to reduce the intensities of hotspots">
+            <option value="none" selected="True">none</option>
+            <option value="suppression">suppression</option>
+            <option value="histogram">histogram</option>
+        </param>
+        <param name="image_smoothing" type="select" label="Select an image smoothing function for the heatmap images" help="The 'gaussian' smoothing method smooths images with a simple gaussian kernel. The 'adaptive' method uses bilateral filtering to preserve edges">
+            <option value="none" selected="True">none</option>
+            <option value="gaussian">gaussian</option>
+            <option value="adaptive">adaptive</option>
+        </param>
+        <param name="plusminus_dalton" value="0.25" type="float" label="M/z range" help="plusminus m/z window"/>
+        <param name="strip" type="boolean" checked="True" truevalue="TRUE" falsevalue="FALSE" label="Display m/z value in plot"/>
+        <param name="colorkey" type="boolean" checked="True" truevalue="TRUE" falsevalue="FALSE" label="Display colorkey in plot"/>
+        <param name="image_type" type="boolean" checked="True" truevalue="standard_image" falsevalue="lattice_image"
+            label="Standard image" help="No: lattice function is used to display image"/>
+        <param name="svg_pixelimage" type="boolean" label="Export first valid m/z from tabular file as SVG"/>
+    </inputs>
+    <outputs>
+        <data format="pdf" name="plots" from_work_dir="heatmaps.pdf" label="${tool.name} on ${on_string}"/>
+        <data format="svg" name="svg_output" from_work_dir="svg_pixel_output.svg" label="${tool.name} on ${on_string}: image.svg">
+            <filter>svg_pixelimage</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test>
+            <expand macro="infile_imzml"/>
+            <param name="calibrant_file" value="inputpeptides.tabular" ftype="tabular"/>
+            <param name="mz_column" value="1"/>
+            <param name="name_column" value="2"/>
+            <param name="plusminus_dalton" value="0.25"/>
+            <param name="filename" value="Testfile_imzml"/>
+            <param name="image_contrast" value="histogram"/>
+            <param name="strip" value="True"/>
+            <param name="colorkey" value="True"/>
+            <param name="image_type" value="lattice_image"/>
+            <output name="plots" file="Heatmaps_imzml.pdf" ftype="pdf" compare="sim_size"/>
+        </test>
+        <test>
+            <expand macro="infile_analyze75"/>
+            <param name="calibrant_file" value="inputpeptides2.tabular" ftype="tabular"/>
+            <param name="mz_column" value="1"/>
+            <param name="name_column" value="1"/>
+            <param name="plusminus_dalton" value="0.5"/>
+            <param name="filename" value="Testfile_analyze75"/>
+            <param name="image_smoothing" value="gaussian"/>
+            <param name="strip" value="False"/>
+            <param name="colorkey" value="True"/>
+            <param name="svg_pixelimage" value="True"/>
+            <output name="plots" file="Heatmaps_analyze75.pdf" ftype="pdf" compare="sim_size"/>
+            <output name="svg_output" file="analyze75.svg" ftype="svg" compare="sim_size"/>
+        </test>
+        <test>
+            <param name="infile" value="preprocessed.rdata" ftype="rdata"/>
+            <param name="calibrant_file" value="inputpeptides.tabular" ftype="tabular"/>
+            <param name="mz_column" value="1"/>
+            <param name="name_column" value="2"/>
+            <param name="plusminus_dalton" value="0.5"/>
+            <param name="strip" value="True"/>
+            <param name="colorkey" value="True"/>
+            <param name="image_type" value="lattice_image"/>
+            <param name="filename" value="Testfile_rdata"/>
+            <output name="plots" file="Heatmaps_rdata.pdf" ftype="pdf" compare="sim_size"/>
+        </test>
+        <test>
+            <param name="infile" value="empty_spectra.rdata" ftype="rdata"/>
+            <param name="calibrant_file" value="inputpeptides2.tabular" ftype="tabular"/>
+            <param name="mz_column" value="1"/>
+            <param name="name_column" value="1"/>
+            <param name="plusminus_dalton" value="0.5"/>
+            <param name="strip" value="True"/>
+            <param name="colorkey" value="False"/>
+            <param name="filename" value="Testfile_rdata"/>
+            <output name="plots" file="Heatmaps_LM8_file16.pdf" ftype="pdf" compare="sim_size"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+
+
+@CARDINAL_DESCRIPTION@
+
+-----
+
+This tool uses the Cardinal image function to plot the intensity distribution of m/z feature of mass spectrometry imaging data. 
+
+@MSIDATA_INPUT_DESCRIPTION@
+
+@MZ_2COLS_TABULAR_INPUT_DESCRIPTION@
+
+**Tips** 
+
+- In case tabular file cannot be selected in drop-down menu: Datatype in Galaxy must be tabular otherwise file will not appear in selection window (if Galaxy auto-detection was wrong, datatype can be changed by pressing the pen button (edit attributes))
+- No heatmaps are plotted when the input mass spectrometry imaging file has no intensities > 0 or all chosen m/z features are not present in the MSI dataset
+- The contrast enhance and image smoothing functions require a certain number (about 2%) of m/z features with intensities > 0 across all spectra
+- The standard image function should work for all files while the lattice function works not perfectly on every file
+
+**Output**
+
+- Pdf with the heatmap images
+- optional: svg file with the heatmap of the first valid m/z in the tabular file
+
+
+    ]]>
+    </help>
+    <expand macro="citations"/>
+</tool>

@@ -1,0 +1,455 @@
+<tool id="cardinal_spectra_plots" name="MSI plot spectra" version="@VERSION@.0">
+    <description>
+        mass spectrometry imaging mass spectra plots
+    </description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements">
+        <requirement type="package" version="2.2.1">r-gridextra</requirement>
+        <requirement type="package" version="2.2.1">r-ggplot2</requirement>
+        <requirement type="package" version="0.5.0">r-scales</requirement>
+    </expand>
+    <command detect_errors="exit_code">
+    <![CDATA[
+        @INPUT_LINKING@
+        cat '${MSI_mzplots}' &&
+        Rscript '${MSI_mzplots}'
+    ]]>
+    </command>
+    <configfiles>
+        <configfile name="MSI_mzplots"><![CDATA[
+
+################################# load libraries and read file #################
+
+library(Cardinal)
+library(gridExtra)
+library(ggplot2)
+library(scales)
+
+@READING_MSIDATA@
+
+@DATA_PROPERTIES@
+
+######################################## PDF ###################################
+################################################################################
+################################################################################
+
+
+pdf("mzplots.pdf", fonts = "Times", pointsize = 12)
+plot(0,type='n',axes=FALSE,ann=FALSE)
+#if not $filename:
+    #set $filename = $infile.display_name
+#end if
+title(main=paste0("Mass spectra for file: \n\n","$filename"))
+
+
+############################# I) numbers ######################################
+###############################################################################
+
+grid.table(property_df, rows= NULL)
+
+## set NA to 0 otherwise plot function will not work
+
+    spectra(msidata)[is.na(spectra(msidata)[])] = 0 ## in case of NA values they will be set to zero
+
+if (npeaks > 0){
+
+    pixeldf = data.frame(matrix(ncol = 2, nrow=0))
+
+    ############################# single pixel ################################
+    ###########################################################################
+
+    #if str( $pixel_conditional.pixel_type) == 'single_pixel':
+        print("single_pixel")
+
+        #for $chosenpixel in $pixel_conditional.repeatpixel: 
+
+            pixelname = paste0("x = ", $chosenpixel.inputx,", ", "y = ", $chosenpixel.inputy)
+            pixelisvalid = as.character(pixelname %in% names(pixels(msidata)))
+            pixeldf = rbind(pixeldf, cbind(pixelname, pixelisvalid))
+
+            ############################# II) control image ####################
+
+                if (pixelisvalid == "TRUE"){
+                    print(pixelisvalid)
+
+                    image(msidata, mz=$chosenpixel.inputmz, ylim = c(maximumy+(0.2*maximumy),minimumy-1),
+                    colorkey=FALSE, plusminus = $chosenpixel.plusminusinDalton,
+                    main= paste0("x= ",$chosenpixel.inputx, ", y= ", $chosenpixel.inputy))
+
+                    abline(v=$chosenpixel.inputx, col ="$chosenpixel.inputcolour", lty="$chosenpixel.inputtype", lwd=$chosenpixel.inputwidth)
+                    abline(h=$chosenpixel.inputy, col ="$chosenpixel.inputcolour", lty="$chosenpixel.inputtype", lwd=$chosenpixel.inputwidth)
+
+            ##################### III) plot full mass spectrum #################
+
+                    plot(msidata, coord=list(x=$chosenpixel.inputx, y=$chosenpixel.inputy))
+
+            ##################### IV) plot zoom-in mass spectrum ###############
+
+                    #if $chosenpixel.zoomedplot:
+                            iData(msidata) <- iData(msidata)[] ## getting back data on disk 
+
+                        #for $token in $chosenpixel.zoomedplot:
+
+                            minmasspixel = features(msidata, mz=$token.xlimmin)
+                            maxmasspixel = features(msidata, mz=$token.xlimmax)
+
+                            plot(msidata[minmasspixel:maxmasspixel,], coord=list(x=$chosenpixel.inputx, y=$chosenpixel.inputy), 
+                                 xlim= c($token.xlimmin,$token.xlimmax))
+
+                        #end for
+                    #end if
+                }else{
+                    print("The pixel coordinates did not correspond to a real pixel")}
+        #end for
+
+    colnames(pixeldf) = c("pixel coordinates", "coordinates were found in this file")
+
+    ############################# sample pixel ################################
+    ###########################################################################
+
+    #elif str( $pixel_conditional.pixel_type) == 'sample_pixel':
+        print("sample pixels")
+
+        ## optional annotation from tabular file to obtain pixel groups (otherwise all pixels are considered to be one sample)
+
+        #if str($pixel_conditional.tabular_annotation.load_annotation) == 'yes_annotation':
+
+            ## read and extract x,y,annotation information
+            input_tabular = read.delim("$pixel_conditional.tabular_annotation.annotation_file", header = $pixel_conditional.tabular_annotation.tabular_header, stringsAsFactors = FALSE)
+            annotation_input = input_tabular[,c($pixel_conditional.tabular_annotation.column_x, $pixel_conditional.tabular_annotation.column_y, $pixel_conditional.tabular_annotation.column_names)]
+            colnames(annotation_input) = c("x", "y", "annotation")
+
+            ## merge with coordinate information of msidata
+            msidata_coordinates = cbind(coord(msidata)[,1:2], c(1:ncol(msidata)))
+            colnames(msidata_coordinates)[3] = "pixel_index"
+            merged_annotation = merge(msidata_coordinates, annotation_input, by=c("x", "y"), all.x=TRUE)
+            merged_annotation[is.na(merged_annotation)] = "NA"
+            merged_annotation = merged_annotation[order(merged_annotation\$pixel_index),]
+            msidata\$annotation = as.factor(merged_annotation[,4])
+
+        #end if
+
+        ##################### I) Sample: plot full mass spectrum ##############
+
+        ## coloured plot with mean over all spectra with the same annotation, if no annotation is provided all pixels are considered as one sample
+
+        if (!is.null(levels(msidata\$annotation))){
+            print("annotated samples")
+
+                    ## overview plot over annotated samples
+                    number_combined = length(levels(msidata\$annotation))
+
+                    ## the more annotation groups a file has the smaller will be the legend
+                    if (number_combined<20){
+                        legend_size = 10
+                    }else if (number_combined>20 && number_combined<40){
+                        legend_size = 9
+                    }else if (number_combined>40 && number_combined<60){
+                        legend_size = 8
+                    }else if (number_combined>60 && number_combined<100){
+                        legend_size = 7
+                    }else{
+                        legend_size = 6
+                    }
+
+                    position_df = cbind(coord(msidata)[,1:2], as.factor(msidata\$annotation))
+                    colnames(position_df)[3] = "sample_name"
+
+                    combine_plot = ggplot(position_df, aes(x=x, y=y, fill=sample_name))+
+                           geom_tile(height = 1, width=1)+
+                           coord_fixed()+
+                           ggtitle("Spatial orientation of pixel annotations")+
+                           theme_bw()+
+                           theme(plot.title = element_text(hjust = 0.5))+
+                           theme(text=element_text(family="ArialMT", face="bold", size=12))+
+                           theme(legend.position="bottom",legend.direction="vertical")+
+                           theme(legend.key.size = unit(0.2, "line"), legend.text = element_text(size = 6))+
+                           guides(fill=guide_legend(ncol=4,byrow=TRUE))
+
+                   coord_labels = aggregate(cbind(x,y)~sample_name, data=position_df, mean, na.rm=TRUE, na.action="na.pass")
+                   coord_labels\$file_number = 1:length(levels(position_df\$sample_name))
+
+                    for(file_count in 1:nrow(coord_labels))
+                    {combine_plot = combine_plot + annotate("text",x=coord_labels[file_count,"x"],
+                    y=coord_labels[file_count,"y"],label=toString(coord_labels[file_count,4]))}
+
+                    print(combine_plot)
+
+                    ## print legend only for less than 10 samples
+                    if (length(levels(msidata\$annotation)) < 10){
+                        key_legend = TRUE
+                    }else{key_legend = FALSE}
+
+            spectra(msidata)[is.na(spectra(msidata)[])] = 0 ## in case of NA values they will be set to zero
+            plot(msidata, pixel=1:ncol(msidata), pixel.groups=msidata\$annotation, key=key_legend, col=hue_pal()(length(levels(msidata\$annotation))),superpose=TRUE)
+        }else{
+            spectra(msidata)[is.na(spectra(msidata)[])] = 0 ## in case of NA values they will be set to zero
+            plot(msidata, pixel=1:ncol(msidata), key=TRUE)}
+
+        ##################### II) Sample: plot zoom-in mass spectrum ##########
+
+        #if $pixel_conditional.zoomed_sample:
+            iData(msidata) <- iData(msidata)[] ## getting back data on disk 
+            #for $token in $pixel_conditional.zoomed_sample:
+                print("zoomed sample pixels")
+
+                minmasspixel = features(msidata, mz=$token.xlimmin)
+                maxmasspixel = features(msidata, mz=$token.xlimmax)
+
+                ## coloured plot with mean over all spectra for annotation group, otherwise only 1 black plot
+                if (!is.null(levels(msidata\$annotation))){
+                    print("annotation samples")
+                    plot(msidata[minmasspixel:maxmasspixel,], pixel=1:ncol(msidata),
+                    xlim= c($token.xlimmin,$token.xlimmax),pixel.groups=msidata\$annotation,
+                    key=key_legend,col=hue_pal()(length(levels(msidata\$annotation))), superpose=TRUE)
+                }else{
+                    plot(msidata[minmasspixel:maxmasspixel,], pixel=1:ncol(msidata), key=TRUE, xlim= c($token.xlimmin,$token.xlimmax))}
+
+            #end for
+        #end if
+
+        if (!is.null(levels(msidata\$annotation))){
+            pixeldf = data.frame(table(msidata\$annotation))
+        }else{
+            pixeldf = data.frame("$filename", ncol(msidata))}
+        colnames(pixeldf) = c("sample name", "number of pixels")
+
+    #end if
+
+
+############################# pixel table ######################################
+###############################################################################
+
+
+    ### overview table of pixels or samples:
+    plot(0,type='n',axes=FALSE,ann=FALSE)
+    title(main="Overview of chosen pixel:")
+
+    ### for more than 20 annotation groups print only 20 samples per page:
+    if (is.null(levels(msidata\$annotation))){
+        grid.table(pixeldf, rows= NULL)
+    }else if (length(levels(msidata\$annotation)) <= 20){
+        grid.table(pixeldf, rows= NULL)
+    }else{
+        grid.table(pixeldf[1:20,], rows= NULL)
+        mincount = 21
+        maxcount = 40
+        for (count20 in 1:(ceiling(nrow(pixeldf)/20)-1)){
+            plot(0,type='n',axes=FALSE,ann=FALSE)
+            if (maxcount <= nrow(pixeldf)){
+                grid.table(pixeldf[mincount:maxcount,], rows= NULL)
+                mincount = mincount+20
+                maxcount = maxcount+20
+            }else{### stop last page with last sample otherwise NA in table
+                grid.table(pixeldf[mincount:nrow(pixeldf),], rows= NULL)} 
+        }
+    }
+
+    dev.off()
+
+}else{
+    print("Inputfile has no intensities > 0")
+    dev.off()
+}
+    ]]></configfile>
+    </configfiles>
+    <inputs>
+        <expand macro="reading_msidata"/>
+        <expand macro="pdf_filename"/>
+        <conditional name="pixel_conditional">
+            <param name="pixel_type" type="select" label="Select if you want to plot the mass spectrum of a single pixel or the average spectrum of all pixels of a sample">
+                <option value="single_pixel" selected="True">Single pixel</option>
+                <option value="sample_pixel">Average spectrum for each sample</option>
+            </param>
+            <when value="single_pixel">
+                <repeat name="repeatpixel" title="Plot mass spectra for pixel of interest" min="1" max="20">
+                    <param name="inputx" type="integer" value="" label="x-coordinate of pixel of interest" help="x-value of the pixel of interest"/>
+                    <param name="inputy" type="integer" value="" label="y-coordinate of pixel of interest" help="y-value of the pixel of interest"/>
+                    <param name="inputmz" type="float" value="1296.7" label="Next parameters are to control heatmap image which will be plotted, define m/z here" help="m/z will be displayed as heatmap and the pixel of interest will be visualized by the intersection of two lines"/>
+                    <param name="plusminusinDalton" value="0.25" type="float" label="m/z range for this m/z value" help="plusminus m/z window "/>
+                    <param name="inputcolour" type="select" label="Select the colour for the lines at x and y position">
+                        <option value="white" selected="True">white</option>
+                        <option value="black">black</option>
+                        <option value="grey">grey</option>
+                        <option value="blue">blue</option>
+                        <option value="red">red</option>
+                        <option value="green">green</option>
+                    </param>
+                    <param name="inputtype" type="select" label="Select the line type for the lines at x and y position">
+                        <option value="solid" selected="True">solid</option>
+                        <option value="dashed">dashed</option>
+                        <option value="dotted">dotted</option>
+                        <option value="longdash">longdash</option>
+                    </param>
+                    <param name="inputwidth" type="integer" value="2" label="Select the width of the lines at x and y position"/>
+                    <repeat name="zoomedplot" title="Zoomed in plots with m/z min and m/z max to define the plot window" min="0" max="50">
+                        <param name="xlimmin" type="integer" value="" label="lower m/z boundary for plotting window" help="minimum m/z for zoomed in window"/>
+                        <param name="xlimmax" type="integer" value="" label="upper m/z boundary for plotting window" help="maximum m/z for zoomed in window"/>
+                    </repeat>
+                </repeat>
+            </when>
+            <when value="sample_pixel">
+            <conditional name="tabular_annotation">
+                <param name="load_annotation" type="select" label="Use pixel annotation from tabular file for spectra plots">
+                    <option value="no_annotation" selected="True">pixels belong into one group only</option>
+                    <option value="yes_annotation">group pixels according to annotations</option>
+                </param>
+                    <when value="yes_annotation">
+                        <expand macro="reading_pixel_annotations"/>
+                    </when>
+                    <when value="no_annotation"/>
+            </conditional>
+                <repeat name="zoomed_sample" title="Zoomed in plots with m/z min and m/z max to define the plot window" min="0" max="50">
+                    <param name="xlimmin" type="integer" value="" label="lower m/z boundary for plotting window" help="minimum m/z for zoomed in window"/>
+                    <param name="xlimmax" type="integer" value="" label="upper m/z boundary for plotting window" help="maximum m/z for zoomed in window"/>
+                </repeat>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data format="pdf" name="plots" from_work_dir="mzplots.pdf" label="${tool.name} on ${on_string}"/>
+    </outputs>
+    <tests>
+        <test>
+            <expand macro="infile_imzml"/>
+            <conditional name="pixel_conditional">
+                <param name="pixel_type" value="single_pixel"/>
+                    <repeat name="repeatpixel">
+                        <param name="plusminusinDalton" value="0.25"/>
+                        <param name="inputx" value="3"/>
+                        <param name="inputy" value="3"/>
+                        <repeat name="zoomedplot">
+                            <param name="xlimmin" value="310"/>
+                            <param name="xlimmax" value="320"/>
+                        </repeat>
+                        <repeat name="zoomedplot">
+                            <param name="xlimmin" value="350"/>
+                            <param name="xlimmax" value="400"/>
+                        </repeat>
+                        <repeat name="zoomedplot">
+                            <param name="xlimmin" value="400"/>
+                            <param name="xlimmax" value="420"/>
+                        </repeat>
+                    </repeat>
+                    <repeat name="repeatpixel">
+                        <param name="plusminusinDalton" value="0.25"/>
+                        <param name="inputx" value="2"/>
+                        <param name="inputy" value="2"/>
+                    </repeat>
+                    <repeat name="repeatpixel">
+                        <param name="plusminusinDalton" value="0.25"/>
+                        <param name="inputx" value="1"/>
+                        <param name="inputy" value="1"/>
+                    </repeat>
+                </conditional>
+            <output name="plots" file="Plot_imzml.pdf" compare="sim_size"/>
+        </test>
+        <test>
+            <expand macro="infile_analyze75"/>
+            <conditional name="pixel_conditional">
+                <param name="pixel_type" value="single_pixel"/>
+                    <repeat name="repeatpixel">
+                        <param name="plusminusinDalton" value="0.25"/>
+                        <param name="inputx" value="5"/>
+                        <param name="inputy" value="2"/>
+                        <repeat name="zoomedplot">
+                            <param name="xlimmin" value="840"/>
+                            <param name="xlimmax" value="850"/>
+                        </repeat>
+                    </repeat>
+                    <repeat name="repeatpixel">
+                        <param name="plusminusinDalton" value="0.25"/>
+                        <param name="inputx" value="2"/>
+                        <param name="inputy" value="2"/>
+                    </repeat>
+            </conditional>
+            <output name="plots" file="Plot_analyze75.pdf" compare="sim_size"/>
+        </test>
+        <test>
+            <expand macro="infile_analyze75"/>
+            <conditional name="pixel_conditional">
+                <param name="pixel_type" value="sample_pixel"/>
+                <conditional name="tabular_annotation">
+
+                    <param name="load_annotation" value="yes_annotation"/>
+                    <param name="annotation_file" value="annotations.tabular" ftype="tabular"/>
+                    <param name="column_x" value="1"/>
+                    <param name="column_y" value="2"/>
+                    <param name="column_names" value="4"/>
+                    <param name="tabular_header" value="TRUE"/>
+
+
+
+                </conditional>
+                <repeat name="zoomed_sample">
+                     <param name="xlimmin" value="1250"/>
+                     <param name="xlimmax" value="1270"/>
+                 </repeat>
+            </conditional>
+            <output name="plots" file="Plot_analyze75_allpixels.pdf" compare="sim_size"/>
+        </test>
+        <test>
+            <param name="infile" value="3_files_combined.RData" ftype="rdata"/>
+            <conditional name="pixel_conditional">
+                <param name="pixel_type" value="sample_pixel"/>
+                    <repeat name="zoomed_sample">
+                         <param name="xlimmin" value="350"/>
+                         <param name="xlimmax" value="360"/>
+                     </repeat>
+            </conditional>
+            <output name="plots" file="Plot_rdata.pdf" compare="sim_size"/>
+        </test>
+        <test>
+            <param name="infile" value="empty_spectra.rdata" ftype="rdata"/>
+            <conditional name="pixel_conditional">
+                <param name="pixel_type" value="single_pixel"/>
+                    <repeat name="repeatpixel">
+                        <param name="plusminusinDalton" value="0.1"/>
+                        <param name="inputx" value="1"/>
+                        <param name="inputy" value="1"/>
+                    </repeat>
+            </conditional>
+            <output name="plots" file="Plot_empty_spectra.pdf" compare="sim_size"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+
+@CARDINAL_DESCRIPTION@
+
+-----
+
+This tool uses the Cardinal plot function to generate (zoomed in) mass spectra plots of mass spectrometry imaging data.
+
+@MSIDATA_INPUT_DESCRIPTION@
+@SPECTRA_TABULAR_INPUT_DESCRIPTION@
+
+**Options**
+
+- "single pixel": Returns a full mass spectrum plot for one pixel, which is defined by its x- and y-coordinates
+
+    - Enter the x and y coordinates of your pixel of interest
+    - To have a visual control for the selected pixel, a heatmap of a m/z of interest will be drawn. Two intersecting lines will show the pixel location. This procedure requires an m/z of interest together with a m/z range and for the lines the colour and type.
+    - Additionally zoom into mass spectra plots is possible by providing the minimum and maximum m/z value to define the limits of the plot
+
+- "All pixels of a sample": Returns a full average mass spectrum plot with different colours for each pixel annotation group, without annotations the average of all pixels is plotted
+
+    - Additionally zoom into mass spectra plots is possible by providing the minimum and maximum m/z value to define the limits of the plot
+
+
+**Tip** 
+
+- Corresponding m/z intensity pairs for single spectra can be obtained with the filtering tool option "ranges for x and y" and afterwards using the imzml tabular exporter tool
+- Plots will only be drawn for pixels that exist in the MSI data, pixel that are outside the dataset will be "False" in the overview table on the last page of the pdf
+
+
+**Output**
+
+- Pdf with the selected mass spectra plots and additional x-y grid plots
+
+
+]]>
+    </help>
+    <expand macro="citations"/>
+</tool>
