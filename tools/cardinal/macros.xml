@@ -1,0 +1,236 @@
+<macros>
+    <token name="@VERSION@">1.12.1</token>
+
+    <xml name="requirements">
+        <requirements>
+            <requirement type="package" version="@VERSION@">bioconductor-cardinal</requirement>
+            <yield/>
+        </requirements>
+    </xml>
+
+    <token name="@INPUT_LINKING@"><![CDATA[
+        #if $infile.ext == 'imzml'
+            ln -s '${infile.extra_files_path}/imzml' infile.imzML &&
+            ln -s '${infile.extra_files_path}/ibd' infile.ibd &&
+        #elif $infile.ext == 'analyze75'
+            ln -s '${infile.extra_files_path}/hdr' infile.hdr &&
+            ln -s '${infile.extra_files_path}/img' infile.img &&
+            ln -s '${infile.extra_files_path}/t2m' infile.t2m &&
+        #else
+            ln -s $infile infile.RData &&
+        #end if
+    ]]></token>
+
+
+    <token name="@READING_MSIDATA@"><![CDATA[
+        ## importing MSI data files
+
+        ## function to read RData files independent of filename
+        loadRData <- function(fileName){
+        load(fileName)
+        get(ls()[ls() != "fileName"])
+        }
+
+        #if $infile.ext == 'imzml'
+            #if str($processed_cond.processed_file) == "processed":
+                msidata <- readImzML('infile', mass.accuracy=$processed_cond.accuracy, units.accuracy = "$processed_cond.units")
+                centroided(msidata) = $centroids
+            #else
+                msidata <- readImzML('infile')
+                centroided(msidata) = $centroids
+            #end if
+        #elif $infile.ext == 'analyze75'
+            msidata = readAnalyze('infile')
+            centroided(msidata) = $centroids
+        #else
+            msidata = loadRData('infile.RData')
+        #end if
+
+    ]]></token>
+
+    <token name="@DATA_PROPERTIES@"><![CDATA[
+        ## Number of features (mz)
+        maxfeatures = length(features(msidata))
+        ## Range mz
+        minmz = round(min(mz(msidata)), digits=2)
+        maxmz = round(max(mz(msidata)), digits=2)
+        ## Number of spectra (pixels)
+        pixelcount = length(pixels(msidata))
+        ## Range x coordinates
+        minimumx = min(coord(msidata)[,1])
+        maximumx = max(coord(msidata)[,1])
+        ## Range y coordinates
+        minimumy = min(coord(msidata)[,2])
+        maximumy = max(coord(msidata)[,2])
+        ## Range of intensities
+        minint = round(min(spectra(msidata)[], na.rm=TRUE), digits=2)
+        maxint = round(max(spectra(msidata)[], na.rm=TRUE), digits=2)
+        ## Number of intensities > 0, for if conditions
+        npeaks= sum(spectra(msidata)[]>0, na.rm=TRUE)
+
+        properties = c("Number of m/z features",
+                       "Range of m/z values",
+                       "Number of pixels", 
+                       "Range of x coordinates", 
+                       "Range of y coordinates",
+                       "Range of intensities")
+
+        values = c(paste0(maxfeatures), 
+                   paste0(minmz, " - ", maxmz), 
+                   paste0(pixelcount), 
+                   paste0(minimumx, " - ", maximumx),  
+                   paste0(minimumy, " - ", maximumy), 
+                   paste0(minint, " - ", maxint))
+
+        property_df = data.frame(properties, values)
+    ]]></token>
+
+    <token name="@CARDINAL_DESCRIPTION@"><![CDATA[
+        Cardinal is an R package that implements statistical & computational tools for analyzing mass spectrometry imaging datasets.
+        `More information on Cardinal <http://cardinalmsi.org/>`_
+    ]]></token>
+    <token name="@MSIDATA_INPUT_DESCRIPTION@"><![CDATA[
+        **Input data**
+
+        - MSI data: 3 types of input data can be used:
+
+            - imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <https://ms-imaging.org/wp/imzml/>`_
+            - Analyze7.5 (upload hdr, img and t2m file via the "composite" function)
+            - Cardinal "MSImageSet" data saved as .RData
+    ]]></token>
+    <token name="@MZ_TABULAR_INPUT_DESCRIPTION@"><![CDATA[
+        - Optional tabular file with m/z values: 
+
+            - One column with numeric m/z values (without empty fields or letters)
+            - The file is allowed to have any column names as header (in this case set "Tabular file contains a header line" to yes)
+            - m/z features outside the m/z range of the input file are ignored 
+
+
+                ::
+            
+                            m/z    
+                          100.0    
+                          100.01   
+                          100.02   
+                           ...
+                           ...    
+
+    ]]></token>
+    <token name="@MZ_2COLS_TABULAR_INPUT_DESCRIPTION@"><![CDATA[
+        - Tabular file with m/z values: 
+
+            - One column with numeric m/z values (without empty fields or letters), another column with names for the m/z (m/z column can also be used as name)
+            - The file is allowed to have any column names as header (in this case set "Tabular file contains a header line" to yes)
+            - m/z features outside the m/z range of the input file are ignored 
+
+
+                ::
+             
+                            m/z        name
+                          100.0      analyte1
+                          100.01     analyte2
+                          100.02     analyte3
+                           ...
+                           ...    
+
+    ]]></token>
+    <token name="@SPECTRA_TABULAR_INPUT_DESCRIPTION@"><![CDATA[
+        - Optional file with pixel coordinates and annotation: 
+
+            - Tabular file: One column with x values, one column wiht y values and one column with annotations
+            - The file is allowed to have any column names as header (in this case set "Tabular file contains a header line" to yes)
+            - Pixel with coordinates outside the coordinates of the input file are ignored 
+
+                ::
+
+                      x_coord     y_coord    annotation
+                        1            1        healthy
+                        2            1        healthy
+                        3            1        disease
+                        ...
+                        ...
+
+    ]]></token>
+
+    <xml name="reading_msidata">
+        <param name="infile" type="data" format="imzml,rdata,analyze75"
+               label="Input file as imzML, Analyze7.5 or Cardinal MSImageSet saved as RData"
+                help="Upload composite datatype imzML (ibd+imzML) or analyze75 (hdr+img+t2m) or regular upload .RData (Cardinal MSImageSet)"/>
+        <param name="centroids" type="boolean" label="Is the input data centroided (picked)" help="Choose Yes if peak detection has already been done." truevalue="TRUE" falsevalue="FALSE"/>
+        <conditional name="processed_cond">
+            <param name="processed_file" type="select" label="Processed imzML file" help="Choose no if your input is an Analyze7.5 or continuous imzML file">
+                <option value="no_processed" selected="True">no</option>
+                <option value="processed">yes</option>
+            </param>
+            <when value="no_processed"/>
+            <when value="processed">
+                <param name="accuracy" type="float" value="50" label="Mass accuracy to which the m/z values will be binned" help="This should be set to the native accuracy of the mass spectrometer, if known"/>
+                <param name="units" display="radio" type="select" label="Unit of the mass accuracy" help="either m/z or ppm">
+                    <option value="mz" >mz</option>
+                    <option value="ppm" selected="True" >ppm</option>
+                </param>
+            </when>
+        </conditional>
+    </xml>
+
+    <xml name="pdf_filename">
+        <param name="filename" type="text" value="" label="Title" help="Will appear in the pdf output, if nothing given it will take the dataset name">
+            <sanitizer invalid_char="">
+                <valid initial="string.ascii_letters,string.digits">
+                    <add value="_" />
+                </valid>
+            </sanitizer>
+        </param>
+    </xml>
+
+    <xml name="sanitizer_multiple_digits">
+        <sanitizer invalid_char="">
+            <valid initial="string.digits">
+                <add value=":" />
+                <add value="," />
+            </valid>
+        </sanitizer>
+    </xml>
+
+    <xml name="reading_1_column_mz_tabular" token_label="Tabular file with m/z features">
+        <param name="mz_tabular" type="data" format="tabular" label="@LABEL@" help="Only numeric m/z values are allowed"/>
+        <param name="feature_column" data_ref="mz_tabular" label="Column with features" type="data_column"/>
+        <param name="feature_header" type="boolean" label="Tabular file contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
+    </xml>
+
+    <xml name="reading_2_column_mz_tabular">
+        <param name="calibrant_file" type="data" optional="true" format="tabular"
+            label="m/z of interest (e.g. internal Calibrants)" help="one column with m/z values, optional second column with names (m/z values can also be selected as name)"/>
+        <param name="mz_column" data_ref="calibrant_file" label="Column with m/z values" type="data_column"/>
+        <param name="name_column" data_ref="calibrant_file" label="Column with name of m/z values" type="data_column"/>
+        <param name="calibrant_header" type="boolean" label="Tabular file contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
+    </xml>
+
+    <xml name="reading_pixel_annotations">
+                <param name="annotation_file" type="data" format="tabular" label="Tabular file with pixel coordinates and annotation"
+                help="Tabular file with three columns: x values, y values and pixel annotations"/>
+                <param name="column_x" data_ref="annotation_file" label="Column with x values" type="data_column"/>
+                <param name="column_y" data_ref="annotation_file" label="Column with y values" type="data_column"/>
+                <param name="column_names" data_ref="annotation_file" label="Column with pixel annotations" type="data_column"/>
+                <param name="tabular_header" type="boolean" label="Tabular file contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
+    </xml>
+
+    <xml name="citations">
+        <citations>
+            <citation type="doi">10.1093/bioinformatics/btv146</citation>
+        </citations>
+    </xml>
+    <xml name="infile_analyze75">
+        <param name="infile" value="" ftype="analyze75">
+            <composite_data value="Analyze75.hdr"/>
+            <composite_data value="Analyze75.img"/>
+            <composite_data value="Analyze75.t2m"/>
+        </param>
+    </xml>
+    <xml name="infile_imzml">
+        <param name="infile" value="" ftype="imzml">
+            <composite_data value="Example_Continuous.imzML"/>
+            <composite_data value="Example_Continuous.ibd"/>
+        </param>
+    </xml>
+</macros>
