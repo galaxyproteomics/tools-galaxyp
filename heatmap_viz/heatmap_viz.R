@@ -1,7 +1,7 @@
 #!/usr/bin/Rscript
 
-suppressMessages(library('plotly'))
-suppressMessages(library('heatmaply'))
+suppressMessages(library('plotly',quietly = T))
+suppressMessages(library('heatmaply',quietly = T))
 
 #packageVersion('plotly')
 
@@ -63,42 +63,59 @@ str2bool <- function(x){
 }
 
 #remove remaining quote 
+#only keep usefull columns
 #remove lines with at least one empty cell in a matrix between two defined columns
-clean_df <- function(mat,first_col,last_col,rownames){
-  tmp = mat[,first_col:last_col]
-  tmp <- as.data.frame(apply(tmp,c(1,2),function(x) {ifelse(is.character(x),as.numeric(x),x)}))
-  bad_lines <- which(apply(tmp, 1, function(x) any(is.na(x))))
-  mat <- cbind(mat[,as.numeric(rownames)],tmp)
-  if (length(bad_lines) > 0) {
-    mat <- mat[- bad_lines,]
-    print(paste("lines",bad_lines, "has been removed: at least one non numeric content"))
+clean_df <- function(mat,cols,rownames_col){
+  uto = mat[,cols]
+  uto <- as.data.frame(apply(uto,c(1,2),function(x) {ifelse(is.character(x),as.numeric(x),x)}))
+  rownames(uto) <- mat[,rownames_col]
+  #bad_lines <- which(apply(uto, 1, function(x) any(is.na(x))))
+  #if (length(bad_lines) > 0) {
+  #  uto <- uto[- bad_lines,]
+  #  print(paste("lines",bad_lines, "has been removed: at least one non numeric content"))
+  #}
+  return(uto)
+}
+
+get_cols <-function(input_cols) {
+  input_cols <- gsub("c","",input_cols)
+  if (grepl(":",input_cols)) {
+    first_col=unlist(strsplit(input_cols,":"))[1]
+    last_col=unlist(strsplit(input_cols,":"))[2]
+    cols=first_col:last_col
+  } else {
+    cols = as.integer(unlist(strsplit(input_cols,",")))
   }
-  return(mat)
+  return(cols)
 }
 
 #get args
 args <- get_args()
 
+#save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/heatmap_viz/args.rda")
+#load("/home/dchristiany/proteore_project/ProteoRE/tools/heatmap_viz/args.rda")
+
 header=str2bool(args$header)
 output <- rapply(strsplit(args$output,"\\."),c) #remove extension
 output <- paste(output[1:length(output)-1],collapse=".")
 output <- paste(output,args$type,sep=".")
-first_col=as.numeric(substr(args$cols,1,1))
-last_col=as.numeric(substr(args$cols,3,3))
+cols = get_cols(args$cols)
+rownames_col = as.integer(gsub("c","",args$row_names))
+if (length(cols) <=1 ){
+  stop("You need several colums to build a heatmap")
+}
 
 #cleaning data
 uto <- read_file(args$input,header = header)
-uto <- clean_df(uto,first_col,last_col,args$row_names)
-data <- as.data.frame(uto[,-1])
-row_names = uto[,1]
+uto <- clean_df(uto,cols,rownames_col)
 if (header) {
   col_names = names(data)
 } else {
-  col_names = c(first_col:last_col)
+  col_names = cols
 }
 
 #building heatmap
-heatmaply(data, file=output, margins=c(100,50,NA,0), plot_method="plotly", labRow = row_names, labCol = col_names,
+heatmaply(uto, file=output, margins=c(100,50,NA,0), plot_method="plotly", labRow = rownames(uto), labCol = col_names,
           grid_gap = 0,cexCol = 1, column_text_angle = as.numeric(args$col_text_angle), width = 1000, height=1000, colors = c('blue','green','yellow','red'))
 
 
