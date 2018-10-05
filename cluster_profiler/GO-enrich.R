@@ -1,23 +1,15 @@
+options(warn=-1)  #TURN OFF WARNINGS !!!!!!
 suppressMessages(library(clusterProfiler,quietly = TRUE))
 
 # Read file and return file content as data.frame
-readfile = function(filename, header) {
-  if (header == "true") {
-    # Read only first line of the file as header:
-    headers <- read.table(filename, nrows = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = "")
-    #Read the data of the files (skipping the first row)
-    file <- read.table(filename, skip = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = "")
-    # Remove empty rows
+read_file <- function(path,header){
+  file <- try(read.table(path,header=header, sep="\t",stringsAsFactors = FALSE, quote=""),silent=TRUE)
+  if (inherits(file,"try-error")){
+    stop("File not found !")
+  }else{
     file <- file[!apply(is.na(file) | file == "", 1, all), , drop=FALSE]
-    #And assign the header to the data
-    names(file) <- headers
+    return(file)
   }
-  else {
-    file <- read.table(filename, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = "")
-    # Remove empty rows
-    file <- file[!apply(is.na(file) | file == "", 1, all), , drop=FALSE]
-  }
-  return(file)
 }
 
 #return the number of character from the longest description found (from the 10 first)
@@ -26,6 +18,16 @@ max_str_length_10_first <- function(vector){
   nb_description = length(vector)
   if (nb_description >= 10){nb_description=10}
   return(max(nchar(vector[1:nb_description])))
+}
+
+str2bool <- function(x){
+  if (any(is.element(c("t","true"),tolower(x)))){
+    return (TRUE)
+  }else if (any(is.element(c("f","false"),tolower(x)))){
+    return (FALSE)
+  }else{
+    return(NULL)
+  }
 }
 
 #used before the limit was set to 50 characters
@@ -167,6 +169,8 @@ clusterProfiler = function() {
 
   # Extract input IDs
   input_type = args$input_type
+  id_type = args$id_type
+  
   if (input_type == "text") {
     input = strsplit(args$input, "[ \t\n]+")[[1]]
   } else if (input_type == "file") {
@@ -178,13 +182,12 @@ clusterProfiler = function() {
     } else {
       ncol = as.numeric(gsub("c", "", ncol))
     }
-    header = args$header
-    # Get file content
-    file = readfile(filename, header)
-    # Extract Protein IDs list
+    header = str2bool(args$header)                  # Get file content
+    file = read_file(filename, header)              # Extract Protein IDs list
     input =  unlist(sapply(as.character(file[,ncol]),function(x) rapply(strsplit(x,";"),c),USE.NAMES = FALSE))
   }
-  id_type = args$id_type
+  
+  
   ## Get input gene list from input IDs
   #ID format Conversion 
   #This case : from UNIPROT (protein id) to ENTREZ (gene id)
@@ -203,11 +206,13 @@ clusterProfiler = function() {
   }
 
   ontology <- strsplit(args$onto_opt, ",")[[1]]
+  
   ## Extract GGO/EGO arguments
   if (args$go_represent == "true") {
     go_represent <- args$go_represent
     level <- as.numeric(args$level)
   }
+  
   if (args$go_enrich == "true") {
     go_enrich <- args$go_enrich
     pval_cutoff <- as.numeric(args$pval_cutoff)
@@ -226,9 +231,9 @@ clusterProfiler = function() {
         } else {
           universe_ncol = as.numeric(gsub("c", "", universe_ncol))
         }
-        universe_header = args$uheader
+        universe_header = str2bool(args$uheader)
         # Get file content
-        universe_file = readfile(universe_filename, universe_header)
+        universe_file = read_file(universe_filename, universe_header)
         # Extract Protein IDs list
         universe <- sapply(universe_file[,universe_ncol], function(x) rapply(strsplit(x,";"),c),USE.NAMES = FALSE)
       }
@@ -240,7 +245,7 @@ clusterProfiler = function() {
         suppressMessages(universe_gene<-bitr(universe, fromType=idFrom, toType=idTo, OrgDb=orgdb))
         universe_gene<-unique(universe_gene$ENTREZID)
       } else if (universe_id_type=="Entrez" & any(check_ids(universe,"entrez"))) {
-        universe_gene<-unique(universe)
+        universe_gene<-unique(unlist(universe))
       } else {
         if (universe_type=="text"){
           print(paste(universe_id_type,"not found in your background IDs list",sep=" "))
@@ -261,13 +266,13 @@ clusterProfiler = function() {
     if (args$go_represent == "true") {
       ggo<-repartition.GO(gene, orgdb, onto, level, readable=TRUE)
       output_path = paste("cluster_profiler_GGO_",onto,".tsv",sep="")
-      write.table(ggo, output_path, sep="\t", row.names = FALSE, quote=FALSE)
+      write.table(ggo, output_path, sep="\t", row.names = FALSE, quote = FALSE )
     }
 
     if (args$go_enrich == "true") {
       ego<-enrich.GO(gene, universe_gene, orgdb, onto, pval_cutoff, qval_cutoff,plot)
       output_path = paste("cluster_profiler_EGO_",onto,".tsv",sep="")
-      write.table(ego, output_path, sep="\t", row.names = FALSE, quote=FALSE)
+      write.table(ego, output_path, sep="\t", row.names = FALSE, quote = FALSE )
     }
   }
 }
