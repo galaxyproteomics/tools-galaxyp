@@ -1,56 +1,84 @@
 # Read file and return file content as data.frame
-readfile = function(filename, header) {
-  if (header == "true") {
-    # Read only first line of the file as header:
-    headers <- read.table(filename, nrows = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = "")
-    #Read the data of the files (skipping the first row)
-    file <- read.table(filename, skip = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = "")
-    # Remove empty rows
+read_file <- function(path,header){
+  file <- try(read.table(path,header=header, sep="\t",stringsAsFactors = FALSE, quote=""),silent=TRUE)
+  if (inherits(file,"try-error")){
+    stop("File not found !")
+  }else{
     file <- file[!apply(is.na(file) | file == "", 1, all), , drop=FALSE]
-    #And assign the header to the data
-    names(file) <- headers
+    return(file)
   }
-  else {
-    file <- read.table(filename, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = "")
-    # Remove empty rows
-    file <- file[!apply(is.na(file) | file == "", 1, all), , drop=FALSE]
-  }
-  return(file)
 }
 
-protein_features = function() {
+get_args <- function(){
+  
+  ## Collect arguments
   args <- commandArgs(TRUE)
-  if(length(args)<1) {
+  
+  ## Default setting when no arguments passed
+  if(length(args) < 1) {
     args <- c("--help")
   }
   
-  # Help section
+  ## Help section
   if("--help" %in% args) {
     cat("Selection and Annotation HPA
-    Arguments:
-        --inputtype: type of input (list of id or filename)
+        Arguments:
+          --inputtype: type of input (list of id or filename)
         --input: input
         --nextprot: path to nextprot information file
         --column: the column number which you would like to apply...
         --header: true/false if your file contains a header
         --type: the type of input IDs (UniProt/EntrezID)
-        --argsP1: IsoPoint,SeqLength,MW
-        --argsP2: Chr,SubcellLocations
-        --argsP3: Diseases
+        --pc_features: IsoPoint,SeqLength,MW
+        --localization: Chr,SubcellLocations
+        --diseases_info: Diseases
         --output: text output filename \n")
+    
     q(save="no")
   }
   
-  # Parse arguments
   parseArgs <- function(x) strsplit(sub("^--", "", x), "=")
   argsDF <- as.data.frame(do.call("rbind", parseArgs(args)))
   args <- as.list(as.character(argsDF$V2))
-  names(args) <- argsDF$V1 
+  names(args) <- argsDF$V1
   
+  return(args)
+}
+
+str2bool <- function(x){
+  if (any(is.element(c("t","true"),tolower(x)))){
+    return (TRUE)
+  }else if (any(is.element(c("f","false"),tolower(x)))){
+    return (FALSE)
+  }else{
+    return(NULL)
+  }
+}
+
+# Get information from neXtProt
+get_nextprot_info <- function(nextprot,input,pc_features,localization,diseases_info){
+  if(diseases_info){
+    cols = c(pc_features,localization,"Diseases")
+  } else {
+    cols = c(pc_features,localization)
+  }
+  
+  info = nextprot[match(input,nextprot$NextprotID),cols]
+  return(info)
+}
+
+protein_features = function() {
+
+  args <- get_args()  
+  
+  #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/prot_features/args.rda")
+  #load("/home/dchristiany/proteore_project/ProteoRE/tools/prot_features/args.rda")
+  
+  #setting variables
   inputtype = args$inputtype
   if (inputtype == "copypaste") {
     input = strsplit(args$input, "[ \t\n]+")[[1]]
-  } else if (inputtype == "tabfile") {
+  } else if (inputtype == "file") {
     filename = args$input
     ncol = args$column
     # Check ncol
@@ -59,25 +87,21 @@ protein_features = function() {
     } else {
       ncol = as.numeric(gsub("c", "", ncol))
     }
-    header = args$header
-    # Get file content
-    file = readfile(filename, header)
-    # Extract Protein IDs list
-    input = c()
-    for (row in as.character(file[,ncol])) {
-      input = c(input, strsplit(row, ";")[[1]][1])
-    }
+    
+    header = str2bool(args$header)
+    file = read_file(filename, header)                        # Get file content
+    input = unlist(strsplit(as.character(file[,ncol]),";"))   # Extract Protein IDs list
+  
   }
 
   # Read reference file
-  nextprot_file = args$nextprot
-  nextprot = read.table(nextprot_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings = "", quote = "")
+  nextprot = read_file(args$nextprot,T)
   
   # Parse arguments
   typeid = args$type
-  P1_args = strsplit(args$argsP1, ",")[[1]]
-  P2_args = strsplit(args$argsP2, ",")[[1]]
-  P3_args = strsplit(args$argsP3, ",")[[1]]
+  pc_features = strsplit(args$pc_features, ",")[[1]]
+  localization = strsplit(args$localization, ",")[[1]]
+  diseases_info = str2bool(args$diseases_info)
   output = args$output
 
   # Change the sample ids if they are uniprot ids to be able to match them with
@@ -90,31 +114,7 @@ protein_features = function() {
   if ((length(input[input %in% nextprot[,1]]))==0){
     write.table("None of the input ids can be found in Nextprot",file=output,sep="\t",quote=FALSE,col.names=TRUE,row.names=FALSE)
   } else {
-    names = c()
-    res = matrix(nrow=length(input), ncol=0)
-
-    # Get information from neXtProt
-    if (length(P1_args)>0) {
-      for (arg in P1_args) {
-        names = c(names, arg)
-        info = nextprot[match(input, nextprot["NextprotID"][,]),][arg][,]
-        res = cbind(res, info)
-      }
-    }
-    if (length(P2_args)>0) {
-      for (arg in P2_args) {
-        names = c(names, arg)
-        info = nextprot[match(input, nextprot["NextprotID"][,]),][arg][,]
-        res = cbind(res, info)
-      }
-    }
-    if (length(P3_args)>0) {
-      for (arg in P3_args) {
-        names = c(names, arg)
-        info = nextprot[match(input, nextprot["NextprotID"][,]),][arg][,]
-        res = cbind(res, info)
-      }
-    }
+    res <- get_nextprot_info(nextprot,input,pc_features,localization,diseases_info)
   
     # Write output
     if (inputtype == "copypaste") {
@@ -123,13 +123,8 @@ protein_features = function() {
       colnames(res) = names
       write.table(res, output, row.names = FALSE, sep = "\t", quote = FALSE)
     }
-    else if (inputtype == "tabfile") {
-      if (all(names(file) == file[1,1:length(names(file))])){ #if header of file is the same as the first line of file
-        names(file)[ncol] = "UniprotID"
-      }
-      names = c(names(file), names)
+    else if (inputtype == "file") {
       output_content = cbind(file, res)
-      colnames(output_content) = names
       write.table(output_content, output, row.names = FALSE, sep = "\t", quote = FALSE)
     }
   } 
