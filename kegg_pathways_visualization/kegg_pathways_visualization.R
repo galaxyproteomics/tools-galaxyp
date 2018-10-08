@@ -118,15 +118,14 @@ if (!is.null(args$pathways_id)) {
   pathways_file = read_file(args$pathways_input,header2)
   ids <- sapply(rapply(strsplit(clean_bad_character(pathways_file[,pathway_col]),","),c), function(x) remove_kegg_prefix(x),USE.NAMES = FALSE)
 }
-#if (!is.null(args$pathways_name)) {names <- as.vector(sapply(strsplit(args$pathways_name,","), function(x) concat_string(x),USE.NAMES = FALSE))}
 if (!is.null(args$id_list)) {id_list <- as.vector(strsplit(clean_bad_character(args$id_list),","))}
 id_type <- tolower(args$id_type)
 ncol <- as.numeric(gsub("c", "" ,args$id_column))
 header <- str2bool(args$header)
-#output <- args$output
 native_kegg <- str2bool(args$native_kegg)
 species=args$species
 fold_change_data = str2bool(args$fold_change_data)
+
 #org list used in mapped2geneID
 org <- c('Hs','Mm','Rn')
 names(org) <- c('hsa','mmu','rno')
@@ -159,22 +158,13 @@ if (id_type == "uniprotid") {
   mapped2geneID = id2eg(ids = uniprotID, category = "uniprot", org = org[[species]], pkg.name = NULL)
   geneID = mapped2geneID[,2]
   tab = cbind(tab,geneID)
-
 }else if (id_type == "geneid"){
-
   colnames(tab)[ncol] <- "geneID"
-
 }
 
 geneID = tab$geneID[which(tab$geneID !="NA")]
 geneID = gsub(" ","",geneID)
 geneID = unlist(strsplit(geneID,"[;]"))
-
-
-#### get hsa pathways list 
-#download.file(url = "http://rest.kegg.jp/link/pathway/hsa", destfile = "/home/dchristiany/proteore_project/ProteoRE/tools/pathview/geneID_to_hsa_pathways.csv") 
-#geneid_hsa_pathways <- read_file(path = "/home/dchristiany/proteore_project/ProteoRE/tools/pathview/geneID_to_hsa_pathways.csv",FALSE)
-#names(geneid_hsa_pathways) <- c("geneID","pathway")
 
 ##### build matrix to map on KEGG pathway (kgml : KEGG xml)
 if (fold_change_data) {
@@ -191,18 +181,6 @@ if (fold_change_data) {
 } else {
   mat <- geneID
 }
-
-#### simulation data test
-#exp1 <- sim.mol.data(mol.type = c("gene", "gene.ko", "cpd")[1], id.type = NULL, species="hsa", discrete = FALSE, nmol = 161, nexp = 1, rand.seed=100)
-#exp2 <- sim.mol.data(mol.type = c("gene", "gene.ko", "cpd")[1], id.type = NULL, species="hsa", discrete = FALSE, nmol = 161, nexp = 1, rand.seed=50)
-#exp3 <- sim.mol.data(mol.type = c("gene", "gene.ko", "cpd")[1], id.type = NULL, species="hsa", discrete = FALSE, nmol = 161, nexp = 1, rand.seed=10)
-#tab <- cbind(tab,exp1,exp2,exp3)
-
-#write.table(tab, file='/home/dchristiany/proteore_project/ProteoRE/tools/pathview/Lacombe_sim_expression_data.tsv', quote=FALSE, sep='\t',row.names = FALSE)
-
-#mat <- exp1[1:nrow(tab)]
-#names(mat) <- geneID
-
 
 #####mapping geneID (with or without expression values) on KEGG pathway
 plot.col.key= TRUE
