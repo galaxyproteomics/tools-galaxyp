@@ -58,9 +58,9 @@ str2bool <- function(x){
 # Get information from neXtProt
 get_nextprot_info <- function(nextprot,input,pc_features,localization,diseases_info){
   if(diseases_info){
-    cols = c(pc_features,localization,"Diseases")
+    cols = c("NextprotID",pc_features,localization,"Diseases")
   } else {
-    cols = c(pc_features,localization)
+    cols = c("NextprotID",pc_features,localization)
   }
   
   info = nextprot[match(input,nextprot$NextprotID),cols]
@@ -91,6 +91,7 @@ protein_features = function() {
     header = str2bool(args$header)
     file = read_file(filename, header)                        # Get file content
     input = unlist(strsplit(as.character(file[,ncol]),";"))   # Extract Protein IDs list
+    colnames(file)[ncol] <- "NextprotID"
   
   }
 
@@ -119,12 +120,12 @@ protein_features = function() {
     # Write output
     if (inputtype == "copypaste") {
       res = cbind(as.matrix(input), res)
-      names = c(typeid, names)
-      colnames(res) = names
+      colnames(res)[1] = typeid
       write.table(res, output, row.names = FALSE, sep = "\t", quote = FALSE)
     }
     else if (inputtype == "file") {
-      output_content = cbind(file, res)
+      output_content = merge(file, res,by="NextprotID")
+      output_content = output_content[,c(2:ncol,1,(ncol+1):dim.data.frame(output_content)[2])]
       write.table(output_content, output, row.names = FALSE, sep = "\t", quote = FALSE)
     }
   } 
