@@ -124,7 +124,7 @@ protein_features = function() {
       write.table(res, output, row.names = FALSE, sep = "\t", quote = FALSE)
     }
     else if (inputtype == "file") {
-      output_content = merge(file, res,by="NextprotID")
+      output_content = merge(file, res,by="NextprotID",incomparables = NA,all.x=T)
       output_content = output_content[,c(2:ncol,1,(ncol+1):dim.data.frame(output_content)[2])]
       write.table(output_content, output, row.names = FALSE, sep = "\t", quote = FALSE)
     }
