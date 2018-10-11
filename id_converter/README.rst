@@ -3,7 +3,7 @@ Wrapper for ID Converter tool
 
 **Authors**
 
-T.P. Lien Nguyen, David Christiany, Florence Combes, Yves Vandenbrouck CEA, INSERM, CNRS, Grenoble-Alpes University, BIG Institute, FR
+David Christiany, T.P. Lien Nguyen, Florence Combes, Yves Vandenbrouck CEA, INSERM, CNRS, Grenoble-Alpes University, BIG Institute, FR
 
 Sandra Dérozier, Olivier Rué, Christophe Caron, Valentin Loux INRA, Paris-Saclay University, MAIAGE Unit, Migale Bioinformatics platform
 
@@ -50,6 +50,12 @@ If your input is a multiple-column file, the mapped IDs column(s) will be added 
 * Ensembl transcript ID (e.g. ENST00000353703; ENST00000372839)
 
 * Ensembl protein ID (e.g. ENSP00000300161; ENSP00000361930)
+
+* BioGrid (e.g. 113361)
+
+* STRING (e.g. 9606.ENSP00000300161)
+
+* KEGG gene id (e.g. hsa:7529)
 
 .. class:: warningmark 
 
