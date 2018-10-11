@@ -51,7 +51,7 @@ str2bool <- function(x){
 }
 
 read_file <- function(path,header){
-  file <- try(read.table(path,header=header, sep="\t",stringsAsFactors = FALSE, quote=""),silent=TRUE)
+  file <- try(read.csv(path,header=header, sep="\t",stringsAsFactors = FALSE, quote="\""),silent=TRUE)
   if (inherits(file,"try-error")){
     stop("File not found !")
   }else{

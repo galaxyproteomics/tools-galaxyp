@@ -8,7 +8,7 @@ options(warn=-1)  #TURN OFF WARNINGS !!!!!!
 suppressMessages(library("pathview"))
 
 read_file <- function(path,header){
-    file <- try(read.table(path,header=header, sep="\t",stringsAsFactors = FALSE, quote=""),silent=TRUE)
+    file <- try(read.csv(path,header=header, sep="\t",stringsAsFactors = FALSE, quote="\""),silent=TRUE)
     if (inherits(file,"try-error")){
       stop("File not found !")
     }else{
@@ -30,6 +30,16 @@ concat_string <- function(x){
   return(x)
 }
 
+#return output suffix (pathway name) from id kegg (ex : hsa:00010)
+get_suffix <- function(pathways_list,species,id){
+  suffix = pathways_list[pathways_list[,1]==paste(species,id,sep=""),2]
+  suffix = strsplit(suffix," - ")[[1]][1]
+  suffix = gsub(" ","_",suffix)
+  if (nchar(suffix) > 50){
+    suffix = substr(suffix,1,50)
+  }
+  return(suffix)
+}
 
 get_args <- function(){
   
@@ -59,6 +69,7 @@ get_args <- function(){
       --pathways_input        Tab with pathways in a column, output format of find_pathways
       --pathway_col           Column of pathways to use
       --header2               Boolean, TRUE if header FALSE if not
+      --pathways_list         path of file containg the species pathways list (hsa_pathways.loc, mmu_pathways.loc, ...)
 
       Example:
       ./PathView.R --input 'input.csv' --pathway_id '05412' --id_type 'uniprotID' --id_column 'c1' --header TRUE \n\n")
@@ -118,6 +129,7 @@ if (!is.null(args$pathways_id)) {
   pathways_file = read_file(args$pathways_input,header2)
   ids <- sapply(rapply(strsplit(clean_bad_character(pathways_file[,pathway_col]),","),c), function(x) remove_kegg_prefix(x),USE.NAMES = FALSE)
 }
+pathways_list <- read_file(args$pathways_list,F)
 if (!is.null(args$id_list)) {id_list <- as.vector(strsplit(clean_bad_character(args$id_list),","))}
 id_type <- tolower(args$id_type)
 ncol <- as.numeric(gsub("c", "" ,args$id_column))
@@ -192,12 +204,15 @@ if (is.null(tab$e1)) {
   high_color = "#81BEF7" #blue
 }
 
+#create graph(s)
 for (id in ids) {
-  pathview(gene.data = mat,
+  suffix= get_suffix(pathways_list,species,id)
+  suppressMessages(pathview(gene.data = mat,
            gene.idtype = "entrez", 
            pathway.id = id,
            species = species, 
            kegg.dir = ".", 
+           out.suffix=suffix,
            kegg.native = native_kegg,
            low = list(gene = low_color, cpd = "blue"), 
            mid = list(gene = mid_color, cpd = "transparent"), 
@@ -205,7 +220,7 @@ for (id in ids) {
            na.col="#D8D8D8", #gray
            cpd.data=NULL,
            plot.col.key = plot.col.key,
-           pdf.size=c(9,9))
+           pdf.size=c(9,9)))
 }
 
 ########using keggview.native
