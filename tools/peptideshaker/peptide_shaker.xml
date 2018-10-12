@@ -1,4 +1,4 @@
-<tool id="peptide_shaker" name="Peptide Shaker" version="1.16.26">
+<tool id="peptide_shaker" name="Peptide Shaker" version="@PEPTIDESHAKER_VERSION@">
     <description>
         Perform protein identification using various search engines based on results from SearchGUI
     </description>
@@ -6,11 +6,12 @@
         <import>macros.xml</import>
     </macros>
     <requirements>
-        <requirement type="package" version="1.16.26">peptide-shaker</requirement>
+        <requirement type="package" version="@PEPTIDESHAKER_VERSION@">peptide-shaker</requirement>
     </requirements>
     <expand macro="stdio" />
-    <command>
-<![CDATA[
+
+    <command><![CDATA[
+    ## When supporting more advanced Galaxy versions:    command use_shared_home="false"
         #from datetime import datetime
         #set $exp_str = "Galaxy_Experiment_%s" % datetime.now().strftime("%Y%m%d%H%M%s")
         #set $samp_str = "Sample_%s" % datetime.now().strftime("%Y%m%d%H%M%s")
@@ -18,16 +19,33 @@
         #set $bin_dir = "bin"
 
 
-        mkdir output_reports;
-        cwd=`pwd`;
+        mkdir output_reports &&
+        cwd=`pwd` &&
+        export HOME=\$cwd &&
+
+        echo "" > $temp_stderr &&
 
         ln -s '$searchgui_input' searchgui_input.zip &&
         jar xvf searchgui_input.zip SEARCHGUI_IdentificationParameters.par &&
+
+
+        peptide-shaker eu.isas.peptideshaker.cmd.PathSettingsCLI
+	         --exec_dir="\$cwd/${bin_dir}"
+            -temp_folder \$cwd/PathSettingsCLI
+            -log \$cwd/peptideshaker.log &&
+
+        #if str($exporting_options.output_reports) != "None"
+            #set $output_reports_list = set(str($exporting_options.output_reports).split(','))
+        #else
+            #set $output_reports_list = set()
+	      #end if
+
         ######################
         ## PeptideShakerCLI ##
         ######################
-        (peptide-shaker eu.isas.peptideshaker.cmd.PeptideShakerCLI
+        (peptide-shaker -Djava.awt.headless=true eu.isas.peptideshaker.cmd.PeptideShakerCLI
             --exec_dir="\$cwd/${bin_dir}"
+            -gui 0
             -temp_folder \$cwd/PeptideShakerCLI
             -experiment '$exp_str'
             -sample '$samp_str'
@@ -35,166 +53,123 @@
             -identification_files \$cwd/searchgui_input.zip
             -id_params \$cwd/SEARCHGUI_IdentificationParameters.par
             -out \$cwd/peptideshaker_output.cpsx
+	      #if $exporting_options.zip_conditional.zip_output_boolean == 'zip':
             -zip \$cwd/peptideshaker_output.zip
-            #set $cleaned_list = str($outputs).split(',')
-            #if 'cps' in $cleaned_list:
-                #silent $cleaned_list.remove('cps')
-            #end if
-            #if 'mzidentML' in $cleaned_list:
-                #silent $cleaned_list.remove('mzidentML')
-            #end if
-            #if 'zip' in $cleaned_list:
-                #silent $cleaned_list.remove('zip')
-            #end if
-            #if len($cleaned_list) > 0
-              ## Only numbers are left over. These corresponds to different reports.
-              -reports #echo ','.join($cleaned_list)#
-            #end if
-
+	      #end if
             -threads "\${GALAXY_SLOTS:-12}"
 
-            ##Optional processing parameters:
-            #if $processing_options.processing_options_selector == "yes"
-                -protein_fdr "${processing_options.protein_fdr}"
-                -peptide_fdr "${processing_options.peptide_fdr}"
-                -psm_fdr "${processing_options.psm_fdr}"
-                -ptm_score "${processing_options.ptm_score.ptm_score_selector}"
-                #if $processing_options.ptm_score.ptm_score_selector == 1
-                    -score_neutral_losses "${processing_options.ptm_score.neutral_losses}"
-                    #if str($processing_options.ptm_score.ptm_threshold) != ''
-                        -ptm_threshold "${processing_options.ptm_score.ptm_threshold}"
-                    #end if
+        ##Optional processing parameters:
+        #if $processing_options.processing_options_selector == "yes"
+            -protein_fdr "${processing_options.protein_fdr}"
+            -peptide_fdr "${processing_options.peptide_fdr}"
+            -psm_fdr "${processing_options.psm_fdr}"
+            -ptm_score "${processing_options.ptm_score.ptm_score_selector}"
+            #if $processing_options.ptm_score.ptm_score_selector == 1
+                -score_neutral_losses "${processing_options.ptm_score.neutral_losses}"
+                #if str($processing_options.ptm_score.ptm_threshold) != ''
+                    -ptm_threshold "${processing_options.ptm_score.ptm_threshold}"
                 #end if
-                -ptm_alignment "${processing_options.ptm_alignment}"
-                -ptm_sequence_matching_type "${processing_options.ptm_sequence_matching_type}"
-                -protein_fraction_mw_confidence "${processing_options.protein_fraction_mw_confidence}"
             #end if
+            -ptm_alignment "${processing_options.ptm_alignment}"
+            -ptm_sequence_matching_type "${processing_options.ptm_sequence_matching_type}"
+            -protein_fraction_mw_confidence "${processing_options.protein_fraction_mw_confidence}"
+        #end if
 
-           ##Optional filtering parameters:
-            #if $filtering_options.filtering_options_selector == "yes":
-                -import_peptide_length_min "${filtering_options.min_peptide_length}"
-                -import_peptide_length_max "${filtering_options.max_peptide_length}"
-                -import_precurosor_mz "${filtering_options.max_precursor_error}"
-                -import_precurosor_mz_ppm "${filtering_options.max_precursor_error_type}"
-                ##-max_xtandem_e "${filtering_options.max_xtandem_e}"
-                ##-max_omssa_e "${filtering_options.max_omssa_e}"
-                ##-max_mascot_e "${filtering_options.max_mascot_e}"
-                -exclude_unknown_ptms "${filtering_options.exclude_unknown_ptms}"
+        ##Optional filtering parameters:
+        #if $filtering_options.filtering_options_selector == "yes":
+            -import_peptide_length_min "${filtering_options.min_peptide_length}"
+            -import_peptide_length_max "${filtering_options.max_peptide_length}"
+            -import_precurosor_mz "${filtering_options.max_precursor_error}"
+            -import_precurosor_mz_ppm "${filtering_options.max_precursor_error_type}"
+            ##-max_xtandem_e "${filtering_options.max_xtandem_e}"
+            ##-max_omssa_e "${filtering_options.max_omssa_e}"
+            ##-max_mascot_e "${filtering_options.max_mascot_e}"
+            -exclude_unknown_ptms "${filtering_options.exclude_unknown_ptms}"
+        #end if
+
+        ##################################
+        ## mzidCLI options ##
+        ##################################
+
+        #if $exporting_options.mzidentml_conditional.mzidentml_creation == 1:
+            -output_file \$cwd/output.mzid
+            -include_sequences ${exporting_options.mzidentml_conditional.include_sequences}
+            #if $contact_options.contact_options_selector == "yes":
+                -contact_first_name "$contact_options.contact_first_name"
+                -contact_last_name "$contact_options.contact_last_name"
+                -contact_email "$contact_options.contact_email"
+                -contact_address "$contact_options.contact_address"
+                #if str($contact_options.contact_url).strip() != '':
+                    -contact_url = "$contact_options.contact_url"
+                #end if
+                -organization_name "$contact_options.organization_name"
+                -organization_email "$contact_options.organization_email"
+                -organization_address "$contact_options.organization_address"
+                #if str($contact_options.organization_url).strip() != '':
+                    -organization_url = "$contact_options.organization_url"
+                #end if
+            #else:
+                -contact_first_name "Proteomics"
+                -contact_last_name "Galaxy"
+                -contact_email "galaxyp@umn.edu"
+                -contact_address "galaxyp@umn.edu"
+                -organization_name "University of Minnesota"
+                -organization_email "galaxyp@umn.edu"
+                -organization_address "Minneapolis, MN 55455, Vereinigte Staaten"
             #end if
-
-        2>> $temp_stderr)
-
-        &&
-
-        echo "Running Reports";
+        #end if
 
         ##################################
         ## PeptideShaker Report options ##
         ##################################
-
-        #if 'mzidentML' in str($outputs).split(','):
-            echo "Generating mzIdentML";
-            (peptide-shaker eu.isas.peptideshaker.cmd.MzidCLI
-                --exec_dir="\$cwd/${bin_dir}"
-                -in \$cwd/peptideshaker_output.zip
-                -output_file \$cwd/output.mzid
-                #if $contact_options.contact_options_selector == "yes":
-                    -contact_first_name "$contact_options.contact_first_name"
-                    -contact_last_name "$contact_options.contact_last_name"
-                    -contact_email "$contact_options.contact_email"
-                    -contact_address "$contact_options.contact_address"
-                    #if str($contact_options.contact_url).strip() != '':
-                        -contact_url = "$contact_options.contact_url"
-                    #end if
-                    -organization_name "$contact_options.organization_name"
-                    -organization_email "$contact_options.organization_email"
-                    -organization_address "$contact_options.organization_address"
-                    #if str($contact_options.organization_url).strip() != '':
-                        -organization_url = "$contact_options.organization_url"
-                    #end if
-                #else:
-                    -contact_first_name "Proteomics"
-                    -contact_last_name "Galaxy"
-                    -contact_email "galaxyp@umn.edu"
-                    -contact_address "galaxyp@umn.edu"
-                    -organization_name "University of Minnesota"
-                    -organization_email "galaxyp@umn.edu"
-                    -organization_address "Minneapolis, MN 55455, Vereinigte Staaten"
-                #end if
-            2>> $temp_stderr)
-            &&
-        #end if
-
-        ## Generate Reports if the user has selected one of the 8 additional reports
-        ## 'cps', 'mzidentML' and 'zip' are not valid options for PeptideShaker
-        ## and will not be passed to the command line
-        #if set(["0","1","2","3","4","5","6","7"]).intersection( set( str( $outputs ).split(',') ) ):
-
-            (peptide-shaker eu.isas.peptideshaker.cmd.ReportCLI
-                --exec_dir="\$cwd/${bin_dir}"
-                -temp_folder \$cwd/ReportCLI
-                -in \$cwd/peptideshaker_output.zip
+        ## Generate Reports if the user has selected one of the 11 additional reports
+        #if len($output_reports_list) > 0
                 -out_reports \$cwd/output_reports
-                #set $cleaned_list = str($outputs).split(',')
-                #if 'cps' in $cleaned_list:
-                    #silent $cleaned_list.remove('cps')
-                #end if
-                #if 'mzidentML' in $cleaned_list:
-                    #silent $cleaned_list.remove('mzidentML')
-                #end if
-                #if 'zip' in $cleaned_list:
-                    #silent $cleaned_list.remove('zip')
-                #end if
-                ## Only numbers are left over. These corresponds to different reports.
-                -reports #echo ','.join($cleaned_list)#
-
-            2>> $temp_stderr)
-            &&
+                -reports #echo ','.join($output_reports_list)#
         #end if
 
-        ## # ls -l \$cwd/output_reports/* ;
+        2>> $temp_stderr)
 
-        #if '0' in str($outputs).split(','):
-            find \$cwd/output_reports -name '*Certificate_of_Analysis*' -exec bash -c 'mv "$0" "certificate.txt"' {} \;
-            ;
-        #end if
-        #if '1' in str($outputs).split(','):
-            find \$cwd/output_reports -name '*Hierarchical*' -exec bash -c 'mv "$0" "hierarchical.txt"' {} \;
-            ;
-        #end if
-        #if '2' in str($outputs).split(','):
-            find \$cwd/output_reports -name '*PSM_Phosphorylation_Report*' -exec bash -c 'mv "$0" "psm_phospho.txt"' {} \;
-            ;
-        #end if
-        #if '8' in str($outputs).split(','):
-            find \$cwd/output_reports -name '*Extended_PSM_Report*' -exec bash -c 'mv "$0" "psmx.txt"' {} \;
-            ;
-        #end if
-        #if '3' in str($outputs).split(','):
-            find \$cwd/output_reports -name '*PSM_Report*' -exec bash -c 'mv "$0" "psm.txt"' {} \;
-            ;
-        #end if
-        #if '4' in str($outputs).split(','):
-            find \$cwd/output_reports -name '*Peptide_Phosphorylation_Report*' -exec bash -c 'mv "$0" "peptides_phospho.txt"' {} \;
-            ;
-        #end if
-        #if '5' in str($outputs).split(','):
-            find \$cwd/output_reports -name '*Peptide_Report*' -exec bash -c 'mv "$0" "peptides.txt"' {} \;
-            ;
-        #end if
-        #if '6' in str($outputs).split(','):
-            find \$cwd/output_reports -name '*Protein_Phosphorylation_Report*' -exec bash -c 'mv "$0" "proteins_phospho.txt"' {} \;
-            ;
-        #end if
-        #if '7' in str($outputs).split(','):
-            find \$cwd/output_reports -name '*Protein_Report*' -exec bash -c 'mv "$0" "proteins.txt"' {} \;
-            ;
+	      #if len(output_reports_list)>0:
+            #if '0' in $output_reports_list:
+                && find \$cwd/output_reports -name '*Certificate_of_Analysis.txt' -exec bash -c 'mv "$0" "certificate.txt"' {} \;
+            #end if
+            #if '1' in $output_reports_list:
+                && find \$cwd/output_reports -name '*Default_Hierarchical_Report.txt' -exec bash -c 'mv "$0" "hierarchical.txt"' {} \;
+            #end if
+            #if '2' in $output_reports_list:
+                && find \$cwd/output_reports -name '*Default_PSM_Phosphorylation_Report.txt' -exec bash -c 'mv "$0" "psm_phospho.txt"' {} \;
+            #end if`
+            #if '3' in $output_reports_list:
+                && find \$cwd/output_reports -name '*Default_PSM_Report.txt' -exec bash -c 'mv "$0" "psm.txt"' {} \;
+            #end if
+            #if '4' in $output_reports_list:
+                && find \$cwd/output_reports -name '*Default_PSM_Report_with_non-validated_matches.txt' -exec bash -c 'mv "$0" "psm_nonvalidated.txt"' {} \;
+            #end if
+            #if '5' in $output_reports_list:
+                && find \$cwd/output_reports -name '*Default_Peptide_Phosphorylation_Report.txt' -exec bash -c 'mv "$0" "peptides_phospho.txt"' {} \;
+            #end if
+            #if '6' in $output_reports_list:
+                && find \$cwd/output_reports -name '*Default_Peptide_Report.txt' -exec bash -c 'mv "$0" "peptides.txt"' {} \;
+            #end if
+            #if '7' in $output_reports_list:
+                && find \$cwd/output_reports -name '*Default_Peptide_Report_with_non-validated_matches.txt' -exec bash -c 'mv "$0" "peptides_nonvalidated.txt"' {} \;
+            #end if
+            #if '8' in $output_reports_list:
+                && find \$cwd/output_reports -name '*Default_Protein_Phosphorylation_Report.txt' -exec bash -c 'mv "$0" "proteins_phospho.txt"' {} \;
+            #end if
+            #if '9' in $output_reports_list:
+                && find \$cwd/output_reports -name '*Default_Protein_Report.txt' -exec bash -c 'mv "$0" "proteins.txt"' {} \;
+            #end if
+            #if '10' in $output_reports_list:
+                && find \$cwd/output_reports -name '*Default_Protein_Report_with_non-validated_matches.txt' -exec bash -c 'mv "$0" "proteins_nonvalidated.txt"' {} \;
+            #end if
+            #if '11' in $output_reports_list:
+                && find \$cwd/output_reports -name '*Extended_PSM_Report.txt' -exec bash -c 'mv "$0" "psmx.txt"' {} \;
+            #end if
         #end if
 
-        exit_code_for_galaxy=\$?;
-        cat $temp_stderr 2>&1;
-        (exit \$exit_code_for_galaxy)
-
+        && cat $temp_stderr 2>&1;
 ]]>
     </command>
     <inputs>
@@ -297,60 +272,92 @@
             </when>
         </conditional>
 
-        <param name="include_sequences" type="boolean" truevalue="1" falsevalue="0" checked="false" label="Include the protein sequences in mzIdentML" />
-        <param name="outputs" type="select" display="checkboxes" multiple="True" label="Output options">
-            <option value="zip">Zip File for import to Desktop App</option>
-            <option value="mzidentML" selected="True">mzidentML File</option>
-            <option value="3">PSM Report</option>
-            <option value="8">Extended PSM Report</option>
-            <option value="2">PSM Phosphorylation Report</option>
-            <option value="5">Peptide Report</option>
-            <option value="4">Peptide Phosphorylation Report</option>
-            <option value="7">Protein Report</option>
-            <option value="6">Protein Phosphorylation Report</option>
-            <option value="0">Certificate of Analysis</option>
-            <option value="1">Hierarchical Report</option>
-            <option value="cps">CPS file</option>
-            <validator type="no_options" message="Please select at least one output file" />
-        </param>
+        <section name="exporting_options" expanded="true" title="Exporting options">
+
+            <conditional name="mzidentml_conditional">
+                <param name="mzidentml_creation" type="boolean" truevalue="1" falsevalue="0" checked="true" label="Creates a mzIdentML file" />
+                <when value="1">
+              	     <param name="include_sequences" type="boolean" truevalue="1" falsevalue="0" checked="false" label="Include the protein sequences in the mzIdentML file" />
+                </when>
+                <when value="0" />
+            </conditional>
+
+            <conditional name="zip_conditional">
+                <param name="zip_output_boolean" type="boolean" truevalue="zip" falsevalue="separate" checked="false" label="Compress results into a single zip file" />
+                <when value="separate">
+                    <param name="export_cps" type="boolean" truevalue="1" falsevalue="0" checked="false" label="Exports the CPS file" />
+                </when>
+                <when value="zip" />
+            </conditional>
+
+            <param name="output_reports" type="select" display="checkboxes" multiple="True" optional="true" label="Reports to be generated">
+                <option value="3">PSM Report</option>
+                <option value="4">PSM Report with non-validated matches</option>
+                <option value="2">PSM Phosphorylation Report</option>
+                <option value="11">Extended PSM Report</option>
+                <option value="6">Peptide Report</option>
+                <option value="7">Peptide Report with non-validated matches</option>
+                <option value="5">Peptide Phosphorylation Report</option>
+                <option value="9">Protein Report</option>
+                <option value="10">Protein Report with non-validated matches</option>
+                <option value="8">Protein Phosphorylation Report</option>
+                <option value="0">Certificate of Analysis</option>
+                <option value="1">Hierarchical Report</option>
+            </param>
+
+        </section>
 
     </inputs>
     <outputs>
         <data format="mzid" name="mzidentML" from_work_dir="output.mzid" label="${tool.name} on ${on_string}: mzidentML file">
-            <filter>'mzidentML' in outputs</filter>
+            <filter>exporting_options['zip_conditional']['zip_output_boolean'] is False and mzidentml_conditional['mzidentml_creation'] is True</filter>
         </data>
         <data format="peptideshaker_archive" name="output_cps" from_work_dir="peptideshaker_output.cpsx" label="${tool.name} on ${on_string}: CPS file">
-            <filter>'cps' in outputs</filter>
+            <filter>exporting_options['zip_conditional']['zip_output_boolean'] is False and exporting_options['zip_conditional']['export_cps'] is True</filter>
         </data>
         <data format="zip" name="output_zip" from_work_dir="peptideshaker_output.zip" label="${tool.name} on ${on_string}: Archive">
-            <filter>'zip' in outputs</filter>
+            <filter>exporting_options['zip_conditional']['zip_output_boolean'] is True</filter>
         </data>
-        <data format="txt" name="output_certificate" from_work_dir="certificate.txt" label="${tool.name} on ${on_string}: Parameters">
-            <filter>'0' in outputs</filter>
+	<!--
+        <data format="tabular" name="reports">
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.txt" format="tabular" directory="output_reports" visible="true" assign_primary_output="true" />
+        </data>
+        -->
+	      <data format="txt" name="output_certificate" from_work_dir="certificate.txt" label="${tool.name} on ${on_string}: Parameters">
+            <filter>exporting_options['zip_conditional']['zip_output_boolean'] is False and str(exporting_options['output_reports']) != 'None' and '0' in exporting_options['output_reports']</filter>
         </data>
         <data format="tabular" name="output_hierarchical" from_work_dir="hierarchical.txt" label="${tool.name} on ${on_string}: Hierarchical Report">
-            <filter>'1' in outputs</filter>
+            <filter>exporting_options['zip_conditional']['zip_output_boolean'] is False and str(exporting_options['output_reports']) != 'None' and '1' in exporting_options['output_reports']</filter>
         </data>
         <data format="tabular" name="output_psm_phosphorylation" from_work_dir="psm_phospho.txt" label="${tool.name} on ${on_string}: PSM Phosphorylation Report">
-            <filter>'2' in outputs</filter>
+            <filter>exporting_options['zip_conditional']['zip_output_boolean'] is False and str(exporting_options['output_reports']) != 'None' and '2' in exporting_options['output_reports']</filter>
         </data>
         <data format="tabular" name="output_psm" from_work_dir="psm.txt" label="${tool.name} on ${on_string}: PSM Report">
-            <filter>'3' in outputs</filter>
+            <filter>exporting_options['zip_conditional']['zip_output_boolean'] is False and str(exporting_options['output_reports']) != 'None' and '3' in exporting_options['output_reports']</filter>
+        </data>
+        <data format="tabular" name="output_psm_nonvalidated" from_work_dir="psm_nonvalidated.txt" label="${tool.name} on ${on_string}: PSM Report with non-validated matches">
+            <filter>exporting_options['zip_conditional']['zip_output_boolean'] is False and str(exporting_options['output_reports']) != 'None' and '4' in exporting_options['output_reports']</filter>
         </data>
         <data format="tabular" name="output_extended_psm" from_work_dir="psmx.txt" label="${tool.name} on ${on_string}: Extended PSM Report">
-            <filter>'8' in outputs</filter>
+            <filter>exporting_options['zip_conditional']['zip_output_boolean'] is False and str(exporting_options['output_reports']) != 'None' and '11' in exporting_options['output_reports']</filter>
         </data>
         <data format="tabular" name="output_peptides_phosphorylation" from_work_dir="peptides_phospho.txt" label="${tool.name} on ${on_string}: Peptide Phosphorylation Report">
-            <filter>'4' in outputs</filter>
+            <filter>exporting_options['zip_conditional']['zip_output_boolean'] is False and str(exporting_options['output_reports']) != 'None' and '5' in exporting_options['output_reports']</filter>
         </data>
         <data format="tabular" name="output_peptides" from_work_dir="peptides.txt" label="${tool.name} on ${on_string}: Peptide Report">
-            <filter>'5' in outputs</filter>
+            <filter>exporting_options['zip_conditional']['zip_output_boolean'] is False and str(exporting_options['output_reports']) != 'None' and '6' in exporting_options['output_reports']</filter>
+        </data>
+        <data format="tabular" name="output_peptides_nonvalidated" from_work_dir="peptides_nonvalidated.txt" label="${tool.name} on ${on_string}: Peptide Report with non-validated matches">
+            <filter>exporting_options['zip_conditional']['zip_output_boolean'] is False and str(exporting_options['output_reports']) != 'None' and '7' in exporting_options['output_reports']</filter>
         </data>
         <data format="tabular" name="output_proteins_phosphorylation" from_work_dir="proteins_phospho.txt" label="${tool.name} on ${on_string}: Protein Phosphorylation Report">
-            <filter>'6' in outputs</filter>
+            <filter>exporting_options['zip_conditional']['zip_output_boolean'] is False and str(exporting_options['output_reports']) != 'None' and '8' in exporting_options['output_reports']</filter>
         </data>
         <data format="tabular" name="output_proteins" from_work_dir="proteins.txt" label="${tool.name} on ${on_string}: Protein Report">
-            <filter>'7' in outputs</filter>
+            <filter>exporting_options['zip_conditional']['zip_output_boolean'] is False and str(exporting_options['output_reports']) != 'None' and '9' in exporting_options['output_reports']</filter>
+        </data>
+        <data format="tabular" name="output_proteins_nonvalidated" from_work_dir="proteins_nonvalidated.txt" label="${tool.name} on ${on_string}: Protein Repor with non-validated matches">
+            <filter>exporting_options['zip_conditional']['zip_output_boolean'] is False and str(exporting_options['output_reports']) != 'None' and '10' in exporting_options['output_reports']</filter>
         </data>
     </outputs>
     <tests>
@@ -358,88 +365,50 @@
             <param name="searchgui_input" value="tiny_searchgui_modifications_result1.zip" ftype="searchgui_archive"/>
             <param name="processing_options_selector" value="no"/>
             <param name="filtering_options_selector" value="no"/>
-            <param name="outputs" value="zip,3"/>
+            <param name="mzidentml_creation" value="0"/>
+            <param name="zip_output_boolean" value="zip"/>
+            <param name="export_cps" value="1"/>
             <output name="output_zip" file="peptide_shaker_modifications_result1.zip" ftype="zip" compare="sim_size" delta="3000" />
-            <output name="output_psm">
-                <assert_contents>
-                    <has_text text="cds.comp41779_c0_seq1" />
-                </assert_contents>
-            </output>
         </test>
         <test>
             <param name="searchgui_input" value="tiny_searchgui_modifications_result1.zip" ftype="searchgui_archive"/>
             <param name="processing_options_selector" value="no"/>
             <param name="filtering_options_selector" value="yes"/>
             <param name="min_peptide_length" value="1"/>
-            <param name="outputs" value="0,1,2,3,4,5,6,7"/>
-            <output name="output_certificate">
-                <assert_contents>
-                    <has_text text="Tolerance: 100" />
-                    <has_text text="Carbamidomethylation of C" />
-                </assert_contents>
-            </output>
-            <output name="output_hierarchical">
-                <assert_contents>
-                    <has_text_matching expression="1.1\tcds.comp" />
-                </assert_contents>
-            </output>
-            <output name="output_psm">
-                <assert_contents>
-                    <not_has_text text="Phosphosite" />
-                    <has_text text="cds.comp41779_c0_seq1" />
-                </assert_contents>
-            </output>
-            <output name="output_psm_phosphorylation">
-                <assert_contents>
-                    <has_text text="Phosphosite" />
-                    <has_text text="cds.comp41779_c0_seq1" />
-                </assert_contents>
-            </output>
-            <output name="output_peptides">
-                <assert_contents>
-                    <has_text text="Modification" />
-                    <has_text text="cds.comp41779_c0_seq1" />
-                </assert_contents>
-            </output>
-            <output name="output_peptides_phosphorylation">
-                <assert_contents>
-                    <has_text text="Phosphosite" />
-                    <has_text text="cds.comp41779_c0_seq1" />
-                </assert_contents>
-            </output>
-            <output name="output_proteins">
-                <assert_contents>
-                    <has_text text="Modification" />
-                    <has_text text="cds.comp41779_c0_seq1" />
-                </assert_contents>
-            </output>
-            <output name="output_proteins_phosphorylation">
-                <assert_contents>
-                    <has_text text="Phosphosite" />
-                    <has_text text="cds.comp41779_c0_seq1" />
-                </assert_contents>
-            </output>
+            <param name="mzidentml_creation" value="0"/>
+            <param name="zip_output_boolean" value="separate"/>
+            <param name="output_reports" value="0,1,2,3,4,5,6,7,8,9,10,11"/>
+            <output name="output_certificate" file="peptide_shaker_modifications_result1.output_certificate" ftype="txt" lines_diff="6"/>
+            <output name="output_hierarchical" file="peptide_shaker_modifications_result1.output_hierarchical" ftype="tabular"/>
+            <output name="output_extended_psm" file="peptide_shaker_modifications_result1.output_extended_psm" ftype="tabular"/>
+            <output name="output_psm" file="peptide_shaker_modifications_result1.output_psm" ftype="tabular"/>
+            <output name="output_psm_phosphorylation" file="peptide_shaker_modifications_result1.output_psm_phosphorylation" ftype="tabular"/>
+            <output name="output_psm_nonvalidated" file="peptide_shaker_modifications_result1.output_psm_nonvalidated" ftype="tabular"/>
+            <output name="output_peptides" file="peptide_shaker_modifications_result1.output_peptides" ftype="tabular"/>
+            <output name="output_peptides_phosphorylation" file="peptide_shaker_modifications_result1.output_peptides_phosphorylation" ftype="tabular"/>
+            <output name="output_peptides_nonvalidated" file="peptide_shaker_modifications_result1.output_peptides_nonvalidated" ftype="tabular"/>
+            <output name="output_proteins" file="peptide_shaker_modifications_result1.output_proteins" ftype="tabular"/>
+            <output name="output_proteins_phosphorylation" file="peptide_shaker_modifications_result1.output_proteins_phosphorylation" ftype="tabular"/>
+            <output name="output_proteins_nonvalidated" file="peptide_shaker_modifications_result1.output_proteins_nonvalidated" ftype="tabular"/>
         </test>
         <test>
             <param name="searchgui_input" value="tiny_searchgui_modifications_result1.zip" ftype="searchgui_archive"/>
             <param name="processing_options_selector" value="no"/>
             <param name="filtering_options_selector" value="no"/>
-            <param name="outputs" value="3,cps"/>
+            <param name="mzidentml_creation" value="0"/>
+            <param name="zip_output_boolean" value="separate"/>
+            <param name="export_cps" value="1"/>
+            <param name="output_reports" value="3"/>
             <output name="output_cps" file="peptide_shaker_modifications_result1.cpsx" ftype="peptideshaker_archive" compare="sim_size" delta="3000"/>
-            <output name="output_psm">
-                <assert_contents>
-                    <has_text text="cds.comp41779_c0_seq1" />
-                </assert_contents>
-            </output>
+	          <output name="output_psm" file="peptide_shaker_modifications_result1.output_psm" ftype="tabular"/>
         </test>
     </tests>
     <help>
 **What it does**
 
-Runs multiple search engines (X! Tandem, OMSSA and MS-GF+) on any number of MGF peak lists using the SearchGUI application and combines the results.
+PeptideShaker is a search engine for interpretation of proteomics identification results from multiple search engines, currently supporting X!Tandem, MS-GF+, MS Amanda, OMSSA, MyriMatch, Comet, Tide, Mascot, Andromeda and mzIdentML.
 
 http://compomics.github.io/projects/peptide-shaker.html
-http://compomics.github.io/projects/searchgui.html
 
 ----
 
