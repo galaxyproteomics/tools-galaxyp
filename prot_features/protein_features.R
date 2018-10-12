@@ -9,6 +9,16 @@ read_file <- function(path,header){
   }
 }
 
+order_columns <- function (df,ncol,id_type,file){
+  if (id_type=="Uniprot_AC"){ncol=dim.data.frame(file)[2]}
+  if (ncol==1){ #already at the right position
+    return (df)
+  } else {
+    df = df[,c(2:ncol,1,(ncol+1):dim.data.frame(df)[2])]
+  }
+  return (df)
+}
+
 get_args <- function(){
   
   ## Collect arguments
@@ -28,7 +38,7 @@ get_args <- function(){
         --nextprot: path to nextprot information file
         --column: the column number which you would like to apply...
         --header: true/false if your file contains a header
-        --type: the type of input IDs (UniProt/EntrezID)
+        --type: the type of input IDs (Uniprot_AC/EntrezID)
         --pc_features: IsoPoint,SeqLength,MW
         --localization: Chr,SubcellLocations
         --diseases_info: Diseases
@@ -76,8 +86,9 @@ protein_features = function() {
   
   #setting variables
   inputtype = args$inputtype
-  if (inputtype == "copypaste") {
-    input = strsplit(args$input, "[ \t\n]+")[[1]]
+  if (inputtype == "copy_paste") {
+    input = strsplit(gsub(" ","",args$input), ",")[[1]]
+    input = input[input!=""]
   } else if (inputtype == "file") {
     filename = args$input
     ncol = args$column
@@ -89,46 +100,61 @@ protein_features = function() {
     }
     
     header = str2bool(args$header)
-    file = read_file(filename, header)                        # Get file content
-    input = unlist(strsplit(as.character(file[,ncol]),";"))   # Extract Protein IDs list
-    colnames(file)[ncol] <- "NextprotID"
-  
+    file = read_file(filename, header)                                                      # Get file content
+    input = sapply(file[,ncol],function(x) strsplit(as.character(x),";")[[1]][1],USE.NAMES = F)     # Extract Protein IDs list
+    if (args$type == "NextprotID" && ! "NextprotID" %in% colnames(file)) { colnames(file)[ncol] <- "NextprotID" 
+    } else if (args$type == "NextprotID" && "NextprotID" %in% colnames(file) && match("NextprotID",colnames(file))!=ncol ) { 
+      colnames(file)[match("NextprotID",colnames(file))] <- "old_NextprotID" 
+      colnames(file)[ncol] = "NextprotID"
+    }
   }
 
   # Read reference file
   nextprot = read_file(args$nextprot,T)
   
   # Parse arguments
-  typeid = args$type
+  id_type = args$type
   pc_features = strsplit(args$pc_features, ",")[[1]]
   localization = strsplit(args$localization, ",")[[1]]
   diseases_info = str2bool(args$diseases_info)
   output = args$output
 
-  # Change the sample ids if they are uniprot ids to be able to match them with
+  # Change the sample ids if they are Uniprot_AC ids to be able to match them with
   # Nextprot data
-  if (typeid=="uniprot"){
-    input = gsub("^","NX_",input)
+  if (id_type=="Uniprot_AC"){
+    NextprotID = gsub("^","NX_",input)
+    if (inputtype == "file" && "NextprotID" %in% colnames(file)){colnames(file)[match("NextprotID",colnames(file))] <- "old_NextprotID"}
+    file = cbind(file,NextprotID)
+    } else if (id_type=="NextprotID") {
+    if (inputtype == "file") {
+      NextprotID = file$NextprotID
+    } else {
+      NextprotID = input
+    }
   }
 
   # Select user input protein ids in nextprot
-  if ((length(input[input %in% nextprot[,1]]))==0){
+  if ((length(NextprotID[NextprotID %in% nextprot[,1]]))==0){
     write.table("None of the input ids can be found in Nextprot",file=output,sep="\t",quote=FALSE,col.names=TRUE,row.names=FALSE)
   } else {
-    res <- get_nextprot_info(nextprot,input,pc_features,localization,diseases_info)
+    res <- get_nextprot_info(nextprot,NextprotID,pc_features,localization,diseases_info)
   
     # Write output
-    if (inputtype == "copypaste") {
-      res = cbind(as.matrix(input), res)
-      colnames(res)[1] = typeid
+    if (inputtype == "copy_paste") {
+      if (id_type=="Uniprot_AC"){
+        res = cbind(input, res)
+        colnames(res)[1] = id_type
+      }
       write.table(res, output, row.names = FALSE, sep = "\t", quote = FALSE)
     }
     else if (inputtype == "file") {
       output_content = merge(file, res,by="NextprotID",incomparables = NA,all.x=T)
-      output_content = output_content[,c(2:ncol,1,(ncol+1):dim.data.frame(output_content)[2])]
+      output_content = order_columns(output_content,ncol,id_type,file)
       write.table(output_content, output, row.names = FALSE, sep = "\t", quote = FALSE)
     }
   } 
 
+
+  
 }
 protein_features()
