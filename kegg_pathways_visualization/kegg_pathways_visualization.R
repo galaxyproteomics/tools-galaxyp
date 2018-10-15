@@ -32,57 +32,12 @@ concat_string <- function(x){
 
 #return output suffix (pathway name) from id kegg (ex : hsa:00010)
 get_suffix <- function(pathways_list,species,id){
-  suffix = pathways_list[pathways_list[,1]==paste(species,id,sep=""),2]
-  suffix = strsplit(suffix," - ")[[1]][1]
+  suffix = gsub("/","or",pathways_list[pathways_list[,1]==paste(species,id,sep=""),2])
   suffix = gsub(" ","_",suffix)
   if (nchar(suffix) > 50){
     suffix = substr(suffix,1,50)
   }
   return(suffix)
-}
-
-get_args <- function(){
-  
-  ## Collect arguments
-  args <- commandArgs(TRUE)
-  
-  ## Default setting when no arguments passed
-  if(length(args) < 1) {
-    args <- c("--help")
-  }
-  
-  ## Help section
-  if("--help" %in% args) {
-    cat("Pathview R script
-    Arguments:
-      --help                  Print this test
-      --input                 path of the input  file (must contains a colum of uniprot and/or geneID accession number)
-      --id_list               list of ids to use, ',' separated
-      --pathways_id            Id(s) of pathway(s) to use, if several, semicolon separated list : hsa00010;hsa05412 
-      --id_type               Type of accession number ('uniprotID' or 'geneID')
-      --id_column             Column containing accesion number of interest (ex : 'c1')
-      --header                Boolean, TRUE if header FALSE if not
-      --ouput                 Output filename
-      --fold_change_col      Column(s) containing fold change values (comma separated)
-      --native_kegg           TRUE : native KEGG graph, FALSE : Graphviz graph
-      --species               KEGG species (hsa, mmu, ...)
-      --pathways_input        Tab with pathways in a column, output format of find_pathways
-      --pathway_col           Column of pathways to use
-      --header2               Boolean, TRUE if header FALSE if not
-      --pathways_list         path of file containg the species pathways list (hsa_pathways.loc, mmu_pathways.loc, ...)
-
-      Example:
-      ./PathView.R --input 'input.csv' --pathway_id '05412' --id_type 'uniprotID' --id_column 'c1' --header TRUE \n\n")
-    
-    q(save="no")
-  }
-  
-  parseArgs <- function(x) strsplit(sub("^--", "", x), "=")
-  argsDF <- as.data.frame(do.call("rbind", parseArgs(args)))
-  args <- as.list(as.character(argsDF$V2))
-  names(args) <- argsDF$V1
-  
-  return(args)
 }
 
 str2bool <- function(x){
@@ -111,8 +66,58 @@ remove_kegg_prefix <- function(x){
 
 clean_bad_character <- function(string)  {
   string <- gsub("X","",string)
-  string <- gsub(" ","",string)
   return(string)
+}
+
+get_list_from_cp <-function(list){
+  list = strsplit(list, "[ \t\n]+")[[1]]
+  list = list[list != ""]    #remove empty entry
+  list = gsub("-.+", "", list)  #Remove isoform accession number (e.g. "-2")
+  return(list)
+}
+
+get_args <- function(){
+  
+  ## Collect arguments
+  args <- commandArgs(TRUE)
+  
+  ## Default setting when no arguments passed
+  if(length(args) < 1) {
+    args <- c("--help")
+  }
+  
+  ## Help section
+  if("--help" %in% args) {
+    cat("Pathview R script
+    Arguments:
+      --help                  Print this test
+      --input                 path of the input  file (must contains a colum of uniprot and/or geneID accession number)
+      --id_list               list of ids to use, ',' separated
+      --pathways_id           Id(s) of pathway(s) to use, if several, semicolon separated list : hsa00010;hsa05412 
+      --id_type               Type of accession number ('uniprotID' or 'geneID')
+      --id_column             Column containing accesion number of interest (ex : 'c1')
+      --header                Boolean, TRUE if header FALSE if not
+      --output                Output filename
+      --fold_change_col       Column(s) containing fold change values (comma separated)
+      --native_kegg           TRUE : native KEGG graph, FALSE : Graphviz graph
+      --species               KEGG species (hsa, mmu, ...)
+      --pathways_input        Tab with pathways in a column, output format of find_pathways
+      --pathway_col           Column of pathways to use
+      --header2               Boolean, TRUE if header FALSE if not
+      --pathways_list         path of file containg the species pathways list (hsa_pathways.loc, mmu_pathways.loc, ...)
+
+      Example:
+      ./PathView.R --input 'input.csv' --pathway_id '05412' --id_type 'uniprotID' --id_column 'c1' --header TRUE \n\n")
+    
+    q(save="no")
+  }
+  
+  parseArgs <- function(x) strsplit(sub("^--", "", x), "=")
+  argsDF <- as.data.frame(do.call("rbind", parseArgs(args)))
+  args <- as.list(as.character(argsDF$V2))
+  names(args) <- argsDF$V1
+  
+  return(args)
 }
 
 args <- get_args()
@@ -122,7 +127,8 @@ args <- get_args()
 
 ###setting variables
 if (!is.null(args$pathways_id)) { 
-  ids <- sapply(rapply(strsplit(clean_bad_character(args$pathways_id),","),c), function(x) remove_kegg_prefix(x),USE.NAMES = FALSE)
+  ids <- get_list_from_cp(clean_bad_character(args$pathways_id))
+  ids <- sapply(ids, function(x) remove_kegg_prefix(x),USE.NAMES = FALSE)
 }else if (!is.null(args$pathways_input)){
   header2 <- str2bool(args$header2)
   pathway_col <- as.numeric(gsub("c", "" ,args$pathway_col))
@@ -130,7 +136,9 @@ if (!is.null(args$pathways_id)) {
   ids <- sapply(rapply(strsplit(clean_bad_character(pathways_file[,pathway_col]),","),c), function(x) remove_kegg_prefix(x),USE.NAMES = FALSE)
 }
 pathways_list <- read_file(args$pathways_list,F)
-if (!is.null(args$id_list)) {id_list <- as.vector(strsplit(clean_bad_character(args$id_list),","))}
+if (!is.null(args$id_list)) {
+  id_list <- get_list_from_cp(args$id_list)
+  }
 id_type <- tolower(args$id_type)
 ncol <- as.numeric(gsub("c", "" ,args$id_column))
 header <- str2bool(args$header)
@@ -147,7 +155,7 @@ if (!is.null(args$input)){
   tab <- read_file(args$input,header)
   tab <- data.frame(tab[which(tab[ncol]!=""),])
 } else {
-  tab <- data.frame(id_list)
+  tab <- data.frame(id_list,stringsAsFactors = F)
   ncol=1
 }
 
@@ -165,7 +173,6 @@ if (fold_change_data){
 
 ##### map uniprotID to entrez geneID
 if (id_type == "uniprotid") {
-  
   uniprotID = tab[,ncol]
   mapped2geneID = id2eg(ids = uniprotID, category = "uniprot", org = org[[species]], pkg.name = NULL)
   geneID = mapped2geneID[,2]
@@ -204,10 +211,10 @@ if (is.null(tab$e1)) {
   high_color = "#81BEF7" #blue
 }
 
-#create graph(s)
+#create graph(s) and text output
 for (id in ids) {
   suffix= get_suffix(pathways_list,species,id)
-  suppressMessages(pathview(gene.data = mat,
+  pv.out <- suppressMessages(pathview(gene.data = mat,
            gene.idtype = "entrez", 
            pathway.id = id,
            species = species, 
@@ -221,11 +228,25 @@ for (id in ids) {
            cpd.data=NULL,
            plot.col.key = plot.col.key,
            pdf.size=c(9,9)))
+  
+  
+  #data frame for the text output
+  mapped <- pv.out$plot.data.gene$kegg.names[which(pv.out$plot.data.gene$all.mapped!='')]
+  nb_mapped <- length(mapped)
+  nb_kegg_id <- length(unique(pv.out$plot.data.gene$kegg.names))
+  pathway_id = paste(species,id,sep="")
+  pathway_name = as.character(pathways_list[pathways_list[,1]==pathway_id,][2])
+  row <- c(pathway_id,pathway_name,length(unique(uniprotID)),length(unique(geneID)),nb_kegg_id,nb_mapped,
+           round((nb_mapped/nb_kegg_id)*100, 2),paste(mapped,collapse=";"),paste(mapped2geneID[which(mapped2geneID[,2] %in% mapped)],collapse=";"))
+
+  if (id==ids[1]){
+    df <- data.frame(stringsAsFactors = F)
+    df <- rbind(df,row,stringsAsFactors=F)
+    colnames(df) <- c("KEGG pathway ID","pathway name","nb of Uniprot_AC used","nb of Entrez gene ID used","nb of Entrez gene ID in the pathway","nb of Entrez gene ID mapped", "ratio of Entrez gene ID mapped (%)","Entrez gene ID mapped","uniprot_AC mapped")
+  } else {
+    df <- rbind(df,unname(row),stringsAsFactors=F)
+  }
 }
 
-########using keggview.native
-
-#xml.file=system.file("extdata", "hsa00010.xml", package = "pathview")
-#node.data=node.info("/home/dchristiany/hsa00010.xml")
-#plot.data.gene=node.map(mol.data=test, node.data, node.types="gene")
-#colors =node.color(plot.data = plot.data.gene[,1:9])
+#text file output
+write.table(df,file=args$output,quote=FALSE, sep='\t',row.names = FALSE, col.names = TRUE)
