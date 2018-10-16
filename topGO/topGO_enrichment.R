@@ -261,10 +261,8 @@ goEnrichment = function(geneuniverse,sample,background_sample,onto){
   }
   
   geneList = factor(as.integer(allGenes %in% sample)) 
-  if (levels(geneList) == "1" ){
-    stop("All background genes are found in tested genes dataset, enrichment analysis can't be done")
-  } else if (levels(geneList)== "0"){
-    stop("None of the background genes are found in tested genes dataset, enrichment analysis can't be done")
+  if (length(levels(geneList)) == 1 ){
+    stop("All or none of the background genes are found in tested genes dataset, enrichment analysis can't be done")
   }
   names(geneList) <- allGenes
   
@@ -333,14 +331,13 @@ if (background){
     background_tab=read_file(background_genes,background_header)
     background_sample = unique(trimws(unlist(strsplit(background_tab[,background_column],";"))))
   }
+  #check of ENS ids
+  if (! any(check_ens_ids(background_sample))){
+    print("no ensembl gene ids found in your background ids list, please check your IDs in input or the selected column of your input file")
+    stop()
+  }
 } else {
   background_sample=NULL
-}
-
-#check of ENS ids
-if (! any(check_ens_ids(background_sample))){
-  print("no ensembl gene ids found in your background ids list, please check your IDs in input or the selected column of your input file")
-  stop()
 }
 
 # Launch enrichment analysis
