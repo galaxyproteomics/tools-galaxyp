@@ -47,12 +47,20 @@ get_args <- function(){
 }
 
 read_file <- function(path,header){
-  file <- try(read.table(path,header=header, sep="\t",stringsAsFactors = FALSE, quote=""),silent=TRUE)
+  file <- try(read.csv(path,header=header, sep="\t",stringsAsFactors = FALSE, quote="\""),silent=TRUE)
   if (inherits(file,"try-error")){
     stop("File not found !")
   }else{
     return(file)
   }
+}
+
+get_list_from_cp <-function(list){
+  list = gsub(";"," ",list)
+  list = strsplit(list, "[ \t\n]+")[[1]]
+  list = list[list != ""]    #remove empty entry
+  list = gsub("-.+", "", list)  #Remove isoform accession number (e.g. "-2")
+  return(list)
 }
 
 check_ens_ids <- function(vector) {
@@ -238,23 +246,26 @@ createOutputs = function(result, cut_result,text, barplot, dotplot, onto){
 
 # Launch enrichment analysis and return result data from the analysis or the null
 # object if the enrichment could not be done.
-goEnrichment = function(geneuniverse,sample,onto){
+goEnrichment = function(geneuniverse,sample,background_sample,onto){
   
-  # get all the GO terms of the corresponding ontology (BP/CC/MF) and all their
-  # associated ensembl ids according to the org package
-  xx = annFUN.org(onto,mapping=geneuniverse,ID="ensembl")
-  allGenes = unique(unlist(xx))
-  # check if the genes given by the user can be found in the org package (gene
-  # universe), that is in
-  # allGenes 
+  if (is.null(background_sample)){
+    xx = annFUN.org(onto,mapping=geneuniverse,ID="ensembl")   # get all the GO terms of the corresponding ontology (BP/CC/MF) and all their associated ensembl ids according to the org package
+    allGenes = unique(unlist(xx))                             # check if the genes given by the user can be found in the org package (gene universe), that is in allGenes 
+  } else {
+    allGenes = background_sample
+  }
+  
   if (length(intersect(sample,allGenes))==0){
-    
     print("None of the input ids can be found in the org package data, enrichment analysis cannot be realized. \n The inputs ids probably have no associated GO terms.")
     return(c(NULL,NULL))
-    
   }
   
   geneList = factor(as.integer(allGenes %in% sample)) 
+  if (levels(geneList) == "1" ){
+    stop("All background genes are found in tested genes dataset, enrichment analysis can't be done")
+  } else if (levels(geneList)== "0"){
+    stop("None of the background genes are found in tested genes dataset, enrichment analysis can't be done")
+  }
   names(geneList) <- allGenes
   
   #topGO enrichment 
@@ -292,13 +303,20 @@ dotplot = str2bool(args$dotplotoutput)
 column = as.numeric(gsub("c","",args$column))
 geneuniverse = args$geneuniverse
 header = str2bool(args$header)
+background = str2bool(args$background)
+if (background){
+  background_genes = args$background_genes
+  background_input_type = args$background_input_type
+  background_header = str2bool(args$background_header)
+  background_column = as.numeric(gsub("c","",args$background_column))
+}
 
 #get input
 if (input_type=="copy_paste"){
-  sample <- unlist(strsplit(input,","))
+  sample <- get_list_from_cp(input)
 } else if (input_type=="file"){
   tab=read_file(input,header)
-  sample = tab[,column]
+  sample = trimws(unlist(strsplit(tab[,column],";")))
 }
 
 #check of ENS ids
@@ -307,8 +325,26 @@ if (! any(check_ens_ids(sample))){
   stop()
 }
 
+#get input if background genes
+if (background){
+  if (background_input_type=="copy_paste"){
+    background_sample <- get_list_from_cp(background_genes)
+  } else if (background_input_type=="file"){
+    background_tab=read_file(background_genes,background_header)
+    background_sample = unique(trimws(unlist(strsplit(background_tab[,background_column],";"))))
+  }
+} else {
+  background_sample=NULL
+}
+
+#check of ENS ids
+if (! any(check_ens_ids(background_sample))){
+  print("no ensembl gene ids found in your background ids list, please check your IDs in input or the selected column of your input file")
+  stop()
+}
+
 # Launch enrichment analysis
-allresult = suppressMessages(goEnrichment(geneuniverse,sample,onto))
+allresult = suppressMessages(goEnrichment(geneuniverse,sample,background_sample,onto))
 result = allresult[1][[1]]
 myGOdata = allresult[2][[1]]
 if (!is.null(result)){
