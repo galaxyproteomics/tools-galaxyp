@@ -19,6 +19,13 @@ order_columns <- function (df,ncol,id_type,file){
   return (df)
 }
 
+get_list_from_cp <-function(list){
+  list = strsplit(list, "[ \t\n]+")[[1]]
+  list = list[list != ""]    #remove empty entry
+  list = gsub("-.+", "", list)  #Remove isoform accession number (e.g. "-2")
+  return(list)
+}
+
 get_args <- function(){
   
   ## Collect arguments
@@ -73,6 +80,7 @@ get_nextprot_info <- function(nextprot,input,pc_features,localization,diseases_i
     cols = c("NextprotID",pc_features,localization)
   }
   
+  cols=cols[cols!="None"]
   info = nextprot[match(input,nextprot$NextprotID),cols]
   return(info)
 }
@@ -81,13 +89,13 @@ protein_features = function() {
 
   args <- get_args()  
   
-  #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/prot_features/args.rda")
-  #load("/home/dchristiany/proteore_project/ProteoRE/tools/prot_features/args.rda")
+  #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/add_human_protein_features/args.rda")
+  #load("/home/dchristiany/proteore_project/ProteoRE/tools/add_human_protein_features/args.rda")
   
   #setting variables
   inputtype = args$inputtype
   if (inputtype == "copy_paste") {
-    input = strsplit(gsub(" ","",args$input), ",")[[1]]
+    input = get_list_from_cp(args$input)
     input = input[input!=""]
   } else if (inputtype == "file") {
     filename = args$input
@@ -145,6 +153,7 @@ protein_features = function() {
         res = cbind(input, res)
         colnames(res)[1] = id_type
       }
+      if ("res" %in% colnames(res)){colnames(res)[which(colnames(res)=="res")] = "NexprotID" } #if no features are selected
       write.table(res, output, row.names = FALSE, sep = "\t", quote = FALSE)
     }
     else if (inputtype == "file") {
