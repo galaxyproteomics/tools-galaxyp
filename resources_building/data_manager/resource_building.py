@@ -2,7 +2,7 @@
 The purpose of this script is to create source files from different databases to be used in other tools
 """
 
-import os, argparse, requests, time, csv, re
+import os, sys, argparse, requests, time, csv, re
 from io import BytesIO
 from zipfile import ZipFile
 from galaxy.util.json import from_json_string, to_json_string
@@ -122,9 +122,6 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
 
     human = species == "human"
     species_dict = { "human" : "HUMAN_9606", "mouse" : "MOUSE_10090", "rat" : "RAT_10116" }
-    species = 
-
-    target_directory="/home/dchristiany"
     files=["idmapping_selected.tab.gz","idmapping.dat.gz"]
 
     #header
@@ -140,6 +137,7 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
         tab_reader = csv.reader(select,delimiter="\t")
         for line in tab_reader :
             tab.append([line[i] for i in [0,1,2,3,4,5,6,11,13,14,18,19,20]])
+    os.remove(tab_path)
 
     print("selected_tab ok")
 
@@ -153,7 +151,7 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
     unidict = {}
 
     #keep only ids of interest in dictionaries
-    dat_file=species_dict[species]+"_"+files[0]
+    dat_file=species_dict[species]+"_"+files[1]
     dat_path = download_from_uniprot_ftp(dat_file,target_directory)
     with gzip.open(dat_path,"rt") as dat :
         dat_reader = csv.reader(dat,delimiter="\t")
@@ -169,6 +167,7 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
                         unidict[uniprotID].update({ id_type : cor_id })
                 elif  id_type in ids :
                     unidict[uniprotID]={id_type : cor_id}
+    os.remove(dat_path)
 
     print("dat_file ok")
 
@@ -210,14 +209,14 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
     output_file = species+"_id_mapping_"+ time.strftime("%d-%m-%Y") + ".tsv"
     path = os.path.join(target_directory,output_file)
 
-    with open(path,"wb") as out :
+    with open(path,"w") as out :
         w = csv.writer(out,delimiter='\t')
         w.writerows(tab)
 
-    name_dict={"human" = "Homo sapiens", "mouse" = "Mus musculus", "rat" = "Rattus norvegicus"}
+    name_dict={"human" : "Homo sapiens", "mouse" : "Mus musculus", "rat" : "Rattus norvegicus"}
     name = name_dict[species]
 
-    data_table_entry = dict(value = species+"_id_mapping", name = name, path = path)
+    data_table_entry = dict(value = species+"_id_mapping_"+ time.strftime("%d-%m-%Y"), name = name, path = path)
     _add_data_table_entry(data_manager_dict, data_table_entry, "id_mapping_tab")
 
 def download_from_uniprot_ftp(file,target_directory) :
@@ -310,7 +309,7 @@ def main():
         id_mapping=args.id_mapping
     except NameError:
         id_mapping = None
-    if peptide_atlas is not None:
+    if id_mapping is not None:
         id_mapping = id_mapping .split(",")
         for species in id_mapping :
             id_mapping_sources(data_manager_dict, species, target_directory)
