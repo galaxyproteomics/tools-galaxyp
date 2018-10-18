@@ -194,7 +194,7 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
     #add missing nextprot ID for human
     if human : 
         #build next_dict
-        nextprot_ids = id_list_from_nextprot_ftp(file,target_directory)
+        nextprot_ids = id_list_from_nextprot_ftp("nextprot_ac_list_all.txt",target_directory)
         next_dict = {}
         for nextid in nextprot_ids : 
             next_dict[nextid.replace("NX_","")] = nextid
