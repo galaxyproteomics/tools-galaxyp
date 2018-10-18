@@ -198,6 +198,7 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
         next_dict = {}
         for nextid in nextprot_ids : 
             next_dict[nextid.replace("NX_","")] = nextid
+        os.remove(os.path.join(target_directory,"nextprot_ac_list_all.txt"))
 
         #add missing nextprot ID
         for line in tab[1:] : 
@@ -214,7 +215,7 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
         w.writerows(tab)
 
     name_dict={"human" : "Homo sapiens", "mouse" : "Mus musculus", "rat" : "Rattus norvegicus"}
-    name = name_dict[species]
+    name = name_dict[species]+" ("+time.strftime("%d-%m-%Y")+")"
 
     data_table_entry = dict(value = species+"_id_mapping_"+ time.strftime("%d-%m-%Y"), name = name, path = path)
     _add_data_table_entry(data_manager_dict, data_table_entry, "id_mapping_tab")
