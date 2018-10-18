@@ -128,7 +128,7 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
     if human : tab = [["UniProt-AC","UniProt-ID","GeneID","RefSeq","GI","PDB","GO","PIR","MIM","UniGene","Ensembl_Gene","Ensembl_Transcript","Ensembl_Protein","neXtProt","BioGrid","STRING","KEGG"]]
     else : tab = [["UniProt-AC","UniProt-ID","GeneID","RefSeq","GI","PDB","GO","PIR","MIM","UniGene","Ensembl_Gene","Ensembl_Transcript","Ensembl_Protein","BioGrid","STRING","KEGG"]]
 
-    print("header ok")
+    #print("header ok")
 
     #selected.tab and keep only ids of interest
     selected_tab_file=species_dict[species]+"_"+files[0]
@@ -139,7 +139,7 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
             tab.append([line[i] for i in [0,1,2,3,4,5,6,11,13,14,18,19,20]])
     os.remove(tab_path)
 
-    print("selected_tab ok")
+    #print("selected_tab ok")
 
     """
     Supplementary ID to get from HUMAN_9606_idmapping.dat :
@@ -169,7 +169,7 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
                     unidict[uniprotID]={id_type : cor_id}
     os.remove(dat_path)
 
-    print("dat_file ok")
+    #print("dat_file ok")
 
     #add ids from idmapping.dat to the final tab
     for line in tab[1:] :
@@ -189,7 +189,7 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
             else :
                 line.extend(["","",""])
 
-    print ("tab ok")
+    #print ("tab ok")
 
     #add missing nextprot ID for human
     if human : 
