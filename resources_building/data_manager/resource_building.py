@@ -51,7 +51,7 @@ def HPA_sources(data_manager_dict, tissue, target_directory):
     tmp=open(path,"r").readlines()
     tissue_name = tissue_name + " " + time.strftime("%d/%m/%Y")
     data_table_entry = dict(value = tissue, name = tissue_name, path = path)
-    _add_data_table_entry(data_manager_dict, data_table_entry, "proteinatlas")
+    _add_data_table_entry(data_manager_dict, data_table_entry, "protein_atlas")
 
 
 #######################################################################################################
@@ -218,7 +218,7 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
     name = name_dict[species]+" ("+time.strftime("%d-%m-%Y")+")"
 
     data_table_entry = dict(value = species+"_id_mapping_"+ time.strftime("%d-%m-%Y"), name = name, path = path)
-    _add_data_table_entry(data_manager_dict, data_table_entry, "id_mapping_tab")
+    _add_data_table_entry(data_manager_dict, data_table_entry, "id_mapping")
 
 def download_from_uniprot_ftp(file,target_directory) :
     ftp_dir = "pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/"
