@@ -76,6 +76,29 @@ get_list_from_cp <-function(list){
   return(list)
 }
 
+#return a summary from the mapping with pathview in a vector
+mapping_summary <- function(pv.out,species,id,id_type){
+  
+  mapped <- pv.out$plot.data.gene$kegg.names[which(pv.out$plot.data.gene$all.mapped!='')]
+  nb_mapped <- length(mapped)
+  nb_kegg_id <- length(unique(pv.out$plot.data.gene$kegg.names))
+  ratio = round((nb_mapped/nb_kegg_id)*100, 2)
+  if (is.nan(ratio)) { ratio = ""}
+  pathway_id = paste(species,id,sep="")
+  pathway_name = as.character(pathways_list[pathways_list[,1]==pathway_id,][2])
+  
+  if (id_type=="geneid"){
+    row <- c(pathway_id,pathway_name,length(unique(geneID)),nb_kegg_id,nb_mapped,ratio,paste(mapped,collapse=";"))
+    names(row) <- c("KEGG pathway ID","pathway name","nb of Entrez gene ID used","nb of Entrez gene ID mapped",
+                    "nb of Entrez gene ID in the pathway", "ratio of Entrez gene ID mapped (%)","Entrez gene ID mapped")
+  }else if (id_type=="uniprotid"){
+    row <- c(pathway_id,pathway_name,length(unique(uniprotID)),length(unique(geneID)),nb_mapped,nb_kegg_id,ratio,paste(mapped,collapse=";"),paste(mapped2geneID[which(mapped2geneID[,2] %in% mapped)],collapse=";"))
+    names(row) <- c("KEGG pathway ID","pathway name","nb of Uniprot_AC used","nb of Entrez gene ID used","nb of Entrez gene ID mapped",
+                    "nb of Entrez gene ID in the pathway", "ratio of Entrez gene ID mapped (%)","Entrez gene ID mapped","uniprot_AC mapped")
+  }
+  return(row)
+}
+
 get_args <- function(){
   
   ## Collect arguments
@@ -229,24 +252,15 @@ for (id in ids) {
            plot.col.key = plot.col.key,
            pdf.size=c(9,9)))
   
-  
-  #data frame for the text output
-  mapped <- pv.out$plot.data.gene$kegg.names[which(pv.out$plot.data.gene$all.mapped!='')]
-  nb_mapped <- length(mapped)
-  nb_kegg_id <- length(unique(pv.out$plot.data.gene$kegg.names))
-  pathway_id = paste(species,id,sep="")
-  pathway_name = as.character(pathways_list[pathways_list[,1]==pathway_id,][2])
-  row <- c(pathway_id,pathway_name,length(unique(uniprotID)),length(unique(geneID)),nb_kegg_id,nb_mapped,
-           round((nb_mapped/nb_kegg_id)*100, 2),paste(mapped,collapse=";"),paste(mapped2geneID[which(mapped2geneID[,2] %in% mapped)],collapse=";"))
-
-  if (id==ids[1]){
-    df <- data.frame(stringsAsFactors = F)
-    df <- rbind(df,row,stringsAsFactors=F)
-    colnames(df) <- c("KEGG pathway ID","pathway name","nb of Uniprot_AC used","nb of Entrez gene ID used","nb of Entrez gene ID in the pathway","nb of Entrez gene ID mapped", "ratio of Entrez gene ID mapped (%)","Entrez gene ID mapped","uniprot_AC mapped")
-  } else {
-    df <- rbind(df,unname(row),stringsAsFactors=F)
-  }
+    #creating text file
+    if (!exists("DF")) {
+      DF <- data.frame(t(mapping_summary(pv.out,species,id,id_type)),stringsAsFactors = F)
+    } else {
+      #print (mapping_summary(pv.out,species,id))
+      DF <- rbind(DF,data.frame(t(mapping_summary(pv.out,species,id,id_type)),stringsAsFactors = F))
+    }
+    
 }
 
 #text file output
-write.table(df,file=args$output,quote=FALSE, sep='\t',row.names = FALSE, col.names = TRUE)
+write.table(DF,file=args$output,quote=FALSE, sep='\t',row.names = FALSE, col.names = TRUE)
