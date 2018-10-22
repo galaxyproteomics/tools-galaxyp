@@ -252,6 +252,8 @@ for (id in ids) {
            plot.col.key = plot.col.key,
            pdf.size=c(9,9)))
   
+  if (is.list(pv.out)){
+  
     #creating text file
     if (!exists("DF")) {
       DF <- data.frame(t(mapping_summary(pv.out,species,id,id_type)),stringsAsFactors = F)
@@ -259,6 +261,7 @@ for (id in ids) {
       #print (mapping_summary(pv.out,species,id))
       DF <- rbind(DF,data.frame(t(mapping_summary(pv.out,species,id,id_type)),stringsAsFactors = F))
     }
+  }
     
 }
 
