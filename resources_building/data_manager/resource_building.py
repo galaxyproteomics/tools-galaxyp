@@ -1,5 +1,5 @@
 """
-The purpose of this script is to create source files from different databases to be used in other tools
+The purpose of this script is to create source files from different databases to be used in other proteore tools
 """
 
 import os, sys, argparse, requests, time, csv, re
@@ -44,14 +44,15 @@ def HPA_sources(data_manager_dict, tissue, target_directory):
     elif tissue == "HPA_full_atlas":
         tissue_name = "HPA full atlas"
         url = "https://www.proteinatlas.org/download/proteinatlas.tsv.zip"
+    
     output_file = tissue +"_"+ time.strftime("%d-%m-%Y") + ".tsv"
     path = os.path.join(target_directory, output_file)
-    unzip(url, path)
-    print(str(os.path.isfile(path)))
-    tmp=open(path,"r").readlines()
+    unzip(url, path)    #download and save file
     tissue_name = tissue_name + " " + time.strftime("%d/%m/%Y")
-    data_table_entry = dict(value = tissue, name = tissue_name, path = path)
-    _add_data_table_entry(data_manager_dict, data_table_entry, "protein_atlas")
+    tissue_id = tissue_name.replace(" ","_").replace("/","-")
+
+    data_table_entry = dict(id=tissue_id, name = tissue_name, value = tissue, path = path)
+    _add_data_table_entry(data_manager_dict, data_table_entry, "proteore_protein_atlas")
 
 
 #######################################################################################################
@@ -76,10 +77,11 @@ def peptide_atlas_sources(data_manager_dict, tissue, target_directory):
     #build dictionary by only keeping uniprot accession (not isoform) as key and sum of observations as value
     uni_dict = build_dictionary(cr)
 
-    tissue_id = "_".join([atlas_build_id, organism_id, sample_category_id,time.strftime("%d-%m-%Y")])
-    tissue_value = tissue.split("-")[1]
-    tissue = tissue.split("-")[1] + "_" +time.strftime("%d-%m-%Y")
-    tissue_name = " ".join(tissue_value.split("_")) + " " + time.strftime("%d/%m/%Y")
+    #columns of data table peptide_atlas
+    date = time.strftime("%d-%m-%Y")
+    tissue = tissue.split("-")[1]
+    tissue_id = tissue+"_"+date
+    tissue_name = tissue_id.replace("-","/").replace("_"," ")
     path = os.path.join(target_directory,output_file)
 
     with open(path,"wb") as out :
@@ -87,8 +89,8 @@ def peptide_atlas_sources(data_manager_dict, tissue, target_directory):
         w.writerow(["Uniprot_AC","nb_obs"])
         w.writerows(uni_dict.items())
         
-    data_table_entry = dict(value = path, name = tissue_name, tissue = tissue)
-    _add_data_table_entry(data_manager_dict, data_table_entry, "peptide_atlas")
+    data_table_entry = dict(id=tissue_id, name=tissue_name, value = path, tissue = tissue)
+    _add_data_table_entry(data_manager_dict, data_table_entry, "proteore_peptide_atlas")
 
 #function to count the number of observations by uniprot id
 def build_dictionary (csv) :
@@ -215,10 +217,11 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
         w.writerows(tab)
 
     name_dict={"human" : "Homo sapiens", "mouse" : "Mus musculus", "rat" : "Rattus norvegicus"}
-    name = name_dict[species]+" ("+time.strftime("%d-%m-%Y")+")"
+    name = name_dict[species]+" "+time.strftime("%d/%m/%Y")
+    id = species+"_id_mapping_"+ time.strftime("%d-%m-%Y")
 
-    data_table_entry = dict(value = species+"_id_mapping_"+ time.strftime("%d-%m-%Y"), name = name, path = path)
-    _add_data_table_entry(data_manager_dict, data_table_entry, "id_mapping")
+    data_table_entry = dict(id=id, name = name, value = species, path = path)
+    _add_data_table_entry(data_manager_dict, data_table_entry, "proteore_id_mapping")
 
 def download_from_uniprot_ftp(file,target_directory) :
     ftp_dir = "pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/"
