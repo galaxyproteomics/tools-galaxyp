@@ -1,4 +1,4 @@
-<tool id="unipept" name="Unipept" version="2.0.1">
+<tool id="unipept" name="Unipept" version="4.0.0">
     <description>retrieve taxonomy for peptides</description>
     <macros>
         <xml name="equate_il">
@@ -24,6 +24,20 @@
                 <help>include fields for most specific taxonomic classification: taxon_rank,taxon_id,taxon_name before lineage</help>
             </param>
         </xml>
+        <xml name="domains">
+            <param name="domains" type="boolean" truevalue="-D" falsevalue="" checked="false" label="group responses by GO namespace (biological process, molecular function, cellular component)">
+                <yield/>
+            </param>
+        </xml>
+        <xml name="selected_outputs">
+            <param name="selected_outputs" type="select" multiple="true" display="checkboxes" label="Choose outputs">
+                <option value="tsv" selected="true">Tabular with one line per peptide</option>
+                <option value="csv">Comma Separated Values (.csv) with one line per peptide</option>
+                <option value="json">JSON Taxomony Tree (for pept2lca, pep2taxa, and peptinfo)</option>
+                <yield/>
+                <option value="unmatched">Unmatched peptides</option>
+            </param>
+        </xml>
     </macros>
     <requirements>
         <requirement type="package" version="2.7">python</requirement>
@@ -33,10 +47,14 @@
     </stdio>
     <command><![CDATA[
       python '$__tool_directory__/unipept.py' 
+      ## --url 'http://morty.ugent.be/api/v1' -g -M 1  
       --api=$unipept.api
       $unipept.equate_il $unipept.extra 
-      #if $unipept.api != 'pept2prot':
+      #if $unipept.api in ['pept2lca', 'pept2taxa', 'peptinfo']:
         $unipept.names $unipept.allfields
+      #end if
+      #if $unipept.api in ['pept2go', 'pept2funct', 'peptinfo']:
+        $unipept.domains
       #end if
       $strict
       #if str($peptide_src.fmt) == 'proteomic':
@@ -58,16 +76,25 @@
       #elif str($peptide_src.fmt) == 'pepxml':
         --pepxml="$peptide_src.input_pepxml"
       #end if
-      #if 'json' in str($outputs).split(',') and str($unipept.api) != 'pept2prot':
+      #if 'json' in str($selected_outputs).split(',') and str($unipept.api) in ['pept2lca', 'pept2taxa', 'peptinfo']:
         --json $output_json
       #end if
-      #if 'tsv' in str($outputs).split(','):
+      #if 'ec_json' in str($selected_outputs).split(',') and str($unipept.api) in ['pept2ec', 'pept2funct', 'peptinfo']:
+        --ec_json $output_ec_json
+      #end if
+      #if 'tsv' in str($selected_outputs).split(','):
         --tsv $output_tsv
       #end if
-      #if 'csv' in str($outputs).split(','):
+      #if 'csv' in str($selected_outputs).split(','):
         --csv $output_csv
       #end if
-      #if 'unmatched' in str($outputs).split(','):
+      #if 'ec_tsv' in str($selected_outputs).split(',') and str($unipept.api) in ['pept2ec', 'pept2funct', 'peptinfo']:
+        --ec_tsv $output_ec_tsv
+      #end if
+      #if 'go_tsv' in str($selected_outputs).split(',') and str($unipept.api) in ['pept2go', 'pept2funct', 'peptinfo']:
+        --go_tsv $output_go_tsv
+      #end if
+      #if 'unmatched' in str($selected_outputs).split(','):
         --unmatched $output_unmatched
       #end if
     ]]></command>
@@ -77,6 +104,10 @@
               <option value="pept2lca" selected="true">pept2lca: lowest common ancestor</option>
               <option value="pept2taxa">pept2taxa: organisms associated with the UniProt entries containing a given tryptic peptide</option>
               <option value="pept2prot">pept2prot: UniProt entries containing a given tryptic peptide</option>
+              <option value="pept2ec">pept2ec: Tryptic peptides and associated EC terms</option>
+              <option value="pept2go">pept2go: Tryptic peptides and associated GO terms</option>
+              <option value="pept2funct">pept2funct: Tryptic peptides and associated EC and GO terms</option>
+              <option value="peptinfo">peptinfo: Tryptic peptides and associated EC and GO terms and lowest common ancestor taxonomy</option>
           </param>
           <when value="pept2lca">
               <expand macro="equate_il" />
@@ -99,6 +130,38 @@
                         WARNING: Huge perfomance penalty!  Only use for small number of peptides when the extra infomation is required.
                   </help>
               </expand>
+          </when>
+          <when value="pept2ec">
+              <expand macro="equate_il" />
+              <expand macro="extra_true">
+                  <help>Return the name of the EC-number.
+                  </help>
+              </expand>
+          </when>
+          <when value="pept2go">
+              <expand macro="equate_il" />
+              <expand macro="extra_true">
+                  <help>Return the name of the GO-term.
+                  </help>
+              </expand>
+              <expand macro="domains" />
+          </when>
+          <when value="pept2funct">
+              <expand macro="equate_il" />
+              <expand macro="extra_true">
+                  <help>Return the name of the  EC-number and GO-term.
+                  </help>
+              </expand>
+              <expand macro="domains" />
+          </when>
+          <when value="peptinfo">
+              <expand macro="equate_il" />
+              <expand macro="extra_true">
+                  <help>Return the name of the  EC-number and GO-term.
+                  </help>
+              </expand>
+              <expand macro="domains" />
+              <expand macro="names" />
           </when>
       </conditional>
       <conditional name="peptide_src">
@@ -126,29 +189,67 @@
           <param name="input_pepxml" type="data" format="pepxml" label="mzIndetML Input" />
         </when>
       </conditional>
-      <param name="outputs" type="select" multiple="true" display="checkboxes" label="Choose outputs">
-        <option value="tsv" selected="true">tabular</option>
-        <option value="csv">Comma Separated Values (.csv)</option>
-        <option value="json">JSON Taxomony Tree (ignored for pept2prot)</option>
+      <param name="selected_outputs" type="select" multiple="true" display="checkboxes" label="Choose outputs">
+       <option value="tsv" selected="true">Tabular with one line per peptide</option>
+       <option value="csv">Comma Separated Values (.csv) with one line per peptide</option>
+        <option value="json">JSON Taxomony Tree (for pept2lca, pep2taxa, and peptinfo)</option>
+        <option value="go_tsv">Peptide GO terms in normalized tabular (for pept2go, pept2funct, and peptinfo)</option>
+        <option value="ec_tsv">Peptide EC terms in normalized tabular (for pept2ec, pept2funct, and peptinfo)</option>
+        <option value="ec_json">JSON EC Coverage Tree (for pept2ec, pep2funct, and peptinfo)</option>
         <option value="unmatched">Unmatched peptides</option>
       </param>
       <param name="strict" type="boolean" truevalue="--strict" falsevalue="" checked="false" label="Exit with error on invalid peptides, otherwise ignore them"/>
     </inputs>
     <outputs>
-      <data name="output_json" format="d3_hierarchy" label="${tool.name} ${unipept.api} on ${on_string} json"> 
-        <filter>'json' in outputs and unipept['api'] != 'pept2prot'</filter>
+      <data name="output_json" format="d3_hierarchy" label="${tool.name} ${unipept.api} on ${on_string} Taxonomy json"> 
+        <filter>'json' in selected_outputs and unipept['api'] in ('pept2lca', 'pept2taxa', 'peptinfo')</filter>
         <change_format>
             <when input="api" value="pept2prot" format="json" />
         </change_format>
       </data> 
+      <data name="output_ec_json" format="d3_hierarchy" label="${tool.name} ${unipept.api} on ${on_string} EC json">
+        <filter>'ec_json' in selected_outputs and unipept['api'] in ('pept2ec', 'pept2funct', 'peptinfo')</filter>
+      </data>
       <data name="output_tsv" format="tabular" label="${tool.name} ${unipept.api} on ${on_string} tsv"> 
-        <filter>'tsv' in outputs</filter>
+        <filter>'tsv' in selected_outputs</filter>
+        <actions>
+            <action name="comment_lines" type="metadata" default="1" />
+            <!--
+            <conditional name="unipept.api">
+                <when value="pept2funct">
+                    <action name="column_names" type="metadata" default="peptide,total_protein_count,ec_numbers,ec_protein_counts,ec_names,go_terms,go_protein_counts,go_names" />
+                </when>
+                <when value="pept2go">
+                    <action name="column_names" type="metadata" default="peptide,total_protein_count,go_terms,go_protein_counts,go_names" />
+                </when>
+                <when value="pept2ec">
+                    <action name="column_names" type="metadata" default="peptide,total_protein_count,ec_numbers,ec_protein_counts,ec_names" />
+                </when>
+            </conditional>
+            -->
+        </actions>
+peptide,total_protein_count,ec_numbers,ec_protein_counts,ec_names,go_terms,go_protein_counts,go_names
       </data> 
       <data name="output_csv" format="csv" label="${tool.name} ${unipept.api} on ${on_string} csv"> 
-        <filter>'csv' in outputs</filter>
+        <filter>'csv' in selected_outputs</filter>
+      </data> 
+      <data name="output_ec_tsv" format="tabular" label="${tool.name} ${unipept.api} on ${on_string} EC tsv"> 
+        <filter>'ec_tsv' in selected_outputs and unipept['api'] in ('pept2ec', 'pept2funct', 'peptinfo')</filter>
+        <actions>
+            <action name="column_names" type="metadata" default="Peptide,Total Protein Count,EC Number,Protein Count,EC Name" />
+        </actions>
+      </data> 
+      <data name="output_go_tsv" format="tabular" label="${tool.name} ${unipept.api} on ${on_string} GO tsv"> 
+        <filter>'go_tsv' in selected_outputs and unipept['api'] in ('pept2go', 'pept2funct', 'peptinfo')</filter>
+        <actions>
+            <action name="column_names" type="metadata" default="Peptide,Total Protein Count,GO Term,Protein Count,GO Name" />
+        </actions>
       </data> 
       <data name="output_unmatched" format="tabular" label="${tool.name} ${unipept.api} on ${on_string} unmatched"> 
-        <filter>'unmatched' in outputs</filter>
+        <filter>'unmatched' in selected_outputs</filter>
+        <actions>
+            <action name="column_names" type="metadata" default="Unmatched Peptide" />
+        </actions>
       </data> 
     </outputs>
     <tests>
@@ -159,7 +260,7 @@
         <param name="column" value="2"/>
         <param name="extra" value="True"/>
         <param name="names" value="True"/>
-        <param name="outputs" value="tsv,unmatched"/>
+        <param name="selected_outputs" value="tsv,unmatched"/>
         <output name="output_tsv">
             <assert_contents>
               <has_text text="Homininae" />
@@ -178,7 +279,7 @@
         <param name="equate_il" value="True"/>
         <param name="extra" value="True"/>
         <param name="names" value="True"/>
-        <param name="outputs" value="json,tsv"/>
+        <param name="selected_outputs" value="json,tsv"/>
         <output name="output_json">
             <assert_contents>
               <has_text text="VMDVNDHKPEFYNCSLPACTFTPEEAQVNFTGYVDEHASPHIPIDDLTMVVYDPDKGSNGTFLLSLGGPDAEAFSVSPERAAGSASVQVLVRVSALVDYERQTAMAV" />
@@ -198,13 +299,37 @@
         <param name="equate_il" value="True"/>
         <param name="extra" value="False"/>
         <param name="names" value="False"/>
-        <param name="outputs" value="tsv"/>
+        <param name="selected_outputs" value="tsv"/>
         <output name="output_tsv">
             <assert_contents>
               <has_text text="sapiens" />
               <has_text text="troglodytes" />
               <has_text text="Gorilla" />
               <has_text text="Macaca" />
+            </assert_contents>
+        </output>
+      </test>
+      <test>
+        <param name="api" value="pept2lca"/>
+        <param name="fmt" value="tabular"/>
+        <param name="input_tsv" value="tryptic.tsv"/>
+        <param name="column" value="2"/>
+        <param name="extra" value="True"/>
+        <param name="names" value="True"/>
+        <param name="selected_outputs" value="tsv,ec_tsv,go_tsv,unmatched"/>
+        <output name="output_tsv">
+            <assert_contents>
+              <has_text text="3.2.1.17" />
+            </assert_contents>
+        </output>
+        <output name="output_ec_tsv">
+            <assert_contents>
+              <has_text text="3.2.1.17" />
+            </assert_contents>
+        </output>
+        <output name="output_go_tsv">
+            <assert_contents>
+              <has_text text="GO:0006412" />
             </assert_contents>
         </output>
       </test>
@@ -334,6 +459,47 @@
         subspecies_id
         varietas_id
         forma_id
+
+    **pept2ec**  - http://unipept.ugent.be/apidocs/pept2ec
+
+    Returns the functional EC-numbers associated with a given tryptic peptide. This is the same information as provided when performing a search with the Tryptic Peptide Analysis in the web interface.
+
+    By default, each object contains the following information fields extracted from the UniProt record and NCBI taxonomy::
+
+        peptide: the peptide that matched this record
+        total_protein_count: Total amount of proteins matched with the given peptide
+        ec_number: EC-number associated with the current tryptic peptide.
+        protein_count: amount of proteins matched with the given tryptic peptide that are labeled with the current EC-number.
+        name: Optional, name of the EC-number. Included when the extra parameter is set to true.
+
+
+    **pept2go**  - http://unipept.ugent.be/apidocs/pept2go
+
+    Returns the functional GO-terms associated with a given tryptic peptide. This is the same information as provided when performing a search with the Tryptic Peptide Analysis in the web interface.
+
+    By default, each object contains the following information fields extracted from the UniProt record and NCBI taxonomy::
+
+        peptide: the peptide that matched this record
+        total_protein_count: Total amount of proteins matched with the given peptide
+        go_term: The GO-term associated with the current tryptic peptide.
+        protein_count: amount of proteins matched with the given tryptic peptide that are labeled with the current GO-term.
+        name: Optional, name of the GO-term. Included when the extra parameter is set to true.
+
+
+    **pept2funct**  - http://unipept.ugent.be/apidocs/pept2funct
+
+    Returns the functional EC-numbers and GO-terms associated with a given tryptic peptide. This is the same information as provided when performing a search with the Tryptic Peptide Analysis in the web interface.
+
+    By default, each object contains the following information fields extracted from the UniProt record and NCBI taxonomy::
+
+        peptide: the peptide that matched this record
+        total_protein_count: Total amount of proteins matched with the given peptide
+        ec_number: EC-number associated with the current tryptic peptide.
+        protein_count: amount of proteins matched with the given tryptic peptide that are labeled with the current EC-number.
+        name: Optional, name of the EC-number. Included when the extra parameter is set to true.
+        go_term: The GO-term associated with the current tryptic peptide.
+        protein_count: amount of proteins matched with the given tryptic peptide that are labeled with the current GO-term.
+        name: Optional, name of the GO-term. Included when the extra parameter is set to true.
 
 
     **Attributions**
