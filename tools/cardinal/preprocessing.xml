@@ -1,4 +1,4 @@
-<tool id="cardinal_preprocessing" name="MSI preprocessing" version="@VERSION@.0">
+<tool id="cardinal_preprocessing" name="MSI preprocessing" version="@VERSION@.1">
     <description>
         mass spectrometry imaging preprocessing
     </description>
@@ -6,16 +6,26 @@
         <import>macros.xml</import>
     </macros>
     <expand macro="requirements">
-        <requirement type="package" version="2.2.1">r-gridextra</requirement>
-        <requirement type="package" version="0.20-35">r-lattice</requirement>
-        <requirement type="package" version="2.2.1">r-ggplot2</requirement>
+        <requirement type="package" version="2.3">r-gridextra</requirement>
+        <requirement type="package" version="3.0">r-ggplot2</requirement>
+        <requirement type="package" version="0.20_35">r-lattice</requirement>
     </expand>
     <command detect_errors="exit_code">
     <![CDATA[
 
         @INPUT_LINKING@
         cat '${cardinal_preprocessing}' &&
-        Rscript '${cardinal_preprocessing}'
+        Rscript '${cardinal_preprocessing}' &&
+
+        #if $imzml_output:
+        mkdir $outfile_imzml.files_path &&
+        ls -l &&
+            mv ./out.imzML "${os.path.join($outfile_imzml.files_path, 'imzml')}" | true &&
+            mv ./out.ibd "${os.path.join($outfile_imzml.files_path, 'ibd')}" | true &&
+        #end if
+            echo "imzML file:" > $outfile_imzml &&
+            ls -l "$outfile_imzml.files_path" >> $outfile_imzml
+
 
     ]]>
     </command>
@@ -30,6 +40,11 @@ library(lattice)
 library(ggplot2)
 
 @READING_MSIDATA@
+
+
+## remove duplicated coordinates, otherwise peak picking and log2 transformation will fail
+print(paste0(sum(duplicated(coord(msidata))), " duplicated coordinates were removed"))
+msidata <- msidata[,!duplicated(coord(msidata))]
 
 print(paste0("Number of NA in input file: ",sum(is.na(spectra(msidata)[]))))
 
@@ -126,10 +141,6 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE)> 0){
         #elif str( $method.methods_conditional.preprocessing_method) == 'Peak_picking':
             print('Peak_picking')
             ## Peakpicking
-
-            ## remove duplicated coordinates, otherwise peak picking will fail
-            print(paste0(sum(duplicated(coord(msidata))), " duplicated coordinates were removed"))
-            msidata <- msidata[,!duplicated(coord(msidata))]
 
             #if str( $method.methods_conditional.methods_for_picking.picking_method) == 'adaptive':
                 print('adaptive peakpicking')
@@ -234,6 +245,12 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE)> 0){
 
                 msidata = reduceDimension(msidata, method="bin", width=$method.methods_conditional.methods_for_reduction.bin_width, units="$method.methods_conditional.methods_for_reduction.bin_units", fun=$method.methods_conditional.methods_for_reduction.bin_fun)
 
+                ## optional: replace NA with 0
+                #if $method.methods_conditional.methods_for_reduction.replace_NA_bin:
+                    print(paste0("Number of NA that were set to zero after binning:",sum(is.na(spectra(msidata)[]))))
+                    spectra(msidata)[][is.na(spectra(msidata)[])] = 0
+                #end if
+
             #elif str( $method.methods_conditional.methods_for_reduction.reduction_method) == 'resample':
                 print('resample reduction')
 
@@ -275,11 +292,19 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE)> 0){
             #if str( $method.methods_conditional.transf_conditional.trans_type) == 'log2':
                 print('log2 transformation')
 
-                spectra(msidata)[][spectra(msidata)[] ==0] = NA
-                print(paste0("Number of 0 which were converted into NA:",sum(is.na(spectra(msidata)[]))))
-                spectra(msidata)[] = log2(spectra(msidata)[])
+                ## replace 0 with NA
+                spectra_df = spectra(msidata)[]
+                spectra_df[spectra_df ==0] = NA
+                print(paste0("Number of 0 which were converted into NA:",sum(is.na(spectra_df))))
+                spectra(msidata) = spectra_df
+                ## log transformation
+                spectra(msidata) = log2(spectra(msidata))
+                ## optional: replace NA with 0
+                #if $method.methods_conditional.transf_conditional.replace_NA_trans:
+                    spectra(msidata)[][is.na(spectra(msidata)[])] = 0
+                #end if
 
-            #elif str( $method.methods_conditional.transf_conditional.trans_type) == 'sqrt':
+                #elif str( $method.methods_conditional.transf_conditional.trans_type) == 'sqrt':
                 print('squareroot transformation')
 
                 spectra(msidata)[] = sqrt(spectra(msidata)[])
@@ -300,13 +325,20 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE)> 0){
             #end if
     #end for
 
-    ############# Outputs: RData and QC report #############
+    ############# Outputs: RData, imzml and QC report #############
     ################################################################################
 
     print(paste0("Number of NA in output file: ",sum(is.na(spectra(msidata)[]))))
 
     ## save as (.RData)
     save(msidata, file="$msidata_preprocessed")
+
+    ## save msidata as imzML file, will only work if there is at least 1 m/z left
+    #if $imzml_output:
+        if (nrow(msidata) > 0){
+print("write outputfile")
+            writeImzML(msidata, "out")}
+    #end if
 
     ## save QC report
 
@@ -455,6 +487,7 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE)> 0){
                                     <option value="mean" selected="True">mean</option>
                                     <option value="sum">sum</option>
                             </param>
+                            <param name="replace_NA_bin" type="boolean" label="Replace NA with 0" truevalue="TRUE" falsevalue="FALSE" help="Binning can introduce NAs, should they be replaced with 0"/>
                         </when>
                         <when value="resample">
                             <param name="resample_step" type="float" value="1"
@@ -487,16 +520,22 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE)> 0){
                             <option value="log2" selected="True">log2</option>
                             <option value="sqrt">sqrt</option>
                         </param>
-                            <when value="log2"/>
+                            <when value="log2">
+                                <param name="replace_NA_trans" type="boolean" label="Replace NA with 0" truevalue="TRUE" falsevalue="FALSE" help="0 values are set to NA before log2 transformation, after transformation they can be set back to 0"/>
+                            </when>
                             <when value="sqrt"/>
                     </conditional>
                 </when>
             </conditional>
         </repeat>
+        <param name="imzml_output" type="boolean" label="Output of imzML file" truevalue="TRUE" falsevalue="FALSE"/>
     </inputs>
     <outputs>
         <data format="rdata" name="msidata_preprocessed" label="${tool.name} on ${on_string}"/>
         <data format="pdf" name="QC_overview" from_work_dir="Preprocessing.pdf" label = "${tool.name} on ${on_string}: QC"/>
+        <data format="imzml" name="outfile_imzml" label="${tool.name} on ${on_string}: imzML">
+            <filter>imzml_output</filter>
+       </data>
     </outputs>
     <tests>
         <test>
@@ -650,7 +689,7 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE)> 0){
 This tool provides multiple Cardinal functions to preprocess mass spectrometry imaging data. 
 
 @MSIDATA_INPUT_DESCRIPTION@
-- Coordinates stored as decimals rather than integers will be rounded to obtain a regular pixel grid. This might lead to duplicated coordinates which will be automatically removed before peak picking.
+- Coordinates stored as decimals rather than integers will be rounded to obtain a regular pixel grid. This might lead to duplicated coordinates which will be automatically removed after the data is read by the tool.
 @MZ_TABULAR_INPUT_DESCRIPTION@
 
 **Options**
@@ -671,7 +710,8 @@ This tool provides multiple Cardinal functions to preprocess mass spectrometry i
 
 **Output**
 
-- imzML file, preprocessed
+- MSI data as .RData output (can be read with the Cardinal package in R)
+- optional: MSI data as imzML file
 - pdf with key values after each processing step
 
         ]]>
