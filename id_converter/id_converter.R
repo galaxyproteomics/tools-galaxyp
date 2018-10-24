@@ -18,6 +18,13 @@ str2bool <- function(x){
   }
 }
 
+get_list_from_cp <-function(list){
+  list = strsplit(list, "[ \t\n]+")[[1]]
+  list = list[list != ""]    #remove empty entry
+  list = gsub("-.+", "", list)  #Remove isoform accession number (e.g. "-2")
+  return(list)
+}
+
 get_args <- function(){
   args <- commandArgs(TRUE)
   if(length(args)<1) {
@@ -72,7 +79,7 @@ mapping = function() {
   
   args <- get_args()
   
-  #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/id_converter/args.rda")
+  save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/id_converter/args.rda")
   #load("/home/dchristiany/proteore_project/ProteoRE/tools/id_converter/args.rda")
   
   input_id_type = args$id_type # Uniprot, ENSG....
@@ -83,10 +90,7 @@ mapping = function() {
     
   # Extract input IDs
   if (list_id_input_type == "list") {
-    list_id = trimws(strsplit(args$input, ",")[[1]])
-    list_id = list_id[list_id != ""]    #remove empty entry
-    # Remove isoform accession number (e.g. "-2")
-    list_id = gsub("-.+", "", list_id)
+    list_id = get_list_from_cp(args$input)
   } else if (list_id_input_type == "file") {
     filename = args$input
     column_number = as.numeric(gsub("c", "" ,args$column_number))
