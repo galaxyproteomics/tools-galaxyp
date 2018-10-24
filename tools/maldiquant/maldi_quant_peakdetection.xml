@@ -1,4 +1,4 @@
-<tool id="maldi_quant_peak_detection" name="MALDIquant peak detection" version="@VERSION@.1">
+<tool id="maldi_quant_peak_detection" name="MALDIquant peak detection" version="@VERSION@.2">
     <description>
         Peak detection, binning and filtering for mass-spectrometry imaging data
     </description>
@@ -31,8 +31,6 @@
 
 @R_IMPORTS@
 
-
-
 #if $restriction_conditional.restriction == 'restrict':
 
     print('Reading mask region')
@@ -54,12 +52,14 @@
         print('imzML file')
         #if str($centroids) == "TRUE"
             peaks <- importImzMl('infile.imzML', centroided = $centroids)
-            pixelnames = paste("xy", coordinates(maldi_data)[,1],coordinates(maldi_data)[,2], sep="_")
+            pixelnames = paste("xy", coordinates(peaks)[,1],coordinates(peaks)[,2], sep="_")
+            coordinates_info = cbind(coordinates(peaks)[,1:2], c(1:length(peaks)))
         #else
             maldi_data <- importImzMl('infile.imzML', centroided = $centroids)
             pixelnames = paste("xy", coordinates(maldi_data)[,1],coordinates(maldi_data)[,2], sep="_")
-        #end if
             coordinates_info = cbind(coordinates(maldi_data)[,1:2], c(1:length(maldi_data)))
+        #end if
+
 
     #elif $infile.ext == 'tabular'
         print('tabular file')
@@ -84,8 +84,13 @@
         }
         msidata = loadRData('infile.RData')
         centroided(msidata) = $centroids
-        pixelnames = gsub(", y = ", "_", names(Cardinal::pixels(msidata)))
-        pixelnames = gsub(" = ", "y_", pixelnames)
+        ## change to correct pixelnames
+
+        x_coords = unlist(lapply(strsplit(names(Cardinal::pixels(msidata)), ","), `[[`, 1))
+        y_coords = unlist(lapply(strsplit(names(Cardinal::pixels(msidata)), ","), `[[`, 2))
+        x_coordinates = gsub("x = ","",x_coords)
+        y_coordinates = gsub(" y = ","",y_coords)
+        pixelnames = paste0("xy_", x_coordinates, "_", y_coordinates)
 
         cardinal_coordinates = as.matrix(Cardinal::coord(msidata)[,1:2])
 
@@ -96,7 +101,6 @@
             for(number_spectra in 1:ncol(msidata)){
                 maldi_data[[number_spectra]] = createMassSpectrum(mass = cardinal_mzs, intensity = iData(msidata)[,number_spectra])
                 coordinates_info = cbind(cardinal_coordinates, c(1:length(maldi_data)))}
-            coordinates_info = cbind(cardinal_coordinates, c(1:length(maldi_data)))
         }else{
             peaks = list()
             for (spectra in 1:ncol(msidata))
@@ -106,15 +110,6 @@
             }}
     #end if
 #end if
-
-
-
-
-
-
-
-
-
 
 ## default summarized = FALSE
 summarized_spectra = FALSE
@@ -129,7 +124,7 @@ plot(0,type='n',axes=FALSE,ann=FALSE)
 title(main=paste("$filename"))
 
 ## plot input file spectrum: 
-#if str($centroids) == "TRUE"
+#if $centroids:
         plot(peaks[[1]], main="First spectrum of input file")
 #else
     avgSpectra <- averageMassSpectra(maldi_data,method="mean")
@@ -137,31 +132,26 @@ title(main=paste("$filename"))
 #end if
 
 
-
-
-
-
-
-
-
 ## QC numbers for input file
 #if str($centroids) == "TRUE"
     pixel_number = length(peaks)
     minmz = round(min(unlist(lapply(peaks,mass))), digits=4)
     maxmz = round(max(unlist(lapply(peaks,mass))), digits=4)
-    maxfeatures = round(length(unlist(lapply(peaks,mass)))/length(peaks), digits=2)
+    mean_features = round(length(unlist(lapply(peaks,mass)))/length(peaks), digits=2)
     medint = round(median(unlist(lapply(peaks,intensity))), digits=2)
-    inputdata = c(minmz, maxmz,maxfeatures,  medint)
-    QC_numbers= data.frame(inputdata = c(minmz, maxmz,maxfeatures, medint))
+    number_features = length(unique(unlist(lapply(peaks,mass))))
+    inputdata = c(minmz, maxmz,number_features,mean_features,  medint)
+    QC_numbers= data.frame(inputdata = c(minmz, maxmz,number_features, mean_features, medint))
     vectorofactions = "inputdata"
 #else
     pixel_number = length(maldi_data)
     minmz = round(min(unlist(lapply(maldi_data,mass))), digits=4)
     maxmz = round(max(unlist(lapply(maldi_data,mass))), digits=4)
-    maxfeatures = round(length(unlist(lapply(maldi_data,mass)))/length(maldi_data), digits=2)
+    mean_features = round(length(unlist(lapply(maldi_data,mass)))/length(maldi_data), digits=2)
     medint = round(median(unlist(lapply(maldi_data,intensity))), digits=2)
-    inputdata = c(minmz, maxmz,maxfeatures,  medint)
-    QC_numbers= data.frame(inputdata = c(minmz, maxmz,maxfeatures, medint))
+    number_features = length(unique(unlist(lapply(maldi_data,mass))))
+    inputdata = c(minmz, maxmz,number_features,mean_features,  medint)
+    QC_numbers= data.frame(inputdata = c(minmz, maxmz,number_features, mean_features, medint))
     vectorofactions = "inputdata"
 #end if
 
@@ -181,20 +171,6 @@ title(main=paste("$filename"))
 
 ## print annotation overview into PDF output
 
-        ## the more annotation groups a file has the smaller will be the legend
-        number_combined = length(levels(as.factor(merged_annotation\$annotation)))
-        if (number_combined<20){
-            legend_size = 10
-        }else if (number_combined>20 && number_combined<40){
-            legend_size = 9
-        }else if (number_combined>40 && number_combined<60){
-            legend_size = 8
-        }else if (number_combined>60 && number_combined<100){
-            legend_size = 7
-        }else{
-            legend_size = 6
-        }
-
         combine_plot = ggplot(merged_annotation, aes(x=x, y=y, fill=annotation))+
                geom_tile() +
                coord_fixed()+
@@ -203,13 +179,13 @@ title(main=paste("$filename"))
                theme(plot.title = element_text(hjust = 0.5))+
                theme(text=element_text(family="ArialMT", face="bold", size=12))+
                theme(legend.position="bottom",legend.direction="vertical")+
-               theme(legend.key.size = unit(0.2, "line"), legend.text = element_text(size = legend_size))+
-               guides(fill=guide_legend(ncol=5,byrow=TRUE))
+               theme(legend.key.size = unit(0.2, "line"), legend.text = element_text(size = 8))+
+               theme(legend.position="bottom",legend.direction="vertical")+
+               guides(fill=guide_legend(ncol=4,byrow=TRUE))
 
         print(combine_plot)
 
 #end if
-
 
 #################### Preprocessing methods #####################################
 
@@ -230,23 +206,29 @@ title(main=paste("$filename"))
                   halfWindowSize=$method.methods_conditional.halfWindowSize,SNR=$method.methods_conditional.snr)
 
         ## QC plot and numbers
+        ## plot old spectrum with baseline in blue and picked peaks in green
+        noise = estimateNoise(maldi_data[[1]], method= "$method.methods_conditional.peak_method")
+        plot(maldi_data[[1]], main="First spectrum with noise line (blue) and picked peaks (green)")
+        lines(noise[,1], noise[,2]*$method.methods_conditional.snr, col="blue")
+        points(peaks[[1]], col="green", pch=20)
+        ## plot new spectrum
         plot(peaks[[1]], main="First spectrum after peak detection")
         pixel_number = length(peaks)
         minmz = round(min(unlist(lapply(peaks,mass))), digits=4)
         maxmz = round(max(unlist(lapply(peaks,mass))), digits=4)
-        maxfeatures = round(length(unlist(lapply(peaks,mass)))/length(peaks), digits=2)
+        mean_features = round(length(unlist(lapply(peaks,mass)))/length(peaks), digits=2)
         medint = round(median(unlist(lapply(peaks,intensity))), digits=2)
-        peaks_picked = c(minmz, maxmz,maxfeatures, medint)
+        number_features = length(unique(unlist(lapply(peaks,mass))))
+        peaks_picked = c(minmz, maxmz,number_features,mean_features,  medint)
         QC_numbers= cbind(QC_numbers, peaks_picked)
         vectorofactions = append(vectorofactions, "peaks_picked")
 
         if (length(peaks[!sapply(peaks, isEmpty)])>0){
+            featureMatrix <- intensityMatrix(peaks)
             #if $infile.ext == 'imzml'
                 #if str($centroids) == "FALSE"
                     featureMatrix <- intensityMatrix(peaks, maldi_data)
                 #end if
-            #else
-                featureMatrix <- intensityMatrix(peaks)
             #end if
             featureMatrix2 =cbind(pixelnames, featureMatrix)
             colnames(featureMatrix2)[1] = c("mz")
@@ -263,22 +245,27 @@ title(main=paste("$filename"))
         peaks = monoisotopicPeaks(peaks, minCor=$method.methods_conditional.minCor, tolerance=$method.methods_conditional.tolerance, distance=$method.methods_conditional.distance, size=$method.methods_conditional.size)
 
         ## QC plot and numbers
+        ## plot old spectrum with picked isotopes as green dots
+        plot(peaks[[1]], main="First spectrum with picked monoisotopic peaks (green)")
+        points(peaks[[1]], col="green", pch=20)
+        ## plot new spectrum
         plot(peaks[[1]], main="First spectrum after monoisotopic peaks detection")
         minmz = round(min(unlist(lapply(peaks,mass))), digits=4)
         maxmz = round(max(unlist(lapply(peaks,mass))), digits=4)
-        maxfeatures = round(length(unlist(lapply(peaks,mass)))/length(peaks), digits=2)
+        mean_features = round(length(unlist(lapply(peaks,mass)))/length(peaks), digits=2)
         medint = round(median(unlist(lapply(peaks,intensity))), digits=2)
-        monoisotopes = c(minmz, maxmz,maxfeatures, medint)
+        number_features = length(unique(unlist(lapply(peaks,mass))))
+        monoisotopes = c(minmz, maxmz,number_features,mean_features,  medint)
         QC_numbers= cbind(QC_numbers, monoisotopes)
         vectorofactions = append(vectorofactions, "monoisotopes")
 
         if (length(peaks[!sapply(peaks, isEmpty)])>0){
+            featureMatrix <- intensityMatrix(peaks)
+            ## only for profile imzML file: featurematrix is overwritten:
             #if $infile.ext == 'imzml'
                 #if str($centroids) == "FALSE"
                     featureMatrix <- intensityMatrix(peaks, maldi_data)
                 #end if
-            #else
-                featureMatrix <- intensityMatrix(peaks)
             #end if
             featureMatrix2 =cbind(pixelnames, featureMatrix)
             colnames(featureMatrix2)[1] = c("mz")
@@ -291,28 +278,27 @@ title(main=paste("$filename"))
         print('binning')
         ##m/z binning
 
-        peaks <- binPeaks(peaks, tolerance=$method.methods_conditional.bin_tolerance)
+        peaks <- binPeaks(peaks, tolerance=$method.methods_conditional.bin_tolerance, method="$method.methods_conditional.bin_method")
 
         ## QC plot and numbers
         plot(peaks[[1]], main="First spectrum after binning")
         minmz = round(min(unlist(lapply(peaks,mass))), digits=4)
         maxmz = round(max(unlist(lapply(peaks,mass))), digits=4)
-        maxfeatures = round(length(unlist(lapply(peaks,mass)))/length(peaks), digits=2)
+        mean_features = round(length(unlist(lapply(peaks,mass)))/length(peaks), digits=2)
         medint =round( median(unlist(lapply(peaks,intensity))), digits=2)
-        binned = c(minmz, maxmz,maxfeatures, medint)
+        number_features = length(unique(unlist(lapply(peaks,mass))))
+        binned = c(minmz, maxmz,number_features,mean_features,  medint)
         QC_numbers= cbind(QC_numbers, binned)
         vectorofactions = append(vectorofactions, "binned")
 
         if (length(peaks[!sapply(peaks, isEmpty)])>0){
+            featureMatrix <- intensityMatrix(peaks)
             #if $infile.ext == 'imzml'
                 #if str($centroids) == "FALSE"
                     featureMatrix <- intensityMatrix(peaks, maldi_data)
+                #elif str($centroids) == "TRUE"
+                    featureMatrix <- intensityMatrix(peaks)
                 #end if
-                    #if str($centroids) == "TRUE"
-                        featureMatrix <- intensityMatrix(peaks)
-                    #end if
-            #else
-                featureMatrix <- intensityMatrix(peaks)
             #end if
             featureMatrix2 =cbind(pixelnames, featureMatrix)
             colnames(featureMatrix2)[1] = c("mz")
@@ -346,19 +332,19 @@ title(main=paste("$filename"))
         plot(peaks[[1]], main="First spectrum after m/z filtering")
         minmz = round(min(unlist(lapply(peaks,mass))), digits=4)
         maxmz = round(max(unlist(lapply(peaks,mass))), digits=4)
-        maxfeatures = round(length(unlist(lapply(peaks,mass)))/length(peaks), digits=2)
+        mean_features = round(length(unlist(lapply(peaks,mass)))/length(peaks), digits=2)
         medint = round(median(unlist(lapply(peaks,intensity))), digits=2)
-        filtered = c(minmz, maxmz,maxfeatures, medint)
+        number_features = length(unique(unlist(lapply(peaks,mass))))
+        filtered = c(minmz, maxmz,number_features,mean_features,  medint)
         QC_numbers= cbind(QC_numbers, filtered)
         vectorofactions = append(vectorofactions, "filtered")
   
         if (length(peaks[!sapply(peaks, isEmpty)])>0){
+            featureMatrix <- intensityMatrix(peaks)
             #if $infile.ext == 'imzml'
                 #if str($centroids) == "FALSE"
                     featureMatrix <- intensityMatrix(peaks, maldi_data)
                 #end if
-            #else
-                featureMatrix <- intensityMatrix(peaks)
             #end if
             featureMatrix2 =cbind(pixelnames, featureMatrix)
             colnames(featureMatrix2)[1] = c("mz")
@@ -382,7 +368,7 @@ if (length(peaks[!sapply(peaks, isEmpty)])>0){
 }else{print("There are no spectra with peaks left")}
 
 ## print table with QC values
-rownames(QC_numbers) = c("min m/z", "max mz", "# features", "median\nintensity")
+rownames(QC_numbers) = c("min m/z", "max mz", "# features", "median \n# features", "median\nintensity")
 plot(0,type='n',axes=FALSE,ann=FALSE)
 grid.table(t(QC_numbers))
 
@@ -406,8 +392,8 @@ if (summarized_spectra == FALSE){
         </configfile>
     </configfiles>
     <inputs>
-        <param name="infile" type="data" format="imzml,tabular,rdata" label="Inputfile as imzML or Cardinal MSImageSet saved as RData" help="This file is in imzML or tabular format (peak list, peak detection cannot be run again) or Cardinal MSImageSet saved as RData"/>
-        <param name="centroids" type="boolean" label="Is the imzML/RData data centroided (picked)" help="Choose Yes if peak detection has already been done. Peak detection cannot be run again on centroided data" truevalue="TRUE" falsevalue="FALSE"/>
+        <param name="infile" type="data" format="imzml,tabular,rdata" label="Inputfile as imzML, peaklist or Cardinal MSImageSet saved as RData" help="imzML or tabular format (peak list) or Cardinal MSImageSet saved as RData"/>
+        <param name="centroids" type="boolean" label="Input data is centroided (picked)" help="Choose Yes if peak detection has already been done. Peak detection cannot be run again on centroided data" truevalue="TRUE" falsevalue="FALSE"/>
         <conditional name="restriction_conditional">
             <param name="restriction" type="select" label="Read in only spectra of interest" help="This option only works for imzML files">
                 <option value="no_restriction" selected="True">Calculate on entire file</option>
@@ -415,15 +401,15 @@ if (summarized_spectra == FALSE){
             </param>
             <when value="restrict">
                 <param name="coordinates_file" type="data" format="tabular" label="Tabular file with coordinates" help="x-values in first column, y-values in second column"/>
-                <param name="coordinates_header" type="boolean" label="Tabular file contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
+                <param name="coordinates_header" type="boolean" label="File contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
             </when>
             <when value="no_restriction"/>
         </conditional>
 
         <conditional name="tabular_annotation">
-            <param name="load_annotation" type="select" label="Use pixel annotation from tabular file - select in peak detection or filtering step where annotation should be used">
-                <option value="no_annotation" selected="True">pixels belong into one group only</option>
-                <option value="yes_annotation">use pixel annotation from a tabular file</option>
+            <param name="load_annotation" type="select" label="Pixels have annotations" help="Annotations can be used during peak detection or filteringfsplit">
+                <option value="no_annotation" selected="True">pixels have no annotations</option>
+                <option value="yes_annotation">pixel annotation from file</option>
             </param>
             <when value="yes_annotation">
                 <param name="annotation_file" type="data" format="tabular" label="Use annotations from tabular file"
@@ -431,7 +417,7 @@ if (summarized_spectra == FALSE){
                 <param name="column_x" data_ref="annotation_file" label="Column with x values" type="data_column"/>
                 <param name="column_y" data_ref="annotation_file" label="Column with y values" type="data_column"/>
                 <param name="column_names" data_ref="annotation_file" label="Column with pixel annotations" type="data_column"/>
-                <param name="tabular_header" type="boolean" label="Tabular file contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
+                <param name="tabular_header" type="boolean" label="File contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
             </when>
             <when value="no_annotation"/>
         </conditional>
@@ -449,44 +435,50 @@ if (summarized_spectra == FALSE){
                         <option value="SuperSmoother">SuperSmoother</option>
                     </param>
                     <param name="halfWindowSize" type="integer" value="20"
-                        label="Half window size"
+                        label="Half window size (number of data points)"
                         help="The resulting window reaches from 
                             mass[currentIndex-halfWindowSize] to mass[currentIndex+halfWindowSize]
                             (window size is 2*halfWindowSize+1).
                             The best size differs depending on the selected smoothing method."/>
                     <param name="snr" type="integer" value="2" label="Signal-to-noise-ratio" help=""/>
-                    <param name="use_annotations" type="boolean" label="Generate average mass spectra for each annotation group" help="Spectra with same annotation are summarized, no imzML export possible" truevalue="TRUE" falsevalue="FALSE"/>
+                    <param name="use_annotations" type="boolean" label="Detect peaks on average mass spectra" help="Spectra with same annotation are averaged before peak detection, no imzML output" truevalue="TRUE" falsevalue="FALSE"/>
                 </when>
                 <when value="monoisotopic_peaks">
-                    <param name="minCor" type="float" value="0.95" label="minimal correlation"
-                        help="double , minimal correlation between the peak pattern generated by the model and the experimental peaks in the MassPeaks object to be recognized as isotopic pattern"/>
-                    <param name="tolerance" type="float" label="tolerance" value="0.0004"
-                        help="double, maximal relative deviation of peaks position (mass) to be considered as isotopic distance"/>
-                    <param name="distance" type="float" label="distance" value="1.00235" help="double, distance between two consecutive peaks in an isotopic pattern"/>
-                    <param name="size" type="integer" label="size" value="3" help="double, size (length) of isotopic pattern, longer patterns are prefered over shorter ones"/>
+                    <param name="minCor" type="float" value="0.95" label="Minimal correlation"
+                        help="Minimal correlation between the peak pattern generated by the model and the experimental peaks in the MassPeaks object to be recognized as isotopic pattern"/>
+                    <param name="tolerance" type="float" label="Tolerance" value="0.00005"
+                        help="Maximal relative deviation of a peak position (m/z) to be considered as identical: abs(((mass[i]+distance)-mass[i+1])/mass[i]) smaller than 'tolerance'. For 50ppm use 0.00005 or 50e-6" />
+                    <param name="distance" type="float" label="Distance" value="1.00235" help="Distance between two consecutive peaks in an isotopic pattern. 1.00235 is average distance for polypeptides."/>
+                    <param name="size" type="integer" label="Size" value="3" help="Size (length) of isotopic pattern, longer patterns are prefered over shorter ones, min size is 2."/>
                 </when>
                 <when value="Binning">
-                    <param name="bin_tolerance" type="float" value="0.002" label="Peak binning tolerance"
+                    <param name="bin_tolerance" type="float" value="0.002" label="Binning tolerance"
                         help="After the alignment the peak positions (mass) are very similar but not identical. The binning is needed to make similar peak mass values identical."/>
+                    <param name="bin_method" display="radio" type="select" label="Bin creation rule" help="strict - creates bins never containing two or more peaks of the sampe sample. relaxed - allows multiple peaks of the same sample in one bin.">
+                    <option value="strict" selected="True" >strict</option>
+                    <option value="relaxed" >relaxed</option>
+                </param>
                 </when>
                 <when value="Filtering">
                     <param name="minFrequency" type="float" value="0.25"
-                        label="Removal of all peaks which occur in less than minFrequency spectra" help="It is a relative threshold. The higher value from relative and absolute threshold is taken. Set one value to zero to be sure it will not be sure."/>
+                        label="Removal of all peaks which occur in less than minFrequency spectra" help="Relative threshold. The higher value from relative and absolute threshold is taken. Set one value to zero to be sure it will not be used."/>
                     <param name="minNumber" type="float" value="1.0"
-                        label="Removal of all peaks which occur in less than minNumber spectra" help="It is an absolute threshold. The higher value from relative and absolute threshold is taken. Set one value to zero to be sure it will not be sure."/>
-                    <param name="filter_annot_groups" type="boolean" label="Group wise filtering with pixel annotations. If not specified a single group is assumed or when filtering has been done group wise it will automatically be group wise when selecting filtering on all pixel" truevalue="TRUE" falsevalue="FALSE"/>
+                        label="Removal of all peaks which occur in less than minNumber spectra" help="Absolute threshold. The higher value from relative and absolute threshold is taken. Set one value to zero to be sure it will not be used."/>
+                    <param name="filter_annot_groups" type="boolean" label="Group wise filtering with pixel annotations." help="If not specified a single group is assumed or when filtering has been done group wise it will automatically be group wise when selecting filtering on all pixel" truevalue="TRUE" falsevalue="FALSE"/>
                     <param name="mergeWhitelists" type="boolean" truevalue="TRUE" falsevalue="FALSE"
-                        label="mergeWhitelists" help="if FALSE the filtering criteria are applied groupwise. If TRUE peaks that survive the filtering in one group (level of labels) these peaks are also kept in other groups even if their frequencies are below minFrequency"/>
+                        label="mergeWhitelists" help="Yes means that peaks that survive the filtering in one annotation group are also kept in other groups regardless if the filtering criteria are met in these groups"/>
                 </when>
             </conditional>
         </repeat>
-        <param name="export_processed" type="boolean" label="Export file as processed imzML" help="otherwise continuous imzML will be exported" checked="true" truevalue="TRUE" falsevalue="FALSE"/>
+        <param name="export_processed" type="boolean" label="Export file as processed imzML" help="otherwise continuous imzML will be exported" checked="True" truevalue="TRUE" falsevalue="FALSE"/>
     </inputs>
     <outputs>
-        <data format="imzml" name="outfile_imzml" label="$infile.display_name peaks"/>
-        <data format="pdf" name="plots" from_work_dir="peaks_qc_plot.pdf" label = "$infile.display_name peakdetection QC"/>
-        <data format="tabular" name="masspeaks" label="$infile.display_name mass_peaks"/>
-        <data format="tabular" name="intensity_matrix" label="intensity_matrix"/>
+        <data format="imzml" name="outfile_imzml" label="${tool.name} on ${on_string}">
+            <!--filter>methods_conditional['method'] == 'Peak_detection'</filter-->
+        </data>
+        <data format="pdf" name="plots" from_work_dir="peaks_qc_plot.pdf" label = "${tool.name} on ${on_string}: QC"/>
+        <data format="tabular" name="masspeaks" label="${tool.name} on ${on_string}: peaklist"/>
+        <data format="tabular" name="intensity_matrix" label="${tool.name} on ${on_string}: intensity_matrix"/>
     </outputs>
     <tests>
         <test>
@@ -521,6 +513,7 @@ if (summarized_spectra == FALSE){
              <repeat name="methods">
                 <conditional name="methods_conditional">
                 <param name="method" value="monoisotopic_peaks"/>
+                <param name="tolerance" value="0.0004"/>
             </conditional>
             </repeat>
             <output name="plots" file="peakdetection2_QC.pdf" compare="sim_size"/>
@@ -567,6 +560,16 @@ if (summarized_spectra == FALSE){
             <output name="intensity_matrix" file="intensity_matrix3.tabular"/>
             <output name="masspeaks" file="masspeaks3.tabular"/>
         </test>
+        <test>
+            <param name="infile" value="testfile_squares.rdata" ftype="rdata"/>
+            <param name="method" value="Peak_detection"/>
+            <param name="peak_method" value="MAD"/>
+            <param name="halfWindowSize" value="20"/>
+            <param name="snr" value="2"/>
+            <output name="plots" file="peakdetection4_QC.pdf" compare="sim_size"/>
+            <output name="intensity_matrix" file="intensity_matrix4.tabular"/>
+            <output name="masspeaks" file="masspeaks4.tabular"/>
+        </test>
     </tests>
     <help>
         <![CDATA[
@@ -605,7 +608,7 @@ if (summarized_spectra == FALSE){
         ...
 
 
-- Optional: Tabular file(s) containing pixel coordinates and annotation. X and y values in separate columns and the corresponding annotation in a third column. Tabular files with any header name or no header at all are supported. The annotations can be used to summarize pixels of an imzML file which belong to the same group and detect peaks on average spectra, further steps will be done on average spectra as well and average spectra are exported. If this option was not chosen the filtering tool can use the annotations to filter for peaks within pixel groups (select "Group wise filtering").
+- Optional: Tabular file(s) containing pixel coordinates and annotation. X and y values in separate columns and the corresponding annotation in a third column. Tabular files with any header name or no header at all are supported. The annotations can be used to either detect peak on the average mass spectrum of each annotation group ('Detect peaks on average mass spectra') or to filter for peaks within pixel groups ('Group wise filtering'). This option is not compatible with tabular peak list inputs.
 
     ::
 
@@ -616,21 +619,46 @@ if (summarized_spectra == FALSE){
        ...
        ...
 
-
 **Options**
 
-- Peak detection: detection of peaks, only possible with profile mode input
+- Peak detection: detection of peaks, only possible with profile mode input. A peak is a local maximum above a user defined noise threshold.
+
+    - Two functions exist to estimate the noise: MAD and supersmoother. 
+    - SNR is an abbreviation for signal-to-noise-ratio. A local maximum has to be higher than SNR*noise to be recognize as peak.
+    - 'halfWindowSize': The resulting window reaches from mass[currentIndex-halfWindowSize] to mass[currentIndex+halfWindowSize]. A local maximum has to be the highest one in the given window to be recognized as peak.
+    - Detect peaks on average mass spectra: Spectra with the same annotation (taken from the annotation tabular input) are averaged and peak picking is performed on the average spectrum of each annotation group. The exported imzML is empty and cannot be used for further analysis steps. The peaklist and intensity matrix outputs contain the annotation group names with their averaged intensity values. Filtering steps have to be done in the same run as the peak picking.
+
+
 - Monoisotopic peaks: detection of monoisotopic peaks
-- Peak binning: After the alignment the peak positions (m/z) are very similar but not identical. The binning is needed to make similar peak m/z values identical.
-- Peak filtering: Removal of less frequent peaks (either with a minimum ratio or with an absolute minimum number of spectra in which the peak has to occur)
+
+
+
+
+- Peak binning: After the alignment the peak positions (m/z) are very similar but not identical. The binning is needed to make similar peak m/z values identical. The algorithm is based on the following workflow:
+
+    1. Put all mass in a sorted vector.
+    2. Calculate differences between each neighbor.
+    3. Divide the mass vector at the largest gap (largest difference) and form a left and a right bin.
+    4. Rerun step 3 for the left and/or the right bin if they don't fulfill the following criteria:
+
+    - All peaks in a bin are near to the mean (abs(mass-meanMass)/meanMass < tolerance).
+    - method == "strict": The bin doesn't contain two or more peaks of the same sample.
+
+
+- Peak filtering: Removal of less frequent m/z features:
+
+    - minFrequency : between 0 and 1: m/z has to occur in 0 - 100% of all spectra; minNumber: m/z has to occur in at least this amount of spectra --> out of those two criteria the stricter value will be used
+    - Group wise filtering with pixel annotations: 'Yes' means that the filtering criteria are applied for each annotation group separately. 
+    - mergeWhitelists: 'Yes' means that peaks that survive the filtering in one annotation group are also kept in other groups regardless if the filtering criteria are met in these groups
+    - To filter data that was averaged before peak detection: Filtering has to be done in the same tool run as the peak detection. The filtering criteria are automatically applied per annotation group (Group wise filtering can be 'No') and not per pixel. Example: to keep only m/z that were detected in at least half of all annotation groups set minFrequency to 0.5.
 
 
 **Output**
 
-- centroided imzML file (processed or continuous), except for peak picking on the average of multiple spectra
-- pdf with mass spectra plots after each preprocessing step
+- centroided imzML file (processed or continuous), imzML file is empty when 'Detect peaks on average mass spectra' is chosen.
+- pdf with mass spectra plots after each preprocessing step and a table with key values after each preprocessing step
 - peak list (tabular file) with the columns "snr", "mass", "intensity" and "spectrum"
-- tabular file with intensity matrix (m/z in rows and spectra in columns). If the input file was imzML in profile mode the intensities before peak picking are also stored in the matrix . For all other inputs not picked values are set to NA. For peak picking on the average of multiple spectra, each spectra group is a column with mean intensities for each m/z
+- tabular file with intensity matrix (m/z in rows and spectra in columns). If the input file was imzML in profile mode the intensities before peak picking are also stored in the matrix . For all other inputs not picked values are set to NA. For peak picking on the average of multiple spectra, each spectra group is a column with mean intensities for each m/z.
 
 .. _MALDIquant: http://strimmerlab.org/software/maldiquant/
 
