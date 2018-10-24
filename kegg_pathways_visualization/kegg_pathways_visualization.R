@@ -204,21 +204,25 @@ if (id_type == "uniprotid") {
   colnames(tab)[ncol] <- "geneID"
 }
 
-geneID = tab$geneID[which(tab$geneID !="NA")]
+geneID = as.character(tab$geneID[which(!is.na(tab$geneID))])
 geneID = gsub(" ","",geneID)
 geneID = unlist(strsplit(geneID,"[;]"))
 
 ##### build matrix to map on KEGG pathway (kgml : KEGG xml)
 if (fold_change_data) {
+  geneID_indices = which(!duplicated(geneID))
   if (length(fold_change) == 3){
     mat <- as.data.frame(cbind(tab$e1,tab$e2,tab$e3)[which(!is.na(tab$geneID)),])
-    row.names(mat) <- tab$geneID[which(!is.na(tab$geneID))]
+    mat = mat[geneID_indices,]
+    row.names(mat) <- geneID[geneID_indices]
   } else if (length(fold_change) == 2){
     mat <- as.data.frame(cbind(tab$e1,tab$e2)[which(!is.na(tab$geneID)),])
-    row.names(mat) <- tab$geneID[which(!is.na(tab$geneID))]
+    mat = mat[geneID_indices,]
+    row.names(mat) <- geneID[geneID_indices]
   } else {
     mat <- as.data.frame(cbind(tab$e1)[which(!is.na(tab$geneID)),])
-    row.names(mat) <- tab$geneID[which(!is.na(tab$geneID))]
+    mat = mat[geneID_indices,]
+    row.names(mat) <- geneID[geneID_indices]
   }
 } else {
   mat <- geneID
