@@ -183,7 +183,7 @@ def __main__():
       return None
     elif len(matches) == 1:
       return matches[0].copy()
-    else:
+    elif 'taxon_rank' in matches[0]:
       # find the most specific match (peptide is always the first column order field)
       for col in reversed(pept2lca_extra_column_order[1:]):
         col_id = col+"_id" if options.extra else col
@@ -192,6 +192,8 @@ def __main__():
             return match.copy()
           if col_id in match and match[col_id]:
             return match.copy()
+    else:
+      return sorted(matches, key=lambda x: len(x['peptide']))[-1].copy()
     return None
 
   def get_taxon_json(resp):
@@ -280,7 +282,10 @@ def __main__():
           protein_count = ec['protein_count']
           ec_number = ec['ec_number']
           for ec_id in get_ids(ec_number):
-            child = get_node(ec_id,ec_id,child,seq)
+            ec_name = str(ec_id)
+            ## if len(ec_id) == 3:
+            ##   ec_name = '%s\n%s\n%s' %(str(ec_id), ec_name_dict[str(ec_id[0])],  ec_name_dict[str(ec_id)])
+            child = get_node(ec_id,ec_name,child,seq)
             seq = None
           if child:
             get_node(0,'-.-.-.-',child,None)
@@ -499,11 +504,11 @@ def __main__():
       post_data.append(("domains","true"))
     post_data += [('input[]', x) for x in trypticPeptides[idx[i]:idx[i+1]]]
     if options.debug: print >> sys.stdout, "post_data: %s\n" % (str(post_data))
-    params = '&'.join(['%s=%s' % (i[0],i[1]) for i in post_data])
-    #headers = {'Content-Type': 'application/x-www-form-urlencoded',  'Accept': 'application/json'}
-    headers = {'Accept': 'application/json'}
+    headers = {'Content-Type': 'application/x-www-form-urlencoded',  'Accept': 'application/json'}
+    ## headers = {'Accept': 'application/json'}
     url = '%s/%s' % (options.url.rstrip('/'),options.unipept)
     if options.get:
+      params = '&'.join(['%s=%s' % (i[0],i[1]) for i in post_data])
       url = '%s.json?%s' % (url,params)
       req = urllib2.Request( url )
     else:
@@ -546,7 +551,7 @@ def __main__():
           match['tryptic_peptide'] = match['peptide']
           match['peptide'] = peptide
           peptideMatches.append(match)
-  elif options.unipept in ['pept2lca']:
+  elif options.unipept in ['pept2lca', 'peptinfo']:
     ## should be one response per trypticPeptide for pep2lca
     respMap = {v['peptide']:v for v in unipept_resp}
     ## map resp back to peptides
