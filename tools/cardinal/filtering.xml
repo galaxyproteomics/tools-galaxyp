@@ -1,21 +1,34 @@
-<tool id="cardinal_filtering" name="MSI filtering" version="@VERSION@.0">
+<tool id="cardinal_filtering" name="MSI filtering" version="@VERSION@.1">
     <description>tool for filtering mass spectrometry imaging data</description>
     <macros>
         <import>macros.xml</import>
     </macros>
     <expand macro="requirements">
-        <requirement type="package" version="2.2.1">r-gridextra</requirement>
-        <requirement type="package" version="2.2.1">r-ggplot2</requirement>
+        <requirement type="package" version="2.3">r-gridextra</requirement>
+        <requirement type="package" version="3.0">r-ggplot2</requirement>
     </expand>
+    <expand macro="print_version"/>
     <command detect_errors="exit_code">
     <![CDATA[
 
         @INPUT_LINKING@
         cat '${MSI_subsetting}' &&
-        Rscript '${MSI_subsetting}'
+        Rscript '${MSI_subsetting}' &&
+
+        #if $imzml_output:
+            mkdir $outfile_imzml.files_path &&
+            ls -l &&
+            mv ./out.imzML "${os.path.join($outfile_imzml.files_path, 'imzml')}" | true &&
+            mv ./out.ibd "${os.path.join($outfile_imzml.files_path, 'ibd')}" | true &&
+        #end if
+        echo "imzML file:" > $outfile_imzml &&
+        ls -l "$outfile_imzml.files_path" >> $outfile_imzml
+
 
     ]]>
     </command>
+
+
     <configfiles>
         <configfile name="MSI_subsetting"><![CDATA[
 
@@ -112,8 +125,9 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE) > 0)
             msidata = msidata[, coord(msidata)\$x <= $pixels_cond.max_x_range & coord(msidata)\$x >= $pixels_cond.min_x_range]
             msidata = msidata[, coord(msidata)\$y <= $pixels_cond.max_y_range & coord(msidata)\$y >= $pixels_cond.min_y_range]
         }else{
-            msidata = msidata[,0]
-            print("no valid pixel found")}
+
+            print("no valid pixel found")
+            msidata = msidata[,0]}
 
         ## update position_df for filtered pixels
         position_df = cbind(coord(msidata)[,1:2], rep("$infile.element_identifier", times=ncol(msidata)))
@@ -138,103 +152,121 @@ if (sum(spectra(msidata)[]>0, na.rm=TRUE) > 0)
     ####################### Keep m/z from tabular file #########################
 
 ## feature filtering only when pixels/features/intensities are left
+
+if (ncol(msidata) > 0){
     npeaks_before_filtering= sum(spectra(msidata)[]>0, na.rm=TRUE)
+    if (npeaks_before_filtering > 0)
+    {
+
+        #if str($features_cond.features_filtering) == "features_list":
+            print("feature list")
+
+            ## read tabular file, define starting row, extract and count valid features
+            input_features = read.delim("$mz_tabular", header = $features_cond.feature_header, stringsAsFactors = FALSE)
+            extracted_features = input_features[,$features_cond.feature_column]
+            numberfeatures = length(extracted_features)
+            if (class(extracted_features) == "numeric"){
+                ### max digits given in the input file will be used to match m/z but the maximum is 4
+                   max_digits = max(nchar(sapply(strsplit(as.character(extracted_features), "\\."),`[`,2)), na.rm=TRUE)
+
+                   if (max_digits >4)
+                   {
+                   max_digits = 4
+                   }
+
+                validfeatures = round(extracted_features, max_digits) %in% round(mz(msidata),max_digits)
+                featuresofinterest = features(msidata)[round(mz(msidata), digits = max_digits) %in% round(extracted_features[validfeatures], max_digits)]
+                validmz = length(unique(featuresofinterest))
+            }else{
+                    validmz = 0
+                    featuresofinterest = 0}
+
+            ### filter msidata for valid features
+            msidata = msidata[featuresofinterest,]
+
+        ############### features within a given range are kept #####################
+
+        #elif str($features_cond.features_filtering) == "features_range":
+            print("feature range")
+
+            numberfeatures = "range"
+            validmz = "range"
+
+            if (sum(mz(msidata) >= $features_cond.min_mz & mz(msidata) <= $features_cond.max_mz)> 0){
+                msidata = msidata[mz(msidata) >= $features_cond.min_mz & mz(msidata) <= $features_cond.max_mz,]
+            }else{ 
+                msidata = msidata[0,]
+                print("no valid mz range")}
+
+        ############### Remove m/z from tabular file #########################
+
+        #elif str($features_cond.features_filtering) == "remove_features":
+            print("remove features")
+
+            ## read tabular file, define starting row, extract and count valid features
+            input_features = read.delim("$mz_tabular", header = $features_cond.removal_header, stringsAsFactors = FALSE) 
+            extracted_features = input_features[,$features_cond.removal_column]
+            numberfeatures = length(extracted_features)
+            if (class(extracted_features) == "numeric"){
+                print("input is numeric")
+                featuresofinterest = extracted_features
+                validmz = sum(featuresofinterest <= max(mz(msidata))& featuresofinterest >= min(mz(msidata)))
+            }else{featuresofinterest = 0
+                    validmz = 0}
+
+        ### Here starts removal of features: 
+            plusminus = $features_cond.removal_plusminus
+
+            mass_to_remove = numeric()
+            if (sum(featuresofinterest) > 0){
+                for (masses in featuresofinterest){
+                    #if str($features_cond.units_removal) == "ppm": 
+                        plusminus = masses * $features_cond.removal_plusminus/1000000
+                    #end if 
+                    current_mass = which(c(mz(msidata) <= masses + plusminus & mz(msidata) >= masses - plusminus))
+                    mass_to_remove = append(mass_to_remove, current_mass)}
+                msidata= msidata[-mass_to_remove, ]
+            }else{print("No features were removed as they were not fitting to m/z values and/or range")}
 
 
-if (npeaks_before_filtering > 0)
+        #elif str($features_cond.features_filtering) == "none":
 
-{
+            print("no feature filtering")
+            validmz = 0
+            numberfeatures = 0
 
-    #if str($features_cond.features_filtering) == "features_list":
-        print("feature list")
+        #end if
 
-        ## read tabular file, define starting row, extract and count valid features
-        input_features = read.delim("$mz_tabular", header = $features_cond.feature_header, stringsAsFactors = FALSE)
-        extracted_features = input_features[,$features_cond.feature_column]
-        numberfeatures = length(extracted_features)
-        if (class(extracted_features) == "numeric"){
-            ### max digits given in the input file will be used to match m/z but the maximum is 4
-               max_digits = max(nchar(matrix(unlist(strsplit(as.character(extracted_features), "\\.")), ncol=2, byrow=TRUE)[,2]))
-               if (max_digits >4)
-               {
-               max_digits = 4
-               }
+        ## save msidata as Rfile
+        save(msidata, file="$msidata_filtered")
 
-            validfeatures = round(extracted_features, max_digits) %in% round(mz(msidata),max_digits)
-            featuresofinterest = features(msidata)[round(mz(msidata), digits = max_digits) %in% round(extracted_features[validfeatures], max_digits)]
-            validmz = length(unique(featuresofinterest))
-        }else{
-                validmz = 0
-                featuresofinterest = 0}
-
-        ### filter msidata for valid features
-        msidata = msidata[featuresofinterest,]
-
-    ############### features within a given range are kept #####################
-
-    #elif str($features_cond.features_filtering) == "features_range":
-        print("feature range")
-
-        numberfeatures = "range"
-        validmz = "range"
-
-        if (sum(mz(msidata) >= $features_cond.min_mz & mz(msidata) <= $features_cond.max_mz)> 0){
-            msidata = msidata[mz(msidata) >= $features_cond.min_mz & mz(msidata) <= $features_cond.max_mz,]
-        }else{ 
-            msidata = msidata[0,]
-            print("no valid mz range")}
-
-    ############### Remove m/z from tabular file #########################
-
-    #elif str($features_cond.features_filtering) == "remove_features":
-        print("remove features")
-
-        ## read tabular file, define starting row, extract and count valid features
-        input_features = read.delim("$mz_tabular", header = $features_cond.removal_header, stringsAsFactors = FALSE) 
-        extracted_features = input_features[,$features_cond.removal_column]
-        numberfeatures = length(extracted_features)
-        if (class(extracted_features) == "numeric"){
-            print("input is numeric")
-            featuresofinterest = extracted_features
-            validmz = sum(featuresofinterest <= max(mz(msidata))& featuresofinterest >= min(mz(msidata)))
-        }else{featuresofinterest = 0
-                validmz = 0}
-
-    ### Here starts removal of features: 
-        plusminus = $features_cond.removal_plusminus
-
-        mass_to_remove = numeric()
-        if (sum(featuresofinterest) > 0){
-            for (masses in featuresofinterest){
-                #if str($features_cond.units_removal) == "ppm": 
-                    plusminus = masses * $features_cond.removal_plusminus/1000000
-                #end if 
-                current_mass = which(c(mz(msidata) <= masses + plusminus & mz(msidata) >= masses - plusminus))
-                mass_to_remove = append(mass_to_remove, current_mass)}
-            msidata= msidata[-mass_to_remove, ]
-        }else{print("No features were removed as they were not fitting to m/z values and/or range")}
-
-
-    #elif str($features_cond.features_filtering) == "none":
-
-        print("no feature filtering")
-        validmz = 0
-        numberfeatures = 0
-
-    #end if
-
-    ## save msidata as Rfile
-    save(msidata, file="$msidata_filtered")
         ## Number of empty TICs
         TICs2 = colSums(spectra(msidata)[], na.rm=TRUE)
-}else{
-    print("Inputfile or file filtered for pixels has no intensities > 0")
-    numberfeatures = NA
-    validmz = NA
-    ## Number of empty TICs
-    TICs2 = NA
-}
+        ## Number of intensities > 0
+        npeaks2= sum(spectra(msidata)[]>0, na.rm=TRUE)
+        ## Spectra multiplied with m/z (potential number of peaks)
+        numpeaks2 = ncol(spectra(msidata)[])*nrow(spectra(msidata)[])
 
+
+
+    }else{
+        print("Inputfile or file filtered for pixels has no intensities > 0")
+        numberfeatures = NA
+        validmz = NA
+        ## Number of empty TICs
+        TICs2 = 0
+        npeaks2 = 0
+        numpeaks2 = 0
+    }
+}else{
+        print("Inputfile or file filtered for pixels has no pixels left")
+        numberfeatures = NA
+        validmz = NA
+        ## Number of empty TICs
+        TICs2 = 0
+        npeaks2 = 0
+        numpeaks2 = 0
+}
     #################### QC numbers #######################
 
 
@@ -251,10 +283,7 @@ if (npeaks_before_filtering > 0)
         ## Range y coordinates
         minimumy2 = min(coord(msidata)[,2])
         maximumy2 = max(coord(msidata)[,2])
-        ## Number of intensities > 0
-        npeaks2= sum(spectra(msidata)[]>0, na.rm=TRUE)
-        ## Spectra multiplied with m/z (potential number of peaks)
-        numpeaks2 = ncol(spectra(msidata)[])*nrow(spectra(msidata)[])
+
         ## Percentage of intensities > 0
         percpeaks2 = round(npeaks2/numpeaks2*100, digits=2)
         ## Number of empty TICs
@@ -296,9 +325,9 @@ if (npeaks_before_filtering > 0)
                    paste0("valid mz: ", validmz))
 
         property_df = data.frame(properties, before, filtered)
+print(property_df)
 
-    ############################### PDF QC ################################
-
+    ########################### PDF QC and imzml output ###########################
 
         pdf("filtertool_QC.pdf", fonts = "Times", pointsize = 12)
         plot(0,type='n',axes=FALSE,ann=FALSE)
@@ -308,6 +337,14 @@ if (npeaks_before_filtering > 0)
 ## QC report with more than value-table: only when pixels/features/intensities are left
 if (npeaks2 > 0)
 {
+
+    ## save msidata as imzML file, will only work if there is at least 1 m/z left
+    #if $imzml_output:
+        if (maxfeatures2 > 0){
+        writeImzML(msidata, "out")}
+    #end if
+
+
         ### visual pixel control
 
             levels(position_df\$annotation) = factor(paste(1:length(levels(position_df\$annotation)), levels(position_df\$annotation), sep="_"))
@@ -346,6 +383,7 @@ if (npeaks2 > 0)
 
         dev.off()
 
+
 }else{
     print("Inputfile or filtered file has no intensities > 0")
     dev.off()
@@ -363,17 +401,6 @@ if (npeaks2 > 0)
             <when value="none"/>
             <when value="two_columns">
                 <expand macro="reading_pixel_annotations"/>
-
-
-                <param name="two_columns_pixel" type="data" format="tabular" label="Tabular file with pixel coordinates"
-                    help="Column with x values, another with y values, another with pixel annotations"/>
-                <param name="pixel_column_x" data_ref="two_columns_pixel" label="Column with x values" type="data_column"/>
-                <param name="pixel_column_y" data_ref="two_columns_pixel" label="Column with y values" type="data_column"/>
-                <param name="annotation_column_xy" data_ref="two_columns_pixel" label="Column with annotations" type="data_column"/>
-                <param name="pixel_header" type="boolean" label="Tabular file contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
-
-
-
 
             </when> 
             <when value="pixel_range">
@@ -408,23 +435,18 @@ if (npeaks2 > 0)
                 </param>
             </when>
         </conditional>
+        <param name="imzml_output" type="boolean" label="Output of imzML file" truevalue="TRUE" falsevalue="FALSE"/>
+
     </inputs>
 
     <outputs>
         <data format="rdata" name="msidata_filtered" label="${tool.name} on ${on_string}"/>
         <data format="pdf" name="QC_overview" from_work_dir="filtertool_QC.pdf" label = "${tool.name} on ${on_string}: QC"/>
+        <data format="imzml" name="outfile_imzml" label="${tool.name} on ${on_string}: imzML">
+            <filter>imzml_output</filter>
+       </data>
     </outputs>
     <tests>
-        <test>
-            <expand macro="infile_imzml"/>
-            <param name="pixel_filtering" value="pixel_range"/>
-            <param name="min_x_range" value="10"/>
-            <param name="max_x_range" value="20"/>
-            <param name="min_y_range" value="2"/>
-            <param name="max_y_range" value="2"/>
-            <output name="QC_overview" file="imzml_filtered2.pdf" compare="sim_size"/>
-            <output name="msidata_filtered" file="imzml_filtered2.RData" compare="sim_size"/>
-        </test>
         <test>
             <expand macro="infile_imzml"/>
             <param name="pixel_filtering" value="pixel_range"/>
@@ -447,6 +469,10 @@ if (npeaks2 > 0)
             <param name="column_names" value="2"/>
             <output name="QC_overview" file="imzml_filtered4.pdf" compare="sim_size"/>
             <output name="msidata_filtered" file="imzml_filtered4.RData" compare="sim_size"/>
+            <!--imzml output test not yet working: output name="outfile_imzml" file="filtering_imzmls/summary" compare="sim_size" delta="10000">
+                <extra_files type="file" name="imzml" value="filtering_imzmls/out4.imzML" compare="sim_size" delta="10000"/>
+                <extra_files type="file" name="ibd" value="filtering_imzmls/out4.ibd" compare="sim_size" delta="10000"/>
+            </output-->
         </test>
         <test>
             <expand macro="infile_imzml"/>
@@ -493,8 +519,8 @@ This tool provides options to filter (subset) pixels and m/z features of mass sp
 
 **Options**
 
-- pixel filtering/annotation: either with a tabular file containing x and y coordinates and pixel annotations or by defining a range for x and y by hand (for the latter no annotation is possible). Pixel that are not present in the dataset are ignored. In case all pixels are not present in the dataset the output file will be empty and no further mz filtering will be performed. 
-- m/z feature filtering: m/z values for filtering should be either imported as a tabular file containing containing m/z of interest or by defining a range for the m/z values. m/z that are not present in the dataset are ignored. If all given m/z values or the m/z range is outside the dataset, the output file will be empty. 
+- pixel filtering/annotation: either with a tabular file containing x and y coordinates and pixel annotations or by defining a range for x and y by hand (for the latter no annotation is possible). Pixel that are not present in the dataset are ignored. It is not possible to filter only for pixels that are not present in the dataset. 
+- m/z feature filtering: m/z values for filtering should be either imported as a tabular file containing containing m/z of interest or by defining a range for the m/z values. m/z that are not present in the dataset are ignored. It is not possible to filter only for m/z that are not present in the dataset. 
 - m/z feature removing: perturbing m/z features such as matrix contaminants can be removed by specifying their m/z in a tabular file, optionally with a half window size in ppm or m/z for the window in which peaks should be removed.
 
 
@@ -506,7 +532,8 @@ This tool provides options to filter (subset) pixels and m/z features of mass sp
 
 **Output**
 
-- imzML file filtered for pixels and/or m/z
+- MSI data as .RData output (can be read with the Cardinal package in R)
+- optional: MSI data as imzML file
 - pdf with heatmap showing the pixels that are left after filtering and histograms of kept and removed m/z
 
 

@@ -1,4 +1,4 @@
-<tool id="cardinal_combine" name="MSI combine" version="@VERSION@.0">
+<tool id="cardinal_combine" name="MSI combine" version="@VERSION@.1">
     <description>
         combine several mass spectrometry imaging datasets into one
     </description>
@@ -6,7 +6,7 @@
         <import>macros.xml</import>
     </macros>
     <expand macro="requirements">
-        <requirement type="package" version="3.0.0">r-ggplot2</requirement>
+        <requirement type="package" version="3.0">r-ggplot2</requirement>
     </expand>
     <command detect_errors="exit_code">
     <![CDATA[
@@ -29,7 +29,15 @@
         #end if
 
         cat '${msi_combine}' &&
-        Rscript '${msi_combine}'
+        Rscript '${msi_combine}' &&
+        #if $imzml_output:
+            mkdir $outfile_imzml.files_path &&
+            ls -l &&
+            mv ./out.imzML "${os.path.join($outfile_imzml.files_path, 'imzml')}" | true &&
+            mv ./out.ibd "${os.path.join($outfile_imzml.files_path, 'ibd')}" | true &&
+        #end if
+        echo "imzML file:" > $outfile_imzml &&
+        ls -l "$outfile_imzml.files_path" >> $outfile_imzml
 
     ]]>
     </command>
@@ -75,15 +83,15 @@ all_files = $num_infiles
 
     #if $infile.ext == 'imzml'
         #if str($processed_cond.processed_file) == "processed":
-            msidata_$i <- readImzML('infile_${i}', mass.accuracy=$processed_cond.accuracy, units.accuracy = "$processed_cond.units")
-            centroided(msidata) = $centroids
+            msidata_$i <- readImzML('infile_${i}', mass.accuracy=$processed_cond.accuracy, units.accuracy = "$processed_cond.units", attach.only=TRUE)
+            centroided(msidata_$i) = $centroids
         #else
-            msidata_$i <- readImzML('infile_${i}')
-            centroided(msidata) = $centroids
+            msidata_$i <- readImzML('infile_${i}', attach.only=TRUE)
+            centroided(msidata_$i) = $centroids
         #end if
     #elif $infile.ext == 'analyze75'
-            msidata_$i <- readAnalyze('infile_${i}')
-            centroided(msidata) = $centroids
+            msidata_$i <- readAnalyze('infile_${i}', attach.only=TRUE)
+            centroided(msidata_$i) = $centroids
     #else
             msidata_$i = loadRData('infile_${i}.RData')
     #end if
@@ -105,6 +113,7 @@ all_files = $num_infiles
         msidata_$i\$column4 = rep(NA, ncol(msidata_$i))
         msidata_$i\$column5 = rep(NA, ncol(msidata_$i))
         msidata_$i\$combined_sample = rep(NA, ncol(msidata_$i))
+
 
     #if str($annotation_cond.annotation_tabular) == 'annotation'
         print("annotations")
@@ -131,6 +140,7 @@ all_files = $num_infiles
         msidata_$i\$column4 = annotation_df_8_sorted[,7]
         msidata_$i\$column5 = annotation_df_8_sorted[,8]
 
+
         ## extract columnnames from (last) annotation tabular (for QC plot names)
         annotation_colnames = colnames(input_annotation)[-c(1,2)]
 
@@ -142,8 +152,8 @@ all_files = $num_infiles
     #if str( $combine_conditional.combine_method ) == 'xy_shifts':
 
         ## shift coordinates according to input tabular file and store file names
-        coord(msidata_$i)\$x = coord(msidata_$i)\$x + input_list[$i+1,$combine_conditional.column_x] ## shifts x coordinates according to tabular file
-        coord(msidata_$i)\$y = coord(msidata_$i)\$y + input_list[$i+1,$combine_conditional.column_y] ## shifts y coordinates according to tabular file
+        coord(msidata_$i)\$x = as.integer(coord(msidata_$i)\$x + input_list[$i+1,$combine_conditional.column_x]) ## shifts x coordinates according to tabular file
+        coord(msidata_$i)\$y = as.integer(coord(msidata_$i)\$y + input_list[$i+1,$combine_conditional.column_y]) ## shifts y coordinates according to tabular file
         pixel_vector = append(pixel_vector, rep(paste($i+1, input_list[$i+1,$combine_conditional.column_names], sep="_"),times=ncol(msidata_$i))) ## stores file name for each pixel
         msidata_$i\$combined_sample = rep(paste($i+1, input_list[$i+1,$combine_conditional.column_names], sep="_"),times=ncol(msidata_$i))
         pixelcoords_$i = cbind(coord(msidata_$i)[,1:2], rep($i+1,ncol(msidata_$i)))
@@ -167,9 +177,8 @@ all_files = $num_infiles
         }
 
         ## Number of input files define grid which is row-wise filled with files
-
-        coord(msidata_$i)\$x = coord(msidata_$i)\$x - (min(coord(msidata_$i)\$x-1)) + x_shifts
-        coord(msidata_$i)\$y = coord(msidata_$i)\$y - (min(coord(msidata_$i)\$y-1)) + y_shifts
+        coord(msidata_$i)\$x = as.integer(coord(msidata_$i)\$x - (min(coord(msidata_$i)\$x-1)) + x_shifts)
+        coord(msidata_$i)\$y = as.integer(coord(msidata_$i)\$y - (min(coord(msidata_$i)\$y-1)) + y_shifts)
         x_shifts = max(coord(msidata_$i)\$x) + 5
         max_y = append(max_y, max(coord(msidata_$i)\$y))
         all_files = $num_infiles
@@ -209,9 +218,14 @@ all_files = $num_infiles
     colnames(position_df)[3] = "sample_name"
 
      ## save as (.RData)
-
     msidata = msidata_combined
     save(msidata, file="$msidata_combined")
+
+    ## save msidata as imzML file
+    #if $imzml_output:
+        writeImzML(msidata, "out")
+    #end if
+
 
 ################################## xy shifts ###################################
 ################################################################################
@@ -241,6 +255,9 @@ print(paste0("Number of removed duplicated coordinates after combination: ", sum
 
     msidata = msidata_combined
     save(msidata, file="$msidata_combined")
+
+    ## save msidata as imzML file
+    writeImzML(msidata, "out")
 
     ## create x,y,sample_name dataframe for QC pdf
 
@@ -390,6 +407,8 @@ position_df\$sample_name = gsub("^[^_]*_","",position_df\$sample_name)
     }
 
 
+
+
     ]]></configfile>
     </configfiles>
     <inputs>
@@ -439,11 +458,15 @@ position_df\$sample_name = gsub("^[^_]*_","",position_df\$sample_name)
                 <param name="xy_header" type="boolean" label="Tabular files contain a header line" truevalue="TRUE" falsevalue="FALSE"/>
             </when>
         </conditional>
+        <param name="imzml_output" type="boolean" label="Output of imzML file" truevalue="TRUE" falsevalue="FALSE"/>
     </inputs>
     <outputs>
         <data format="rdata" name="msidata_combined" label="${tool.name} on ${on_string}"/>
         <data format="pdf" name="QC_overview" from_work_dir="Combined_qc.pdf" label = "${tool.name} on ${on_string}: QC"/>
         <data format="tabular" name="pixel_annotations" label="${tool.name} on ${on_string}: annotations"/>
+        <data format="imzml" name="outfile_imzml" label="${tool.name} on ${on_string} : imzML">
+            <filter>imzml_output</filter>
+       </data>
     </outputs>
     <tests>
         <test>
@@ -543,7 +566,9 @@ This tool uses the Cardinal combine function to combine several mass spectrometr
 
 **Output**
 
-- single imzML file containing all valid input files
+- 
+- MSI data as .RData output (can be read with the Cardinal package in R)
+- optional: MSI data as imzML file
 - pdf that shows the pixel positions and annotations of the combined files
 - Tabular file with pixel annotations (x,y,column with input file names and up to five annotation columns)
 
