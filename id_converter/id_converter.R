@@ -110,8 +110,7 @@ mapping = function() {
   # Write output
   if (list_id_input_type == "list") {
     res = cbind(as.matrix(list_id), res)
-    names = c(input_id_type, names)
-    colnames(res) = names
+    colnames(res)[1] = args$id_type 
     write.table(res, output, row.names = FALSE, sep = "\t", quote = FALSE)
   } else if (list_id_input_type == "file") {
     output_content = cbind(file_all, res)
