@@ -79,7 +79,7 @@ mapping = function() {
   
   args <- get_args()
   
-  save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/id_converter/args.rda")
+  #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/id_converter/args.rda")
   #load("/home/dchristiany/proteore_project/ProteoRE/tools/id_converter/args.rda")
   
   input_id_type = args$id_type # Uniprot, ENSG....
