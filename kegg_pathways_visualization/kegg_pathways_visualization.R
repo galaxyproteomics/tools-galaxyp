@@ -270,4 +270,5 @@ for (id in ids) {
 }
 
 #text file output
+colnames(DF) <- gsub("\\."," ",colnames(DF))
 write.table(DF,file=args$output,quote=FALSE, sep='\t',row.names = FALSE, col.names = TRUE)
