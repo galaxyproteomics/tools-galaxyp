@@ -4,23 +4,13 @@ options(warn=-1)  #TURN OFF WARNINGS !!!!!!
 suppressMessages(library(goProfiles,quietly = TRUE))
 
 # Read file and return file content as data.frame
-readfile = function(filename, header) {
-  if (header == "true") {
-    # Read only first line of the file as header:
-    headers <- read.table(filename, nrows = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = "")
-    #Read the data of the files (skipping the first row)
-    file <- read.table(filename, skip = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = "")
-    # Remove empty rows
-    file <- file[!apply(is.na(file) | file == "", 1, all), , drop=FALSE]
-    #And assign the header to the data
-    names(file) <- headers
+read_file <- function(path,header){
+  file <- try(read.csv(path,header=header, sep="\t",stringsAsFactors = FALSE, quote="\""),silent=TRUE)
+  if (inherits(file,"try-error")){
+    stop("File not found !")
+  }else{
+    return(file)
   }
-  else {
-    file <- read.table(filename, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = "")
-    # Remove empty rows
-    file <- file[!apply(is.na(file) | file == "", 1, all), , drop=FALSE]
-  }
-  return(file)
 }
 
 check_ids <- function(vector,type) {
@@ -49,9 +39,9 @@ getprofile = function(ids, id_type, level, duplicate,species) {
     package=org.Hs.eg.db
   } else if (species=="org.Mm.eg.db"){
     package=org.Mm.eg.db
+  } else if (species=="org.Rn.eg.db"){
+    package=org.Rn.eg.db
   }
-  
-  
   
   # Check if level is number
   if (! as.numeric(level) %% 1 == 0) {
@@ -196,7 +186,7 @@ goprofiles = function() {
   args <- as.list(as.character(argsDF$V2))
   names(args) <- argsDF$V1
 
-  #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/goprofiles/args.Rda")
+  save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/goprofiles/args.Rda")
   #load("/home/dchristiany/proteore_project/ProteoRE/tools/goprofiles/args.Rda")
   
   id_type = args$id_type
