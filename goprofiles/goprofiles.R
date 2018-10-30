@@ -186,7 +186,7 @@ goprofiles = function() {
   args <- as.list(as.character(argsDF$V2))
   names(args) <- argsDF$V1
 
-  save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/goprofiles/args.Rda")
+  #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/goprofiles/args.Rda")
   #load("/home/dchristiany/proteore_project/ProteoRE/tools/goprofiles/args.Rda")
   
   id_type = args$id_type
