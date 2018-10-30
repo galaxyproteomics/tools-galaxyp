@@ -43,7 +43,7 @@ get_args <- function(){
 }
 
 read_file <- function(path,header){
-  file <- try(read.table(path,header=header, sep="\t",stringsAsFactors = FALSE, quote="",fill=TRUE),silent=TRUE)
+  file <- try(read.csv(path,header=header, sep="\t",stringsAsFactors = FALSE, quote="",fill=TRUE),silent=TRUE)
   if (inherits(file,"try-error")){
     stop("File not found !")
   }else{
@@ -104,9 +104,12 @@ rownames_col = as.integer(gsub("c","",args$row_names))
 if (length(cols) <=1 ){
   stop("You need several colums to build a heatmap")
 }
+dist=args$dist
+clust=args$clust
+dendrogram=args$dendrogram
 
 #cleaning data
-uto <- read_file(args$input,header = header)
+uto <- read_file(args$input,header)
 uto <- clean_df(uto,cols,rownames_col)
 if (header) {
   col_names = names(data)
@@ -115,13 +118,13 @@ if (header) {
 }
 
 #building heatmap
-heatmaply(uto, file=output, margins=c(100,50,NA,0), plot_method="plotly", labRow = rownames(uto), labCol = col_names,
+heatmaply(uto, file=output, margins=c(100,50,NA,0), plot_method="plotly", labRow = rownames(uto), labCol = col_names, dist_method = dist, hclust_method = clust, dendrogram = dendrogram,
           grid_gap = 0,cexCol = 1, column_text_angle = as.numeric(args$col_text_angle), width = 1000, height=1000, colors = c('blue','green','yellow','red'))
 
 
 ####heatmaply
 
-simulateExprData <- function(n, n0, p, rho0, rho1){ 
+simulateExprData <- function(n, n0, p, rho0, rho1){ row 
   # n: total number of subjects 
   # n0: number of subjects with exposure 0 
   # n1: number of subjects with exposure 1 
