@@ -13,6 +13,17 @@ read_file <- function(path,header){
   }
 }
 
+#convert a string to boolean
+str2bool <- function(x){
+  if (any(is.element(c("t","true"),tolower(x)))){
+    return (TRUE)
+  }else if (any(is.element(c("f","false"),tolower(x)))){
+    return (FALSE)
+  }else{
+    return(NULL)
+  }
+}
+
 check_ids <- function(vector,type) {
   uniprot_pattern = "^([OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9]([A-Z][A-Z0-9]{2}[0-9]){1,2})$"
   entrez_id = "^([0-9]+|[A-Z]{1,2}_[0-9]+|[A-Z]{1,2}_[A-Z]{1,4}[0-9]+)$"
@@ -202,9 +213,9 @@ goprofiles = function() {
     } else {
       ncol = as.numeric(gsub("c", "", ncol))
     }
-    header = args$header
+    header = str2bool(args$header)
     # Get file content
-    file = readfile(filename, header)
+    file = read_file(filename, header)
     # Extract Protein IDs list
     input = unlist(strsplit(as.character(file[,ncol]),";"))
     input = input [which(!is.na(input))]
