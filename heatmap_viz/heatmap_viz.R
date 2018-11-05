@@ -27,6 +27,7 @@ get_args <- function(){
       --row_names             Column which contains row names
       --header                True or False
       --col_text_angle        Angle of columns label ; from -90 to 90 degres
+      --dist_fun              function used to compute the distance
 
       Example:
       ./heatmap_viz.R --input='dat.nucl.norm.imputed.tsv' --output='heatmap.html' --cols='3:8' --row_names='2' --header=TRUE --col_text_angle=0 \n\n")
@@ -67,6 +68,7 @@ str2bool <- function(x){
 #remove lines with at least one empty cell in a matrix between two defined columns
 clean_df <- function(mat,cols,rownames_col){
   uto = mat[,cols]
+  uto <- as.data.frame(apply(uto,c(1,2),function(x) gsub(",",".",x)))
   uto <- as.data.frame(apply(uto,c(1,2),function(x) {ifelse(is.character(x),as.numeric(x),x)}))
   rownames(uto) <- mat[,rownames_col]
   #bad_lines <- which(apply(uto, 1, function(x) any(is.na(x))))
@@ -118,9 +120,15 @@ if (header) {
 }
 
 #building heatmap
-heatmaply(uto, file=output, margins=c(100,50,NA,0), plot_method="plotly", labRow = rownames(uto), labCol = col_names, dist_method = dist, hclust_method = clust, dendrogram = dendrogram,
-          grid_gap = 0,cexCol = 1, column_text_angle = as.numeric(args$col_text_angle), width = 1000, height=1000, colors = c('blue','green','yellow','red'))
-
+if (dist %in% c("pearson","spearman","kendall")){
+  heatmaply(uto, file=output, margins=c(100,50,NA,0), plot_method="plotly", labRow = rownames(uto), labCol = col_names, distfun=dist, 
+            hclust_method = clust, dendrogram = dendrogram, grid_gap = 0,cexCol = 1, column_text_angle = as.numeric(args$col_text_angle), 
+            width = 1000, height=1000, colors = c('blue','green','yellow','red'))
+} else {
+  heatmaply(uto, file=output, margins=c(100,50,NA,0), plot_method="plotly", labRow = rownames(uto), labCol = col_names, dist_method = dist, 
+          hclust_method = clust, dendrogram = dendrogram, grid_gap = 0,cexCol = 1, column_text_angle = as.numeric(args$col_text_angle), 
+          width = 1000, height=1000, colors = c('blue','green','yellow','red'))
+}
 
 ####heatmaply
 
