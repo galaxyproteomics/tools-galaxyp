@@ -146,14 +146,13 @@ protein_features = function() {
     write.table("None of the input ids can be found in Nextprot",file=output,sep="\t",quote=FALSE,col.names=TRUE,row.names=FALSE)
   } else {
     res <- get_nextprot_info(nextprot,NextprotID,pc_features,localization,diseases_info)
-    
+    res <- apply(res, c(1,2), function(x) gsub("^$|^ $", NA, x))  #convert "" et " " to NA
     
     # Write output
     if (inputtype == "copy_paste") {
       if (id_type=="Uniprot_AC"){
         res = cbind(input, res)
         colnames(res)[1] = id_type
-        colnames(res) = gsub("\\."," ",colnames(res))
       }
       if ("res" %in% colnames(res)){colnames(res)[which(colnames(res)=="res")] = "NexprotID" } #if no features are selected
       write.table(res, output, row.names = FALSE, sep = "\t", quote = FALSE)
@@ -162,7 +161,6 @@ protein_features = function() {
       res = res[!duplicated(res$NextprotID),]
       output_content = merge(file, res,by="NextprotID",incomparables = NA,all.x=T)
       output_content = order_columns(output_content,ncol,id_type,file)
-      colnames(output_content) = gsub("\\."," ",colnames(output_content))
       write.table(output_content, output, row.names = FALSE, sep = "\t", quote = FALSE)
     }
   } 
