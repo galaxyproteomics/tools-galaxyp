@@ -106,6 +106,7 @@ mapping = function() {
     
   # Map IDs
   res <- id_map[match(list_id,id_map[input_id_type][,]),options]
+  res <- apply(res, c(1,2), function(x) gsub("^$|^ $", NA, x))
      
   # Write output
   if (list_id_input_type == "list") {
