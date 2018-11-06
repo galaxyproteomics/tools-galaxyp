@@ -110,11 +110,13 @@ mapping = function() {
   # Write output
   if (list_id_input_type == "list") {
     res = cbind(as.matrix(list_id), res)
-    colnames(res)[1] = args$id_type 
+    colnames(res)[1] = args$id_type
+    colnames(res) = gsub("."," ",colnames(res))
     write.table(res, output, row.names = FALSE, sep = "\t", quote = FALSE)
   } else if (list_id_input_type == "file") {
     output_content = cbind(file_all, res)
     if (length(options) == 1){ colnames(output_content)[ncol(output_content)] = options}
+    colnames(output_content) = gsub("\\."," ",colnames(output_content))
     write.table(output_content, output, row.names = FALSE, sep = "\t", quote = FALSE)
   }
 }
