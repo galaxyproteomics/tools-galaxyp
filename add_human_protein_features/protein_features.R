@@ -1,6 +1,6 @@
 # Read file and return file content as data.frame
 read_file <- function(path,header){
-  file <- try(read.table(path,header=header, sep="\t",stringsAsFactors = FALSE, quote=""),silent=TRUE)
+  file <- try(read.table(path,header=header, sep="\t",stringsAsFactors = FALSE, quote="", check.names = F),silent=TRUE)
   if (inherits(file,"try-error")){
     stop("File not found !")
   }else{
@@ -146,7 +146,7 @@ protein_features = function() {
     write.table("None of the input ids can be found in Nextprot",file=output,sep="\t",quote=FALSE,col.names=TRUE,row.names=FALSE)
   } else {
     res <- get_nextprot_info(nextprot,NextprotID,pc_features,localization,diseases_info)
-    res <- apply(res, c(1,2), function(x) gsub("^$|^ $", NA, x))  #convert "" et " " to NA
+    res <- as.data.frame(apply(res, c(1,2), function(x) gsub("^$|^ $", NA, x)))  #convert "" et " " to NA
     
     # Write output
     if (inputtype == "copy_paste") {
