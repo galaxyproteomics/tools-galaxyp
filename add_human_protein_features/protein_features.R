@@ -153,6 +153,7 @@ protein_features = function() {
       if (id_type=="Uniprot_AC"){
         res = cbind(input, res)
         colnames(res)[1] = id_type
+        colnames(res) = gsub("\\."," ",colnames(res))
       }
       if ("res" %in% colnames(res)){colnames(res)[which(colnames(res)=="res")] = "NexprotID" } #if no features are selected
       write.table(res, output, row.names = FALSE, sep = "\t", quote = FALSE)
@@ -161,6 +162,7 @@ protein_features = function() {
       res = res[!duplicated(res$NextprotID),]
       output_content = merge(file, res,by="NextprotID",incomparables = NA,all.x=T)
       output_content = order_columns(output_content,ncol,id_type,file)
+      colnames(output_content) = gsub("\\."," ",colnames(output_content))
       write.table(output_content, output, row.names = FALSE, sep = "\t", quote = FALSE)
     }
   } 
