@@ -44,7 +44,7 @@ get_args <- function(){
 }
 
 read_file <- function(path,header){
-  file <- try(read.csv(path,header=header, sep="\t",stringsAsFactors = FALSE, quote="",fill=TRUE),silent=TRUE)
+  file <- try(read.csv(path,header=header, sep="\t",stringsAsFactors = FALSE, quote="",fill=TRUE,check.names = F),silent=TRUE)
   if (inherits(file,"try-error")){
     stop("File not found !")
   }else{

@@ -1,6 +1,6 @@
 # Read file and return file content as data.frame
 read_file <- function(path,header){
-  file <- try(read.csv(path,header=header, sep="\t",stringsAsFactors = FALSE, quote="\""),silent=TRUE)
+  file <- try(read.csv(path,header=header, sep="\t",stringsAsFactors = FALSE, quote="\"",check.names = F),silent=TRUE)
   if (inherits(file,"try-error")){
     stop("File not found !")
   }else{
@@ -111,12 +111,10 @@ mapping = function() {
   if (list_id_input_type == "list") {
     res = cbind(as.matrix(list_id), res)
     colnames(res)[1] = args$id_type
-    colnames(res) = gsub("."," ",colnames(res))
     write.table(res, output, row.names = FALSE, sep = "\t", quote = FALSE)
   } else if (list_id_input_type == "file") {
     output_content = cbind(file_all, res)
     if (length(options) == 1){ colnames(output_content)[ncol(output_content)] = options}
-    colnames(output_content) = gsub("\\."," ",colnames(output_content))
     write.table(output_content, output, row.names = FALSE, sep = "\t", quote = FALSE)
   }
 }
