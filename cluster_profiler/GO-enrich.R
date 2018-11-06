@@ -201,8 +201,7 @@ clusterProfiler = function() {
   } else if (id_type=="Entrez" & any(check_ids(input,"entrez"))) {
     gene<-unique(input)
   } else {
-    print(paste(id_type,"not found in your ids list, please check your IDs in input or the selected column of your input file"))
-    stop()
+    stop(paste(id_type,"not found in your ids list, please check your IDs in input or the selected column of your input file"))
   }
 
   ontology <- strsplit(args$onto_opt, ",")[[1]]
