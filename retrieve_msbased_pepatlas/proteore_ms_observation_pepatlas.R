@@ -1,36 +1,26 @@
 # Read file and return file content as data.frame
-readfile <- function(filename, header) {
-  if (header == "true") {
-    # Read only first line of the file as header:
-    headers <- try(read.table(filename, nrows = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = ""),silent=TRUE)
-    if (!inherits(headers, 'try-error')){
-      file
-    } else {
-      stop("Your file seems to be empty, 'number of MS/MS observations in a tissue' tool stopped !")
-    }
-    #Read the data of the files (skipping the first row)
-    file <- read.table(filename, skip = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = "")
-    # Remove empty rows
-    file <- file[!apply(is.na(file) | file == "", 1, all), , drop=FALSE]
-    #And assign the header to the data
-    names(file) <- headers
+read_file <- function(path,header){
+  file <- try(read.csv(path,header=header, sep="\t",stringsAsFactors = FALSE, quote="\"", check.names = F),silent=TRUE)
+  if (inherits(file,"try-error")){
+    stop("File not found !")
+  }else{
+    return(file)
   }
-  else {
-    file <- try(read.table(filename, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = ""),silent=TRUE)
-    if (!inherits(file, 'try-error')){
-      file
-    } else {
-      stop("Your file seems to be empty, 'number of MS/MS observations in a tissue' tool stopped !")
-    }
-    # Remove empty rows
-    file <- file[!apply(is.na(file) | file == "", 1, all), , drop=FALSE]
+}
+
+str2bool <- function(x){
+  if (any(is.element(c("t","true"),tolower(x)))){
+    return (TRUE)
+  }else if (any(is.element(c("f","false"),tolower(x)))){
+    return (FALSE)
+  }else{
+    return(NULL)
   }
-  return(file)
 }
 
 nb_obs_PeptideAtlas <- function(input, atlas_file) {
   ## Calculate the sum of n_observations for each ID in input
-  atlas = readfile(atlas_file, "true")
+  atlas = read_file(atlas_file, T)
   return(atlas$nb_obs[match(input,atlas$Uniprot_AC)])
 }
 
@@ -73,14 +63,9 @@ main = function() {
     } else {
       ncol = as.numeric(gsub("c", "", ncol))
     }
-    header = args$header
-    # Get file content
-    file = readfile(filename, header)
-    # Extract Protein IDs list
-    input = c()
-    for (row in as.character(file[,ncol])) {
-      input = c(input, strsplit(row, ";")[[1]][1])
-    }
+    header = str2bool(args$header)
+    file = read_file(filename, header)
+    input = sapply(file[,ncol],function(x) strsplit(as.character(x),";")[[1]][1],USE.NAMES = F)
   }
 
   output = args$output
@@ -101,20 +86,19 @@ main = function() {
   
   # Annotations
   res = sapply(df$path, function(x) nb_obs_PeptideAtlas(input, x), USE.NAMES = FALSE)
-  names=df$filename
+  res = as.data.frame(apply(res, c(1,2), function(x) gsub("^$|^ $", NA, x)))
+  colnames(res)=df$filename
 
   # Write output
   if (input_type == "list") {
     res = cbind(as.matrix(input), res)
-    names = c("Uniprot accession number", names)
-    colnames(res) = names
+    colnames(res)[1] = "Uniprot accession number"
     write.table(res, output, row.names = FALSE, sep = "\t", quote = FALSE)
   } else if (input_type == "file") {
-    names = c(names(file), names)
     output_content = cbind(file, res)
-    colnames(output_content) = names
     write.table(output_content, output, row.names = FALSE, sep = "\t", quote = FALSE)
   }
+  
 }
 
 main()
