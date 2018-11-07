@@ -24,47 +24,29 @@ str2bool <- function(x){
 # reliability is one, or several, or 0 (=ALL) of "Approved", "Supported", "Uncertain"
 annot.HPAnorm<-function(input, HPA_normal_tissue, tissue, level, reliability, not_mapped_option) {
   dat <- subset(HPA_normal_tissue, Gene %in% input)
+  res.Tissue<-subset(dat, Tissue %in% tissue) 
+  res.Level<-subset(res.Tissue, Level %in% level) 
+  res.Rel<-subset(res.Level, Reliability %in% reliability) 
   
-  if (length(tissue)==1) { 
-    res.Tissue<-subset(dat, Tissue==tissue) 
-  }
-  if (length(tissue)>1)  { 
-    res.Tissue<-subset(dat, Tissue %in% tissue) 
-  }
-  
-  if (length(level)==1) { 
-    res.Level<-subset(res.Tissue, Level==level) 
-  }
-  if (length(level)>1)  { 
-    res.Level<-subset(res.Tissue, Level %in% level) 
-  }
-  
-  if (length(reliability)==1) { 
-    res.Rel<-subset(res.Level, Reliability==reliability) 
-  }
-  if (length(reliability)>1)  {
-    res.Rel<-subset(res.Level, Reliability %in% reliability) 
-  }
-  
-  if (not_mapped_option == "true") {
+  if (not_mapped_option) {
     if (length(setdiff(intersect(input, unique(dat$Gene)), unique(res.Rel$Gene)))>0) {
       not_match_IDs <- matrix(setdiff(intersect(input, unique(dat$Gene)), unique(res.Rel$Gene)), ncol = 1, nrow = length(setdiff(intersect(input, unique(dat$Gene)), unique(res.Rel$Gene))))
       not.match <- matrix("not match", ncol = ncol(HPA_normal_tissue) - 1, nrow = length(not_match_IDs))
       not.match <- cbind(not_match_IDs, unname(not.match))
       colnames(not.match) <- colnames(HPA_normal_tissue)
       res <- rbind(res.Rel, not.match)
-    }
-    else {
+    } else {
       res <- res.Rel
-    }
+    } 
+    
     if (length(setdiff(input, unique(dat$Gene)))>0) {
       not.mapped <- matrix(ncol = ncol(HPA_normal_tissue) - 1, nrow = length(setdiff(input, unique(dat$Gene))))
       not.mapped <- cbind(matrix(setdiff(input, unique(dat$Gene)), ncol = 1, nrow = length(setdiff(input, unique(dat$Gene)))), unname(not.mapped))
       colnames(not.mapped) <- colnames(HPA_normal_tissue)
       res <- rbind(res, not.mapped)
     }
-  }
-  else {
+    
+  } else {
     res <- res.Rel
   }
   
@@ -74,21 +56,14 @@ annot.HPAnorm<-function(input, HPA_normal_tissue, tissue, level, reliability, no
 
 annot.HPAcancer<-function(input, HPA_cancer_tissue, cancer, not_mapped_option) {
   dat <- subset(HPA_cancer_tissue, Gene %in% input)
+  res.Cancer<-subset(dat, Cancer %in% cancer) 
 
-  if (length(cancer)==1) { 
-    res.Cancer<-subset(dat, Cancer==cancer) 
-  }
-  if (length(cancer)>1)  { 
-    res.Cancer<-subset(dat, Cancer %in% cancer) 
-  }
-
-  if (not_mapped_option == "true") {
+  if (not_mapped_option) {
     not.mapped <- matrix(ncol=ncol(HPA_cancer_tissue)-1, nrow=length(setdiff(input, unique(dat$Gene))))
     not.mapped <- cbind(matrix(setdiff(input, unique(dat$Gene)), ncol = 1, nrow = length(setdiff(input, unique(dat$Gene)))), unname(not.mapped))
     colnames(not.mapped) <- colnames(HPA_cancer_tissue)
     res <- rbind(res.Cancer, not.mapped)
-  }
-  else {
+  } else {
     res <- res.Cancer
   }
   return(res)
@@ -149,7 +124,7 @@ main <- function() {
 
   # Extract other options
   atlas = args$atlas
-  not_mapped_option = args$not_mapped
+  not_mapped_option = str2bool(args$not_mapped)
   if (atlas=="normal") {
     tissue = strsplit(args$tissue, ",")[[1]]
     level = strsplit(args$level, ",")[[1]]
