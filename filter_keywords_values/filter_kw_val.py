@@ -71,6 +71,7 @@ def filters(args):
 
     if args.value:
         for v in args.value:
+            v[0] = v[0].replace(",",".")
             if is_number("float", v[0]):
                 results_dict = filter_value(csv_file, header, results_dict, v[0], v[1], v[2])
             else:
@@ -78,6 +79,7 @@ def filters(args):
 
     if args.values_range:
         for vr in args.values_range:
+            vr[:2] = [value.replace(",",".") for value in vr[:2]]
             if (is_number("float", vr[0]) or is_number("int", vr[0])) and (is_number("float",vr[1]) or is_number("int",vr[1])):
                 results_dict = filter_values_range(csv_file, header, results_dict, vr[0], vr[1], vr[2], vr[3])
 
@@ -101,7 +103,7 @@ def filters(args):
                     filtered_lines.append(line)
                 else : 
                     remaining_lines.append(line)
-    
+
     #sort of results by column
     if args.sort_col :
         sort_col=args.sort_col.split(",")[0]
@@ -128,16 +130,30 @@ def sort_by_column(tab,sort_col,reverse,header):
             head=tab[0]
             tab=tab[1:]
 
-        if is_number("int",tab[0][sort_col]) :
-            tab = sorted(tab, key=lambda row: int(row[sort_col]), reverse=reverse)
-        elif is_number("float",tab[0][sort_col]) :
-            tab = sorted(tab, key=lambda row: float(row[sort_col]), reverse=reverse)
+        #list of empty cells in the column to sort
+        unsortable_lines = [i for i,line in enumerate(tab) if line[sort_col]=='']
+        unsorted_tab=[ tab[i] for i in unsortable_lines]
+        tab= [line for i,line in enumerate(tab) if i not in unsortable_lines]
+
+        if any_float(tab,sort_col) : 
+            tab = sorted(tab, key=lambda row: float(row[sort_col].replace(',','.')), reverse=reverse)
+        elif not any_float(tab,sort_col) :
+            tab = sorted(tab, key=lambda row: int(row[sort_col]), reverse=reverse)         
         else :
             tab = sorted(tab, key=lambda row: row[sort_col], reverse=reverse)
         
+        tab.extend(unsorted_tab)
         if header is True : tab = [head]+tab
 
     return tab
+
+def any_float(tab,col) :
+    
+    for line in tab :
+        if is_number("float",line[col].replace(",",".")) :
+            return True
+
+    return False 
 
 #Read the keywords file to extract the list of keywords
 def read_option(filename):
@@ -195,13 +211,18 @@ def filter_value(csv_file, header, results_dict, filter_value, ncol, opt):
 
     for id_line,line in enumerate(csv_file):
         if header is True and id_line == 0 : continue
-        value = line[ncol].replace('"', "").strip()
+        value = line[ncol].replace('"', "").replace(",",".").strip()
         if value.replace(".", "", 1).isdigit():
             to_filter=value_compare(value,filter_value,opt)
             
             #adding the result to the dictionary
             if id_line in results_dict : results_dict[id_line].append(to_filter)
             else : results_dict[id_line]=[to_filter]
+
+        #impossible to treat (ex : "" instead of a number), we keep the line by default        
+        else :
+            if id_line in results_dict : results_dict[id_line].append(False)
+            else : results_dict[id_line]=[False]
             
     return results_dict
 
@@ -214,7 +235,7 @@ def filter_values_range(csv_file, header, results_dict, bottom_value, top_value,
 
     for id_line, line in enumerate(csv_file):
         if header is True and id_line == 0 : continue
-        value = line[ncol].replace('"', "").strip()
+        value = line[ncol].replace('"', "").replace(",",".").strip()
         if value.replace(".", "", 1).isdigit():
             value=float(value)
             if inclusive is True:
@@ -225,6 +246,11 @@ def filter_values_range(csv_file, header, results_dict, bottom_value, top_value,
             #adding the result to the dictionary
             if id_line in results_dict : results_dict[id_line].append(in_range)
             else : results_dict[id_line]=[in_range]
+        
+        #impossible to treat (ex : "" instead of a number), we keep the line by default        
+        else :
+            if id_line in results_dict : results_dict[id_line].append(False)
+            else : results_dict[id_line]=[False]
 
     return results_dict 
 
