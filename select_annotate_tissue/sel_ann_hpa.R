@@ -1,24 +1,22 @@
-
 # Read file and return file content as data.frame
-readfile = function(filename, header) {
-  if (header == "true") {
-    # Read only first line of the file as header:
-    headers <- read.table(filename, nrows = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = "")
-    #Read the data of the files (skipping the first row)
-    file <- read.table(filename, skip = 1, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = "")
-    # Remove empty rows
-    file <- file[!apply(is.na(file) | file == "", 1, all), , drop=FALSE]
-    #And assign the header to the data
-    names(file) <- headers
+read_file <- function(path,header){
+  file <- try(read.csv(path,header=header, sep="\t",stringsAsFactors = FALSE, quote="\"", check.names = F),silent=TRUE)
+  if (inherits(file,"try-error")){
+    stop("File not found !")
+  }else{
+    return(file)
   }
-  else {
-    file <- read.table(filename, header = FALSE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE, na.strings=c("", "NA"), blank.lines.skip = TRUE, quote = "")
-    # Remove empty rows
-    file <- file[!apply(is.na(file) | file == "", 1, all), , drop=FALSE]
-  }
-  return(file)
 }
 
+str2bool <- function(x){
+  if (any(is.element(c("t","true"),tolower(x)))){
+    return (TRUE)
+  }else if (any(is.element(c("f","false"),tolower(x)))){
+    return (FALSE)
+  }else{
+    return(NULL)
+  }
+}
 
 # input has to be a list of IDs in ENSG format
 # tissue is one of unique(HPA.normal.tissue$Tissue)
@@ -130,23 +128,24 @@ main <- function() {
   args <- as.list(as.character(argsDF$V2))
   names(args) <- argsDF$V1
   
+  #save(args,file = "/home/dchristiany/proteore_project/ProteoRE/tools/select_annotate_tissue/args.rda")
+  #load("/home/dchristiany/proteore_project/ProteoRE/tools/select_annotate_tissue/args.rda")
+  
   # Extract input
   input_type = args$input_type
   if (input_type == "list") {
     list_id = strsplit(args$input, "[ \t\n]+")[[1]]
-  }
-  else if (input_type == "file") {
+  } else if (input_type == "file") {
     filename = args$input
     column_number = as.numeric(gsub("c", "" ,args$column_number))
-    header = args$header
-    file = readfile(filename, header)
-    list_id = c()
+    header = str2bool(args$header)
+    file = read_file(filename, header)
     list_id = sapply(strsplit(file[,column_number], ";"), "[", 1)
   }
   input = list_id
 
   # Read reference file
-  reference_file = read.table(args$ref_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
+  reference_file = read_file(args$ref_file, TRUE)
 
   # Extract other options
   atlas = args$atlas
@@ -157,8 +156,7 @@ main <- function() {
     reliability = strsplit(args$reliability, ",")[[1]]
     # Calculation
     res = annot.HPAnorm(input, reference_file, tissue, level, reliability, not_mapped_option)
-  }
-  else if (atlas=="cancer") {
+  } else if (atlas=="cancer") {
     cancer = strsplit(args$cancer, ",")[[1]]
     # Calculation
     res = annot.HPAcancer(input, reference_file, cancer, not_mapped_option)
@@ -166,6 +164,7 @@ main <- function() {
   
   # Write output
   output = args$output
+  res <- apply(res, c(1,2), function(x) gsub("^$|^ $", NA, x))
   write.table(res, output, sep = "\t", quote = FALSE, row.names = FALSE)
 }
 
