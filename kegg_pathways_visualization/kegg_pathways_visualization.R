@@ -263,7 +263,7 @@ for (id in ids) {
       DF <- data.frame(t(mapping_summary(pv.out,species,id,id_type)),stringsAsFactors = F,check.names = F)
     } else {
       #print (mapping_summary(pv.out,species,id))
-      DF <- rbind(DF,data.frame(t(mapping_summary(pv.out,species,id,id_type)),stringsAsFactors = F))
+      DF <- rbind(DF,data.frame(t(mapping_summary(pv.out,species,id,id_type)),stringsAsFactors = F,check.names = F))
     }
   }
     
