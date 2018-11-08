@@ -73,6 +73,7 @@ def filters(args):
         for v in args.value:
             v[0] = v[0].replace(",",".")
             if is_number("float", v[0]):
+                csv_file = comma_number_to_float(csv_file,v[1],header)
                 results_dict = filter_value(csv_file, header, results_dict, v[0], v[1], v[2])
             else:
                 raise ValueError("Please enter a number in filter by value")
@@ -80,6 +81,7 @@ def filters(args):
     if args.values_range:
         for vr in args.values_range:
             vr[:2] = [value.replace(",",".") for value in vr[:2]]
+            csv_file = comma_number_to_float(csv_file,v[2],header)
             if (is_number("float", vr[0]) or is_number("int", vr[0])) and (is_number("float",vr[1]) or is_number("int",vr[1])):
                 results_dict = filter_values_range(csv_file, header, results_dict, vr[0], vr[1], vr[2], vr[3])
 
@@ -126,7 +128,7 @@ def filters(args):
 def sort_by_column(tab,sort_col,reverse,header):
     
     if len(tab) > 1 : #if there's more than just a header or 1 row
-        if header is True :
+        if header :
             head=tab[0]
             tab=tab[1:]
 
@@ -136,7 +138,7 @@ def sort_by_column(tab,sort_col,reverse,header):
         tab= [line for i,line in enumerate(tab) if i not in unsortable_lines]
 
         if any_float(tab,sort_col) : 
-            tab = sorted(tab, key=lambda row: float(row[sort_col].replace(',','.')), reverse=reverse)
+            tab = sorted(tab, key=lambda row: float(row[sort_col]), reverse=reverse)
         elif not any_float(tab,sort_col) :
             tab = sorted(tab, key=lambda row: int(row[sort_col]), reverse=reverse)         
         else :
@@ -147,6 +149,23 @@ def sort_by_column(tab,sort_col,reverse,header):
 
     return tab
 
+
+#turn into float a column
+def comma_number_to_float(csv_file,ncol,header) :
+    ncol = int(ncol.replace("c","")) - 1
+    if header : 
+        tmp=[csv_file[0]]
+        csv_file=csv_file[1:]
+    else : 
+        tmp=[]
+
+    for line in csv_file :
+        line[ncol]=line[ncol].replace(",",".")
+        tmp.append(line)
+
+    return (tmp)
+
+#return True is there is at least one float in the column
 def any_float(tab,col) :
     
     for line in tab :
