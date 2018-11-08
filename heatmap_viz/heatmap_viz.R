@@ -113,6 +113,8 @@ dendrogram=args$dendrogram
 #cleaning data
 uto <- read_file(args$input,header)
 uto <- clean_df(uto,cols,rownames_col)
+uto <- uto[rowSums(is.na(uto)) != ncol(uto), ]  #remove emptylines
+
 if (header) {
   col_names = names(data)
 } else {
