@@ -145,7 +145,7 @@ get_args <- function(){
 
 args <- get_args()
 
-#save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/kegg_pathways_visualization/args.Rda")
+save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/kegg_pathways_visualization/args.Rda")
 #load("/home/dchristiany/proteore_project/ProteoRE/tools/kegg_pathways_visualization/args.Rda")
 
 ###setting variables
@@ -268,6 +268,8 @@ for (id in ids) {
   }
     
 }
+
+DF <- as.data.frame(apply(DF, c(1,2), function(x) gsub("^$|^ $", NA, x)))  #convert "" et " " to NA
 
 #text file output
 write.table(DF,file=args$output,quote=FALSE, sep='\t',row.names = FALSE, col.names = TRUE)
