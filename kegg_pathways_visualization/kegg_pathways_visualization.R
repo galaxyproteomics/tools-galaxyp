@@ -222,7 +222,7 @@ if (fold_change_data) {
   } else {
     mat <- as.data.frame(cbind(tab$e1)[which(!is.na(tab$geneID)),])
     mat = mat[geneID_indices,]
-    row.names(mat) <- geneID[geneID_indices]
+    names(mat) <- geneID[geneID_indices]
   }
 } else {
   mat <- geneID
@@ -260,7 +260,7 @@ for (id in ids) {
   
     #creating text file
     if (!exists("DF")) {
-      DF <- data.frame(t(mapping_summary(pv.out,species,id,id_type)),stringsAsFactors = F)
+      DF <- data.frame(t(mapping_summary(pv.out,species,id,id_type)),stringsAsFactors = F,check.names = F)
     } else {
       #print (mapping_summary(pv.out,species,id))
       DF <- rbind(DF,data.frame(t(mapping_summary(pv.out,species,id,id_type)),stringsAsFactors = F))
