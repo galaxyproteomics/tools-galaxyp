@@ -61,17 +61,25 @@ If your input is a multiple-column file, the mapped IDs column(s) will be added 
 
 Nextprot and OMIM are only available for Human.
 
-
 This tool converts human IDs using file built from:
 
-* HUMAN_9606_idmapping_selected.tab
+* HUMAN_9606_idmapping_selected.tab (Uniprot 23/10/2018)
     Tarball downloaded from ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/
 
-* nextprot_ac_list_all.txt 
+* HUMAN_9606_idmapping.dat (Uniprot 23/10/18)
+    Tarball downloaded from ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/
+
+* nextprot_ac_list_all.txt (Nextprot released on 10/10/2018)
     Downloaded from ftp://ftp.nextprot.org/pub/current_release/ac_lists/
 
-* MOUSE_10090_idmapping_selected.tab (Uniprot 02/07/2018)
+* MOUSE_10090_idmapping_selected.tab (Uniprot 23/10/2018)
     Tarball downloaded from ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/
 
-* MOUSE_10090_idmapping.dat (Uniprot 02/07/18)
+* MOUSE_10090_idmapping.dat (Uniprot 23/10/18)
+    Tarball downloaded from ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/
+
+* RAT_10116_idmapping.dat (Uniprot 23/10/18)
+    Tarball downloaded from ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/
+
+* RAT_10116_idmapping_selected.tab (Uniprot 23/10/18)
     Tarball downloaded from ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/
