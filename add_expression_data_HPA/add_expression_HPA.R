@@ -22,16 +22,9 @@ str2bool <- function(x){
 add_expression = function(input, atlas, options) {
   if (all(!input %in% atlas$Ensembl)) {
     return(NULL)
-  }
-  else {
-    res = matrix(nrow=length(input), ncol=0)
-    names = c()
-    for (opt in options) {
-      names = c(names, opt)
-      info = atlas[match(input, atlas$Ensembl,incomparable="NA"),][opt][,]
-      res = cbind(res, info)
-    }
-    colnames(res) = names
+  } else {
+    res = atlas[match(input,atlas$Ensembl),c("Ensembl",options)]
+    res <- as.data.frame(apply(res, c(1,2), function(x) gsub("^$|^ $", NA, x)))  #convert "" et " " to NA
     return(res)
   }
 }
@@ -92,18 +85,18 @@ main = function() {
   output = args$output
   options = strsplit(args$select, ",")[[1]]
   res = add_expression(input, protein_atlas, options)
-  res <- apply(res, c(1,2), function(x) gsub("^$|^ $", NA, x))  #convert "" et " " to NA
+  
 
   # Write output
   if (is.null(res)) {
     write.table("None of the input ENSG ids are can be found in HPA data file",file=output,sep="\t",quote=FALSE,col.names=TRUE,row.names=FALSE)
-  }
-  else {
+  } else {
     if (inputtype == "copypaste") {
       output_content = cbind(as.matrix(input), res)
       colnames(output_content)[1] = "Ensembl"
     } else if (inputtype == "tabfile") {
-      output_content = cbind(file, res)
+      output_content = merge(file, res, by.x=ncol, by.y=1, incomparables = NA,all.x=T)
+      output_content = output_content[order(output_content[,ncol],decreasing = T),]
     }
   write.table(output_content, output, row.names = FALSE, sep = "\t", quote = FALSE)
   }
