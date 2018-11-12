@@ -86,18 +86,18 @@ main = function() {
   
   # Annotations
   res = sapply(df$path, function(x) nb_obs_PeptideAtlas(input, x), USE.NAMES = FALSE)
-  res = as.data.frame(apply(res, c(1,2), function(x) gsub("^$|^ $", NA, x)))
+  
   colnames(res)=df$filename
 
   # Write output
   if (input_type == "list") {
     res = cbind(as.matrix(input), res)
     colnames(res)[1] = "Uniprot accession number"
-    write.table(res, output, row.names = FALSE, sep = "\t", quote = FALSE)
   } else if (input_type == "file") {
-    output_content = cbind(file, res)
-    write.table(output_content, output, row.names = FALSE, sep = "\t", quote = FALSE)
+    res = cbind(file, res)
   }
+  res = as.data.frame(apply(res, c(1,2), function(x) gsub("^$|^ $", NA, x)))
+  write.table(res, output, row.names = FALSE, sep = "\t", quote = FALSE)
   
 }
 

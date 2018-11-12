@@ -146,23 +146,21 @@ protein_features = function() {
     write.table("None of the input ids can be found in Nextprot",file=output,sep="\t",quote=FALSE,col.names=TRUE,row.names=FALSE)
   } else {
     res <- get_nextprot_info(nextprot,NextprotID,pc_features,localization,diseases_info)
-    res <- as.data.frame(apply(res, c(1,2), function(x) gsub("^$|^ $", NA, x)))  #convert "" et " " to NA
     
     # Write output
     if (inputtype == "copy_paste") {
       if (id_type=="Uniprot_AC"){
-        res = cbind(input, res)
-        colnames(res)[1] = id_type
+        output_content = cbind(input, res)
+        colnames(output_content)[1] = id_type
       }
-      if ("res" %in% colnames(res)){colnames(res)[which(colnames(res)=="res")] = "NexprotID" } #if no features are selected
-      write.table(res, output, row.names = FALSE, sep = "\t", quote = FALSE)
-    }
-    else if (inputtype == "file") {
+      if ("res" %in% colnames(output_content)){colnames(output_content)[which(colnames(output_content)=="res")] = "NexprotID" } #if no features are selected
+    } else if (inputtype == "file") {
       res = res[!duplicated(res$NextprotID),]
       output_content = merge(file, res,by="NextprotID",incomparables = NA,all.x=T)
       output_content = order_columns(output_content,ncol,id_type,file)
-      write.table(output_content, output, row.names = FALSE, sep = "\t", quote = FALSE)
     }
+    output_content <- as.data.frame(apply(output_content, c(1,2), function(x) gsub("^$|^ $", NA, x)))  #convert "" et " " to NA
+    write.table(output_content, output, row.names = FALSE, sep = "\t", quote = FALSE)
   } 
   
 }

@@ -57,7 +57,7 @@ main = function() {
   args <- as.list(as.character(argsDF$V2))
   names(args) <- argsDF$V1
 
-  #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/add_expression_data_HPA/args.rda")
+  save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/add_expression_data_HPA/args.rda")
   #load("/home/dchristiany/proteore_project/ProteoRE/tools/add_expression_data_HPA/args.rda")
   
   inputtype = args$inputtype
@@ -98,6 +98,7 @@ main = function() {
       output_content = merge(file, res, by.x=ncol, by.y=1, incomparables = NA,all.x=T)
       output_content = output_content[order(output_content[,ncol],decreasing = T),]
     }
+  output_content <- as.data.frame(apply(output_content, c(1,2), function(x) gsub("^$|^ $", NA, x)))
   write.table(output_content, output, row.names = FALSE, sep = "\t", quote = FALSE)
   }
 }
