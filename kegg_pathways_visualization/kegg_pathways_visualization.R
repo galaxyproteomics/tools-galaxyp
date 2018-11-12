@@ -64,6 +64,11 @@ remove_kegg_prefix <- function(x){
   return(x)
 }
 
+kegg_to_geneID <- function(vector){
+  vector <- sapply(vector, function(x) unlist(strsplit(x,":"))[2],USE.NAMES = F)
+  return (vector)
+}
+
 clean_bad_character <- function(string)  {
   string <- gsub("X","",string)
   return(string)
@@ -79,7 +84,7 @@ get_list_from_cp <-function(list){
 #return a summary from the mapping with pathview in a vector
 mapping_summary <- function(pv.out,species,id,id_type){
   
-  mapped <- pv.out$plot.data.gene$kegg.names[which(pv.out$plot.data.gene$all.mapped!='')]
+  mapped <- unique(pv.out$plot.data.gene$kegg.names[which(pv.out$plot.data.gene$all.mapped!='')])
   nb_mapped <- length(mapped)
   nb_kegg_id <- length(unique(pv.out$plot.data.gene$kegg.names))
   ratio = round((nb_mapped/nb_kegg_id)*100, 2)
@@ -87,11 +92,11 @@ mapping_summary <- function(pv.out,species,id,id_type){
   pathway_id = paste(species,id,sep="")
   pathway_name = as.character(pathways_list[pathways_list[,1]==pathway_id,][2])
   
-  if (id_type=="geneid"){
+  if (id_type=="geneid" || id_type=="keggid") {
     row <- c(pathway_id,pathway_name,length(unique(geneID)),nb_kegg_id,nb_mapped,ratio,paste(mapped,collapse=";"))
     names(row) <- c("KEGG pathway ID","pathway name","nb of Entrez gene ID used","nb of Entrez gene ID mapped",
                     "nb of Entrez gene ID in the pathway", "ratio of Entrez gene ID mapped (%)","Entrez gene ID mapped")
-  }else if (id_type=="uniprotid"){
+  } else if (id_type=="uniprotid") {
     row <- c(pathway_id,pathway_name,length(unique(uniprotID)),length(unique(geneID)),nb_mapped,nb_kegg_id,ratio,paste(mapped,collapse=";"),paste(mapped2geneID[which(mapped2geneID[,2] %in% mapped)],collapse=";"))
     names(row) <- c("KEGG pathway ID","pathway name","nb of Uniprot_AC used","nb of Entrez gene ID used","nb of Entrez gene ID mapped",
                     "nb of Entrez gene ID in the pathway", "ratio of Entrez gene ID mapped (%)","Entrez gene ID mapped","uniprot_AC mapped")
@@ -194,11 +199,15 @@ if (fold_change_data){
   }
 }
 
-##### map uniprotID to entrez geneID
+##### map uniprotID to entrez geneID and kegg to geneID
 if (id_type == "uniprotid") {
   uniprotID = tab[,ncol]
   mapped2geneID = id2eg(ids = uniprotID, category = "uniprot", org = org[[species]], pkg.name = NULL)
   geneID = mapped2geneID[,2]
+  tab = cbind(tab,geneID)
+}else if (id_type == "keggid"){
+  keggID = tab[,ncol]  
+  geneID = kegg_to_geneID(keggID)
   tab = cbind(tab,geneID)
 }else if (id_type == "geneid"){
   colnames(tab)[ncol] <- "geneID"
