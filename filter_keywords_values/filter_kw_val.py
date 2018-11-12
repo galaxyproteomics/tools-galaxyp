@@ -92,19 +92,22 @@ def filters(args):
         remaining_lines.append(csv_file[0])
         filtered_lines.append(csv_file[0])
 
-    for id_line,line in enumerate(csv_file) :
-        if id_line in results_dict :   #skip header and empty lines
-            if args.operator == 'OR' :
-                if any(results_dict[id_line]) :
-                    filtered_lines.append(line)
-                else : 
-                    remaining_lines.append(line)
+    if results_dict == {} :   #no filter used
+        remaining_lines.extend(csv_file[1:])
+    else :
+        for id_line,line in enumerate(csv_file) :
+            if id_line in results_dict :   #skip header and empty lines
+                if args.operator == 'OR' :
+                    if any(results_dict[id_line]) :
+                        filtered_lines.append(line)
+                    else : 
+                        remaining_lines.append(line)
 
-            elif args.operator == "AND" :
-                if all(results_dict[id_line]) :
-                    filtered_lines.append(line)
-                else : 
-                    remaining_lines.append(line)
+                elif args.operator == "AND" :
+                    if all(results_dict[id_line]) :
+                        filtered_lines.append(line)
+                    else : 
+                        remaining_lines.append(line)
 
     #sort of results by column
     if args.sort_col :
@@ -113,6 +116,10 @@ def filters(args):
         reverse=str_to_bool(args.sort_col.split(",")[1])
         remaining_lines= sort_by_column(remaining_lines,sort_col,reverse,header)
         filtered_lines = sort_by_column(filtered_lines,sort_col,reverse,header)
+
+    #convert empty cells into 'NA'
+    remaining_lines = blank_to_NA(remaining_lines)
+    filtered_lines = blank_to_NA(filtered_lines)
     
     # Write results to output
     with open(args.output,"w") as output :
@@ -133,14 +140,14 @@ def sort_by_column(tab,sort_col,reverse,header):
             tab=tab[1:]
 
         #list of empty cells in the column to sort
-        unsortable_lines = [i for i,line in enumerate(tab) if line[sort_col]=='']
+        unsortable_lines = [i for i,line in enumerate(tab) if (line[sort_col]=='' or line[sort_col] == 'NA')]
         unsorted_tab=[ tab[i] for i in unsortable_lines]
         tab= [line for i,line in enumerate(tab) if i not in unsortable_lines]
 
-        if any_float(tab,sort_col) : 
+        if only_number(tab,sort_col) and any_float(tab,sort_col)  : 
             tab = sorted(tab, key=lambda row: float(row[sort_col]), reverse=reverse)
-        elif not any_float(tab,sort_col) :
-            tab = sorted(tab, key=lambda row: int(row[sort_col]), reverse=reverse)         
+        elif only_number(tab,sort_col):
+            tab = sorted(tab, key=lambda row: int(row[sort_col]), reverse=reverse)      
         else :
             tab = sorted(tab, key=lambda row: row[sort_col], reverse=reverse)
         
@@ -149,6 +156,16 @@ def sort_by_column(tab,sort_col,reverse,header):
 
     return tab
 
+
+#replace all blank cells to NA
+def blank_to_NA(csv_file) :
+    
+    tmp=[]
+    for line in csv_file :
+        line = ["NA" if cell=="" or cell==" " else cell for cell in line ] 
+        tmp.append(line)
+    
+    return tmp
 
 #turn into float a column
 def comma_number_to_float(csv_file,ncol,header) :
@@ -172,7 +189,14 @@ def any_float(tab,col) :
         if is_number("float",line[col].replace(",",".")) :
             return True
 
-    return False 
+    return False
+
+def only_number(tab,col) :
+
+    for line in tab :
+        if not (is_number("float",line[col].replace(",",".")) or is_number("int",line[col].replace(",","."))) :
+            return False
+    return True
 
 #Read the keywords file to extract the list of keywords
 def read_option(filename):
