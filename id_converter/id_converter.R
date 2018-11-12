@@ -106,15 +106,17 @@ mapping = function() {
     
   # Map IDs
   res <- id_map[match(list_id,id_map[input_id_type][,]),options]
-  res <- apply(res, c(1,2), function(x) gsub("^$|^ $", NA, x))
+  
      
   # Write output
   if (list_id_input_type == "list") {
     res = cbind(as.matrix(list_id), res)
+    res <- apply(res, c(1,2), function(x) gsub("^$|^ $", NA, x))
     colnames(res)[1] = args$id_type
     write.table(res, output, row.names = FALSE, sep = "\t", quote = FALSE)
   } else if (list_id_input_type == "file") {
     output_content = cbind(file_all, res)
+    output_content <- apply(output_content, c(1,2), function(x) gsub("^$|^ $", NA, x))
     if (length(options) == 1){ colnames(output_content)[ncol(output_content)] = options}
     write.table(output_content, output, row.names = FALSE, sep = "\t", quote = FALSE)
   }
