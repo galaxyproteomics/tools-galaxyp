@@ -113,6 +113,7 @@ mapping = function() {
     res = cbind(as.matrix(list_id), res)
     res <- apply(res, c(1,2), function(x) gsub("^$|^ $", NA, x))
     colnames(res)[1] = args$id_type
+    if (length(options)==1){colnames(res)[2]=options}
     write.table(res, output, row.names = FALSE, sep = "\t", quote = FALSE)
   } else if (list_id_input_type == "file") {
     output_content = cbind(file_all, res)
