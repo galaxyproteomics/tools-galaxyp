@@ -57,7 +57,7 @@ main = function() {
   args <- as.list(as.character(argsDF$V2))
   names(args) <- argsDF$V1
 
-  save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/add_expression_data_HPA/args.rda")
+  #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/add_expression_data_HPA/args.rda")
   #load("/home/dchristiany/proteore_project/ProteoRE/tools/add_expression_data_HPA/args.rda")
   
   inputtype = args$inputtype
