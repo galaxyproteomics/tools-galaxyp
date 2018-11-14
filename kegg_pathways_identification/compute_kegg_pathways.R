@@ -82,21 +82,25 @@ geneID_to_kegg <- function(vector,species){
   return (vector)
 }
 
+to_keggID <- function(id_list,id_type){
+  if (id_type == "ncbi-geneid") {                              
+    id_list <-  unique(geneID_to_kegg(id_list,args$species))
+  } else if (id_type=="uniprot"){
+    id_list <- unique(sapply(id_list, function(x) paste(id_type,":",x,sep=""),USE.NAMES = F))
+    if (length(id_list)>250){
+      id_list <- split(id_list, ceiling(seq_along(id_list)/250))
+      id_list <- sapply(id_list, function(x) keggConv("genes",x))
+      id_list <- unique(unlist(id_list))
+    } else {
+      id_list <- unique(keggConv("genes", id_list))
+    }
+  } else if (id_type=="kegg-id") {
+    id_list <- unique(id_list)
+  }
+  return (id_list)
+}
+
 kegg_mapping<- function(kegg_id_list,id_type,ref_ids) {
-  
-    #convert to KEGG ID
-    #if (id_type!="kegg-id"){
-    #  id_list <- unique(sapply(id_list, function(x) paste(id_type,":",x,sep=""),USE.NAMES = F))
-    #  if (length(id_list)>250){
-    #    id_list <- split(id_list, ceiling(seq_along(id_list)/250))
-    #    id_list <- sapply(id_list, function(x) keggConv("genes",x))
-    #    kegg_id_list <- unique(unlist(id_list))
-    #  } else {
-    #  kegg_id_list <- unique(keggConv("genes", id_list))
-    #  }
-    #} else {
-    #  kegg_id_list <- unique(id_list)
-    #}
   
     #mapping
     map<-lapply(ref_ids, is.element, unique(kegg_id_list))
@@ -124,22 +128,21 @@ kegg_mapping<- function(kegg_id_list,id_type,ref_ids) {
 #get args from command line
 args <- get_args()
 
-#save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/kegg_pathways_identification/args.Rda")
+save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/kegg_pathways_identification/args.Rda")
 #load("/home/dchristiany/proteore_project/ProteoRE/tools/kegg_pathways_identification/args.Rda")
 
 ###setting variables
 header = str2bool(args$header)
-if (!is.null(args$id_list)) {id_list <- get_list_from_cp(args$id_list)}
-if (!is.null(args$input)) { 
+if (!is.null(args$id_list)) {id_list <- get_list_from_cp(args$id_list)}           #get ids from copy/paste input
+if (!is.null(args$input)) {                                                       #get ids from input file
   csv <- read_file(args$input,header)
   ncol <- as.numeric(gsub("c", "" ,args$id_column))
   id_list <- as.vector(csv[,ncol])
   id_list <- id_list[which(!is.na(id_list))]
 }
-if (args$id_type == "ncbi-geneid") {
-  id_list <-  geneID_to_kegg(id_list,args$species)
-}
 
+#convert to keggID if needed
+id_list <- to_keggID(id_list,args$id_type)
 
 #get pathways of species with associated KEGG ID genes
 pathways_list <- get_pathways_list(args$species)
