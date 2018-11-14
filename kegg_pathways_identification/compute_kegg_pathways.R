@@ -128,7 +128,7 @@ kegg_mapping<- function(kegg_id_list,id_type,ref_ids) {
 #get args from command line
 args <- get_args()
 
-save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/kegg_pathways_identification/args.Rda")
+#save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/kegg_pathways_identification/args.Rda")
 #load("/home/dchristiany/proteore_project/ProteoRE/tools/kegg_pathways_identification/args.Rda")
 
 ###setting variables
