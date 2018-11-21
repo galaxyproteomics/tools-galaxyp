@@ -76,8 +76,8 @@ getprofile = function(ids, id_type, level, duplicate,species) {
     genes_ids = id$ENTREZID[which( ! is.na(id$ENTREZID))]
     # IDs that have NA ENTREZID
     NAs = id$UNIPROT[which(is.na(id$ENTREZID))]
-    print("IDs unable to convert to ENTREZID: ")
-    print(NAs)
+    #print("IDs unable to convert to ENTREZID: ")
+    #print(NAs)
   }
   
   # Create basic profiles
@@ -92,77 +92,20 @@ getprofile = function(ids, id_type, level, duplicate,species) {
   return(c(profile.CC, profile.MF, profile.BP, profile.ALL))
 }
 
-# Plot profiles to PNG
-plotPNG = function(profile.CC = NULL, profile.BP = NULL, profile.MF = NULL, profile.ALL = NULL, per = TRUE, title = TRUE) {
-  if (!is.null(profile.CC)) {
-    png("profile.CC.png")
-    plotProfiles(profile.CC, percentage=per, multiplePlots=FALSE, aTitle=title)
-    dev.off()
+make_plot <- function(profile,percent,title,onto,plot_opt){
+  
+  if (plot_opt == "PDF") {
+    file_name=paste("profile_",onto,".pdf",collapse="",sep="")
+    pdf(file_name)
+  } else if (plot_opt == "JPEG"){
+    file_name=paste("profile_",onto,".jpeg",collapse="",sep="")
+    jpeg(file_name)
+  } else if (plot_opt == "PNG"){
+    file_name=paste("profile_",onto,".png",collapse="",sep="")
+    png(file_name)
   }
-  if (!is.null(profile.BP)) {
-    png("profile.BP.png")
-    plotProfiles(profile.BP, percentage=per, multiplePlots=FALSE, aTitle=title)
-    dev.off()
-  }
-  if (!is.null(profile.MF)) {
-    png("profile.MF.png")
-    plotProfiles(profile.MF, percentage=per, multiplePlots=FALSE, aTitle=title)
-    dev.off()
-  }
-  if (!is.null(profile.ALL)) {
-    png("profile.ALL.png")
-    plotProfiles(profile.ALL, percentage=per, multiplePlots=T, aTitle=title)
-    dev.off()
-  }
-}
-
-# Plot profiles to JPEG
-plotJPEG = function(profile.CC = NULL, profile.BP = NULL, profile.MF = NULL, profile.ALL = NULL, per = TRUE, title = TRUE) {
-  if (!is.null(profile.CC)) {
-    jpeg("profile.CC.jpeg")
-    plotProfiles(profile.CC, percentage=per, multiplePlots=FALSE, aTitle=title)
-    dev.off()
-  }
-  if (!is.null(profile.BP)) {
-    jpeg("profile.BP.jpeg")
-    plotProfiles(profile.BP, percentage=per, multiplePlots=FALSE, aTitle=title)
-    dev.off()
-  }
-  if (!is.null(profile.MF)) {
-    jpeg("profile.MF.jpeg")
-    plotProfiles(profile.MF, percentage=per, multiplePlots=FALSE, aTitle=title)
-    dev.off()
-  }
-  if (!is.null(profile.ALL)) {
-    jpeg("profile.ALL.jpeg")
-    plotProfiles(profile.ALL, percentage=per, multiplePlots=FALSE, aTitle=title)
-    dev.off()
-  }
-}
-
-# Plot profiles to PDF
-plotPDF = function(profile.CC = NULL, profile.BP = NULL, profile.MF = NULL, profile.ALL = NULL, per = TRUE, title = TRUE) {
-  if (!is.null(profile.CC)) {
-    pdf("profile.CC.pdf")
-    plotProfiles(profile.CC, percentage=per, multiplePlots=FALSE, aTitle=title)
-    dev.off()
-  }
-  if (!is.null(profile.BP)) {
-    pdf("profile.BP.pdf")
-    plotProfiles(profile.BP, percentage=per, multiplePlots=FALSE, aTitle=title)
-    dev.off()
-  }
-  if (!is.null(profile.MF)) {
-    pdf("profile.MF.pdf")
-    plotProfiles(profile.MF, percentage=per, multiplePlots=FALSE, aTitle=title)
-    dev.off()
-  }
-  if (!is.null(profile.ALL)) {
-    #print("all")
-    pdf("profile.ALL.pdf")
-    plotProfiles(profile.ALL, percentage=per, multiplePlots=FALSE, aTitle=title)
-    dev.off()
-  }
+  plotProfiles(profile, percentage=percent, multiplePlots=FALSE, aTitle=title)
+  dev.off()
 }
 
 goprofiles = function() {
@@ -226,8 +169,7 @@ goprofiles = function() {
   }
   
   ontoopt = strsplit(args$onto_opt, ",")[[1]]
-  #print(ontoopt)
-  #plotopt = strsplit(args[3], ",")
+  onto_pos = as.integer(gsub("BP",3,gsub("MF",2,gsub("CC",1,ontoopt))))
   plotopt = args$plot_opt
   level = args$level
   per = as.logical(args$per)
@@ -237,51 +179,15 @@ goprofiles = function() {
   species=args$species
 
   profiles = getprofile(input, id_type, level, duplicate,species)
-  profile.CC = profiles[1]
-  #print(profile.CC)
-  profile.MF = profiles[2]
-  #print(profile.MF)
-  profile.BP = profiles[3]
-  #print(profile.BP)
-  profile.ALL = profiles[-3:-1]
-  #print(profile.ALL)
-  #c(profile.ALL, profile.CC, profile.MF, profile.BP)
-    
-  if ("CC" %in% ontoopt) {
-    write.table(profile.CC, text_output, append = TRUE, sep="\t", row.names = FALSE, quote=FALSE)
-    if (grepl("PNG", plotopt)) {
-      plotPNG(profile.CC=profile.CC, per=per, title=title)
-    }
-    if (grepl("JPEG", plotopt)) {
-      plotJPEG(profile.CC = profile.CC, per=per, title=title)
-    }
-    if (grepl("PDF", plotopt)) {
-      plotPDF(profile.CC = profile.CC, per=per, title=title)
-    }
-  }
-  if ("MF" %in% ontoopt) {
-    write.table(profile.MF, text_output, append = TRUE, sep="\t", row.names = FALSE, quote=FALSE)
-    if (grepl("PNG", plotopt)) {
-      plotPNG(profile.MF = profile.MF, per=per, title=title)
-    }
-    if (grepl("JPEG", plotopt)) {
-      plotJPEG(profile.MF = profile.MF, per=per, title=title)
-    }
-    if (grepl("PDF", plotopt)) {
-      plotPDF(profile.MF = profile.MF, per=per, title=title)
-    }
-  }
-  if ("BP" %in% ontoopt) {
-    write.table(profile.BP, text_output, append = TRUE, sep="\t", row.names = FALSE, quote=FALSE)
-    if (grepl("PNG", plotopt)) {
-      plotPNG(profile.BP = profile.BP, per=per, title=title)
-    }
-    if (grepl("JPEG", plotopt)) {
-      plotJPEG(profile.BP = profile.BP, per=per, title=title)
-    }
-    if (grepl("PDF", plotopt)) {
-      plotPDF(profile.BP = profile.BP, per=per, title=title)
-    }
+
+  for (index in onto_pos) {
+    onto = names(profiles[index])
+    profile=profiles[index]
+    make_plot(profile,per,title,onto,plotopt)
+    text_output=paste("goProfiles_",onto,"_",title,".tsv",sep="",collapse="")
+    profile = as.data.frame(profile)
+    profile <- as.data.frame(apply(profile, c(1,2), function(x) gsub("^$|^ $", NA, x)))  #convert "" and " " to NA
+    write.table(profile, text_output, sep="\t", row.names = FALSE, quote=FALSE, col.names = T)
   }
 }
 
