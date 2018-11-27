@@ -1,0 +1,169 @@
+<macros>
+    <token name="@VERSION@">1.0.0</token>
+    <xml name="requirements">
+        <requirements>
+        <requirement type="package" version="@VERSION@">metaquantome</requirement>
+            <yield/>
+        </requirements>
+    </xml>
+    <xml name="FUNC_FILE">
+        <param argument="--func_file" type="data" format="tabular" label="Functional file"
+            help="Tabular file with a peptide sequence column and a functional assignment column for GO-term, EC number, or COG."/>
+        <param argument="--func_colname" type="text" label="Func column name" 
+            help="Column name with the functional terms">
+            <validator type="empty_field"/>
+        </param>
+    </xml>
+    <xml name="TAX_FILE">
+        <param name="tax_file" type="data" format="tabular" label="Tax file"/>
+        <param name="tax_col" type="text" label="Tax col"/>
+    </xml>
+    <token name="@MAKE_SAMPS_TSV@">><![CDATA[
+        ### make samps config file 
+        #if $samps_args.samps_src == 'history':
+            cat '$samps_args.samps_file' > samp_file.tab &&
+        #else:
+            echo -e 'group\tcolnames' > samp_file.tab &&
+            #for $s in $samps_args.samps
+                echo -e '${s.group_name}\t${s.col_names}' >> samp_file.tab &&
+            #end for
+        #end if
+    ]]>
+    </token>
+    <token name="@DB_DIR@">><![CDATA[
+        #if $db_dir.db_loc == 'auto':
+            #if $mode_args.mode == 'taxfn'
+                --ft_func_data_dir data
+                --ft_tax_data_dir  data
+            #else
+                --data_dir data
+            #end if
+            $db_dir.overwrite
+        ## #elif $db_dir.db_loc == 'cached':
+        #end if
+    ]]>
+    </token>
+    <xml name="data_dir">
+        <conditional name="db_dir">
+            <param argument="db_loc" type="select" label="Taxonomy and Funcional Databases">
+                <option value="auto">automatcally load databases</option>
+                <!-- bioconda recipe would need to install the databases
+                <option value="pkg">use default metaquantome databases (not current)</option>
+                -->
+                <!-- requires a data_manager
+                <option value="cached">Use cached databases</option>
+                -->
+            </param>
+            <when value="auto">
+                <param argument="--overwrite" type="boolean" label="download most recent EC or GO Database"/>
+            </when>
+            <!-- bioconda recipe would need to install the databases
+            <when value="pkg"/>
+            -->
+            <!-- requires a data_manager
+            <when value="cached">
+            </when>
+            -->
+        </conditional>
+    </xml>
+    <token name="@COMMON_PARAMS@">><![CDATA[
+            --samps samp_file.tab
+            --mode '$mode_args.mode'
+            #if $mode_args.mode == 'fn'
+                --func_file '$mode_args.func_file'
+                --ontology '$mode_args.ontology_args.ontology'
+                #if $mode_args.ontology_args.ontology == 'go'
+                    #if $mode_args.ontology_args.slim_down
+                        --slim_down
+                    #end if
+                #end if
+            #end if
+            #if $mode_args.mode =='tax'
+                --tax_file '$mode_args.tax_file'
+                --tax_colname '$mode_args.tax_col'
+            #end if
+            #if $mode_args.mode == 'taxfn'
+                --func_file '$mode_args.func_file'
+                --ontology $mode_args.ontology
+                --tax_file '$mode_args.tax_file'
+                --tax_colname '$mode_args.tax_col'
+                --ft_tar_rank '$mode_args.ft_tar_rank'
+            #end if
+    ]]>
+    </token>
+
+    <xml name="common_params">
+        <conditional name="mode_args">
+            <param argument="--mode" type="select" label="Mode">
+                <option value="fn">Functional analysis</option>
+                <option value="tax">Taxonomic analysis</option>
+                <option value="taxfn">Functional-taxonomic interaction analysis</option>
+            </param>
+            <when value="fn">
+                <expand macro="FUNC_FILE"/>
+                <conditional name="ontology_args">
+                    <param name="ontology" type="select" label="Ontology">
+                        <option value="go">Gene Ontology (column named 'go')</option>
+                        <option value="ec">Gene Ontology (column named 'go')</option>
+                        <option value="cog">COG (column named 'cog')</option>
+                    </param>
+                    <when value="go">
+                        <param argument="--slim_down" type="boolean" label="Use slim GO"/>
+                    </when>
+                    <when value="ec">
+                        <!-- do nothing -->
+                    </when>
+                    <when value="cog">
+                        <!-- do nothing -->
+                    </when>
+                </conditional>
+            </when>
+            <when value="tax">
+                <expand macro="TAX_FILE"/>
+            </when>
+            <when value="taxfn">
+                <expand macro="FUNC_FILE"/>
+                <expand macro="TAX_FILE"/>
+                <param argument="--ft_tar_rank" type="select" label="rank at which to group taxonomy">
+                    <option value="species">species</option>
+                    <option value="genus" selected="true">genus</option>
+                    <option value="family">family</option>
+                    <option value="order">order</option>
+                    <option value="class">class</option>
+                    <option value="phylum">phylum</option>
+                    <option value="kingdom">kingdom</option>
+                </param>
+            </when>
+        </conditional>
+        <conditional name="samps_args">
+            <param argument="samps_src" type="select" label="Mode">
+                <option value="build">Taxonomic analysis</option>
+                <option value="history">Use a sample dataset from your history</option>
+            </param>
+            <when value="history">
+                <param name="samps_file" type="data" format="tabular" label="Samples file">
+                </param>
+            </when>
+            <when value="build">
+                <repeat name="samps" title="Samples">
+                    <param name="group_name" type="text" label="Group name"/>
+                    <param name="col_names" type="text" label="Column names of samples in group"/>
+                </repeat>
+            </when>
+        </conditional>
+    </xml>
+    <xml name="output_samples_choice">
+        <param name="output_samps" type="boolean" truevalue="yes" falsevalue="no" checked="false" label="Output the samples fiile"/>
+    </xml>
+    <xml name="output_samples">
+        <data format="tabular" name="samples_file" label="${tool.name} on ${on_string} samples" from_work_dir="samp_file.tab">
+            <filter>output_samps</filter>
+        </data>
+    </xml>
+
+    <xml name="citations">
+        <citations>
+            <yield />
+        </citations>
+    </xml>
+</macros>
