@@ -108,7 +108,6 @@ def diagram(comp_dict, title_dict):
 
 #Write intersections of input to text output file
 def write_text_venn(json_result):
-    output = open("venn_diagram_text_output.tsv", "w")
     lines = []
     result = dict((k, v) for k, v in json_result["data"].iteritems() if v != [])
     for key in result :
@@ -124,7 +123,6 @@ def write_text_venn(json_result):
         else : 
             keys= list(key)
             column_dict[key] = "_".join([list_names[k] for k in keys])
-    print(column_dict)
 
     #construct tsv
     for key in result :
