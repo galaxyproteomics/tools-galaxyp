@@ -153,6 +153,6 @@ nodes_attributes = getNodesAttributes(inputids,interactome,ppis,args.interactome
 
 getJSON(ppis,nodes_attributes,args.jsonfile,args.addreactome)
 if args.taboutput=="TRUE":
-    nodes_attributes.to_csv("nodes_attributes.csv",sep="\t",index=False,na_rep="NaN")
-    ppis.to_csv("ppis.csv",sep="\t",index=False,na_rep="NaN")
+    nodes_attributes.to_csv("nodes_attributes.csv",sep="\t",index=False,na_rep="Na")
+    ppis.to_csv("ppis.csv",sep="\t",index=False,na_rep="Na")
 
