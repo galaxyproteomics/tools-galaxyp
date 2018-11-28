@@ -5,7 +5,7 @@ import sys
 import json
 import operator
 import argparse
-import re
+import re, csv
 from itertools import combinations
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -62,6 +62,7 @@ def input_to_dict(inputs):
             file_content = inputs[i][0].split()
             
         ids.update(file_content)
+        if 'NA' in ids : ids.remove('NA')
         comp_dict[title] = ids
  
     return comp_dict, title_dict
@@ -105,36 +106,39 @@ def diagram(comp_dict, title_dict):
 
     return result
 
+#Write intersections of input to text output file
 def write_text_venn(json_result):
-    """
-    Write intersections of input to text output file
-    """
-    output = open("venn_diagram_text_output.txt", "w")
-    string = ""
+    output = open("venn_diagram_text_output.tsv", "w")
     lines = []
     result = dict((k, v) for k, v in json_result["data"].iteritems() if v != [])
-    max_count = max(len(v) for v in result.values())
-    for i in range(max_count):
-        lines.append("")
-        
-    for i in range(max_count):
-        header = ""
-        for d in range(len(result.keys())):
-            data = result.keys()[d]
-            name = "_".join([json_result["name"][x] for x in data])
-            header += name + "\t"
-            if len(result[data]) > i:
-                print("a", result[data][i])
-                lines[i] += result[data][i] + "\t"
-            else:
-                lines[i] += "\t"
-    # Strip last tab in the end of the lines
-    header = header.rstrip()
-    lines = [line.rstrip() for line in lines]
-    string += header + "\n"
-    string += "\n".join(lines)
-    output.write(string)
-    output.close()
+    for key in result :
+        if 'NA' in result[key] : result[key].remove("NA")
+    list_names = dict((k, v) for k, v in json_result["name"].iteritems() if v != [])
+    nb_lines_max = max(len(v) for v in result.values())
+
+    #get list names associated to each column
+    column_dict = {}
+    for key in result :
+        if key in list_names :
+            column_dict[key] = list_names[key]
+        else : 
+            keys= list(key)
+            column_dict[key] = "_".join([list_names[k] for k in keys])
+    print(column_dict)
+
+    #construct tsv
+    for key in result :
+        line = [column_dict[key]]
+        line.extend(result[key])
+        if len(line) < nb_lines_max :
+            line.extend(['NA']*(nb_lines_max-len(line)))
+        lines.append(line)  
+    #transpose tsv
+    lines=zip(*lines)
+    
+    with open("venn_diagram_text_output.tsv", "w") as output:
+        tsv_output = csv.writer(output, delimiter='\t')
+        tsv_output.writerows(lines)
 
 def write_summary(summary_file, inputs):
     """
