@@ -18,11 +18,56 @@ str2bool <- function(x){
   }
 }
 
+mapping_ids <- function(list_id,input_id_type,ref_file,options){
+  list_id = list_id[!is.na(list_id)]
+  if (length(options) > 1) {
+    res <- data.frame(t(sapply(list_id, function(x) apply(ref_file[grep(x,ref_file[input_id_type][,]),options],2,function(y) paste(y[y!=""],sep="",collapse=";")) )))
+  } else if (length(options)==1){
+    res <- data.frame(sapply(list_id, function(x) gsub(";+$","",paste(ref_file[grep(x,ref_file[input_id_type][,]),options],sep="",collapse=";"))))
+    colnames(res)=options
+  }
+  
+  return (res)
+}
+
 get_list_from_cp <-function(list){
   list = strsplit(list, "[ \t\n]+")[[1]]
   list = list[list != ""]    #remove empty entry
   list = gsub("-.+", "", list)  #Remove isoform accession number (e.g. "-2")
   return(list)
+}
+
+order_columns <- function (df,ncol){
+  if (ncol==1){ #already at the right position
+    return (df)
+  } else {
+    df = df[,c(2:ncol,1,(ncol+1):dim.data.frame(df)[2])]
+  }
+  return (df)
+}
+
+#create new lines if there's more than one id per cell in the columns in order to have only one id per line
+one_id_one_line <-function(tab,ncol){
+
+  header=colnames(tab)
+  colnames(tab) = c(sprintf("V%d", seq(1,ncol(tab))))
+  res=as.data.frame(matrix(ncol=ncol(tab),nrow=0))
+  for (i in 1:nrow(tab) ) {
+    if (length(unlist(strsplit(as.character(tab[i,ncol]),";")))>1){
+      if (ncol==1) {                                #first column
+        res = rbind(res,cbind(unlist(strsplit(as.character(tab[i,ncol]),";")), tab[i,2:ncol(tab)]))
+      } else if (ncol==ncol(tab)) {                 #last column
+        res = rbind(res,cbind(tab[i,1:ncol-1],unlist(strsplit(as.character(tab[i,ncol]),";"))))
+      } else {
+        res = rbind(res,cbind(tab[i,1:ncol-1],unlist(strsplit(as.character(tab[i,ncol]),";")), tab[i,(ncol+1):ncol(tab)]))
+      }
+    } else {
+      res = rbind(res,(tab[i,]))
+    }
+  }
+  colnames(res)=header
+  
+  return(res)
 }
 
 get_args <- function(){
@@ -55,26 +100,6 @@ get_args <- function(){
   return(args)
 }
 
-# Mapping IDs using file built from
-#   - HUMAN_9606_idmapping_selected.tab
-#     Tarball downloaded from ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/
-#   - nextprot_ac_list_all.txt 
-#     Downloaded from ftp://ftp.nextprot.org/pub/current_release/ac_lists/
-# Available databases: 
-#   UNIPROT_AC: Uniprot accession number (e.g. P31946)
-#   UNIPROT_ID: Uniprot identifiers (e.g 1433B_HUMAN)
-#   GeneID_EntrezGene: Entrez gene ID (serie of digit) (e.g. 7529)
-#   RefSeq: RefSeq (NCBI) protein (e.g.  NP_003395.1; NP_647539.1; XP_016883528.1)
-#   GI_number: GI (NCBI GI number) ID (serie of digits) assigned to each sequence record processed by NCBI (e.g; 21328448; 377656701; 67464627; 78101741) 
-#   PDB: Protein DataBank Identifiers (e.g. 2BR9:A; 3UAL:A;   3UBW:A) 
-#   GO_ID: GOterms (Gene Ontology) Identifiers (e.g. GO:0070062; GO:0005925; GO:0042470; GO:0016020; GO:0005739; GO:0005634)
-#   PIR: Protein Information Resource ID (e.g. S34755)	
-#   OMIM: OMIM (Online Mendelian Inheritance in Man database) ID (serie of digits) (e.g: 601289)	
-#   UniGene: Unigene Identifier (e.g. Hs.643544)
-#   Ensembl_ENSG: Ensembl gene identifiers (e.g. ENSG00000166913) 
-#   Ensembl_ENST: Ensembl transcript identifiers (e.g. ENST00000353703; ENST00000372839)
-#   Ensembl_ENSP: Ensembl protein identifiers (e.g. ENSP00000300161; ENSP00000361930)
-
 mapping = function() {
   
   args <- get_args()
@@ -96,31 +121,31 @@ mapping = function() {
     column_number = as.numeric(gsub("c", "" ,args$column_number))
     header = str2bool(args$header)
     file_all = read_file(filename, header)
+    file_all = suppressWarnings(one_id_one_line(file_all,column_number))
     list_id = trimws(gsub("[$,\xc2\xa0]","",sapply(strsplit(as.character(file_all[,column_number]), ";"), "[", 1)))
     # Remove isoform accession number (e.g. "-2")
-    list_id = gsub("-.+", "", list_id)
+    list_id = unique(gsub("-.+", "", list_id))
   }
 
   # Extract ID maps
   id_map = read_file(id_mapping_file, T)
     
   # Map IDs
-  res <- id_map[match(list_id,id_map[input_id_type][,]),options]
-  
-     
-  # Write output
-  if (list_id_input_type == "list") {
-    res = cbind(as.matrix(list_id), res)
-    res <- apply(res, c(1,2), function(x) gsub("^$|^ $", NA, x))
-    colnames(res)[1] = args$id_type
-    if (length(options)==1){colnames(res)[2]=options}
-    write.table(res, output, row.names = FALSE, sep = "\t", quote = FALSE)
+  res <- mapping_ids(list_id,input_id_type,id_map,options)
+
+  #merge data frames
+  if (list_id_input_type == "list"){
+    list_id <- data.frame(list_id)
+    output_content = merge(list_id,res,by.x=1,by.y="row.names",incomparables = NA, all.x=T)
+    colnames(output_content)[1]=input_id_type
   } else if (list_id_input_type == "file") {
-    output_content = cbind(file_all, res)
-    output_content <- apply(output_content, c(1,2), function(x) gsub("^$|^ $", NA, x))
-    if (length(options) == 1){ colnames(output_content)[ncol(output_content)] = options}
-    write.table(output_content, output, row.names = FALSE, sep = "\t", quote = FALSE)
+    output_content = merge(file_all,res,by.x=column_number,by.y="row.names",incomparables = NA, all.x=T)
+    output_content = order_columns(output_content,column_number)
   }
+  
+  #write output
+  output_content <- data.frame(apply(output_content, c(1,2), function(x) gsub("^$|^ $", NA, x)))
+  write.table(output_content, output, row.names = FALSE, sep = '\t', quote = FALSE)
 }
 
 mapping()
