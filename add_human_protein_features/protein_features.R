@@ -10,7 +10,7 @@ read_file <- function(path,header){
 }
 
 order_columns <- function (df,ncol,id_type,file){
-  if (id_type=="Uniprot_AC"){ncol=dim.data.frame(file)[2]}
+  if (id_type=="Uniprot_AC"){ncol=ncol(file)}
   if (ncol==1){ #already at the right position
     return (df)
   } else {
@@ -72,6 +72,45 @@ str2bool <- function(x){
   }
 }
 
+#take data frame, return  data frame
+split_ids_per_line <- function(line,ncol){
+  
+  #print (line)
+  header = colnames(line)
+  line[ncol] = gsub("[[:blank:]]|\u00A0","",line[ncol])
+  
+  if (length(unlist(strsplit(as.character(line[ncol]),";")))>1) {
+    if (length(line)==1 ) {
+      lines = as.data.frame(unlist(strsplit(as.character(line[ncol]),";")),stringsAsFactors = F)
+    } else {
+      if (ncol==1) {                                #first column
+        lines = suppressWarnings(cbind(unlist(strsplit(as.character(line[ncol]),";")), line[2:length(line)]))
+      } else if (ncol==length(line)) {                 #last column
+        lines = suppressWarnings(cbind(line[1:ncol-1],unlist(strsplit(as.character(line[ncol]),";"))))
+      } else {
+        lines = suppressWarnings(cbind(line[1:ncol-1], unlist(strsplit(as.character(line[ncol]),";"),use.names = F), line[(ncol+1):length(line)]))
+      }
+    }
+    colnames(lines)=header
+    return(lines)
+  } else {
+    return(line)
+  }
+}
+
+#create new lines if there's more than one id per cell in the columns in order to have only one id per line
+one_id_one_line <-function(tab,ncol){
+  
+  tab[,ncol] = sapply(tab[,ncol],function(x) gsub("[[:blank:]]","",x))
+  header=colnames(tab)
+  res=as.data.frame(matrix(ncol=ncol(tab),nrow=0))
+  for (i in 1:nrow(tab) ) {
+    lines = split_ids_per_line(tab[i,],ncol)
+    res = rbind(res,lines)
+  }
+  return(res)
+}
+
 # Get information from neXtProt
 get_nextprot_info <- function(nextprot,input,pc_features,localization,diseases_info){
   if(diseases_info){
@@ -96,7 +135,8 @@ protein_features = function() {
   inputtype = args$inputtype
   if (inputtype == "copy_paste") {
     input = get_list_from_cp(args$input)
-    input = input[input!=""]
+    input = input[which(!is.na(input[input!=""]))]
+    ncol=1
   } else if (inputtype == "file") {
     filename = args$input
     ncol = args$column
@@ -108,7 +148,8 @@ protein_features = function() {
     }
     
     header = str2bool(args$header)
-    file = read_file(filename, header)                                                      # Get file content
+    file = read_file(filename, header)                                                    # Get file content
+    if (any(grep(";",file[,ncol]))) {file = one_id_one_line(file,ncol)}
     input = sapply(file[,ncol],function(x) strsplit(as.character(x),";")[[1]][1],USE.NAMES = F)     # Extract Protein IDs list
     if (args$type == "NextprotID" && ! "NextprotID" %in% colnames(file)) { colnames(file)[ncol] <- "NextprotID" 
     } else if (args$type == "NextprotID" && "NextprotID" %in% colnames(file) && match("NextprotID",colnames(file))!=ncol ) { 
@@ -131,34 +172,31 @@ protein_features = function() {
   # Nextprot data
   if (id_type=="Uniprot_AC"){
     NextprotID = gsub("^","NX_",input)
-    if (inputtype == "file" && "NextprotID" %in% colnames(file)){colnames(file)[match("NextprotID",colnames(file))] <- "old_NextprotID"}
-    file = cbind(file,NextprotID)
+    if (inputtype == "file" && "NextprotID" %in% colnames(file)){
+      colnames(file)[match("NextprotID",colnames(file))] <- "old_NextprotID"
+      file = cbind(file,NextprotID)
+    } else {
+      file = data.frame(cbind(input,NextprotID))
+      colnames(file)[1]="Uniprot-AC"
+    }
     } else if (id_type=="NextprotID") {
     if (inputtype == "file") {
       NextprotID = file$NextprotID
     } else {
       NextprotID = input
+      file=data.frame(NextprotID)
     }
   }
 
-  # Select user input protein ids in nextprot
+  #Select user input protein ids in nextprot
+  NextprotID = unique(NextprotID[which(!is.na(NextprotID[NextprotID!=""]))])
   if ((length(NextprotID[NextprotID %in% nextprot[,1]]))==0){
     write.table("None of the input ids can be found in Nextprot",file=output,sep="\t",quote=FALSE,col.names=TRUE,row.names=FALSE)
   } else {
     res <- get_nextprot_info(nextprot,NextprotID,pc_features,localization,diseases_info)
-    
-    # Write output
-    if (inputtype == "copy_paste") {
-      if (id_type=="Uniprot_AC"){
-        output_content = cbind(input, res)
-        colnames(output_content)[1] = id_type
-      }
-      if ("res" %in% colnames(output_content)){colnames(output_content)[which(colnames(output_content)=="res")] = "NexprotID" } #if no features are selected
-    } else if (inputtype == "file") {
-      res = res[!duplicated(res$NextprotID),]
-      output_content = merge(file, res,by="NextprotID",incomparables = NA,all.x=T)
-      output_content = order_columns(output_content,ncol,id_type,file)
-    }
+    res = res[!duplicated(res$NextprotID),]
+    output_content = merge(file, res,by="NextprotID",incomparables = NA,all.x=T)
+    output_content = order_columns(output_content,ncol,id_type,file)
     output_content <- as.data.frame(apply(output_content, c(1,2), function(x) gsub("^$|^ $", NA, x)))  #convert "" et " " to NA
     write.table(output_content, output, row.names = FALSE, sep = "\t", quote = FALSE)
   } 
