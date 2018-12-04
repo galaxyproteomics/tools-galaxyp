@@ -72,8 +72,8 @@ get_pathways_list <- function(species){
 
 get_list_from_cp <-function(list){
   list = strsplit(list, "[ \t\n]+")[[1]]
-  list = list[list != ""]    #remove empty entry
-  list = gsub("-.+", "", list)  #Remove isoform accession number (e.g. "-2")
+  list = list[which(!is.na(list[list != ""]))]    #remove empty entry
+  list = unique(gsub("-.+", "", list))  #Remove isoform accession number (e.g. "-2")
   return(list)
 }
 
@@ -138,7 +138,7 @@ if (!is.null(args$input)) {                                                     
   csv <- read_file(args$input,header)
   ncol <- as.numeric(gsub("c", "" ,args$id_column))
   id_list <- as.vector(csv[,ncol])
-  id_list <- id_list[which(!is.na(id_list))]
+  id_list <- unique(id_list[which(!is.na(id_list))])
 }
 
 #convert to keggID if needed
