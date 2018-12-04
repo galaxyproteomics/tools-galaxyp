@@ -20,13 +20,66 @@ str2bool <- function(x){
 }
 
 add_expression = function(input, atlas, options) {
+  input <- unique(input[!is.na(input)])
+  input <- gsub("[[:blank:]]","",input)
   if (all(!input %in% atlas$Ensembl)) {
     return(NULL)
   } else {
     res = atlas[match(input,atlas$Ensembl),c("Ensembl",options)]
+    res = res[which(!is.na(res[,1])),]
+    row.names(res)=res[,1]
+    res=res[2:ncol(res)]
     res <- as.data.frame(apply(res, c(1,2), function(x) gsub("^$|^ $", NA, x)))  #convert "" et " " to NA
     return(res)
   }
+}
+
+order_columns <- function (df,ncol){
+  if (ncol==1){ #already at the right position
+    return (df)
+  } else {
+    df = df[,c(2:ncol,1,(ncol+1):dim.data.frame(df)[2])]
+  }
+  return (df)
+}
+
+#take data frame, return  data frame
+split_ids_per_line <- function(line,ncol){
+  
+  #print (line)
+  header = colnames(line)
+  line[ncol] = gsub("[[:blank:]]","",line[ncol])
+  
+  if (length(unlist(strsplit(as.character(line[ncol]),";")))>1) {
+    if (length(line)==1 ) {
+      lines = as.data.frame(unlist(strsplit(as.character(line[ncol]),";")),stringsAsFactors = F)
+    } else {
+      if (ncol==1) {                                #first column
+        lines = suppressWarnings(cbind(unlist(strsplit(as.character(line[ncol]),";")), line[2:length(line)]))
+      } else if (ncol==length(line)) {                 #last column
+        lines = suppressWarnings(cbind(line[1:ncol-1],unlist(strsplit(as.character(line[ncol]),";"))))
+      } else {
+        lines = suppressWarnings(cbind(line[1:ncol-1], unlist(strsplit(as.character(line[ncol]),";"),use.names = F), line[(ncol+1):length(line)]))
+      }
+    }
+    colnames(lines)=header
+    return(lines)
+  } else {
+    return(line)
+  }
+}
+
+#create new lines if there's more than one id per cell in the columns in order to have only one id per line
+one_id_one_line <-function(tab,ncol){
+  
+  tab[,ncol] = sapply(tab[,ncol],function(x) gsub("[[:blank:]]","",x))
+  header=colnames(tab)
+  res=as.data.frame(matrix(ncol=ncol(tab),nrow=0))
+  for (i in 1:nrow(tab) ) {
+    lines = split_ids_per_line(tab[i,],ncol)
+    res = rbind(res,lines)
+  }
+  return(res)
 }
 
 main = function() {
@@ -74,7 +127,9 @@ main = function() {
     }
     header = str2bool(args$header)
     file = read_file(filename, header)
-    input =  unlist(sapply(as.character(file[,ncol]),function(x) rapply(strsplit(x,";"),c),USE.NAMES = FALSE))
+    file = one_id_one_line(file,ncol)
+    input = unlist(sapply(as.character(file[,ncol]),function(x) rapply(strsplit(x,";"),c),USE.NAMES = FALSE))
+    input = input[which(!is.na(input))]
   }
 
   # Read protein atlas
@@ -86,17 +141,17 @@ main = function() {
   options = strsplit(args$select, ",")[[1]]
   res = add_expression(input, protein_atlas, options)
   
-
   # Write output
   if (is.null(res)) {
     write.table("None of the input ENSG ids are can be found in HPA data file",file=output,sep="\t",quote=FALSE,col.names=TRUE,row.names=FALSE)
   } else {
     if (inputtype == "copypaste") {
-      output_content = cbind(as.matrix(input), res)
+      input <- data.frame(input)
+      output_content = merge(input,res,by.x=1,by.y="row.names",incomparables = NA, all.x=T)
       colnames(output_content)[1] = "Ensembl"
     } else if (inputtype == "tabfile") {
-      output_content = merge(file, res, by.x=ncol, by.y=1, incomparables = NA,all.x=T)
-      output_content = output_content[order(output_content[,ncol],decreasing = T),]
+      output_content = merge(file, res, by.x=ncol, by.y="row.names", incomparables = NA, all.x=T)
+      output_content = order_columns(output_content,ncol)
     }
   output_content <- as.data.frame(apply(output_content, c(1,2), function(x) gsub("^$|^ $", NA, x)))
   write.table(output_content, output, row.names = FALSE, sep = "\t", quote = FALSE)
