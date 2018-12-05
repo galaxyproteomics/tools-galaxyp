@@ -72,6 +72,7 @@ get_pathways_list <- function(species){
 
 get_list_from_cp <-function(list){
   list = strsplit(list, "[ \t\n]+")[[1]]
+  list = gsub("[[:blank:]]|\u00A0|NA","",list)
   list = list[which(!is.na(list[list != ""]))]    #remove empty entry
   list = unique(gsub("-.+", "", list))  #Remove isoform accession number (e.g. "-2")
   return(list)
@@ -98,6 +99,52 @@ to_keggID <- function(id_list,id_type){
     id_list <- unique(id_list)
   }
   return (id_list)
+}
+
+#take data frame, return  data frame
+split_ids_per_line <- function(line,ncol){
+  
+  #print (line)
+  header = colnames(line)
+  line[ncol] = gsub("[[:blank:]]|\u00A0","",line[ncol])
+  
+  if (length(unlist(strsplit(as.character(line[ncol]),";")))>1) {
+    if (length(line)==1 ) {
+      lines = as.data.frame(unlist(strsplit(as.character(line[ncol]),";")),stringsAsFactors = F)
+    } else {
+      if (ncol==1) {                                #first column
+        lines = suppressWarnings(cbind(unlist(strsplit(as.character(line[ncol]),";")), line[2:length(line)]))
+      } else if (ncol==length(line)) {                 #last column
+        lines = suppressWarnings(cbind(line[1:ncol-1],unlist(strsplit(as.character(line[ncol]),";"))))
+      } else {
+        lines = suppressWarnings(cbind(line[1:ncol-1], unlist(strsplit(as.character(line[ncol]),";"),use.names = F), line[(ncol+1):length(line)]))
+      }
+    }
+    colnames(lines)=header
+    return(lines)
+  } else {
+    return(line)
+  }
+}
+
+#create new lines if there's more than one id per cell in the columns in order to have only one id per line
+one_id_one_line <-function(tab,ncol){
+  
+  if (ncol(tab)>1){
+    
+    tab[,ncol] = sapply(tab[,ncol],function(x) gsub("[[:blank:]]","",x))
+    header=colnames(tab)
+    res=as.data.frame(matrix(ncol=ncol(tab),nrow=0))
+    for (i in 1:nrow(tab) ) {
+      lines = split_ids_per_line(tab[i,],ncol)
+      res = rbind(res,lines)
+    }
+  }else {
+    res = unlist(sapply(tab[,1],function(x) strsplit(x,";")),use.names = F)
+    res = data.frame(res[which(!is.na(res[res!=""]))],stringsAsFactors = F)
+    colnames(res)=colnames(tab)
+  }
+  return(res)
 }
 
 kegg_mapping<- function(kegg_id_list,id_type,ref_ids) {
@@ -137,8 +184,9 @@ if (!is.null(args$id_list)) {id_list <- get_list_from_cp(args$id_list)}         
 if (!is.null(args$input)) {                                                       #get ids from input file
   csv <- read_file(args$input,header)
   ncol <- as.numeric(gsub("c", "" ,args$id_column))
+  csv <- one_id_one_line(csv,ncol)
   id_list <- as.vector(csv[,ncol])
-  id_list <- unique(id_list[which(!is.na(id_list))])
+  id_list <- unique(id_list[which(!is.na(id_list[id_list!=""]))])
 }
 
 #convert to keggID if needed

@@ -101,12 +101,19 @@ split_ids_per_line <- function(line,ncol){
 #create new lines if there's more than one id per cell in the columns in order to have only one id per line
 one_id_one_line <-function(tab,ncol){
   
-  tab[,ncol] = sapply(tab[,ncol],function(x) gsub("[[:blank:]]","",x))
-  header=colnames(tab)
-  res=as.data.frame(matrix(ncol=ncol(tab),nrow=0))
-  for (i in 1:nrow(tab) ) {
-    lines = split_ids_per_line(tab[i,],ncol)
-    res = rbind(res,lines)
+  if (ncol(tab)>1){
+    
+    tab[,ncol] = sapply(tab[,ncol],function(x) gsub("[[:blank:]]","",x))
+    header=colnames(tab)
+    res=as.data.frame(matrix(ncol=ncol(tab),nrow=0))
+    for (i in 1:nrow(tab) ) {
+      lines = split_ids_per_line(tab[i,],ncol)
+      res = rbind(res,lines)
+    }
+  }else {
+    res = unlist(sapply(tab[,1],function(x) strsplit(x,";")),use.names = F)
+    res = data.frame(res[which(!is.na(res[res!=""]))],stringsAsFactors = F)
+    colnames(res)=colnames(tab)
   }
   return(res)
 }
