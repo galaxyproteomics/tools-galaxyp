@@ -21,7 +21,7 @@ str2bool <- function(x){
 
 add_expression = function(input, atlas, options) {
   input <- unique(input[!is.na(input)])
-  input <- gsub("[[:blank:]]","",input)
+  input <- gsub("[[:blank:]]|\u00A0","",input)
   if (all(!input %in% atlas$Ensembl)) {
     return(NULL)
   } else {
