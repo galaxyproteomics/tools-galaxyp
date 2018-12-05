@@ -197,7 +197,7 @@ main <- function(){
   
   args <- get_args()
   
-  save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/kegg_maps_visualization/args.Rda")
+  #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/kegg_maps_visualization/args.Rda")
   #load("/home/dchristiany/proteore_project/ProteoRE/tools/kegg_maps_visualization/args.Rda")
   
   ###setting variables
