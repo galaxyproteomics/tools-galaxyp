@@ -59,7 +59,7 @@ split_ids_per_line <- function(line,ncol){
   
   #print (line)
   header = colnames(line)
-  line[ncol] = gsub("[[:blank:]]","",line[ncol])
+  line[ncol] = gsub("[[:blank:]]|\u00A0","",line[ncol])
   
   if (length(unlist(strsplit(as.character(line[ncol]),";")))>1) {
     if (length(line)==1 ) {
