@@ -153,7 +153,8 @@ clusterProfiler = function() {
   args <- as.list(as.character(argsDF$V2))
   names(args) <- argsDF$V1
   plot = unlist(strsplit(args$plot,","))
-  #print(args)
+  go_represent=str2bool(args$go_represent)
+  go_enrich=str2bool(args$go_enrich)
   
   #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/cluster_profiler/args.Rda")
   #load("/home/dchristiany/proteore_project/ProteoRE/tools/cluster_profiler/args.Rda")
@@ -209,13 +210,8 @@ clusterProfiler = function() {
   ontology <- strsplit(args$onto_opt, ",")[[1]]
   
   ## Extract GGO/EGO arguments
-  if (args$go_represent == "true") {
-    go_represent <- args$go_represent
-    level <- as.numeric(args$level)
-  }
-  
-  if (args$go_enrich == "true") {
-    go_enrich <- args$go_enrich
+  if (go_represent) {level <- as.numeric(args$level)}
+  if (go_enrich) {
     pval_cutoff <- as.numeric(args$pval_cutoff)
     qval_cutoff <- as.numeric(args$qval_cutoff)
     # Extract universe background genes (same as input file)
@@ -264,16 +260,16 @@ clusterProfiler = function() {
 
   ##enrichGO : GO over-representation test
   for (onto in ontology) {
-    if (args$go_represent == "true") {
+    if (go_represent) {
       ggo<-repartition.GO(gene, orgdb, onto, level, readable=TRUE)
-      ggo <- as.data.frame(apply(ggo, c(1,2), function(x) gsub("^$|^ $", NA, x)))  #convert "" and " " to NA
+      if (is.list(ggo)){ggo <- as.data.frame(apply(ggo, c(1,2), function(x) gsub("^$|^ $", NA, x)))}  #convert "" and " " to NA
       output_path = paste("cluster_profiler_GGO_",onto,".tsv",sep="")
       write.table(ggo, output_path, sep="\t", row.names = FALSE, quote = FALSE )
     }
 
-    if (args$go_enrich == "true") {
+    if (go_enrich) {
       ego<-enrich.GO(gene, universe_gene, orgdb, onto, pval_cutoff, qval_cutoff,plot)
-      ego <- as.data.frame(apply(ego, c(1,2), function(x) gsub("^$|^ $", NA, x)))  #convert "" and " " to NA
+      if (is.list(ego)){ego <- as.data.frame(apply(ego, c(1,2), function(x) gsub("^$|^ $", NA, x)))}  #convert "" and " " to NA
       output_path = paste("cluster_profiler_EGO_",onto,".tsv",sep="")
       write.table(ego, output_path, sep="\t", row.names = FALSE, quote = FALSE )
     }
