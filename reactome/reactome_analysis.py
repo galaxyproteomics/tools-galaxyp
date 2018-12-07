@@ -45,7 +45,7 @@ def data_json(identifiers):
         ids = "\n".join(id_valid(identifiers[0].split())[0])
         #print(ids)
         #print("curl -H \"Content-Type: text/plain\" -d \"$(printf '%s')\" -X POST --url www.reactome.org/AnalysisService/identifiers/projection/\?pageSize\=1\&page\=1" % ids)
-        json_string = os.popen("curl -H \"Content-Type: text/plain\" -d \"$(printf '%s')\" -X POST --url www.reactome.org/AnalysisService/identifiers/projection/\?pageSize\=1\&page\=1" % ids).read()
+        json_string = os.popen("curl -H \"Content-Type: text/plain\" -d \"$(printf '%s')\" -X POST --url www.reactome.org/AnalysisService/identifiers/\?pageSize\=1\&page\=1" % ids).read()
         if len(id_valid(identifiers[0].split())[1]) > 0:
             trash = id_valid(identifiers[0].split())[1]
     elif identifiers[1] == "file":
@@ -59,13 +59,13 @@ def data_json(identifiers):
             ids = "\n".join(id_valid(idens)[0])
             #print(ids)
             #print("curl -H \"Content-Type: text/plain\" -d \"$(printf '%s')\" -X POST --url www.reactome.org/AnalysisService/identifiers/projection/\?pageSize\=1\&page\=1" % ids)
-            json_string = os.popen("curl -H \"Content-Type: text/plain\" -d \"$(printf '%s')\" -X POST --url www.reactome.org/AnalysisService/identifiers/projection/\?pageSize\=1\&page\=1" % ids).read()
+            json_string = os.popen("curl -H \"Content-Type: text/plain\" -d \"$(printf '%s')\" -X POST --url www.reactome.org/AnalysisService/identifiers/\?pageSize\=1\&page\=1" % ids).read()
             if len(id_valid(idens)[1]) > 0:
                 trash = id_valid(idens)[1]
     print(json_string)
     return json_string, trash
 
-def write_output(filename, json_string, trash_file, trash):
+def write_output(filename, json_string, species, trash_file, trash):
     """
     Replace json result in template and print to output
     """
@@ -74,6 +74,7 @@ def write_output(filename, json_string, trash_file, trash):
     try: 
         for line in template:
             if "{token}" in line:
+                line = line.replace("{species}", species)
                 line = line.replace("{token}", json.loads(json_string)["summary"]["token"])
             output.write(line)
     except ValueError:
@@ -92,10 +93,11 @@ def options():
     argument = parser.add_argument("--json", nargs="+", required=True)
     argument = parser.add_argument("--output", default="output.html")
     argument = parser.add_argument("--trash", default="trash.txt")
+    argument = parser.add_argument("--species", default="48887")
     args = parser.parse_args()
     filename = args.output
     json_string, trash = data_json(args.json)
-    write_output(filename, json_string, args.trash, trash)
+    write_output(filename, json_string, args.species, args.trash, trash)
 
 if __name__ == "__main__":
     options()
