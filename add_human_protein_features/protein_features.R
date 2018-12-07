@@ -21,6 +21,7 @@ order_columns <- function (df,ncol,id_type,file){
 
 get_list_from_cp <-function(list){
   list = strsplit(list, "[ \t\n]+")[[1]]
+  list = gsub("NA","",list)
   list = list[list != ""]    #remove empty entry
   list = gsub("-.+", "", list)  #Remove isoform accession number (e.g. "-2")
   return(list)
@@ -142,7 +143,7 @@ protein_features = function() {
   inputtype = args$inputtype
   if (inputtype == "copy_paste") {
     input = get_list_from_cp(args$input)
-    input = input[which(!is.na(input[input!=""]))]
+    file = data.frame(input,stringsAsFactors = F)
     ncol=1
   } else if (inputtype == "file") {
     filename = args$input
@@ -157,7 +158,6 @@ protein_features = function() {
     header = str2bool(args$header)
     file = read_file(filename, header)                                                    # Get file content
     if (any(grep(";",file[,ncol]))) {file = one_id_one_line(file,ncol)}
-    input = sapply(file[,ncol],function(x) strsplit(as.character(x),";")[[1]][1],USE.NAMES = F)     # Extract Protein IDs list
     if (args$type == "NextprotID" && ! "NextprotID" %in% colnames(file)) { colnames(file)[ncol] <- "NextprotID" 
     } else if (args$type == "NextprotID" && "NextprotID" %in% colnames(file) && match("NextprotID",colnames(file))!=ncol ) { 
       colnames(file)[match("NextprotID",colnames(file))] <- "old_NextprotID" 
@@ -178,31 +178,21 @@ protein_features = function() {
   # Change the sample ids if they are Uniprot_AC ids to be able to match them with
   # Nextprot data
   if (id_type=="Uniprot_AC"){
-    NextprotID = gsub("^","NX_",input)
-    if (inputtype == "file" && "NextprotID" %in% colnames(file)){
-      colnames(file)[match("NextprotID",colnames(file))] <- "old_NextprotID"
-      file = cbind(file,NextprotID)
-    } else {
-      file = data.frame(cbind(input,NextprotID))
-      colnames(file)[1]="Uniprot-AC"
-    }
-    } else if (id_type=="NextprotID") {
-    if (inputtype == "file") {
-      NextprotID = file$NextprotID
-    } else {
-      NextprotID = input
-      file=data.frame(NextprotID)
-    }
+    NextprotID = gsub("^NX_$","",gsub("^","NX_",file[,ncol]))
+    file = cbind(file,NextprotID)
+    if (inputtype=="copy_paste") {colnames(file)[1]="Uniprot-AC"}
+    ncol=ncol(file)
   }
+  NextprotID = file[,ncol]
 
   #Select user input protein ids in nextprot
-  NextprotID = unique(NextprotID[which(!is.na(NextprotID[NextprotID!=""]))])
-  if ((length(NextprotID[NextprotID %in% nextprot[,1]]))==0){
+  #NextprotID = unique(NextprotID[which(!is.na(NextprotID[NextprotID!=""]))])
+  if (all(!NextprotID %in% nextprot[,1])){
     write.table("None of the input ids can be found in Nextprot",file=output,sep="\t",quote=FALSE,col.names=TRUE,row.names=FALSE)
   } else {
     res <- get_nextprot_info(nextprot,NextprotID,pc_features,localization,diseases_info)
     res = res[!duplicated(res$NextprotID),]
-    output_content = merge(file, res,by="NextprotID",incomparables = NA,all.x=T)
+    output_content = merge(file, res,by.x=ncol,by.y="NextprotID",incomparables = NA,all.x=T)
     output_content = order_columns(output_content,ncol,id_type,file)
     output_content <- as.data.frame(apply(output_content, c(1,2), function(x) gsub("^$|^ $", NA, x)))  #convert "" et " " to NA
     write.table(output_content, output, row.names = FALSE, sep = "\t", quote = FALSE)
