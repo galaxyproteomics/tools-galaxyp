@@ -60,8 +60,8 @@ def data_json(identifiers):
                 trash = id_valid(idens)[1]
     #print(json_string)
     j = json.loads(json_string)
-    print ("Identifiers not found:", j["identifiersNotFound"])
-    print ("Pathways found:", j["pathwaysFound"])
+    print ("Identifiers not found: " + str(j["identifiersNotFound"]))
+    print ("Pathways found: " + str(j["pathwaysFound"]))
     return json_string, trash
 
 def write_output(filename, json_string, species, trash_file, trash):
