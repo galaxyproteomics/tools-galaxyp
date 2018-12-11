@@ -55,7 +55,7 @@ def data_json(identifiers):
             else:
                 idens = [x.split("\t")[int(identifiers[3].replace("c", ""))-1] for x in mq]
             ids = "\n".join(id_valid(idens)[0])
-            json_string = os.popen("curl -H \"Content-Type: text/plain\" -d \"$(printf '%s')\" -X POST --url www.reactome.org/AnalysisService/identifiers/\?pageSize\=1\&page\=1 2> /dev/null" % ids).read()
+            json_string = os.popen("curl -H \"Content-Type: text/plain\" -d \"$(printf '%s')\" -X POST --url www.reactome.org/AnalysisService/identifiers/\?pageSize\=1\&page\=1 2> stderr" % ids).read()
             if len(id_valid(idens)[1]) > 0:
                 trash = id_valid(idens)[1]
     #print(json_string)
