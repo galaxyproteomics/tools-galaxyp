@@ -43,8 +43,6 @@ def data_json(identifiers):
     trash = []
     if identifiers[1] == "list":
         ids = "\n".join(id_valid(identifiers[0].split())[0])
-        #print(ids)
-        #print("curl -H \"Content-Type: text/plain\" -d \"$(printf '%s')\" -X POST --url www.reactome.org/AnalysisService/identifiers/projection/\?pageSize\=1\&page\=1" % ids)
         json_string = os.popen("curl -H \"Content-Type: text/plain\" -d \"$(printf '%s')\" -X POST --url www.reactome.org/AnalysisService/identifiers/\?pageSize\=1\&page\=1" % ids).read()
         if len(id_valid(identifiers[0].split())[1]) > 0:
             trash = id_valid(identifiers[0].split())[1]
@@ -57,12 +55,13 @@ def data_json(identifiers):
             else:
                 idens = [x.split("\t")[int(identifiers[3].replace("c", ""))-1] for x in mq]
             ids = "\n".join(id_valid(idens)[0])
-            #print(ids)
-            #print("curl -H \"Content-Type: text/plain\" -d \"$(printf '%s')\" -X POST --url www.reactome.org/AnalysisService/identifiers/projection/\?pageSize\=1\&page\=1" % ids)
-            json_string = os.popen("curl -H \"Content-Type: text/plain\" -d \"$(printf '%s')\" -X POST --url www.reactome.org/AnalysisService/identifiers/\?pageSize\=1\&page\=1" % ids).read()
+            json_string = os.popen("curl -H \"Content-Type: text/plain\" -d \"$(printf '%s')\" -X POST --url www.reactome.org/AnalysisService/identifiers/\?pageSize\=1\&page\=1 2> /dev/null" % ids).read()
             if len(id_valid(idens)[1]) > 0:
                 trash = id_valid(idens)[1]
-    print(json_string)
+    #print(json_string)
+    j = json.loads(json_string)
+    print ("Identifiers not found:", j["identifiersNotFound"])
+    print ("Pathways found:", j["pathwaysFound"])
     return json_string, trash
 
 def write_output(filename, json_string, species, trash_file, trash):
@@ -83,7 +82,7 @@ def write_output(filename, json_string, species, trash_file, trash):
     output.close()
     
     if trash:
-        print(trash)
+        #print(trash)
         trash_out = open(trash_file, "w")
         trash_out.write("\n".join(trash))
         trash_out.close()
