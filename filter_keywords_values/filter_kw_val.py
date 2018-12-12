@@ -55,7 +55,7 @@ def is_number(number_format, n):
 def filters(args):
     filename = args.input.split(",")[0]
     header = str_to_bool(args.input.split(",")[1])
-    csv_file = read_file(filename)
+    csv_file = blank_to_NA(read_file(filename))
     results_dict = {}
 
     if args.kw:
@@ -66,8 +66,10 @@ def filters(args):
     if args.kw_file:
         key_files = args.kw_file
         for kf in key_files:
-            keywords = read_option(kf[0])
-            results_dict=filter_keyword(csv_file, header, results_dict, keywords, kf[1], kf[2])
+            header = str_to_bool(kf[1])
+            ncol = column_from_txt(kf[2]) 
+            keywords = read_keywords_file(kf[0],header,ncol)
+            results_dict=filter_keyword(csv_file, header, results_dict, keywords, kf[3], kf[4])
 
     if args.value:
         for v in args.value:
@@ -81,7 +83,7 @@ def filters(args):
     if args.values_range:
         for vr in args.values_range:
             vr[:2] = [value.replace(",",".") for value in vr[:2]]
-            csv_file = comma_number_to_float(csv_file,v[2],header)
+            csv_file = comma_number_to_float(csv_file,vr[2],header)
             if (is_number("float", vr[0]) or is_number("int", vr[0])) and (is_number("float",vr[1]) or is_number("int",vr[1])):
                 results_dict = filter_values_range(csv_file, header, results_dict, vr[0], vr[1], vr[2], vr[3])
 
@@ -116,10 +118,6 @@ def filters(args):
         reverse=str_to_bool(args.sort_col.split(",")[1])
         remaining_lines= sort_by_column(remaining_lines,sort_col,reverse,header)
         filtered_lines = sort_by_column(filtered_lines,sort_col,reverse,header)
-
-    #convert empty cells into 'NA'
-    remaining_lines = blank_to_NA(remaining_lines)
-    filtered_lines = blank_to_NA(filtered_lines)
     
     # Write results to output
     with open(args.output,"w") as output :
@@ -162,7 +160,7 @@ def blank_to_NA(csv_file) :
     
     tmp=[]
     for line in csv_file :
-        line = ["NA" if cell=="" or cell==" " else cell for cell in line ] 
+        line = ["NA" if cell=="" or cell==" " or cell=="NaN" else cell for cell in line ]
         tmp.append(line)
     
     return tmp
@@ -199,13 +197,17 @@ def only_number(tab,col) :
     return True
 
 #Read the keywords file to extract the list of keywords
-def read_option(filename):
-    with open(filename, "r") as f:
-        filter_list=f.read().splitlines()
-    filter_list=[key for key in filter_list if len(key.replace(' ',''))!=0]
-    filters=";".join(filter_list)
+def read_keywords_file(filename,header,ncol):
+    with open(filename, "r") as csv_file :
+        lines= csv.reader(csv_file, delimiter='\t')
+        lines = blank_to_NA(lines)
+        if (len(lines[0])) > 1 : keywords = [line[ncol] for line in lines]
+        else : 
+            keywords= ["".join(key) for key in lines]
+    if header : keywords = keywords[1:]
+    keywords = list(set(keywords))
 
-    return filters
+    return keywords
 
 # Read input file
 def read_file(filename):
@@ -223,16 +225,11 @@ def read_file(filename):
 def filter_keyword(csv_file, header, results_dict, keywords, ncol, match):
     match=str_to_bool(match)
     ncol=column_from_txt(ncol)
-
-    keywords = keywords.upper().split(";")                                            # Split list of filter keyword
-    [keywords.remove(blank) for blank in keywords if blank.isspace() or blank == ""]  # Remove blank keywords
-    keywords = [k.strip() for k in keywords]        # Remove space from 2 heads of keywords
+    if type(keywords) != list : keywords = keywords.upper().split()            # Split list of filter keyword
 
     for id_line,line in enumerate(csv_file):
         if header is True and id_line == 0 : continue
-        #line = line.replace("\n", "")
         keyword_inline = line[ncol].replace('"', "").split(";")
-        #line = line + "\n"
 
         #Perfect match or not
         if match is True :
@@ -251,6 +248,7 @@ def filter_value(csv_file, header, results_dict, filter_value, ncol, opt):
 
     filter_value = float(filter_value)
     ncol=column_from_txt(ncol)
+    nb_string=0
 
     for id_line,line in enumerate(csv_file):
         if header is True and id_line == 0 : continue
@@ -264,8 +262,18 @@ def filter_value(csv_file, header, results_dict, filter_value, ncol, opt):
 
         #impossible to treat (ex : "" instead of a number), we keep the line by default        
         else :
+            nb_string+=1
             if id_line in results_dict : results_dict[id_line].append(False)
             else : results_dict[id_line]=[False]
+    
+    #number of lines in the csv file
+    if header : nb_lines = len(csv_file) -1
+    else : nb_lines = len(csv_file)
+    
+    #if there's no numeric value in the column
+    if nb_string == nb_lines :
+        print ('No numeric values found in the column '+str(ncol+1))
+        print ('The filter "'+str(opt)+' '+str(filter_value)+'" can not be applied on the column '+str(ncol+1))
             
     return results_dict
 
@@ -275,6 +283,7 @@ def filter_values_range(csv_file, header, results_dict, bottom_value, top_value,
     bottom_value = float(bottom_value)
     top_value=float(top_value)
     ncol=column_from_txt(ncol)
+    nb_string=0
 
     for id_line, line in enumerate(csv_file):
         if header is True and id_line == 0 : continue
@@ -292,8 +301,19 @@ def filter_values_range(csv_file, header, results_dict, bottom_value, top_value,
         
         #impossible to treat (ex : "" instead of a number), we keep the line by default        
         else :
+            nb_string+=1
             if id_line in results_dict : results_dict[id_line].append(False)
             else : results_dict[id_line]=[False]
+
+    #number of lines in the csv file
+    if header : nb_lines = len(csv_file) -1
+    else : nb_lines = len(csv_file)
+    
+    #if there's no numeric value in the column
+    if nb_string == nb_lines :
+        print ('No numeric values found in the column '+str(ncol+1))
+        if inclusive : print ('The filter "'+str(bottom_value)+' <= x <= '+str(top_value)+'" can not be applied on the column '+str(ncol+1))
+        else : print ('The filter "'+str(bottom_value)+' < x < '+str(top_value)+'" can not be applied on the column '+str(ncol+1))
 
     return results_dict 
 
