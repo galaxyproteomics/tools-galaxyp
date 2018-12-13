@@ -322,7 +322,8 @@ main <- function(){
              na.col="#D8D8D8", #gray
              cpd.data=NULL,
              plot.col.key = plot.col.key,
-             pdf.size=c(9,9)))
+             pdf.size=c(9,9),
+             limit=list(gene=5, cpd=NULL)))
     
     if (is.list(pv.out)){
     
