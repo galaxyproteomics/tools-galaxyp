@@ -169,6 +169,12 @@ one_id_one_line <-function(tab,ncol){
   return(res)
 }
 
+get_limit <- function(mat) {
+  min = min(apply(mat,2,min))
+  max = max(apply(mat,2,max))
+  return(c(min,max))
+}
+
 get_args <- function(){
   
   ## Collect arguments
@@ -291,9 +297,11 @@ main <- function(){
     geneID=mat$geneID
     mat = as.data.frame(mat[,-1])
     row.names(mat)=geneID
+    limit = get_limit(mat)
   } else {
     mat = unique(as.character(tab$geneID[!is.na(tab$geneID[tab$geneID!=""])]))
     geneID=mat
+    limit=1
   }
   
   #####mapping geneID (with or without expression values) on KEGG pathway
@@ -304,7 +312,7 @@ main <- function(){
   if (!fold_change_data) {
     plot.col.key= FALSE   #if there's no exrepession data, we don't show the color key
     high_color = "#81BEF7" #blue
-  }
+  } 
   
   #create graph(s) and text output
   for (id in ids) {
@@ -323,7 +331,7 @@ main <- function(){
              cpd.data=NULL,
              plot.col.key = plot.col.key,
              pdf.size=c(9,9),
-             limit=list(gene=5, cpd=NULL)))
+             limit=list(gene=limit, cpd=limit)))
     
     if (is.list(pv.out)){
     
