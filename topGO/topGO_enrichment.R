@@ -24,8 +24,7 @@ get_args <- function(){
       --correction
       --threshold
       --text
-      --barplot
-      --dotplot
+      --plot
       --column
       --geneuniverse
       --header
@@ -296,8 +295,8 @@ option = args$option
 correction = args$correction
 threshold = as.numeric(args$threshold)
 text = str2bool(args$textoutput)
-barplot = str2bool(args$barplotoutput)
-dotplot = str2bool(args$dotplotoutput)
+barplot = "barplot" %in% unlist(strsplit(args$plot,","))
+dotplot = "dotplot" %in% unlist(strsplit(args$plot,","))
 column = as.numeric(gsub("c","",args$column))
 geneuniverse = args$geneuniverse
 header = str2bool(args$header)
