@@ -31,7 +31,7 @@ annot.HPAnorm<-function(input, HPA_normal_tissue, tissue, level, reliability, no
   if (not_mapped_option) {
     if (length(setdiff(intersect(input, unique(dat$Gene)), unique(res.Rel$Gene)))>0) {
       not_match_IDs <- matrix(setdiff(intersect(input, unique(dat$Gene)), unique(res.Rel$Gene)), ncol = 1, nrow = length(setdiff(intersect(input, unique(dat$Gene)), unique(res.Rel$Gene))))
-      not.match <- matrix("not match", ncol = ncol(HPA_normal_tissue) - 1, nrow = length(not_match_IDs))
+      not.match <- matrix(NA, ncol = ncol(HPA_normal_tissue) - 1, nrow = length(not_match_IDs))
       not.match <- cbind(not_match_IDs, unname(not.match))
       colnames(not.match) <- colnames(HPA_normal_tissue)
       res <- rbind(res.Rel, not.match)
@@ -103,8 +103,8 @@ main <- function() {
   args <- as.list(as.character(argsDF$V2))
   names(args) <- argsDF$V1
   
-  #save(args,file = "/home/dchristiany/proteore_project/ProteoRE/tools/select_annotate_tissue/args.rda")
-  #load("/home/dchristiany/proteore_project/ProteoRE/tools/select_annotate_tissue/args.rda")
+  #save(args,file = "/home/dchristiany/proteore_project/ProteoRE/tools/Get_expression_profiles/args.rda")
+  #load("/home/dchristiany/proteore_project/ProteoRE/tools/Get_expression_profiles/args.rda")
   
   # Extract input
   input_type = args$input_type
