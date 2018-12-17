@@ -7,7 +7,7 @@ Alexa A and Rahnenfuhrer J (2016). topGO: Enrichment Analysis for Gene Ontology.
 
 **Galaxy integration**
 
-Lisa Peru, T.P. Lien Nguyen, Florence Combes, Yves Vandenbrouck CEA, INSERM, CNRS, Grenoble-Alpes University, BIG Institute, FR
+Lisa Perus, T.P. Lien Nguyen, Florence Combes, Yves Vandenbrouck CEA, INSERM, CNRS, Grenoble-Alpes University, BIG Institute, FR
 
 Sandra Dérozier, Olivier Rué, Christophe Caron, Valentin Loux INRA, Paris-Saclay University, MAIAGE Unit, Migale Bioinformatics platform
 
