@@ -950,11 +950,11 @@ extractWidgetCode = function(outplot){
                            lines[grep('<head>',lines) + 3
                                  :grep('</head>' ,lines) - 5]),
                       ''),
-    'widget_div'  = paste('',
+    'widget_div'  = paste('<!--',
                           gsub('width:100%;height:400px',
                                'width:500px;height:500px',
                                lines[grep(lines, pattern='html-widget')]),
-                          '', sep=''),
+                          '-->', sep=''),
     'postscripts' = paste('',
                           gsub('script', 'script',
                                lines[grep(lines, pattern='<script type')]),
