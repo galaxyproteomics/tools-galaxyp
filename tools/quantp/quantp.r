@@ -59,10 +59,10 @@ singlesample_regression = function(PE_TE_data,htmloutfile, append=TRUE)
   plot(regmodel, 1, cex.lab=1.5);
   dev.off();
   
-  g <- autoplot(regmodel, label = FALSE)[[1]] +
-    geom_point(aes(text=sprintf("Residual: %.2f<br>Fitted value: %.2f<br>Gene: %s", .fitted, .resid, PE_TE_data$PE_ID)),
-               shape = 1, size = .1, stroke = .2) +
-    theme_light()
+  suppressWarnings(g <- autoplot(regmodel, label = FALSE)[[1]] +
+                     geom_point(aes(text=sprintf("Residual: %.2f<br>Fitted value: %.2f<br>Gene: %s", .fitted, .resid, PE_TE_data$PE_ID)),
+                                shape = 1, size = .1, stroke = .2) +
+                     theme_light())
   saveWidget(ggplotly(g, tooltip= c("text")), file.path(gsub("\\.png", "\\.html", outplot)))
   
   outplot = paste(outdir,"/PE_TE_lm_2.png",sep="",collapse="");
@@ -73,10 +73,10 @@ singlesample_regression = function(PE_TE_data,htmloutfile, append=TRUE)
   ggplotly(g)
   dev.off();
   
-  g <- autoplot(regmodel, label = FALSE)[[2]] +
-    geom_point(aes(text=sprintf("Standarized residual: %.2f<br>Theoretical quantile: %.2f<br>Gene: %s", .qqx, .qqy, PE_TE_data$PE_ID)),
-               shape = 1, size = .1) +
-    theme_light()
+  suppressWarnings(g <- autoplot(regmodel, label = FALSE)[[2]] +
+                     geom_point(aes(text=sprintf("Standarized residual: %.2f<br>Theoretical quantile: %.2f<br>Gene: %s", .qqx, .qqy, PE_TE_data$PE_ID)),
+                                shape = 1, size = .1) +
+                     theme_light())
   saveWidget(ggplotly(g, tooltip = "text"), file.path(gsub("\\.png", "\\.html", outplot)))
   
   
@@ -90,10 +90,10 @@ singlesample_regression = function(PE_TE_data,htmloutfile, append=TRUE)
   cd_cont_pos <- function(leverage, level, model) {sqrt(level*length(coef(model))*(1-leverage)/leverage)}
   cd_cont_neg <- function(leverage, level, model) {-cd_cont_pos(leverage, level, model)}
   
-  g <- autoplot(regmodel, label = FALSE)[[4]] +
-    aes(label = PE_TE_data$PE_ID) + 
-    geom_point(aes(text=sprintf("Leverage: %.2f<br>Standardized residual: %.2f<br>Gene: %s", .hat, .stdresid, PE_TE_data$PE_ID))) +
-    theme_light()
+  suppressWarnings(g <- autoplot(regmodel, label = FALSE)[[4]] +
+                     aes(label = PE_TE_data$PE_ID) + 
+                     geom_point(aes(text=sprintf("Leverage: %.2f<br>Standardized residual: %.2f<br>Gene: %s", .hat, .stdresid, PE_TE_data$PE_ID))) +
+                     theme_light())
   saveWidget(ggplotly(g, tooltip = "text"), file.path(gsub("\\.png", "\\.html", outplot)))
   
   cat('<table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; ">', file = htmloutfile, append = TRUE);
@@ -274,13 +274,13 @@ singlesample_regression = function(PE_TE_data,htmloutfile, append=TRUE)
   max_lim = max(c(PE_TE_data$PE_abundance,PE_TE_data$TE_abundance));
   png(outplot, width = 10, height = 10, units = 'in', res=300);
   # bitmap(outplot,"png16m");
-  g = ggplot(PE_TE_data_no_outlier, aes(x=TE_abundance, y=PE_abundance, label=PE_ID)) + geom_smooth() + 
-    xlab("Transcript abundance log fold-change") + ylab("Protein abundance log fold-change") + 
-    xlim(min_lim,max_lim) + ylim(min_lim,max_lim) +
-    geom_point(aes(text=sprintf("Gene: %s<br>Transcript Abundance (log fold-change): %.3f<br>Protein Abundance (log fold-change): %.3f",
-                                PE_ID, TE_abundance, PE_abundance)))
-  suppressMessages(plot(g));
-  suppressMessages(saveWidget(ggplotly(g, tooltip="text"), file.path(gsub("\\.png", "\\.html", outplot))));
+  suppressWarnings(g <- ggplot(PE_TE_data_no_outlier, aes(x=TE_abundance, y=PE_abundance, label=PE_ID)) + geom_smooth() + 
+                     xlab("Transcript abundance log fold-change") + ylab("Protein abundance log fold-change") + 
+                     xlim(min_lim,max_lim) + ylim(min_lim,max_lim) +
+                     geom_point(aes(text=sprintf("Gene: %s<br>Transcript Abundance (log fold-change): %.3f<br>Protein Abundance (log fold-change): %.3f",
+                                                 PE_ID, TE_abundance, PE_abundance))))
+  suppressMessages(plot(g))
+  suppressMessages(saveWidget(ggplotly(g, tooltip="text"), file.path(gsub("\\.png", "\\.html", outplot))))
   dev.off();
   
   
@@ -474,13 +474,13 @@ singlesample_scatter = function(PE_TE_data, outfile)
   max_lim = max(c(PE_TE_data$PE_abundance,PE_TE_data$TE_abundance));
   png(outfile, width = 10, height = 10, units = 'in', res=300);
   # bitmap(outfile, "png16m");
-  g = ggplot(PE_TE_data, aes(x=TE_abundance, y=PE_abundance, label=PE_ID)) + geom_smooth() + 
-    xlab("Transcript abundance log fold-change") + ylab("Protein abundance log fold-change") + 
-    xlim(min_lim,max_lim) + ylim(min_lim,max_lim) +
-    geom_point(aes(text=sprintf("Gene: %s<br>Transcript Abundance (log fold-change): %.3f<br>Protein Abundance (log fold-change): %.3f",
-                                PE_ID, TE_abundance, PE_abundance)),
-               size = .5)
-  suppressMessages(plot(g));
+  suppressWarnings(g <- ggplot(PE_TE_data, aes(x=TE_abundance, y=PE_abundance, label=PE_ID)) + geom_smooth() + 
+                     xlab("Transcript abundance log fold-change") + ylab("Protein abundance log fold-change") + 
+                     xlim(min_lim,max_lim) + ylim(min_lim,max_lim) +
+                     geom_point(aes(text=sprintf("Gene: %s<br>Transcript Abundance (log fold-change): %.3f<br>Protein Abundance (log fold-change): %.3f",
+                                                 PE_ID, TE_abundance, PE_abundance)),
+                                size = .5))
+  suppressMessages(plot(g))
   suppressMessages(saveWidget(ggplotly(g, tooltip = "text"), file.path(gsub("\\.png", "\\.html", outfile))))
   dev.off();
 }
