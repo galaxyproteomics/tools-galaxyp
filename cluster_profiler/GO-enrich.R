@@ -152,12 +152,13 @@ clusterProfiler = function() {
   argsDF <- as.data.frame(do.call("rbind", parseArgs(args)))
   args <- as.list(as.character(argsDF$V2))
   names(args) <- argsDF$V1
-  plot = unlist(strsplit(args$plot,","))
-  go_represent=str2bool(args$go_represent)
-  go_enrich=str2bool(args$go_enrich)
   
   #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/cluster_profiler/args.Rda")
   #load("/home/dchristiany/proteore_project/ProteoRE/tools/cluster_profiler/args.Rda")
+  
+  plot = unlist(strsplit(args$plot,","))
+  go_represent=str2bool(args$go_represent)
+  go_enrich=str2bool(args$go_enrich)
   
   suppressMessages(library(args$species, character.only = TRUE, quietly = TRUE))
   
@@ -232,7 +233,7 @@ clusterProfiler = function() {
         # Get file content
         universe_file = read_file(universe_filename, universe_header)
         # Extract Protein IDs list
-        universe <- sapply(universe_file[,universe_ncol], function(x) rapply(strsplit(x,";"),c),USE.NAMES = FALSE)
+        universe <- unlist(sapply(universe_file[,universe_ncol], function(x) rapply(strsplit(x,";"),c),USE.NAMES = FALSE))
       }
       universe_id_type = args$universe_id_type
       ##to initialize
