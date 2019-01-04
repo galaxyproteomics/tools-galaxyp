@@ -120,7 +120,7 @@ def main():
     #print(ids_dictionary.keys())
 
     #Get file and/or ids from input 
-    if args.input_type == "text" :
+    if args.input_type == "list" :
         ids = get_input_ids_from_string(args.input)
     elif args.input_type == "file" :
         input_file, ids = get_input_ids_from_file(args.input,args.column_number,args.header)
@@ -139,7 +139,7 @@ def main():
     if args.input_type=="file" :
         for line in input_file :
             output_file.append(line+result_dict[line[args.column_number]])
-    elif args.input_type=="text" :
+    elif args.input_type=="list" :
         for id in ids :
             output_file.append([id]+result_dict[id])
     #print (output_file)
