@@ -122,7 +122,7 @@ For example if we want to convert 'P31946' (Uniprot-AC) into Entrez Gene ID, the
 ids_dictionary['UniProt-AC']['P31946']['GeneID']
 ```
 
-and the result will is:
+and the result is:
 ```
 ['7531']
 ```
