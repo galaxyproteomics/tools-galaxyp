@@ -117,7 +117,7 @@ def check_uniprot_access (id) :
 #######################################################################################################
 # 3. ID mapping file
 #######################################################################################################
-import ftplib, gzip, pickle
+import ftplib, gzip, json 
 csv.field_size_limit(sys.maxsize) # to handle big files
 
 def id_mapping_sources (data_manager_dict, species, target_directory) :
@@ -135,7 +135,7 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
 
     #print("header ok")
 
-    #selected.tab and keep only ids of interest
+    #get selected.tab and keep only ids of interest
     selected_tab_file=species_dict[species]+"_"+files[0]
     tab_path = download_from_uniprot_ftp(selected_tab_file,target_directory)
     with gzip.open(tab_path,"rt") as select :
@@ -143,7 +143,7 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
         for line in tab_reader :
             tab.append([line[i] for i in [0,1,2,3,4,5,6,11,13,14,18,19,20]])
     os.remove(tab_path)
-
+    
     #print("selected_tab ok")
 
     """
@@ -151,6 +151,7 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
     -NextProt,BioGrid,STRING,KEGG
     """
 
+    #there's more id type for human
     if human : ids = ['neXtProt','BioGrid','STRING','KEGG' ]   #ids to get from dat_file
     else : ids = ['BioGrid','STRING','KEGG' ]
     unidict = {}
@@ -214,6 +215,7 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
 
     #create empty dictionary and dictionary index
     ids_dictionary, ids_dictionary_index = create_ids_dictionary(ids_list)
+    #print("creating dictionaries")
 
     #fill dictionary and sub dictionaries with ids
     for line in tab[1:] :
@@ -230,13 +232,25 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
                     if len(ids_dictionary[ids_dictionary_index[index]][id][ids_dictionary_index[other_id_type]]) > 1 and '' in ids_dictionary[ids_dictionary_index[index]][id][ids_dictionary_index[other_id_type]] : 
                         ids_dictionary[ids_dictionary_index[index]][id][ids_dictionary_index[other_id_type]].remove('')
 
+
+    #convert sets into list to save dictionary with json
+    ids_dictionary = dict_set_to_list(ids_dictionary)
+
     ##writing output files
-    output_file = species+"_id_mapping_"+ time.strftime("%d-%m-%Y") + ".pickle"
+    #output_file = species+"_id_mapping_"+ time.strftime("%d-%m-%Y") + ".tsv"
+    output_dict = species+"_id_mapping_"+ time.strftime("%d-%m-%Y") + ".json"
     path = os.path.join(target_directory,output_file)
 
     #save ids_dictionary
     with open(output_dict, 'wb') as handle:
-        pickle.dump(ids_dictionary, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        json.dump(ids_dictionary, handle, sort_keys=True)
+
+    """
+    #save tab file
+    with open(path,"w") as out :
+        w = csv.writer(out,delimiter='\t')
+        w.writerows(tab)
+    """
 
     name_dict={"human" : "Homo sapiens", "mouse" : "Mus musculus", "rat" : "Rattus norvegicus"}
     name = name_dict[species]+" "+time.strftime("%d/%m/%Y")
@@ -300,6 +314,14 @@ def create_ids_dictionary (ids_list) :
         ids_dictionary_index[i]=id
             
     return(ids_dictionary,ids_dictionary_index)
+
+def dict_set_to_list (dico) :
+    for sub in dico :
+        if type(dico[sub]) is dict :
+            dict_set_to_list(dico[sub])
+        elif type(dico[sub]) is set :
+            dico[sub] = list(dico[sub])
+    return (dico)
 
 #######################################################################################################
 # Main function
