@@ -60,9 +60,9 @@ singlesample_regression = function(PE_TE_data,htmloutfile, append=TRUE)
   dev.off();
   
   suppressWarnings(g <- autoplot(regmodel, label = FALSE)[[1]] +
-                     geom_point(aes(text=sprintf("Residual: %.2f<br>Fitted value: %.2f<br>Gene: %s", .fitted, .resid, PE_TE_data$PE_ID)),
-                                shape = 1, size = .1, stroke = .2) +
-                     theme_light())
+    geom_point(aes(text=sprintf("Residual: %.2f<br>Fitted value: %.2f<br>Gene: %s", .fitted, .resid, PE_TE_data$PE_ID)),
+               shape = 1, size = .1, stroke = .2) +
+    theme_light())
   saveWidget(ggplotly(g, tooltip= c("text")), file.path(gsub("\\.png", "\\.html", outplot)))
   
   outplot = paste(outdir,"/PE_TE_lm_2.png",sep="",collapse="");
@@ -74,9 +74,9 @@ singlesample_regression = function(PE_TE_data,htmloutfile, append=TRUE)
   dev.off();
   
   suppressWarnings(g <- autoplot(regmodel, label = FALSE)[[2]] +
-                     geom_point(aes(text=sprintf("Standarized residual: %.2f<br>Theoretical quantile: %.2f<br>Gene: %s", .qqx, .qqy, PE_TE_data$PE_ID)),
-                                shape = 1, size = .1) +
-                     theme_light())
+    geom_point(aes(text=sprintf("Standarized residual: %.2f<br>Theoretical quantile: %.2f<br>Gene: %s", .qqx, .qqy, PE_TE_data$PE_ID)),
+               shape = 1, size = .1) +
+    theme_light())
   saveWidget(ggplotly(g, tooltip = "text"), file.path(gsub("\\.png", "\\.html", outplot)))
   
   
@@ -91,9 +91,9 @@ singlesample_regression = function(PE_TE_data,htmloutfile, append=TRUE)
   cd_cont_neg <- function(leverage, level, model) {-cd_cont_pos(leverage, level, model)}
   
   suppressWarnings(g <- autoplot(regmodel, label = FALSE)[[4]] +
-                     aes(label = PE_TE_data$PE_ID) + 
-                     geom_point(aes(text=sprintf("Leverage: %.2f<br>Standardized residual: %.2f<br>Gene: %s", .hat, .stdresid, PE_TE_data$PE_ID))) +
-                     theme_light())
+    aes(label = PE_TE_data$PE_ID) + 
+    geom_point(aes(text=sprintf("Leverage: %.2f<br>Standardized residual: %.2f<br>Gene: %s", .hat, .stdresid, PE_TE_data$PE_ID))) +
+    theme_light())
   saveWidget(ggplotly(g, tooltip = "text"), file.path(gsub("\\.png", "\\.html", outplot)))
   
   cat('<table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; ">', file = htmloutfile, append = TRUE);
@@ -215,7 +215,7 @@ singlesample_regression = function(PE_TE_data,htmloutfile, append=TRUE)
   cooksd_df[cooksd_df$cooksd > cutoff,]$colors <- "red"
   
   g <- ggplot(cooksd_df, aes(x = index, y = cooksd, label = row.names(cooksd_df), color=as.factor(colors), 
-                             text=sprintf("Gene: %s<br>Cook's Distance: %.3f", row.names(cooksd_df), cooksd))) +
+          text=sprintf("Gene: %s<br>Cook's Distance: %.3f", row.names(cooksd_df), cooksd))) +
     ggtitle("Influential Obs. by Cook's distance") + xlab("Observations") + ylab("Cook's Distance") + 
     #xlim(0, 3000) + ylim(0, .15) + 
     scale_shape_discrete(solid=F) +
@@ -275,10 +275,10 @@ singlesample_regression = function(PE_TE_data,htmloutfile, append=TRUE)
   png(outplot, width = 10, height = 10, units = 'in', res=300);
   # bitmap(outplot,"png16m");
   suppressWarnings(g <- ggplot(PE_TE_data_no_outlier, aes(x=TE_abundance, y=PE_abundance, label=PE_ID)) + geom_smooth() + 
-                     xlab("Transcript abundance log fold-change") + ylab("Protein abundance log fold-change") + 
-                     xlim(min_lim,max_lim) + ylim(min_lim,max_lim) +
-                     geom_point(aes(text=sprintf("Gene: %s<br>Transcript Abundance (log fold-change): %.3f<br>Protein Abundance (log fold-change): %.3f",
-                                                 PE_ID, TE_abundance, PE_abundance))))
+    xlab("Transcript abundance log fold-change") + ylab("Protein abundance log fold-change") + 
+    xlim(min_lim,max_lim) + ylim(min_lim,max_lim) +
+    geom_point(aes(text=sprintf("Gene: %s<br>Transcript Abundance (log fold-change): %.3f<br>Protein Abundance (log fold-change): %.3f",
+                                PE_ID, TE_abundance, PE_abundance))))
   suppressMessages(plot(g))
   suppressMessages(saveWidget(ggplotly(g, tooltip="text"), file.path(gsub("\\.png", "\\.html", outplot))))
   dev.off();
@@ -440,9 +440,9 @@ singlesample_kmeans=function(PE_TE_data, htmloutfile, nclust){
   
   # Interactive plot for k-means clustering
   g <- ggplot(PE_TE_data, aes(x = TE_abundance, y = PE_abundance, label = row.names(PE_TE_data),
-                              text=sprintf("Gene: %s<br>Transcript Abundance: %.3f<br>Protein Abundance: %.3f",
-                                           PE_ID, TE_abundance, PE_abundance),
-                              color=as.factor(k1$cluster))) +
+                text=sprintf("Gene: %s<br>Transcript Abundance: %.3f<br>Protein Abundance: %.3f",
+                PE_ID, TE_abundance, PE_abundance),
+                color=as.factor(k1$cluster))) +
     xlab("Transcript Abundance") + ylab("Protein Abundance") + 
     scale_shape_discrete(solid=F) + geom_smooth(method = "loess", span = 2/3) +
     geom_point(size = 1, shape = 8) +
@@ -475,11 +475,11 @@ singlesample_scatter = function(PE_TE_data, outfile)
   png(outfile, width = 10, height = 10, units = 'in', res=300);
   # bitmap(outfile, "png16m");
   suppressWarnings(g <- ggplot(PE_TE_data, aes(x=TE_abundance, y=PE_abundance, label=PE_ID)) + geom_smooth() + 
-                     xlab("Transcript abundance log fold-change") + ylab("Protein abundance log fold-change") + 
-                     xlim(min_lim,max_lim) + ylim(min_lim,max_lim) +
-                     geom_point(aes(text=sprintf("Gene: %s<br>Transcript Abundance (log fold-change): %.3f<br>Protein Abundance (log fold-change): %.3f",
-                                                 PE_ID, TE_abundance, PE_abundance)),
-                                size = .5))
+    xlab("Transcript abundance log fold-change") + ylab("Protein abundance log fold-change") + 
+    xlim(min_lim,max_lim) + ylim(min_lim,max_lim) +
+    geom_point(aes(text=sprintf("Gene: %s<br>Transcript Abundance (log fold-change): %.3f<br>Protein Abundance (log fold-change): %.3f",
+                                PE_ID, TE_abundance, PE_abundance)),
+              size = .5))
   suppressMessages(plot(g))
   suppressMessages(saveWidget(ggplotly(g, tooltip = "text"), file.path(gsub("\\.png", "\\.html", outfile))))
   dev.off();
@@ -682,8 +682,8 @@ perform_Test_Volcano = function(TE_df_data,PE_df_data,TE_df_logfold, PE_df_logfo
     dev.off();
     
     g <- ggplot(PE_df_logfold, aes(x = LogFold, -log10(PE_pval), color = as.factor(color),
-                                   text=sprintf("Gene: %s<br>Log2 Fold-Change: %.3f<br>-log10 p-value: %.3f<br>p-value: %.3f",
-                                                Genes, LogFold, -log10(PE_pval), PE_pval))) +
+            text=sprintf("Gene: %s<br>Log2 Fold-Change: %.3f<br>-log10 p-value: %.3f<br>p-value: %.3f",
+              Genes, LogFold, -log10(PE_pval), PE_pval))) +
       xlab("log2 fold change") + ylab("-log10 p-value") + 
       geom_point(shape=1, size = 1.5, stroke = .2) +
       scale_color_manual(values = c("black" = "black", "red" = "red", "blue" = "blue")) + 
@@ -722,7 +722,7 @@ perform_Test_Volcano = function(TE_df_data,PE_df_data,TE_df_logfold, PE_df_logfo
     dev.off();
     
     g <- ggplot(TE_df_logfold, aes(x = LogFold, -log10(TE_pval), color = as.factor(color),
-                                   text=sprintf("Gene: %s<br>Log2 Fold-Change: %.3f<br>-log10 p-value: %.3f<br>p-value: %.3f",
+          text=sprintf("Gene: %s<br>Log2 Fold-Change: %.3f<br>-log10 p-value: %.3f<br>p-value: %.3f",
                                                 Genes, LogFold, -log10(TE_pval), TE_pval))) +
       xlab("log2 fold change") + ylab("-log10 p-value") + 
       geom_point(shape=1, size = 1.5, stroke = .2) +
@@ -974,28 +974,33 @@ if(mode=="logfold")
   
   # TE Boxplot
   outplot = paste(outdir,"/Box_TE.png",sep="",collape="");
+  multisample_boxplot(TE_df, sampleinfo_df, outplot, "Yes", "Samples", "Transcript Abundance data");
+  lines <- extractWidgetCode(outplot)
+  prescripts <- c(prescripts, lines$prescripts)
+  postscripts <- c(postscripts, lines$postscripts)
   cat('<table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; ">\n',
       '<tr bgcolor="#7a0019"><th><font color=#ffcc33>Boxplot: Transcriptome data</font></th><th><font color=#ffcc33>Boxplot: Proteome data</font></th></tr>\n',
-      "<tr><td align=center>", '<img src="Box_TE.png" width=500 height=500></td>\n', file = htmloutfile, append = TRUE);
-  multisample_boxplot(TE_df, sampleinfo_df, outplot, "Yes", "Samples", "Transcript Abundance data");
+      "<tr><td align=center>", '<img src="Box_TE.png" width=500 height=500>', lines$widget_div, '</td>\n', file = htmloutfile, append = TRUE);
   
   # PE Boxplot
   outplot = paste(outdir,"/Box_PE.png",sep="",collape="");
-  cat("<td align=center>", '<img src="Box_PE.png" width=500 height=500></td></tr></table>\n', file = htmloutfile, append = TRUE);
   multisample_boxplot(PE_df, sampleinfo_df, outplot, "Yes", "Samples", "Protein Abundance data");
-  
+  lines <- extractWidgetCode(outplot)
+  postscripts <- c(postscripts, lines$postscripts)
+  cat("<td align=center>", '<img src="Box_PE.png" width=500 height=500>', lines$widget_div, 
+      '</td></tr></table>\n', file = htmloutfile, append = TRUE);
   cat('<hr/><h2 id="corr_data"><font color=#ff0000>CORRELATION</font></h2>\n',
       file = htmloutfile, append = TRUE);
   
   # TE PE scatter
+  PE_TE_data = data.frame(PE_df, TE_df);
+  colnames(PE_TE_data) = c("PE_ID","PE_abundance","TE_ID","TE_abundance");
   outplot = paste(outdir,"/TE_PE_scatter.png",sep="",collape="");
   cat('<table border=1 cellspacing=0 cellpadding=5 style="table-layout:auto; "> <tr bgcolor="#7a0019"><th><font color=#ffcc33>Scatter plot between Proteome and Transcriptome Abundance</font></th></tr>\n', file = htmloutfile, append = TRUE);
   singlesample_scatter(PE_TE_data, outplot);  
   lines <- extractWidgetCode(outplot);
   postscripts <- c(postscripts, lines$postscripts);
-  cat("<tr><td align=center>", '<img src="TE_PE_scatter.png" width=800 height=800>', lines$widget_div, '</td></tr>\n', file = htmloutfile, append = TRUE);
-  PE_TE_data = data.frame(PE_df, TE_df);
-  colnames(PE_TE_data) = c("PE_ID","PE_abundance","TE_ID","TE_abundance");
+  cat("<tr><td align=center>", '<img src="TE_PE_scatter.png" width=800 height=800>', gsub('width:500px;height:500px', 'width:800px;height:800px' , lines$widget_div), '</td></tr>\n', file = htmloutfile, append = TRUE);
   
   # TE PE Cor
   cat("<tr><td align=center>", file = htmloutfile, append = TRUE);
@@ -1014,7 +1019,9 @@ if(mode=="logfold")
                                   extractWidgetCode(paste(outdir,"/PE_TE_lm_2.png",sep="",collapse=""))$postscripts,
                                   extractWidgetCode(paste(outdir,"/PE_TE_lm_5.png",sep="",collapse=""))$postscripts,
                                   extractWidgetCode(paste(outdir,"/PE_TE_lm_cooksd.png",sep="",collapse=""))$postscripts,
-                                  extractWidgetCode(paste(outdir,"/AbundancePlot_scatter_without_outliers.png",sep="",collapse=""))$postscripts));
+                                  extractWidgetCode(paste(outdir,"/AbundancePlot_scatter_without_outliers.png",sep="",collapse=""))$postscripts,
+                                  gsub('data-for="html', 'data-for="secondhtml"', 
+                                       extractWidgetCode(paste(outdir,"/TE_PE_scatter.png",sep="",collapse=""))$postscripts)))
   
   cat('<hr/><h2 id="cluster_data"><font color=#ff0000>CLUSTER ANALYSIS</font></h2>\n',
       file = htmloutfile, append = TRUE);
