@@ -2,7 +2,7 @@ import csv, json, argparse, re
 
 def get_args() :
     parser = argparse.ArgumentParser()
-    parser.add_argument("--database", help="Hu.map, Bioplex or Biogrid", required=True)
+    parser.add_argument("--database", help="Humap, Bioplex or Biogrid", required=True)
     parser.add_argument("--dict_path", required=True)
     parser.add_argument("--input_type", help="type of input (list of id or filename)",required=True)
     parser.add_argument("--input", required=True)
@@ -11,7 +11,14 @@ def get_args() :
     parser.add_argument("--id_type")
     parser.add_argument("--network_output")
     parser.add_argument("--nodes_output")
+    parser.add_argument("--pathway_info")
     args = parser.parse_args()
+
+    args.pathway_info=str2bool(args.pathway_info)
+    if args.input_type=="file" :
+        args.ncol = nb_col_to_int(args.ncol)
+        args.header = str2bool(args.header)
+
     return args
 
 #Turn string into boolean
@@ -87,20 +94,49 @@ def blank_to_NA(csv_file) :
 def biogrid_output_files(ids) :
     network_file=[["Entrez Gene Interactor A","Entrez Gene Interactor B","Gene symbol Interactor A","Gene symbol Interactor B","Experimental System","Experimental Type","Interaction Score","Phenotypes"]]
     ids_set= set(ids)
+    ids_not_found=set([])
     for id in ids :
         if id in ppi_dict['network'] :
             network_file.append(ppi_dict['network'][id])
             ids_set.add(ppi_dict['network'][id][1])
+        else : 
+            ids_not_found.add(id)
     
     nodes_file = [["Protein","Present in user input ids","Present in interactome","Pathway"]]
     for id in ids_set:
         if id in ppi_dict['nodes']:
             description_pathway=";".join(ppi_dict['nodes'][id])
-            in_interactome=True
         else :
             description_pathway="NA"
-            in_interactome=False
-        nodes_file.append([id]+[id in ids]+[in_interactome,description_pathway])   
+
+        nodes_file.append([id]+[id in ids]+[id not in ids_not_found]+[description_pathway])   
+    
+    return network_file,nodes_file
+
+def bioplex_output_files(ids,id_type) :
+    network_file=[[id_type+" Interactor A",id_type+" Interactor B","Gene symbol Interactor A","Gene symbol Interactor B","Interaction Score"]]
+    ids_set= set(ids)
+    ids_not_found=set([])
+    for id in ids :
+        if id in ppi_dict['network'][id_type] :
+            network_file.append(ppi_dict['network'][id_type][id])
+            ids_set.add(ppi_dict['network'][id_type][id][1])
+        else :
+            ids_not_found.add(id)
+    #print(network_file)
+    #print(ids_not_found)
+
+    if args.pathway_info: nodes_file=[["Protein","Present in user input ids","Present in interactome","Pathway"]]
+    else: nodes_file=[["Protein","Present in user input ids","Present in interactome"]]
+    for id in ids_set:
+        if args.pathway_info:
+            if id in ppi_dict['nodes']:
+                description_pathway=";".join(ppi_dict['nodes'][id])
+            else :
+                description_pathway="NA"
+            nodes_file.append([id]+[id in ids]+[id not in ids_not_found]+[description_pathway]) 
+        else:
+            nodes_file.append([id]+[id in ids]+[id not in ids_not_found])   
     
     return network_file,nodes_file
 
@@ -109,29 +145,23 @@ def main() :
     #Get args from command line
     global args
     args = get_args()
-    if args.input_type=="file" :
-        ncol = nb_col_to_int(args.ncol)
-        header = str2bool(args.header)        
-
-    #print(args)
 
     #get PPI dictionary
     with open(args.dict_path, 'r') as handle:
         global ppi_dict
         ppi_dict = json.load(handle)
 
-    #print(ppi_dict)
-
     #Get file and/or ids from input 
     if args.input_type == "text" :
         ids = get_input_ids_from_string(args.input)
     elif args.input_type == "file" :
-        input_file, ids = get_input_ids_from_file(args.input,ncol,header)
+        input_file, ids = get_input_ids_from_file(args.input,args.ncol,args.header)
 
-    #print(input_file[:10])
-
-    #create output_file
-    network_file, nodes_file = biogrid_output_files(ids)
+    #create output files
+    if args.database=="biogrid":
+        network_file, nodes_file = biogrid_output_files(ids)
+    elif args.database=="bioplex":
+        network_file, nodes_file = bioplex_output_files(ids,args.id_type)
 
     #convert blank to NA
     network_file = blank_to_NA(network_file)
