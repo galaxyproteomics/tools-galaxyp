@@ -117,7 +117,7 @@ def check_uniprot_access (id) :
 #######################################################################################################
 # 3. ID mapping file
 #######################################################################################################
-import ftplib, gzip, json 
+import ftplib, gzip
 csv.field_size_limit(sys.maxsize) # to handle big files
 
 def id_mapping_sources (data_manager_dict, species, target_directory) :
@@ -127,11 +127,8 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
     files=["idmapping_selected.tab.gz","idmapping.dat.gz"]
 
     #header
-    if human : 
-        ids_list = ["UniProt-AC","UniProt-ID","GeneID","RefSeq","GI","PDB","GO","PIR","MIM","UniGene","Ensembl_Gene","Ensembl_Transcript","Ensembl_Protein","neXtProt","BioGrid","STRING","KEGG"]
-    else : 
-        ids_list = ["UniProt-AC","UniProt-ID","GeneID","RefSeq","GI","PDB","GO","PIR","MIM","UniGene","Ensembl_Gene","Ensembl_Transcript","Ensembl_Protein","BioGrid","STRING","KEGG"] 
-    tab = [ids_list] 
+    if human : tab = [["UniProt-AC","UniProt-ID","GeneID","RefSeq","GI","PDB","GO","PIR","MIM","UniGene","Ensembl_Gene","Ensembl_Transcript","Ensembl_Protein","neXtProt","BioGrid","STRING","KEGG"]]
+    else : tab = [["UniProt-AC","UniProt-ID","GeneID","RefSeq","GI","PDB","GO","PIR","MIM","UniGene","Ensembl_Gene","Ensembl_Transcript","Ensembl_Protein","BioGrid","STRING","KEGG"]]
 
     #print("header ok")
 
@@ -143,7 +140,7 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
         for line in tab_reader :
             tab.append([line[i] for i in [0,1,2,3,4,5,6,11,13,14,18,19,20]])
     os.remove(tab_path)
-    
+
     #print("selected_tab ok")
 
     """
@@ -213,51 +210,19 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
             if nextprotID == '' and uniprotID in next_dict :
                 line[13]=next_dict[uniprotID]
 
-    #create empty dictionary and dictionary index
-    ids_dictionary, ids_dictionary_index = create_ids_dictionary(ids_list)
-    #print("creating dictionaries")
-
-    #fill dictionary and sub dictionaries with ids
-    for line in tab[1:] :
-        for index, ids in enumerate(line) :
-            other_id_type_index = [accession_id for accession_id in ids_dictionary_index.keys() if accession_id!=index]
-            for id in ids.replace(" ","").split(";") :       #if there's more than one id, one key per id (example : GO)
-                if id not in ids_dictionary[ids_dictionary_index[index]] :      #if the key is not created yet
-                    ids_dictionary[ids_dictionary_index[index]][id]={}
-                for other_id_type in other_id_type_index :
-                    if ids_dictionary_index[other_id_type] not in ids_dictionary[ids_dictionary_index[index]][id] :
-                        ids_dictionary[ids_dictionary_index[index]][id][ids_dictionary_index[other_id_type]] = set(line[other_id_type].replace(" ","").split(";"))
-                    else :
-                        ids_dictionary[ids_dictionary_index[index]][id][ids_dictionary_index[other_id_type]] |= set(line[other_id_type].replace(" ","").split(";"))
-                    if len(ids_dictionary[ids_dictionary_index[index]][id][ids_dictionary_index[other_id_type]]) > 1 and '' in ids_dictionary[ids_dictionary_index[index]][id][ids_dictionary_index[other_id_type]] : 
-                        ids_dictionary[ids_dictionary_index[index]][id][ids_dictionary_index[other_id_type]].remove('')
-
-
-    #convert sets into list to save dictionary with json
-    ids_dictionary = dict_set_to_list(ids_dictionary)
-
-    ##writing output files
-    #output_file = species+"_id_mapping_"+ time.strftime("%d-%m-%Y") + ".tsv"
-    output_dict = species+"_id_mapping_"+ time.strftime("%d-%m-%Y") + ".json"
+    output_file = species+"_id_mapping_"+ time.strftime("%d-%m-%Y") + ".tsv"
     path = os.path.join(target_directory,output_file)
 
-    #save ids_dictionary
-    with open(output_dict, 'wb') as handle:
-        json.dump(ids_dictionary, handle, sort_keys=True)
-
-    """
-    #save tab file
     with open(path,"w") as out :
         w = csv.writer(out,delimiter='\t')
         w.writerows(tab)
-    """
 
     name_dict={"human" : "Homo sapiens", "mouse" : "Mus musculus", "rat" : "Rattus norvegicus"}
     name = name_dict[species]+" "+time.strftime("%d/%m/%Y")
     id = species+"_id_mapping_"+ time.strftime("%d-%m-%Y")
 
     data_table_entry = dict(id=id, name = name, value = species, path = path)
-    _add_data_table_entry(data_manager_dict, data_table_entry, "proteore_id_mapping_dictionaries")
+    _add_data_table_entry(data_manager_dict, data_table_entry, "proteore_id_mapping")
 
 def download_from_uniprot_ftp(file,target_directory) :
     ftp_dir = "pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/"
@@ -303,25 +268,6 @@ def clean_nextprot_id (next_id,uniprotAc) :
     else :
         return (next_id)
 
-#create empty dictionary with index for tab
-def create_ids_dictionary (ids_list) :
-    ids_dictionary = {}
-    for id_type in ids_list : 
-        ids_dictionary[id_type]={}
-    ids_dictionary_index = {}
-
-    for i,id in enumerate(ids_list) :
-        ids_dictionary_index[i]=id
-            
-    return(ids_dictionary,ids_dictionary_index)
-
-def dict_set_to_list (dico) :
-    for sub in dico :
-        if type(dico[sub]) is dict :
-            dict_set_to_list(dico[sub])
-        elif type(dico[sub]) is set :
-            dico[sub] = list(dico[sub])
-    return (dico)
 
 #######################################################################################################
 # Main function
