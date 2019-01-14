@@ -1,9 +1,8 @@
-#!/home/dchristiany/miniconda3/bin/python
-import pickle, sys, os, argparse, re, csv
+import sys, os, argparse, re, csv, time
 
 def get_args() :
     parser = argparse.ArgumentParser()
-    parser.add_argument("-d", "--dict_path", help="path to ids dictionary (dictionary.pickle)", required=True)
+    parser.add_argument("-d", "--ref_file", help="path to reference file: <species>_id_mapping.tsv", required=True)
     parser.add_argument("--input_type", help="type of input (list of id or filename)", required=True)
     parser.add_argument("-t", "--id_type", help="type of input IDs", required=True)
     parser.add_argument("-i", "--input", help="list of IDs (text or filename)", required=True)
@@ -49,7 +48,7 @@ def one_id_one_line(input_file,nb_col,header) :
                 ids = line[nb_col].split(";")
                 for id in ids :
                     new_file.append(line[:nb_col]+[id]+line[nb_col+1:])
-                    ids_list.append(id)
+                    ids_list.appen(id)
             else : 
                 new_file.append(line)
                 ids_list.append(line[nb_col])
@@ -89,8 +88,8 @@ def map_to_dictionary(ids,ids_dictionary,id_in,id_out) :
     result_dict = {}
     for id in ids : 
         for target_id in id_out :
-            if id in ids_dictionary[id_in] :
-                res = ";".join(ids_dictionary[id_in][id][target_id])
+            if id in ids_dictionary :
+                res = ";".join(ids_dictionary[id][target_id])
             else :
                 res=""
             
@@ -100,6 +99,15 @@ def map_to_dictionary(ids,ids_dictionary,id_in,id_out) :
                 result_dict[id]=[res]
 
     return result_dict
+
+#create empty dictionary with index for tab
+def create_ids_dictionary (ids_list) :
+    ids_dictionary = {}
+    ids_dictionary_index={}
+    for i,id in enumerate(ids_list) :
+        ids_dictionary_index[i]=id
+            
+    return(ids_dictionary,ids_dictionary_index)
 
 def main():
     
@@ -112,22 +120,41 @@ def main():
         args.column_number = nb_col_to_int(args.column_number)
         header = str2bool(args.header)
 
-    #print(args)
+    #Get ref file to build dictionary
+    csv.field_size_limit(sys.maxsize) # to handle big files
+    with open(args.ref_file, "r") as csv_file :
+        tab = csv.reader(csv_file, delimiter='\t')
+        tab = [line for line in tab]
 
-    #get ids dictionary
-    with open(args.dict_path, 'rb') as handle:
-        ids_dictionary = pickle.load(handle)
-    #print(ids_dictionary.keys())
+    ids_list=tab[0]
+        
+    #create empty dictionary and dictionary index
+    ids_dictionary, ids_dictionary_index = create_ids_dictionary(ids_list)
+
+    #fill dictionary and sub dictionaries with ids
+    id_index = ids_list.index(args.id_type)
+    for line in tab[1:] :
+        ref_ids=line[id_index]
+        other_id_type_index = [accession_id for accession_id in ids_dictionary_index.keys() if accession_id!=id_index]
+        for id in ref_ids.replace(" ","").split(";") :       #if there's more than one id, one key per id (example : GO)
+            if id not in ids_dictionary :      #if the key is not created yet
+                ids_dictionary[id]={}
+            for other_id_type in other_id_type_index :
+                if ids_dictionary_index[other_id_type] not in ids_dictionary[id] :
+                    ids_dictionary[id][ids_dictionary_index[other_id_type]] = set(line[other_id_type].replace(" ","").split(";"))
+                else :
+                    ids_dictionary[id][ids_dictionary_index[other_id_type]] |= set(line[other_id_type].replace(" ","").split(";"))
+                if len(ids_dictionary[id][ids_dictionary_index[other_id_type]]) > 1 and '' in ids_dictionary[id][ids_dictionary_index[other_id_type]] : 
+                    ids_dictionary[id][ids_dictionary_index[other_id_type]].remove('')
 
     #Get file and/or ids from input 
-    if args.input_type == "list" :
+    if args.input_type == "text" :
         ids = get_input_ids_from_string(args.input)
     elif args.input_type == "file" :
         input_file, ids = get_input_ids_from_file(args.input,args.column_number,args.header)
 
     #Mapping ids
     result_dict = map_to_dictionary(ids,ids_dictionary,args.id_type,target_ids)
-    #print(result_dict)
 
     #creating output file 
     if header : 
@@ -139,10 +166,9 @@ def main():
     if args.input_type=="file" :
         for line in input_file :
             output_file.append(line+result_dict[line[args.column_number]])
-    elif args.input_type=="list" :
+    elif args.input_type=="text" :
         for id in ids :
             output_file.append([id]+result_dict[id])
-    #print (output_file)
 
     #convert blank to NA
     output_file = blank_to_NA(output_file)
