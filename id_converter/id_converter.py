@@ -1,4 +1,4 @@
-import sys, os, argparse, re, csv, time
+import sys, os, argparse, re, csv
 
 def get_args() :
     parser = argparse.ArgumentParser()
