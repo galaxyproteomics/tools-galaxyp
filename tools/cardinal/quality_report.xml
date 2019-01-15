@@ -1,4 +1,4 @@
-<tool id="cardinal_quality_report" name="MSI Qualitycontrol" version="@VERSION@.1">
+<tool id="cardinal_quality_report" name="MSI Qualitycontrol" version="@VERSION@.2">
     <description>
         mass spectrometry imaging QC
     </description>
@@ -69,7 +69,7 @@ iData(msidata) <- iData(msidata)[]
 ## Median intensities
 medint = round(median(spectra(msidata)[], na.rm=TRUE), digits=2)
 ## Spectra multiplied with m/z (potential number of peaks)
-numpeaks = ncol(spectra(msidata)[])*nrow(spectra(msidata)[])
+numpeaks = ncol(msidata)*nrow(msidata)
 ## Percentage of intensities > 0
 percpeaks = round(npeaks/numpeaks*100, digits=2)
 ## Number of empty TICs
@@ -91,7 +91,7 @@ centroidedinfo = centroided(msidata)
 
 #if $calibrant_file:
 
-    calibrant_list = read.delim("$calibrant_file", header = $calibrant_header, na.strings=c("","NA"), stringsAsFactors = FALSE)
+    calibrant_list = read.delim("$calibrant_file", header = $calibrant_header, na.strings=c(" ","","NA"), stringsAsFactors = FALSE)
     calibrant_list = calibrant_list[,c($mz_column, $name_column)]
 
     ### calculate how many input calibrant m/z are valid: 
@@ -204,8 +204,7 @@ if (npeaks > 0){
         colnames(pixel_name_df) = c("pixel_number", "pixel_name")
         last_pixel = aggregate(pixel_number~pixel_name, data = pixel_name_df, max)
         pixel_vector = last_pixel[,2]
-        abline_vector = pixel_vector[1:number_combined-1]
-        print(abline_vector)
+        abline_vector = pixel_vector
     }
 
     ################### 1) Pixel order image ###################################
@@ -260,7 +259,7 @@ if (npeaks > 0){
         ## for each pixel count TRUE (each calibrant m/z range with intensity > 0 is TRUE)
         countvector= as.factor(colSums(pixelmatrix, na.rm=TRUE))
         countdf= cbind(coord(msidata)[,1:2], countvector) ## add pixel coordinates to counts
-        mycolours = c("black","grey", "darkblue", "blue", "green" , "red", "yellow", "magenta", "olivedrab1", "lightseagreen")
+        mycolours = brewer.pal(9, "Set1")
 
         print(ggplot(countdf, aes(x=x, y=y, fill=countvector))+
           geom_tile() + coord_fixed() +
@@ -279,27 +278,19 @@ if (npeaks > 0){
         #for $foldchanges in $calibrantratio:
             mass1 = $foldchanges.mass1
             mass2 = $foldchanges.mass2
-            distance = $foldchanges.distance
+            distance1 = $foldchanges.distance/1000000 * mass1
+            distance2 = $foldchanges.distance/1000000 * mass2
 
             ### if user did not write a label use input m/z as label
             #if not str($foldchanges.filenameratioplot).strip():
-                #set $label = "Fold change %s Da / %s Da" % ($foldchanges.mass1, $foldchanges.mass2)
+                #set $label = "log2 fold change %s Da / %s Da" % ($foldchanges.mass1, $foldchanges.mass2)
             #else:
                 #set $label = $foldchanges.filenameratioplot
             #end if
 
             ### filter msidata for given m/z range (for both input m/z)
-            filtered_data1 = msidata[mz(msidata) >= mass1-distance & mz(msidata) <= mass1+distance,]
-            filtered_data2 = msidata[mz(msidata) >= mass2-distance & mz(msidata) <= mass2+distance,]
-
-            ### find m/z in the two given ranges with the highest mean intensity
-            ### this two m/z will be used to calculate the fold change (red line in plot)
-            maxmassrow1 = rowMeans(spectra(filtered_data1), na.rm=TRUE)
-            maxmass1 = mz(filtered_data1)[which.max(maxmassrow1)]
-            maxmassrow2 = rowMeans(spectra(filtered_data2), na.rm=TRUE)
-            maxmass2 = mz(filtered_data2)[which.max(maxmassrow2)]
-
-            ### plot legend: chosen value in blue, distance in blue, max m/z in red
+            filtered_data1 = msidata[mz(msidata) >= mass1-distance1 & mz(msidata) <= mass1+distance1,]
+            filtered_data2 = msidata[mz(msidata) >= mass2-distance2 & mz(msidata) <= mass2+distance2,]
             ### m/z range for each plot (fixed range of 5 Da)
             ### xlim does not work because it does not adjust for the max. intensities within the range
             mzdown1 = features(msidata, mz = mass1-2)
@@ -310,36 +301,30 @@ if (npeaks > 0){
             ### plot for first m/z 
             par(mfrow=c(2,1), oma=c(0,0,2,0))
             plot(msidata[mzdown1:mzup1,], pixel = 1:pixelcount, main=paste0("Average spectrum ", mass1, " Da"))
-            abline(v=c(mass1-distance, mass1, mass1+distance), col="blue",lty=c(3,6,3))
-            abline(v=maxmass1, col="red", lty=5)
+            abline(v=c(mass1-distance1, mass1, mass1+distance1), col="blue",lty=c(3,6,3))
 
             ### plot for second m/z 
             plot(msidata[mzdown2:mzup2,], pixel = 1:pixelcount, main= paste0("Average spectrum ", mass2, " Da"))
-            abline(v=c(mass2-distance, mass2, mass2+distance), col="blue", lty=c(3,6,3))
-            abline(v=maxmass2, col="red", lty=5)
+            abline(v=c(mass2-distance2, mass2, mass2+distance2), col="blue", lty=c(3,6,3))
             title("Control of fold change plot", outer=TRUE)
 
             ### filter spectra for max m/z to have two vectors, which can be divided
             ### plot spatial distribution of fold change
-            ### only possible when there are intensities > 0 in both given m/z ranges
 
-            if (length(maxmass1)>0&length(maxmass2)>0){
-                mass1vector = spectra(msidata)[features(msidata, mz = maxmass1),]
-                mass2vector = spectra(msidata)[features(msidata, mz = maxmass2),]
-                foldchange= log2(mass1vector/mass2vector)
-                fcmatrix = cbind(foldchange, coord(msidata)[,1:2])
+            ## calculate mean intensity for each m/z over the ppm range; then calculate log2 foldchange
+            mass1vector = colMeans(spectra(filtered_data1), na.rm =TRUE)
+            mass2vector = colMeans(spectra(filtered_data2), na.rm = TRUE)
+            foldchange= log2(mass1vector/mass2vector)
+            fcmatrix = cbind(foldchange, coord(msidata)[,1:2])
 
-                print(ggplot(fcmatrix, aes(x=x, y=y, fill=foldchange), colour=colo)+
-                 geom_tile() + coord_fixed()+
-                 ggtitle("$label")+
-                 theme_bw()+
-                 theme(plot.title = element_text(hjust = 0.5))+
-                 theme(text=element_text(family="ArialMT", face="bold", size=12))+
-                 scale_fill_gradientn(colours = c("blue", "purple" , "red","orange")
-                                        ,space = "Lab", na.value = "black", name ="FC"))
-            }else{
-                plot(0,type='n',axes=FALSE,ann=FALSE)
-                title(main=paste("At least one m/z range did not contain any intensity > 0,\n therefore no foldchange plot could be drawn"))}
+            print(ggplot(fcmatrix, aes(x=x, y=y, fill=foldchange))+
+             geom_tile() + coord_fixed()+
+             ggtitle("$label")+
+             theme_bw()+
+             theme(plot.title = element_text(hjust = 0.5))+
+             theme(text=element_text(family="ArialMT", face="bold", size=12))+
+             scale_fill_gradientn(colours = c("blue", "purple" , "red","orange")
+                                    ,space = "Lab", na.value = "black", name ="FC"))
 
         #end for
     #end if
@@ -353,7 +338,7 @@ if (npeaks > 0){
 
             image(msidata, mz=inputcalibrants[,1][mass], plusminus=plusminusvalues[mass], 
             main= paste0(inputcalibrants[,2][mass], ": ", round(inputcalibrants[,1][mass], digits = 2)," (±",$plusminus_ppm, " ppm)"),
-            contrast.enhance = "histogram", ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy))
+            contrast.enhance = "histogram", ylim= c(maximumy+0.2*maximumy,minimumy-1))
         }
     } else {print("4) The input peptide and calibrant m/z were not provided or outside the m/z range")}
 
@@ -403,7 +388,17 @@ if (npeaks > 0){
 
     ############################### 7) Most abundant m/z image #################
 
-    highestmz = apply(spectra(msidata)[],2,which.max) 
+    ## for each spectrum find the row (m/z) with the highest intensity
+    highestmz = apply(spectra(msidata)[],2,which.max)
+    ## in case for some spectra max returns integer(0), highestmz is a list and integer(0) have to be replaced with NA and unlisted
+    if (class(highestmz) == "list"){
+        ##find zero-length values
+        zero_entry <- !(sapply(highestmz, length))
+        ### replace these values with NA
+        highestmz[zero_entry] <- NA
+        ### unlist list to get a vector
+        highestmz = unlist(highestmz)}
+
     highestmz_matrix = cbind(coord(msidata)[,1:2],mz(msidata)[highestmz])
     colnames(highestmz_matrix)[3] = "highestmzinDa"
 
@@ -425,7 +420,7 @@ if (npeaks > 0){
         pca = PCA(msidata, ncomp=2) 
         par(mfrow = c(2,1))
         plot(pca, col=c("black", "darkgrey"), main="PCA for two components")
-        image(pca, col=c("black", "white"), strip=FALSE, ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy))
+        image(pca, col=c("black", "white"), strip=FALSE, ylim= c(maximumy+0.2*maximumy,minimumy-1))
 
     #end if
 
@@ -473,8 +468,14 @@ if (npeaks > 0){
 
     ## 10a)density scatterplot
     par(mfrow = c(2,1), mar=c(5,6,4,2))
+    
+    ## colorDensityplot does not work after TIC normalization, therefore make normal plot
+    if (min(TICs) == max(TICs)){
+        plot(pixels(msidata), TICs, ylab = "", xlab = "", pch=20, main="TIC per spectrum", col="#FF3100")
+    }else{
+        plot_colorByDensity(pixels(msidata), TICs,  ylab = "", xlab = "", main="TIC per spectrum")
+    }
 
-    plot_colorByDensity(pixels(msidata), TICs,  ylab = "", xlab = "", main="TIC per spectrum")
     title(xlab="Spectra index", line=3)
     title(ylab = "Total ion chromatogram intensity", line=4)
     if (!is.null(levels(msidata\$annotation))){
@@ -610,12 +611,16 @@ if (npeaks > 0){
         corr_matrix = mean_matrix
         corr_matrix[corr_matrix == 0] <- NA
         colnames(corr_matrix) = levels(msidata\$annotation)
-        corr_matrix = cor(log2(corr_matrix), method= "pearson",use="complete.obs")
+        ## pearson correlation is only possible if there are at least 2 groups
+        if (length(colnames)>1)
+        {
+            corr_matrix = cor(log2(corr_matrix), method= "pearson",use="complete.obs")
 
-        heatmap.parameters <- list(corr_matrix, 
-        show_rownames = T, show_colnames = T,
-        main = "Pearson correlation on mean intensities")
-        do.call("pheatmap", heatmap.parameters)
+            heatmap.parameters <- list(corr_matrix, 
+            show_rownames = T, show_colnames = T,
+            main = "Pearson correlation on mean intensities")
+            do.call("pheatmap", heatmap.parameters)
+        }
     }
 
     ################################## VI) Mass spectra and m/z accuracy ########################
@@ -624,20 +629,18 @@ if (npeaks > 0){
 
     ############################ 15) Mass spectra ##############################
 
-    ## find three random pixel to plot their spectra in the following plots:
-    pixel1 = sample(pixelnumber,1)
-    pixel2 = sample(pixelnumber,1)
-    pixel3 = sample(pixelnumber,1)
-
     ## replace any NA with 0, otherwise plot function will not work at all
     msidata_no_NA = msidata
     spectra(msidata_no_NA)[is.na(spectra(msidata_no_NA)[])] = 0
 
+    ## find three equal m/z ranges for the average mass spectra plots: 
+    third_mz_range = nrow(msidata_no_NA)/3
+
     par(mfrow = c(2, 2), cex.axis=1, cex.lab=1, mar=c(5.1,4.1,4.1,2.1))
     plot(msidata_no_NA, pixel = 1:ncol(msidata_no_NA), main= "Average spectrum")
-    plot(msidata_no_NA, pixel = pixel1, main=paste0("Spectrum at ", rownames(coord(msidata_no_NA)[pixel1,1:2])))
-    plot(msidata_no_NA, pixel = pixel2, main= paste0("Spectrum at ", rownames(coord(msidata_no_NA)[pixel2,1:2])))
-    plot(msidata_no_NA, pixel = pixel3, main= paste0("Spectrum at ", rownames(coord(msidata_no_NA)[pixel3,1:2])))
+    plot(msidata_no_NA[1:third_mz_range,], pixel = 1:ncol(msidata_no_NA), main= "Zoomed average spectrum")
+    plot(msidata_no_NA[third_mz_range:(2*third_mz_range),], pixel = 1:ncol(msidata_no_NA), main= "Zoomed average spectrum")
+    plot(msidata_no_NA[(2*third_mz_range):nrow(msidata_no_NA),], pixel = 1:ncol(msidata_no_NA), main= "Zoomed average spectrum")
 
     ################### 16) Zoomed in mass spectra for calibrants ##############
 
@@ -653,8 +656,12 @@ if (npeaks > 0){
         for (mass in 1:length(inputcalibrantmasses)){
 
             ### define the plot window with xmin und xmax
-            minmasspixel = features(msidata_no_NA, mz=inputcalibrantmasses[mass]-0.5)
-            maxmasspixel = features(msidata_no_NA, mz=inputcalibrantmasses[mass]+1.5)
+            minmasspixel1 = features(msidata_no_NA, mz=inputcalibrantmasses[mass]-0.5)
+            maxmasspixel1 = features(msidata_no_NA, mz=inputcalibrantmasses[mass]+1.5)
+            minmasspixel2 = features(msidata_no_NA, mz=inputcalibrantmasses[mass]-0.25)
+            maxmasspixel2 = features(msidata_no_NA, mz=inputcalibrantmasses[mass]+0.5)
+            minmasspixel3 = features(msidata_no_NA, mz=inputcalibrantmasses[mass]-3)
+            maxmasspixel3 = features(msidata_no_NA, mz=inputcalibrantmasses[mass]+3)
 
             ### find m/z with the highest mean intensity in m/z range (red line in plot 16) and calculate ppm difference for plot 17
             filtered_data = msidata_no_NA[mz(msidata_no_NA) >= inputcalibrantmasses[mass]-plusminusvalues[mass] & mz(msidata_no_NA) <= inputcalibrantmasses[mass]+plusminusvalues[mass],]
@@ -679,20 +686,20 @@ if (npeaks > 0){
             ## plotting of 4 spectra in one page
             par(mfrow = c(2, 2), oma=c(0,0,2,0))
             ## average plot
-            plot(msidata_no_NA[minmasspixel:maxmasspixel,], pixel = 1:length(pixelnumber), main= "Average spectrum")
+            plot(msidata_no_NA[minmasspixel1:maxmasspixel1,], pixel = 1:length(pixelnumber), main= "Average spectrum")
             abline(v=c(inputcalibrantmasses[mass] -plusminusvalues[count], inputcalibrantmasses[mass] ,inputcalibrantmasses[mass] +plusminusvalues[count]), col="blue", lty=c(3,5,3))
             abline(v=c(maxvalue), col="red", lty=2)
             abline(v=c(mzvalue), col="green2", lty=4)
             ## average plot including points per data point
-            plot(msidata_no_NA[minmasspixel:maxmasspixel,], pixel = 1:length(pixelnumber), main="Average spectrum with data points")
-            points(mz(msidata_no_NA[minmasspixel:maxmasspixel,]), rowMeans(spectra(msidata_no_NA)[minmasspixel:maxmasspixel,]), col="blue", pch=20)
+            plot(msidata_no_NA[minmasspixel1:maxmasspixel1,], pixel = 1:length(pixelnumber), main="Average spectrum with data points")
+            points(mz(msidata_no_NA[minmasspixel1:maxmasspixel1,]), rowMeans(spectra(msidata_no_NA)[minmasspixel1:maxmasspixel1,]), col="blue", pch=20)
             ## plot of a random pixel (1)
-            plot(msidata_no_NA[minmasspixel:maxmasspixel,], pixel = pixel2, main= paste0("Spectrum at ", rownames(coord(msidata_no_NA)[pixel2,1:2])))
+            plot(msidata_no_NA[minmasspixel2:maxmasspixel2,], pixel = 1:length(pixelnumber), main= "Average spectrum")
             abline(v=c(inputcalibrantmasses[mass] -plusminusvalues[count], inputcalibrantmasses[mass] ,inputcalibrantmasses[mass] +plusminusvalues[count]), col="blue", lty=c(3,5,3))
             abline(v=c(maxvalue), col="red", lty=2)
             abline(v=c(mzvalue), col="green2", lty=4)
             ## plot of a random pixel (2)
-            plot(msidata_no_NA[minmasspixel:maxmasspixel,], pixel = pixel3, main= paste0("Spectrum at ", rownames(coord(msidata_no_NA)[pixel3,1:2])))
+            plot(msidata_no_NA[minmasspixel3:maxmasspixel3,], pixel = 1:length(pixelnumber), main= "Average spectrum")
             abline(v=c(inputcalibrantmasses[mass] -plusminusvalues[count], inputcalibrantmasses[mass] ,inputcalibrantmasses[mass] +plusminusvalues[count]), col="blue", lty=c(3,5,3))
             abline(v=c(maxvalue), col="red", lty=2)
             abline(v=c(mzvalue), col="green2", lty=4)
@@ -707,7 +714,7 @@ if (npeaks > 0){
                     key_zoomed = TRUE
                 }else{key_zoomed = FALSE}
                 par(mfrow = c(1, 1))
-                plot(msidata_no_NA[minmasspixel:maxmasspixel,], pixel=1:ncol(msidata_no_NA),main="Average spectrum per annotation group",
+                plot(msidata_no_NA[minmasspixel1:maxmasspixel1,], pixel=1:ncol(msidata_no_NA),main="Average spectrum per annotation group",
                 pixel.groups=msidata\$annotation, key=key_zoomed, col=hue_pal()(number_combined),superpose=TRUE)
                 abline(v=c(inputcalibrantmasses[mass] -plusminusvalues[count], inputcalibrantmasses[mass] ,inputcalibrantmasses[mass] +plusminusvalues[count]), col="black", lty=c(3,1,3))
             }
@@ -755,7 +762,6 @@ if (npeaks > 0){
         #################### 19) ppm difference over pixels #####################
 
         par(mfrow = c(1,1))
-        mycolours = c("darkgrey", "darkblue", "blue", "green" , "red", "orange", "yellow", "magenta", "olivedrab1", "lightseagreen")
         count = 1
         ppm_df = as.data.frame(matrix(,ncol=0, nrow = ncol(msidata)))
         for (calibrant in inputcalibrantmasses){
@@ -763,16 +769,16 @@ if (npeaks > 0){
             filtered_data = msidata[mz(msidata) >= calibrant-plusminusvalues[count] & mz(msidata) <= calibrant+plusminusvalues[count],]
 
             if (nrow(filtered_data) > 0){
-                ### filtered for m/z range, find max peak in each spectrum (pixel)(
+                ### filtered for m/z range, find max peak in each spectrum
                 ppm_vector = numeric()
                 for (pixel_count in 1:ncol(filtered_data)){
+                    ## for each spectrum (pixel_count) find the m/z that has the highest intensity
                     mz_max = mz(filtered_data)[which.max(spectra(filtered_data)[,pixel_count])]
-
                     mzdiff = mz_max - calibrant
                     ppmdiff = mzdiff/calibrant*1000000 
 
                     ### if maximum intensity in m/z range was 0 set ppm diff to NA (not shown in plot)
-                    if (max(spectra(filtered_data)[,pixel_count]) == 0){
+                    if (max(spectra(filtered_data)[,pixel_count]) == 0 || is.na(max(spectra(filtered_data)[,pixel_count]))){
                         ppmdiff = NA}
                     ppm_vector[pixel_count] = ppmdiff}
 
@@ -827,7 +833,7 @@ if (npeaks > 0){
         <repeat name="calibrantratio" title="Plot fold change of two m/z" min="0" max="10">
             <param name="mass1" value="1111" type="float" label="M/z 1" help="First m/z"/>
             <param name="mass2" value="2222" type="float" label="M/z 2" help="Second m/z"/>
-            <param name="distance" value="0.25" type="float" label="M/z range" help="Plusminus m/z window added to input m/z. In both m/z ranges the maximum intensity is used to calculate the fold change"/>
+            <param name="distance" value="200" type="float" label="ppm range" help="Will be added in both directions to input calibrant m/z and intensities will be averaged in this range."/>
             <param name="filenameratioplot" type="text" optional="true" label="Title" help="Optional title for fold change plot.">
                 <sanitizer invalid_char="">
                     <valid initial="string.ascii_letters,string.digits">
@@ -842,7 +848,10 @@ if (npeaks > 0){
     </outputs>
     <tests>
         <test>
-            <expand macro="infile_imzml"/>
+            <param name="infile" value="" ftype="imzml">
+                <composite_data value="Example_Processed.imzML" ftype="imzml"/>
+                <composite_data value="Example_Processed.ibd" ftype="ibd"/>
+            </param>
             <conditional name="processed_cond">
                 <param name="processed_file" value="processed"/>
                 <param name="accuracy" value="200"/>
@@ -860,7 +869,7 @@ if (npeaks > 0){
             <repeat name="calibrantratio">
                 <param name="mass1" value="328.9"/>
                 <param name="mass2" value="398.8"/>
-                <param name="distance" value="0.25"/>
+                <param name="distance" value="500"/>
                 <param name="filenameratioplot" value = "Ratio of mass1 (328.9) / mass2 (398.8)"/>
             </repeat>
             <output name="QC_report" file="QC_imzml.pdf" compare="sim_size"/>
@@ -918,8 +927,11 @@ This tool uses Cardinal to read files and create a quality control report with d
 @MSIDATA_INPUT_DESCRIPTION@
 - Coordinates stored as decimals rather than integers will be rounded to obtain a regular pixel grid. This might lead to duplicated coordinates which will be automatically removed before the tools analysis starts. 
 @SPECTRA_TABULAR_INPUT_DESCRIPTION@
-    
+            - at least two different annotations should be in the annotation column
+
 @MZ_2COLS_TABULAR_INPUT_DESCRIPTION@
+            - maximum of 9 m/z values per run are supported
+            - names should be unique
 
 **Options**
 
@@ -955,7 +967,7 @@ This tool uses Cardinal to read files and create a quality control report with d
 - Pixel order: Shows the order of the pixels in the provided file. Depending on the instrument this can represent the acquisition order. If annotation file is provided pixels are ordered according to annotation groups. 
 - (cal) Number of calibrants per pixel: In every spectrum the calibrant m/z window (calibrant m/z plusminus 'ppm range') is searched for peaks (intensity > 0). Calibrants are considered present in a spectrum when they have at least one peak in their m/z window. 
 - (FC) Control of fold change plot: For both input m/z a zoomed in average spectrum is drawn with the input m/z as blue dashed line, the m/z range as blue dotted lines and the maximum intensity in the m/z window with a red line. 
-- (FC) Fold change image: For each spectrum the intensities of the two optimal m/z features (red lines in control plots) are divided and log2 transformed to obtain the fold change, which is then plotted as a heatmap. 
+- (FC) Fold change image: For each input m/z the average intensity within the given ppm range is calculated, then the log2 fold change of both average intensities is taken and plotted as heatmap. 
 - (cal) Intensity heatmaps for the m/z value that is closest to the calibrant m/z. The intensities are averaged within the calibrant m/z window (ppm range). 
 - Number of peaks per spectrum: For each spectrum the number of m/z values with intensity > 0 is calculated and plotted as heatmap.
 - Total ion chromatogram: For each spectrum all intensities are summed up to obtain the TIC which is plotted as heatmap. 
@@ -968,7 +980,7 @@ This tool uses Cardinal to read files and create a quality control report with d
 - Number of peaks per spectrum: Scatter plot and histogram showing the number of intensities > 0 for each spectrum. If annotation tabular file is provided, the pixels are sorted according to annotation groups and the dotted lines in the scatter plot separate spectra of different annotation groups.
 - (annot) Number of peaks per spectrum and annotation group: Same histogram as in plot before but with colours to show the contribution of each pixel annotation group.
 - TIC per spectrum: Scatter plot and histogram showing the sum of all intensities per spectrum (TIC). Dotted lines in the scatter plot separate spectra of different annotation groups.
-- (annot) TIC per spectrum and annotation group: Same histogram as in plot before but with colours to show the contribution of each pixel annotation group. 
+- (annot) TIC per spectrum and annotation group: Same histogram as in plot before but with colours to show the contribution of each pixel annotation group. Only the length of the coloured bar is important and not its height from zero, as bars are added up and not overlayed. 
 
 **Properties over m/z features**
 
@@ -982,12 +994,12 @@ This tool uses Cardinal to read files and create a quality control report with d
 - Log2-transformed intensities: Histogram of log2-transformed intensities. 
 - (annot) log2-transformed intensities per annotation group: Same histogram as before but with colours to show the contribution of each pixel annotation group. 
 - (annot) Mean intensities per m/z and annotation group: For all pixels of an annotation group the mean intensity for each m/z is calculated and shown as boxplot. 
-- (annot) Pearson correlation between annotation groups based on mean intensities and shown as heatmap.
+- (annot) Pearson correlation between annotation groups (needs at least 2 groups) based on mean intensities and shown as heatmap.
 
 **Mass spectra and m/z accuracy**
 
-- Mass spectra over the full m/z range: First plot shows the average intensities over all spectra. The other three mass spectra are from random individual pixels (spectra). 
-- (cal) For each calibrant four zoomed in mass spectrum are drawn: The first two mass spectra show the average intensities over all spectra and the other two specra are from random individual pixels. The theoretical calibrant m/z (taken from the input file) is represented by the dashed blue line. The dotted blue lines show the given ppm range. The green line is the m/z value that is closest to the theoretical calibrant and the red line is the m/z with the highest average intensity in the m/z window. In the second average spectra plot each blue plot indicates one data point.
+- Average mass spectra: First plot shows the average spectrum over the full m/z range, the other three plots zoom into the m/z axis.
+- (cal) For each calibrant four zoomed average mass spectrum are drawn with different zooming level. The theoretical calibrant m/z (taken from the input file) is represented by the dashed blue line. The dotted blue lines show the given ppm range. The green line is the m/z value that is closest to the theoretical calibrant and the red line is the m/z with the highest average intensity in the m/z window. In the second spectrum each blue dot indicates one data point.
 - (annot) Average spectrum per annotation group: For each calibrant a zoomed in mass spectrum is plotted this time with the average intensities for each annotation group separately. 
 - (cal) Difference m/z with max. average intensity vs. theor. calibrant m/z: The difference in ppm between the m/z with the highest average intensity and the theoretical m/z are plotted for each calibrant. This corresponds to the difference between the dashed blue line and the red line in the zoomed in mass spectra. 
 - (cal) Difference closest measured m/z vs. theor. calibrant m/z: The difference in ppm between the closest m/z value and the theoretical m/z values are plotted for each calibrant. This corresponds to the difference between the dashed blue line and the green line in the zoomed in mass spectra. 
