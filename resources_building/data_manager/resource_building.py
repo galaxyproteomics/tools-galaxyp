@@ -2,7 +2,7 @@
 The purpose of this script is to create source files from different databases to be used in other proteore tools
 """
 
-import os, sys, argparse, requests, time, csv, re
+import os, sys, argparse, requests, time, csv, re, json, zipfile, shutil
 from io import BytesIO
 from zipfile import ZipFile
 from galaxy.util.json import from_json_string, to_json_string
@@ -270,6 +270,112 @@ def clean_nextprot_id (next_id,uniprotAc) :
 
 
 #######################################################################################################
+# 4. Build protein interaction maps files
+#######################################################################################################
+
+def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
+
+    species_dict={'human':'Homo sapiens',"mouse":"Mus musculus","rat":"Rattus norvegicus"}
+
+    ##BioGRID
+    if interactome=="biogrid":
+
+        tab2_link="https://downloads.thebiogrid.org/Download/BioGRID/Release-Archive/BIOGRID-3.5.167/BIOGRID-ORGANISM-3.5.167.tab2.zip"
+
+        #dowload zip file
+        r = requests.get(tab2_link)
+        with open("BioGRID.zip", "wb") as code:
+            code.write(r.content)
+    
+        #unzip files
+        with zipfile.ZipFile("BioGRID.zip", 'r') as zip_ref:
+            if not os.path.exists("tmp_BioGRID"): os.makedirs("tmp_BioGRID")
+            zip_ref.extractall("tmp_BioGRID")
+
+        #import file of interest and build dictionary
+        file_path="tmp_BioGRID/BIOGRID-ORGANISM-"+species_dict[species].replace(" ","_")+"-3.5.167.tab2.txt"
+        with open(file_path,"r") as handle :
+            tab_file = csv.reader(handle,delimiter="\t")
+            dico_network = {}
+            GeneID_index=1
+            network_cols=[1,2,7,8,11,12,18,20]
+            for line in tab_file : 
+                dico_network[line[GeneID_index]]=[line[i] for i in network_cols]
+
+        #delete tmp_BioGRID directory
+        os.remove("BioGRID.zip")
+        shutil.rmtree("tmp_BioGRID", ignore_errors=True) 
+
+        #download NCBI2Reactome.txt file and build dictionary
+        download = requests.get('https://www.reactome.org/download/current/NCBI2Reactome.txt')
+        decoded_content = download.content.decode('utf-8')
+        tab_file = csv.reader(decoded_content.splitlines(), delimiter='\t')
+        dico_nodes = {}
+        GeneID_index=0
+        pathway_description_index=3
+        species_index=5
+        for line in tab_file :
+            if line[species_index]==species_dict[species]:
+                if line[GeneID_index] in dico_nodes :
+                    dico_nodes[line[GeneID_index]].append(line[pathway_description_index])
+                else :
+                    dico_nodes[line[GeneID_index]] = [line[pathway_description_index]]
+
+        dico={}
+        dico['network']=dico_network
+        dico['nodes']=dico_nodes
+
+    ##Bioplex
+    elif interactome=="bioplex":
+
+        download = requests.get("http://bioplex.hms.harvard.edu/data/BioPlex_interactionList_v4a.tsv")
+        decoded_content = download.content.decode('utf-8')
+        bioplex = csv.reader(decoded_content.splitlines(), delimiter='\t')
+        dico_network = {}
+        dico_network["GeneID"]={}
+        network_geneid_cols=[0,1,4,5,8]
+        dico_network["UniProt-AC"]={}
+        network_uniprot_cols=[2,3,4,5,8]
+        dico_GeneID_to_UniProt = {}
+        dico_nodes = {}
+        for line in bioplex :
+            dico_network["GeneID"][line[0]]=[line[i] for i in network_geneid_cols]
+            dico_network["UniProt-AC"][line[2]]=[line[i] for i in network_uniprot_cols]
+            dico_GeneID_to_UniProt[line[0]]=line[2]
+
+        download = requests.get("https://reactome.org/download/current/UniProt2Reactome.txt")
+        decoded_content = download.content.decode('utf-8')
+        tab_file = csv.reader(decoded_content.splitlines(), delimiter='\t')
+        dico_nodes = {}
+        uniProt_index=0
+        pathway_description_index=3
+        species_index=5
+        for line in tab_file :
+            if line[species_index]==species_dict[species]:
+                if line[uniProt_index] in dico_nodes :
+                    dico_nodes[line[uniProt_index]].append(line[pathway_description_index])
+                else :
+                    dico_nodes[line[uniProt_index]] = [line[pathway_description_index]]
+
+        dico={}
+        dico['network']=dico_network
+        dico['nodes']=dico_nodes
+        dico['convert']=dico_GeneID_to_UniProt
+
+    #writing output
+    output_file = species+'_'+interactome+'_dict_'+ time.strftime("%d-%m-%Y") + ".json"
+    path = os.path.join(target_directory,output_file)
+    name = species+" ("+species_dict[species]+") "+time.strftime("%d/%m/%Y")
+    id = interactome+"_"+species+ time.strftime("%d-%m-%Y")
+
+    with open(path, 'w') as handle:
+        json.dump(dico, handle, sort_keys=True)
+
+    data_table_entry = dict(id=id, name = name, value = species, path = path)
+    _add_data_table_entry(data_manager_dict, data_table_entry, "proteore_"+interactome+"_dictionaries")
+
+
+#######################################################################################################
 # Main function
 #######################################################################################################
 def main():
@@ -277,6 +383,8 @@ def main():
     parser.add_argument("--hpa", metavar = ("HPA_OPTION"))
     parser.add_argument("--peptideatlas", metavar=("SAMPLE_CATEGORY_ID"))
     parser.add_argument("--id_mapping", metavar = ("ID_MAPPING_SPECIES"))
+    parser.add_argument("--interactome", metavar = ("PPI"))
+    parser.add_argument("--species")
     parser.add_argument("-o", "--output")
     args = parser.parse_args()
 
@@ -318,6 +426,16 @@ def main():
         id_mapping = id_mapping .split(",")
         for species in id_mapping :
             id_mapping_sources(data_manager_dict, species, target_directory)
+
+    ## Download PPI ref files from biogrid/bioplex/humap
+    try:
+        interactome=args.interactome
+        species=args.species
+    except NameError:
+        interactome=None
+        species=None
+    if interactome is not None and species is not None:
+        PPI_ref_files(data_manager_dict, species, interactome, target_directory)
  
     #save info to json file
     filename = args.output

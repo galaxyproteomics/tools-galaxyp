@@ -37,10 +37,12 @@ and saved in tool-data/peptide_atlas/ (default galaxy tool-data)
 
 ```
 tool_data_table_conf:
+  <tables>
     <table name="proteore_protein_atlas" comment_char="#">
       <columns>id, name, value, path</columns>
       <file path="tool-data/proteore_protein_atlas.loc" />
     </table>
+  </tables>
 ```
 
 ## Get MS/MS observations in tissue/fluid [Peptide Atlas]
@@ -69,10 +71,12 @@ and saved in tool-data/protein_atlas/ (default galaxy tool-data)
 
 ```
 tool_data_table_conf: 
+  <tables>
     <table name='proteore_peptide_atlas' comment_char="#">
       <columns>id, name, tissue, value</columns>
       <file path="tool-data/proteore_peptide_atlas.loc"/>
     </table>
+  </tables>
 ```
 
 ## "ID converter"
@@ -108,38 +112,59 @@ Ids kept in the ref file are listed below:
 * KEGG gene id (e.g. hsa:7529)
 * Nextprot and OMIM only applicable to Human species.
 
-First a tsv file is made (list of lists in python)
-From this list of lists, a dictionary is made to convert more quickly ids.
+A tsv file is made (list of lists in python) from those files and saved.
+This tsv file will be load by id_converter and a python dictionary will be created from it (for each run of id_converter).
+Only a partial dictionary is made instead of a complete one. Only the dictionary for the input id type is made.
 
-Dictionary architecture is the following:
-
-* first key : input id 
-* second key : id 
-* third key : target input  
-
-For example if we want to convert 'P31946' (Uniprot-AC) into Entrez Gene ID, the path will be:
-```
-ids_dictionary['UniProt-AC']['P31946']['GeneID']
-```
-
-and the result is:
-```
-['7531']
-```
-
-This (big) dictionary is saved with json into a json dictionary.
-json is used instead of pickle because it is faster to load a json dictionary than a pickle one.
-To save this dictionary with json, sets has been converted into list with the function ```dict_set_to_list()```.
-
-Each file created for Get MS/MS observations in tissue/fluid [Peptide Atlas] are listed in the "proteore_id_mapping_dictionaries" data table 
-and saved in tool-data/id_mapping_dictionaries/ (default galaxy tool-data)
+Each tsv file created for ID converter (once per species) is listed in "proteore_id_mapping" loc file
+and saved in tool-data/id_mapping/ (default galaxy tool-data)
 
 ```
 tool_data_table_conf: 
-    <table name="proteore_id_mapping_dictionaries" comment_char="#">
+  <tables>
+    <table name="proteore_id_mapping" comment_char="#">
       <columns>id, name, value, path</columns>
-      <file path="tool-data/proteore_id_mapping_dictionaries.loc" />
+      <file path="tool-data/proteore_id_mapping.loc" />
     </table>
+  </tables>
+```
+
+## Build protein interaction maps (PPI)
+
+Two different interactome sources:
+
+* BioGRID
+* Bioplex
+
+For each interactome, a python dictionary is made and saved into a json dictionary.
+This dictionary will be used by 'Build protein interaction maps' tool.
+
+For BioGRID, the following two files are used to build a dictionary:
+
+* "https://downloads.thebiogrid.org/Download/BioGRID/Release-Archive/BIOGRID-3.5.167/BIOGRID-ORGANISM-3.5.167.tab2.zip"
+* "https://www.reactome.org/download/current/NCBI2Reactome.txt"
+
+For Bioplex, thfollowing files are used to build a dictionary:
+
+* "http://bioplex.hms.harvard.edu/data/BioPlex_interactionList_v4a.tsv"
+* "https://reactome.org/download/current/UniProt2Reactome.txt"
+
+One dictionary per interactome and one per species (human_biogrid, mouse_biogrid, human_bioplex, mouse_bioplex, ...)
+
+There is one data table per interactome: 
+
+```
+tool_data_table_conf: 
+  <tables>
+    <table name="proteore_biogrid_dictionaries" comment_char="#">
+      <columns>id, name, value, path</columns>
+      <file path="tool-data/proteore_biogrid_dictionaries.loc" />
+    </table>
+    <table name="proteore_bioplex_dictionaries" comment_char="#">
+      <columns>id, name, value, path</columns>
+      <file path="tool-data/proteore_bioplex_dictionaries.loc" />
+    </table>
+  </tables>
 ```
 
 ## Installation
