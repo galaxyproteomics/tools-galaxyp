@@ -1,8 +1,9 @@
+# -*- coding: utf-8 -*-
 """
 The purpose of this script is to create source files from different databases to be used in other proteore tools
 """
 
-import os, sys, argparse, requests, time, csv, re, json, zipfile, shutil
+import os, sys, argparse, requests, time, csv, re, json, shutil, zipfile
 from io import BytesIO
 from zipfile import ZipFile
 from galaxy.util.json import from_json_string, to_json_string
@@ -307,9 +308,9 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
         shutil.rmtree("tmp_BioGRID", ignore_errors=True) 
 
         #download NCBI2Reactome.txt file and build dictionary
-        download = requests.get('https://www.reactome.org/download/current/NCBI2Reactome.txt')
-        decoded_content = download.content.decode('utf-8')
-        tab_file = csv.reader(decoded_content.splitlines(), delimiter='\t')
+        r = requests.get('https://www.reactome.org/download/current/NCBI2Reactome.txt')
+        r.encoding ="utf-8"
+        tab_file = csv.reader(r.content.splitlines(), delimiter='\t')
         dico_nodes = {}
         GeneID_index=0
         pathway_description_index=3
@@ -328,9 +329,9 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
     ##Bioplex
     elif interactome=="bioplex":
 
-        download = requests.get("http://bioplex.hms.harvard.edu/data/BioPlex_interactionList_v4a.tsv")
-        decoded_content = download.content.decode('utf-8')
-        bioplex = csv.reader(decoded_content.splitlines(), delimiter='\t')
+        r = requests.get("http://bioplex.hms.harvard.edu/data/BioPlex_interactionList_v4a.tsv")
+        r.encoding ="utf-8"
+        bioplex = csv.reader(r.content.splitlines(), delimiter='\t')
         dico_network = {}
         dico_network["GeneID"]={}
         network_geneid_cols=[0,1,4,5,8]
@@ -343,9 +344,9 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
             dico_network["UniProt-AC"][line[2]]=[line[i] for i in network_uniprot_cols]
             dico_GeneID_to_UniProt[line[0]]=line[2]
 
-        download = requests.get("https://reactome.org/download/current/UniProt2Reactome.txt")
-        decoded_content = download.content.decode('utf-8')
-        tab_file = csv.reader(decoded_content.splitlines(), delimiter='\t')
+        r = requests.get("https://reactome.org/download/current/UniProt2Reactome.txt")
+        r.encoding ="utf-8"
+        tab_file = csv.reader(r.content.splitlines(), delimiter='\t')
         dico_nodes = {}
         uniProt_index=0
         pathway_description_index=3
