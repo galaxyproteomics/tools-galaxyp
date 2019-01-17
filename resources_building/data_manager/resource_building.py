@@ -301,7 +301,10 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
             GeneID_index=1
             network_cols=[1,2,7,8,11,12,18,20]
             for line in tab_file : 
-                dico_network[line[GeneID_index]]=[line[i] for i in network_cols]
+                if line[GeneID_index] not in dico_network:
+                    dico_network[line[GeneID_index]]=[[line[i] for i in network_cols]]
+                else:
+                    dico_network[line[GeneID_index]].append([line[i] for i in network_cols])
 
         #delete tmp_BioGRID directory
         os.remove("BioGRID.zip")
@@ -340,8 +343,14 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
         dico_GeneID_to_UniProt = {}
         dico_nodes = {}
         for line in bioplex :
-            dico_network["GeneID"][line[0]]=[line[i] for i in network_geneid_cols]
-            dico_network["UniProt-AC"][line[2]]=[line[i] for i in network_uniprot_cols]
+            if line[0] not in dico_network["GeneID"]:
+                dico_network["GeneID"][line[0]]=[[line[i] for i in network_geneid_cols]]
+            else :
+                dico_network["GeneID"][line[0]].append([line[i] for i in network_geneid_cols])
+            if line[1] not in dico_network["UniProt-AC"]:
+                dico_network["UniProt-AC"][line[2]]=[[line[i] for i in network_uniprot_cols]]
+            else:
+                dico_network["UniProt-AC"][line[2]].append([line[i] for i in network_uniprot_cols])
             dico_GeneID_to_UniProt[line[0]]=line[2]
 
         r = requests.get("https://reactome.org/download/current/UniProt2Reactome.txt")
