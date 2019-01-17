@@ -97,8 +97,8 @@ def biogrid_output_files(ids) :
     ids_not_found=set([])
     for id in ids :
         if id in ppi_dict['network'] :
-            network_file.append(ppi_dict['network'][id])
-            ids_set.add(ppi_dict['network'][id][1])
+            network_file.extend(ppi_dict['network'][id])
+            ids_set.update([interact[1] for interact in ppi_dict['network'][id]])
         else : 
             ids_not_found.add(id)
     
@@ -119,8 +119,8 @@ def bioplex_output_files(ids,id_type) :
     ids_not_found=set([])
     for id in ids :
         if id in ppi_dict['network'][id_type] :
-            network_file.append(ppi_dict['network'][id_type][id])
-            ids_set.add(ppi_dict['network'][id_type][id][1])
+            network_file.extend(ppi_dict['network'][id_type][id])
+            ids_set.update([interact[1] for interact in ppi_dict['network'][id_type][id]])
         else :
             ids_not_found.add(id)
     #print(network_file)
