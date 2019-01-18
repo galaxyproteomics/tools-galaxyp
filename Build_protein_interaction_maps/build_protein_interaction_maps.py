@@ -140,6 +140,59 @@ def bioplex_output_files(ids,id_type) :
     
     return network_file,nodes_file
 
+#function to sort the csv_file by value in a specific column
+def sort_by_column(tab,sort_col,reverse,header):
+    
+    if len(tab) > 1 : #if there's more than just a header or 1 row
+        if header :
+            head=tab[0]
+            tab=tab[1:]
+
+        #list of empty cells in the column to sort
+        unsortable_lines = [i for i,line in enumerate(tab) if (line[sort_col]=='' or line[sort_col] == 'NA')]
+        unsorted_tab=[ tab[i] for i in unsortable_lines]
+        tab= [line for i,line in enumerate(tab) if i not in unsortable_lines]
+
+        if only_number(tab,sort_col) and any_float(tab,sort_col)  : 
+            tab = sorted(tab, key=lambda row: float(row[sort_col]), reverse=reverse)
+        elif only_number(tab,sort_col):
+            tab = sorted(tab, key=lambda row: int(row[sort_col]), reverse=reverse)      
+        else :
+            tab = sorted(tab, key=lambda row: row[sort_col], reverse=reverse)
+        
+        tab.extend(unsorted_tab)
+        if header is True : tab = [head]+tab
+
+    return tab
+
+def only_number(tab,col) :
+
+    for line in tab :
+        if not (is_number("float",line[col].replace(",",".")) or is_number("int",line[col].replace(",","."))) :
+            return False
+    return True
+
+#Check if a variable is a float or an integer
+def is_number(number_format, n):
+    float_format = re.compile(r"^[-]?[0-9][0-9]*.?[0-9]+$")
+    int_format = re.compile(r"^[-]?[0-9][0-9]*$")
+    test = ""
+    if number_format == "int":
+        test = re.match(int_format, n)
+    elif number_format == "float":
+        test = re.match(float_format, n)
+    if test:
+        return True
+
+#return True is there is at least one float in the column
+def any_float(tab,col) :
+    
+    for line in tab :
+        if is_number("float",line[col].replace(",",".")) :
+            return True
+
+    return False
+
 def main() :
 
     #Get args from command line
@@ -163,8 +216,10 @@ def main() :
     elif args.database=="bioplex":
         network_file, nodes_file = bioplex_output_files(ids,args.id_type)
 
-    #convert blank to NA
+    #convert blank to NA and sort files
     network_file = blank_to_NA(network_file)
+    network_file = sort_by_column(network_file,0,False,True)
+    nodes_file = sort_by_column(nodes_file,0,False,True)
 
     #write output files
     with open(args.network_output,"w") as output :
