@@ -136,8 +136,8 @@ protein_features = function() {
 
   args <- get_args()  
   
-  #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/add_human_protein_features/args.rda")
-  #load("/home/dchristiany/proteore_project/ProteoRE/tools/add_human_protein_features/args.rda")
+  #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/add_protein_features/args.rda")
+  #load("/home/dchristiany/proteore_project/ProteoRE/tools/add_protein_features/args.rda")
   
   #setting variables
   inputtype = args$inputtype
@@ -194,6 +194,7 @@ protein_features = function() {
     res = res[!duplicated(res$NextprotID),]
     output_content = merge(file, res,by.x=ncol,by.y="NextprotID",incomparables = NA,all.x=T)
     output_content = order_columns(output_content,ncol,id_type,file)
+    output_content = output_content[,-which(colnames(output_content)=="NextprotID")]      #remove nextprotID column
     output_content <- as.data.frame(apply(output_content, c(1,2), function(x) gsub("^$|^ $", NA, x)))  #convert "" et " " to NA
     write.table(output_content, output, row.names = FALSE, sep = "\t", quote = FALSE)
   } 
