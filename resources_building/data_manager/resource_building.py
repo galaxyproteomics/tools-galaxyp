@@ -123,8 +123,8 @@ csv.field_size_limit(sys.maxsize) # to handle big files
 
 def id_mapping_sources (data_manager_dict, species, target_directory) :
 
-    human = species == "human"
-    species_dict = { "human" : "HUMAN_9606", "mouse" : "MOUSE_10090", "rat" : "RAT_10116" }
+    human = species == "Human"
+    species_dict = { "Human" : "HUMAN_9606", "Mouse" : "MOUSE_10090", "Rat" : "RAT_10116" }
     files=["idmapping_selected.tab.gz","idmapping.dat.gz"]
 
     #header
@@ -218,8 +218,8 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
         w = csv.writer(out,delimiter='\t')
         w.writerows(tab)
 
-    name_dict={"human" : "Homo sapiens", "mouse" : "Mus musculus", "rat" : "Rattus norvegicus"}
-    name = name_dict[species]+" "+time.strftime("%d/%m/%Y")
+    name_dict={"Human" : "Homo sapiens", "Mouse" : "Mus musculus", "Rat" : "Rattus norvegicus"}
+    name = species +" (" + name_dict[species]+" "+time.strftime("%d/%m/%Y")+")"
     id = species+"_id_mapping_"+ time.strftime("%d-%m-%Y")
 
     data_table_entry = dict(id=id, name = name, value = species, path = path)
@@ -276,7 +276,7 @@ def clean_nextprot_id (next_id,uniprotAc) :
 
 def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
 
-    species_dict={'human':'Homo sapiens',"mouse":"Mus musculus","rat":"Rattus norvegicus"}
+    species_dict={'Human':'Homo sapiens',"Mouse":"Mus musculus","Rat":"Rattus norvegicus"}
 
     ##BioGRID
     if interactome=="biogrid":
@@ -376,7 +376,7 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
     output_file = species+'_'+interactome+'_dict_'+ time.strftime("%d-%m-%Y") + ".json"
     path = os.path.join(target_directory,output_file)
     name = species+" ("+species_dict[species]+") "+time.strftime("%d/%m/%Y")
-    id = interactome+"_"+species+ time.strftime("%d-%m-%Y")
+    id = species+"_"+interactome+"_"+ time.strftime("%d-%m-%Y")
 
     with open(path, 'w') as handle:
         json.dump(dico, handle, sort_keys=True)
