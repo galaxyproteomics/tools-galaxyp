@@ -1,7 +1,7 @@
-<tool id="proteomics_moff" name="moFF" version="@VERSION@.2">
+<tool id="proteomics_moff" name="moFF" version="@VERSION@.3">
     <description>extracts MS1 intensities from spectrum files</description>
     <macros>
-        <token name="@VERSION@">1.2.1</token>
+        <token name="@VERSION@">2.0.2</token>
         <!-- xml macros, used for shared Galaxy parameter inputs -->
         <xml name="ident_input_macro" token_allow_multiple="true" token_input_type="data">
         <!-- this is exactly the same across all three, except for allowing multiple in MBR and all but not in moff -->
@@ -55,10 +55,10 @@
                     <option value="mzml">mzML</option>
                 </param>
                 <when value="raw">
-                    <param argument="--inputraw" type="@INPUT_TYPE@" multiple="@ALLOW_MULTIPLE@" format="raw" label="RAW file(s)"/>
+                    <param argument="--raw_list" type="@INPUT_TYPE@" multiple="@ALLOW_MULTIPLE@" format="raw" label="RAW file(s)"/>
                 </when>
                 <when value="mzml">
-                    <param argument="--inputraw" type="@INPUT_TYPE@" multiple="@ALLOW_MULTIPLE@" format="mzml" label="mzML file(s)"/>
+                    <param argument="--raw_list" type="@INPUT_TYPE@" multiple="@ALLOW_MULTIPLE@" format="mzml" label="mzML file(s)"/>
                 </when>
             </conditional>
         </xml>
@@ -76,14 +76,14 @@
         ]]></token>
         <token name="@IDENT_INPUT_ARG_MULTIPLE@"><![CDATA[
             ## this is where the ident input gets passed to moff/moff_all/moff_mbr
-            --inputtsv
+            --tsv_list
             #for $value in $task.ident_input.ident_input_file:
                 './ident_inputs/$value.element_identifier$format'
             #end for
         ]]></token>
         <token name="@IDENT_INPUT_ARG_SINGLE@"><![CDATA[
             ## this is where the ident input gets passed to moff/moff_all/moff_mbr
-            --inputtsv './ident_inputs/${task.ident_input.ident_input_file.element_identifier}$format'
+            --tsv_list './ident_inputs/${task.ident_input.ident_input_file.element_identifier}$format'
         ]]></token>
         <token name="@WRANGLE_IDENT_INPUT_SINGLE@"><![CDATA[
             mkdir ./ident_inputs &&
@@ -122,23 +122,23 @@
             #end if
         ]]></token>
         <token name="@RAW_INPUT_ARG_SINGLE@"><![CDATA[
-            --inputraw './raws/$task.msms_input.inputraw.element_identifier$format'
+            --raw_list './raws/$task.msms_input.raw_list.element_identifier$format'
         ]]></token>
         <token name="@RAW_INPUT_ARG_MULTIPLE@"><![CDATA[
-            --inputraw
-            #for $value in $task.msms_input.inputraw:
+            --raw_list
+            #for $value in $task.msms_input.raw_list:
                 './raws/$value.element_identifier$format'
             #end for
         ]]></token>
         <token name="@WRANGLE_RAW_INPUT_SINGLE@"><![CDATA[
             mkdir ./raws &&
             ## for files, need to softlink the name to the history item
-            ln -s '$task.msms_input.inputraw' './raws/$task.msms_input.inputraw.element_identifier$format' &&
+            ln -s '$task.msms_input.raw_list' './raws/$task.msms_input.raw_list.element_identifier$format' &&
         ]]></token>
         <token name="@WRANGLE_RAW_INPUT_MULTIPLE@"><![CDATA[
             mkdir ./raws &&
             ## for files, need to softlink the name to the history item
-            #for $value in $task.msms_input.inputraw:
+            #for $value in $task.msms_input.raw_list:
                 ln -s '$value' './raws/$value.element_identifier$format' &&
             #end for
         ]]></token>
@@ -153,15 +153,16 @@
         #if $task.task_selector == "moff":
             @WRANGLE_IDENT_INPUT_SINGLE@
             @WRANGLE_RAW_INPUT_SINGLE@
-            moff.py
+            moff_all.py
                 @IDENT_INPUT_ARG_SINGLE@
                 @RAW_INPUT_ARG_SINGLE@
                 --tol $task.tol
-                --rt_w $task.rt_w
-                --rt_p $task.rt_p
+                --mbr $task.mbr
+                --xic_length $task.xic_length
+                --rt_peak_win $task.rt_peak_win
                 --output_folder ./out
                 #if ($task.peptide_summary):
-                    --peptide_summary 1
+                    --peptide_summary 
                 #end if
             &&
             #if $task.peptide_summary:
@@ -172,8 +173,9 @@
             mv ./out/*.log '$output_logs'
         #else if $task.task_selector == "mbr":
            @WRANGLE_IDENT_INPUT_MULTIPLE@
-           moff_mbr.py
-                --inputF ./ident_inputs
+           moff_all.py
+                @IDENT_INPUT_ARG_SINGLE@
+                --mbr $task.mbr
                 --ext $task.ext
            &&
            mv ./ident_inputs/mbr_output/* ./out
@@ -185,13 +187,24 @@
                @IDENT_INPUT_ARG_MULTIPLE@
                @RAW_INPUT_ARG_MULTIPLE@
                --tol $task.tol
-               --rt_w $task.rt_w
-               --rt_p $task.rt_p
-               --rt_p_match $task.rt_p_match
+               --mbr $task.mbr
+               --xic_length $task.xic_length
+               --rt_peak_win $task.rt_peak_win
+               --rt_peak_match $task.rt_peak_match
                --output_folder ./out
                #if $task.peptide_summary:
-                   --peptide_summary 1
+                   --peptide_summary
                #end if
+               #if $task.match_filter.match_filter_selector:
+                    --match_filter 
+                    --quantile_thr_filtering $task.sample_size
+					--sample_size $task.quantile_thr_filtering
+					#if $task.custom_ptm_file.custom_ptm_file_selector:
+					--ptm_file $task.ptm_file   
+					#else:
+					--ptm_file ./ptm_setting_ps.json
+					#end_if
+               #end if 
            &&
            #if $task.peptide_summary:
                mv ./out/peptide_summary_intensity_moFF_run.tab '$output_peptide_summary'
@@ -210,14 +223,18 @@
                 <expand macro="raw_input_macro" allow_multiple="false"/>
                 <param argument="--tol" type="float" value="10" label="Tolerance parameter"
                     help="Specify the tolerance parameter in ppm." />
-                <param argument="--rt_w" type="float" value="3.0" label="Retention time window"
+                <param argument="--mbr" type="text" value="off" label="moFF workflow"
+                    help="select the moFF workflow" />
+                <param argument="--xic_length" type="float" value="3.0" label="Retention time window"
                     help="Specify rt window for xic in minutes." />
-                <param argument="--rt_p" type="float" value="1" label="Time window for the peak"
+                <param argument="--rt_peak_win" type="float" value="1" label="Time window for the peak"
                     help="Specify the time windows for the peak in minutes." />
                 <param argument="--peptide_summary" type="boolean" value="true" label="Output the peptide summary?"/>
             </when>
             <when value="mbr">
                 <expand macro="ident_input_macro" allow_multiple="false" input_type="data_collection"/>
+                <param argument="--mbr" type="text" value="only" label="moFF workflow"
+                    help="select the moFF workflow" />
                 <param argument="--ext" type="text" value="tab" label="Provide the extension used in the display file name (without the period)"/>
             </when>
             <when value="all">
@@ -225,12 +242,31 @@
                 <expand macro="raw_input_macro" allow_multiple="false" input_type="data_collection"/>
                 <param argument="--tol" type="float" value="10" label="Tolerance parameter"
                     help="Specify the tolerance parameter in ppm." />
-                <param argument="--rt_w" type="float" value="3.0" label="Retention time window"
+                <param argument="--mbr" type="text" value="on" label="moFF workflow"
+                    help="select the moFF workflow" />
+                <param argument="--xic_length" type="float" value="3.0" label="Retention time window"
                     help="Specify rt window for xic in minutes." />
-                <param argument="--rt_p" type="float" value="1" label="Time window for the peak"
+                <param argument="--rt_peak_win" type="float" value="1" label="Time window for the peak"
                     help="Specify the time windows for the peak in minutes." />
-                <param argument="--rt_p_match" type="float" value="1.2" label="Time window for the matched peak"
+                <param argument="--rt_peak_win" type="float" value="1.2" label="Time window for the matched peak"
                     help="Specify the time windows for the matched peak in minutes." />
+                <conditional name="match_filter">
+                    <param argument="match_filter_selector" type="boolean" label="Activate filtering of matched peptides" />
+                    <when value="true">
+                        <param name="--sample_size" label="sample_size" type="float" value="0.20" help="percentage of MS2 peptide used to estimated the threshold. Default value: 0.20" />
+						<param name="--quantile_thr_filtering" label="quantile_thr_filtering" type="float" value="0.75" help="quantile value used to compute the filtering threshold for the matched peak"/>
+						<conditional name="custom_ptm_file">
+							<param argument="custom_ptm_file_selector" type="boolean" label="use custom ptm file or internal moFF ptm file for PeptideShaker output" />
+					        <when value="true">
+						         <param name="--ptm_file " type="data" format="tabular" label="ptm_file" help="load your ptm file in order to overwrite internal method"/>
+							</when>
+							<when value="false">
+							</when>
+						</conditional>
+                    </when>
+                    <when value="false">
+                    </when>
+                 </conditional> 
                 <param argument="--peptide_summary" type="boolean" value="true" label="Output the peptide summary?"/>
             </when>
         </conditional> 
@@ -270,7 +306,7 @@
                 </collection>
             </param>
             <param name="msms_input|input_type_selector" value="mzml"/>
-            <param name="inputraw">
+            <param name="raw_list">
                 <collection type="list">
                     <element name="mbr_test1" value="input/mbr_test1.mzml"/>
                     <element name="mbr_test2" value="input/mbr_test2.mzml"/>
@@ -314,7 +350,7 @@
             <param name="ident_input|input_type_selector" value="ps"/>
             <param name="ident_input_file" value="input/test.tabular" ftype="tabular"/>
             <param name="msms_input|input_type_selector" value="mzml"/>
-            <param name="inputraw" value="input/test.mzml" ftype="mzml"/>
+            <param name="raw_list" value="input/test.mzml" ftype="mzml"/>
             <param name="peptide_summary" value="true"/>
             <output name="output_peptide_summary" ftype="tabular" file="output2/moff_test_pepsum.tab"/>
             <output name="output_logs">
@@ -364,7 +400,7 @@
             <param name="mass" value="17"/>
             <param name="charge" value="15"/>
             <param name="msms_input|input_type_selector" value="mzml"/>
-            <param name="inputraw">
+            <param name="raw_list">
                 <collection type="list">
                     <element name="mbr_test1" value="input/mbr_test1.mzml"/>
                     <element name="mbr_test2" value="input/mbr_test2.mzml"/>
@@ -447,22 +483,18 @@ Moreover, moFF also allows one to work directly with mzML files.
 
 If both match between runs and apex intensity are desired, it is best to run them both at once (i.e., run the 'All' module).
 The MBR module is mainly useful for observing the intermediate steps of the algorithm - its outputs are not able to be used as inputs in moFF or in other tools.
-
 If quantification of multiple files without MBR is desired, the apex intensity module may be run with multiple files or a dataset collection in batch mode. 
 In either case, moFF must be given the paired files at the same time - thus the best method is to construct a dataset collection in which the raw and identification files are in the same order. 
-
 
 *Inputs:*
 
 - Identification file: this can either be a generic tabular file or the standard PSM report from PeptideShaker.
   If it is a generic tabular file, please select the columns corresponding to the required information.
-
 - MS/MS file: this can either be a Thermo raw file or an mzML file.
 
 A given pair of files must have the *exact* same display name, not including the extension;
 e.g. ``example1.tabular`` and ``example1.mzml``.
 If the display names are different, simply change them in the history menu.
-
 For multiple files (the MBR or All modules), the identification and spectrum files must be provided as dataset collections.
 This allows for usage of the output dataset collections in workflows.
 
@@ -473,20 +505,16 @@ half of the entire time windows where the apex peak is searched or the XIC is re
 For correct rt windows, we suggest you set the ``rt_p`` value equal to or slighly greater than the
 dynamic exclusion duration set in your machine. We suggest also to set the
 ``rt_p_match`` always slightly bigger than tha values used for ``rt_p``.
-
 *Outputs:*
-
 When used in the single file mode ("Apex intensity" module), the outputs are 2 (or 3) files: a log file, a quantitation file,
 and (optionally) a peptide summary, with intensities aggregated across peptides. When used in the multiple file mode ("All"),
 the outputs are a dataset collection of log files (one per identification file), a dataset collection of quantification files, and (optionally) a peptide summary.
-
 If used with a generic tabular format, the only columns in the output file are the 7 columns selected while using moFF plus the columns that moFF adds. Other columns are discarded.
 
 **More Information**
 
 See the moFF Github site at https://github.com/compomics/moFF, 
 and the publication at https://dx.doi.org/10.1038/nmeth.4075 
-
     ]]>
     </help>
     <citations>
