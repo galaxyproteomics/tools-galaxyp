@@ -60,48 +60,49 @@ def HPA_sources(data_manager_dict, tissue, target_directory):
 # 2. Peptide Atlas
 #######################################################################################################
 def peptide_atlas_sources(data_manager_dict, tissue, target_directory):
-    # Define PA Human build released number (here  early 2018)
-    atlas_build_id = "472"
     # Define organism_id (here Human) - to be upraded when other organism added to the project
     organism_id = "2"
     # Extract sample_category_id and output filename
-    sample_category_id = tissue.split("-")[0]
-    output_file = tissue.split("-")[1] +"_"+ time.strftime("%d-%m-%Y") + ".tsv"
-    query = "https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetPeptides?atlas_build_id=" + \
-            atlas_build_id + "&display_options=ShowMappings&organism_id= " + \
-            organism_id + "&sample_category_id=" + sample_category_id + \
-            "&QUERY_NAME=AT_GetPeptides&output_mode=tsv&apply_action=QUERY"
-    download = requests.get(query)
-    decoded_content = download.content.decode('utf-8')
-    cr = csv.reader(decoded_content.splitlines(), delimiter='\t')
+    tissue=tissue.split(".")
+    sample_category_id = tissue[0]
+    tissue_name = tissue[1]
+    output_file = tissue_name+"_"+time.strftime("%d-%m-%Y") + ".tsv"
 
-    #build dictionary by only keeping uniprot accession (not isoform) as key and sum of observations as value
+    query="https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id="+ \
+    sample_category_id+"&display_options=ShowAbundances&organism_id="+organism_id+ \
+    "&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf\
+    &QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY"
+
+    with requests.Session() as s:
+        download = s.get(query)
+        decoded_content = download.content.decode('utf-8')
+        cr = csv.reader(decoded_content.splitlines(), delimiter='\t')
+
     uni_dict = build_dictionary(cr)
 
     #columns of data table peptide_atlas
     date = time.strftime("%d-%m-%Y")
-    tissue = tissue.split("-")[1]
-    tissue_id = tissue+"_"+date
-    tissue_name = tissue_id.replace("-","/").replace("_"," ")
+    tissue_id = tissue_name+"_"+date
+    name = tissue_id.replace("-","/").replace("_"," ")
     path = os.path.join(target_directory,output_file)
 
-    with open(path,"wb") as out :
+    with open(path,"w") as out :
         w = csv.writer(out,delimiter='\t')
         w.writerow(["Uniprot_AC","nb_obs"])
         w.writerows(uni_dict.items())
         
-    data_table_entry = dict(id=tissue_id, name=tissue_name, value = path, tissue = tissue)
+    data_table_entry = dict(id=tissue_id, name=name, value = path, tissue = tissue_name)
     _add_data_table_entry(data_manager_dict, data_table_entry, "proteore_peptide_atlas")
 
 #function to count the number of observations by uniprot id
 def build_dictionary (csv) :
     uni_dict = {} 
     for line in csv :
-        if "-" not in line[2] and check_uniprot_access(line[2]) :
-            if line[2] in uni_dict :
-                uni_dict[line[2]] += int(line[4])
+        if "-" not in line[0] and check_uniprot_access(line[0]) :
+            if line[0] in uni_dict :
+                uni_dict[line[0]] += int(line[5])
             else : 
-                uni_dict[line[2]] = int(line[4])
+                uni_dict[line[0]] = int(line[5])
 
     return uni_dict
 
@@ -112,8 +113,6 @@ def check_uniprot_access (id) :
         return True
     else :
         return False
-
-
 
 #######################################################################################################
 # 3. ID mapping file

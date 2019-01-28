@@ -49,18 +49,32 @@ tool_data_table_conf:
 
 Ref files are downloaded for each tissue:
 
-* Human liver 
-* Human brain
-* Human heart
-* Human kidney
-* Human plasma
-* Human urine
-* Human CSF
+
+* `Human Adrenal gland proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=432&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
+* `Human Brain proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=441&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
+* `Human Breast Proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=427&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
+* `Human CSF proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=434&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
+* `Human Digestive System proteome<"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=429&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
+* `Human female reproductive system proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=430&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
+* `Human Heart proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=418&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
+* `Human Kidney man Kidney Proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=424&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
+* `Human Liver proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=425&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
+* `Human Lung proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=419&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
+* `Human Male Reproductive System proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=431&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
+* `Human Pancreas proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=420&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
+* `Human Plasma Non-Glyco proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=465&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
+* `Human Spleen proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=421&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
+* `Human Testis and spermatozoa samples <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=463&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
+* `Human Urinary Bladder proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=422&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
+* `Human Urine proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=423&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
+
 
 Example request for peptide atlas api:
 ```
-query = "https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetPeptides?atlas_build_id=" + atlas_build_id + "&display_options=ShowMappings&organism_id=" +
-            organism_id + "&sample_category_id=" + sample_category_id + "&QUERY_NAME=AT_GetPeptides&output_mode=tsv&apply_action=QUERY"
+query="https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id="+ sample_category_id +
+  "&display_options=ShowAbundances&organism_id=" + organism_id + 
+  "&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf" + 
+  "&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY"
 ```
 
 A dictionary is build from the downloaded file to only keep uniprot accession (not isoform) as key and sum of observations as value
