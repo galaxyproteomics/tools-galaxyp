@@ -48,7 +48,7 @@ def one_id_one_line(input_file,nb_col,header) :
                 ids = line[nb_col].split(";")
                 for id in ids :
                     new_file.append(line[:nb_col]+[id]+line[nb_col+1:])
-                    ids_list.appen(id)
+                    ids_list.append(id)
             else : 
                 new_file.append(line)
                 ids_list.append(line[nb_col])
