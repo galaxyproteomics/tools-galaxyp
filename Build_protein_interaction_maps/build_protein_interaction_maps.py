@@ -1,7 +1,9 @@
+# -*- coding: utf-8 -*-
 import csv, json, argparse, re
 
 def get_args() :
     parser = argparse.ArgumentParser()
+    parser.add_argument("--species")
     parser.add_argument("--database", help="Humap, Bioplex or Biogrid", required=True)
     parser.add_argument("--dict_path", required=True)
     parser.add_argument("--input_type", help="type of input (list of id or filename)",required=True)
@@ -11,10 +13,8 @@ def get_args() :
     parser.add_argument("--id_type")
     parser.add_argument("--network_output")
     parser.add_argument("--nodes_output")
-    parser.add_argument("--pathway_info")
     args = parser.parse_args()
 
-    args.pathway_info=str2bool(args.pathway_info)
     if args.input_type=="file" :
         args.ncol = nb_col_to_int(args.ncol)
         args.header = str2bool(args.header)
@@ -91,8 +91,8 @@ def blank_to_NA(csv_file) :
     
     return tmp
 
-def biogrid_output_files(ids) :
-    network_file=[["Entrez Gene Interactor A","Entrez Gene Interactor B","Gene symbol Interactor A","Gene symbol Interactor B","Experimental System","Experimental Type","Interaction Score","Phenotypes"]]
+def biogrid_output_files(ids,species) :
+    network_file=[["Entrez Gene Interactor A","Entrez Gene Interactor B","Gene symbol Interactor A","Gene symbol Interactor B","Experimental System","Experimental Type","Pubmed ID","Interaction Score","Phenotypes"]]
     ids_set= set(ids)
     ids_not_found=set([])
     for id in ids :
@@ -102,18 +102,23 @@ def biogrid_output_files(ids) :
         else : 
             ids_not_found.add(id)
     
-    nodes_file = [["Protein","Present in user input ids","Present in interactome","Pathway"]]
+    nodes_file = [["Entrez gene ID","Official Symbol Interactor","Present in user input ids","ID present in Biogrid "+species,"Pathway"]]
     for id in ids_set:
         if id in ppi_dict['nodes']:
             description_pathway=";".join(ppi_dict['nodes'][id])
         else :
             description_pathway="NA"
+        
+        #get gene_name
+        if id in ppi_dict['network']: gene_name = ppi_dict['network'][id][0][2]
+        else : gene_name="NA"
 
-        nodes_file.append([id]+[id in ids]+[id not in ids_not_found]+[description_pathway])   
+        #make line
+        nodes_file.append([id]+[gene_name]+[id in ids]+[id not in ids_not_found]+[description_pathway])   
     
     return network_file,nodes_file
 
-def bioplex_output_files(ids,id_type) :
+def bioplex_output_files(ids,id_type,species) :
     network_file=[[id_type+" Interactor A",id_type+" Interactor B","Gene symbol Interactor A","Gene symbol Interactor B","Interaction Score"]]
     ids_set= set(ids)
     ids_not_found=set([])
@@ -123,20 +128,24 @@ def bioplex_output_files(ids,id_type) :
             ids_set.update([interact[1] for interact in ppi_dict['network'][id_type][id]])
         else :
             ids_not_found.add(id)
-    #print(network_file)
-    #print(ids_not_found)
 
-    if args.pathway_info: nodes_file=[["Protein","Present in user input ids","Present in interactome","Pathway"]]
-    else: nodes_file=[["Protein","Present in user input ids","Present in interactome"]]
+    if id_type=="UniProt-AC" : nodes_file=[[id_type,"Present in user input ids","ID present in Bioplex "+species,"Pathway"]]
+    else: nodes_file=[[id_type,"Official symbol Interactor","Present in user input ids","Present in interactome","Pathway"]]
     for id in ids_set:
-        if args.pathway_info:
-            if id in ppi_dict['nodes']:
-                description_pathway=";".join(ppi_dict['nodes'][id])
-            else :
-                description_pathway="NA"
-            nodes_file.append([id]+[id in ids]+[id not in ids_not_found]+[description_pathway]) 
-        else:
-            nodes_file.append([id]+[id in ids]+[id not in ids_not_found])   
+
+        if id in ppi_dict['nodes'][id_type]:
+            description_pathway=";".join(ppi_dict['nodes'][id_type][id])
+        else :
+            description_pathway="NA"
+
+        #make line
+        if id_type=="UniProt-AC":
+            nodes_file.append([id]+[id in ids]+[id not in ids_not_found]+[description_pathway])  
+        elif id_type=="GeneID":
+            #get gene_name
+            if id in ppi_dict['network'][id_type]: gene_name = ppi_dict['network'][id_type][id][0][2]
+            else : gene_name="NA"
+            nodes_file.append([id]+[gene_name]+[id in ids]+[id not in ids_not_found]+[description_pathway])
     
     return network_file,nodes_file
 
@@ -212,9 +221,9 @@ def main() :
 
     #create output files
     if args.database=="biogrid":
-        network_file, nodes_file = biogrid_output_files(ids)
+        network_file, nodes_file = biogrid_output_files(ids,args.species)
     elif args.database=="bioplex":
-        network_file, nodes_file = bioplex_output_files(ids,args.id_type)
+        network_file, nodes_file = bioplex_output_files(ids,args.id_type,args.species)
 
     #convert blank to NA and sort files
     network_file = blank_to_NA(network_file)
@@ -228,7 +237,8 @@ def main() :
 
     with open(args.nodes_output,"w") as output :
         writer = csv.writer(output,delimiter="\t")
-        writer.writerows(nodes_file)
+        for row in nodes_file:
+            writer.writerow([unicode(s).encode("utf-8") for s in row])
 
 if __name__ == "__main__":
     main()
