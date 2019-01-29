@@ -312,8 +312,8 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
         #download NCBI2Reactome.txt file and build dictionary
         with requests.Session() as s:
             r = s.get('https://www.reactome.org/download/current/NCBI2Reactome.txt')
-            r.encoding = r.apparent_encoding
-            tab_file = csv.reader(r.text.splitlines(), delimiter='\t')
+            r.encoding ="utf-8"
+            tab_file = csv.reader(r.content.splitlines(), delimiter='\t')
 
         dico_nodes = {}
         uniProt_index=0
@@ -356,9 +356,9 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
             dico_GeneID_to_UniProt[line[0]]=line[2]
 
         with requests.Session() as s:
-            download = s.get('https://reactome.org/download/current/UniProt2Reactome.txt')
-            decoded_content = download.content.decode('utf-8')
-            tab_file = csv.reader(decoded_content.splitlines(), delimiter='\t')
+            r = s.get('https://reactome.org/download/current/UniProt2Reactome.txt')
+            r.encoding ="utf-8"
+            tab_file = csv.reader(r.content.splitlines(), delimiter='\t')
 
         dico_nodes_uniprot = {}
         uniProt_index=0
@@ -373,8 +373,8 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
 
         with requests.Session() as s:
             r = s.get('https://www.reactome.org/download/current/NCBI2Reactome.txt')
-            r.encoding = r.apparent_encoding
-            tab_file = csv.reader(r.text.splitlines(), delimiter='\t')
+            r.encoding ="utf-8"
+            tab_file = csv.reader(r.content.splitlines(), delimiter='\t')
 
         dico_nodes_geneid = {}
         uniProt_index=0
@@ -396,12 +396,12 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
         dico['convert']=dico_GeneID_to_UniProt
 
     #writing output
-    output_file = species+'_'+interactome+'_dict_'+ time.strftime("%d-%m-%Y") + ".json"
+    output_file = species+'_'+interactome+'_'+ time.strftime("%d-%m-%Y") + ".json"
     path = os.path.join(target_directory,output_file)
     name = species+" ("+species_dict[species]+") "+time.strftime("%d/%m/%Y")
     id = species+"_"+interactome+"_"+ time.strftime("%d-%m-%Y")
 
-    with open(path, 'w', encoding="utf-8") as handle:
+    with open(path, 'w') as handle:
         json.dump(dico, handle, sort_keys=True)
 
     data_table_entry = dict(id=id, name = name, value = species, path = path)
