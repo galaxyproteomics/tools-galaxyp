@@ -282,7 +282,7 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
 
         tab2_link="https://downloads.thebiogrid.org/Download/BioGRID/Release-Archive/BIOGRID-3.5.167/BIOGRID-ORGANISM-3.5.167.tab2.zip"
 
-        #dowload zip file
+        #download zip file
         r = requests.get(tab2_link)
         with open("BioGRID.zip", "wb") as code:
             code.write(r.content)
@@ -298,7 +298,7 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
             tab_file = csv.reader(handle,delimiter="\t")
             dico_network = {}
             GeneID_index=1
-            network_cols=[1,2,7,8,11,12,18,20]
+            network_cols=[1,2,7,8,11,12,14,18,20]
             for line in tab_file : 
                 if line[GeneID_index] not in dico_network:
                     dico_network[line[GeneID_index]]=[[line[i] for i in network_cols]]
@@ -308,53 +308,13 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
         #delete tmp_BioGRID directory
         os.remove("BioGRID.zip")
         shutil.rmtree("tmp_BioGRID", ignore_errors=True) 
-
+        
         #download NCBI2Reactome.txt file and build dictionary
-        r = requests.get('https://www.reactome.org/download/current/NCBI2Reactome.txt')
-        r.encoding ="utf-8"
-        tab_file = csv.reader(r.content.splitlines(), delimiter='\t')
-        dico_nodes = {}
-        GeneID_index=0
-        pathway_description_index=3
-        species_index=5
-        for line in tab_file :
-            if line[species_index]==species_dict[species]:
-                if line[GeneID_index] in dico_nodes :
-                    dico_nodes[line[GeneID_index]].append(line[pathway_description_index])
-                else :
-                    dico_nodes[line[GeneID_index]] = [line[pathway_description_index]]
+        with requests.Session() as s:
+            r = s.get('https://www.reactome.org/download/current/NCBI2Reactome.txt')
+            r.encoding = r.apparent_encoding
+            tab_file = csv.reader(r.text.splitlines(), delimiter='\t')
 
-        dico={}
-        dico['network']=dico_network
-        dico['nodes']=dico_nodes
-
-    ##Bioplex
-    elif interactome=="bioplex":
-
-        r = requests.get("http://bioplex.hms.harvard.edu/data/BioPlex_interactionList_v4a.tsv")
-        r.encoding ="utf-8"
-        bioplex = csv.reader(r.content.splitlines(), delimiter='\t')
-        dico_network = {}
-        dico_network["GeneID"]={}
-        network_geneid_cols=[0,1,4,5,8]
-        dico_network["UniProt-AC"]={}
-        network_uniprot_cols=[2,3,4,5,8]
-        dico_GeneID_to_UniProt = {}
-        dico_nodes = {}
-        for line in bioplex :
-            if line[0] not in dico_network["GeneID"]:
-                dico_network["GeneID"][line[0]]=[[line[i] for i in network_geneid_cols]]
-            else :
-                dico_network["GeneID"][line[0]].append([line[i] for i in network_geneid_cols])
-            if line[1] not in dico_network["UniProt-AC"]:
-                dico_network["UniProt-AC"][line[2]]=[[line[i] for i in network_uniprot_cols]]
-            else:
-                dico_network["UniProt-AC"][line[2]].append([line[i] for i in network_uniprot_cols])
-            dico_GeneID_to_UniProt[line[0]]=line[2]
-
-        r = requests.get("https://reactome.org/download/current/UniProt2Reactome.txt")
-        r.encoding ="utf-8"
-        tab_file = csv.reader(r.content.splitlines(), delimiter='\t')
         dico_nodes = {}
         uniProt_index=0
         pathway_description_index=3
@@ -369,6 +329,70 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
         dico={}
         dico['network']=dico_network
         dico['nodes']=dico_nodes
+
+    ##Bioplex
+    elif interactome=="bioplex":
+
+        with requests.Session() as s:
+            r = s.get('http://bioplex.hms.harvard.edu/data/BioPlex_interactionList_v4a.tsv')
+            r = r.content.decode('utf-8')
+            bioplex = csv.reader(r.splitlines(), delimiter='\t')
+
+        dico_network = {}
+        dico_network["GeneID"]={}
+        network_geneid_cols=[0,1,4,5,8]
+        dico_network["UniProt-AC"]={}
+        network_uniprot_cols=[2,3,4,5,8]
+        dico_GeneID_to_UniProt = {}
+        for line in bioplex :
+            if line[0] not in dico_network["GeneID"]:
+                dico_network["GeneID"][line[0]]=[[line[i] for i in network_geneid_cols]]
+            else :
+                dico_network["GeneID"][line[0]].append([line[i] for i in network_geneid_cols])
+            if line[1] not in dico_network["UniProt-AC"]:
+                dico_network["UniProt-AC"][line[2]]=[[line[i] for i in network_uniprot_cols]]
+            else:
+                dico_network["UniProt-AC"][line[2]].append([line[i] for i in network_uniprot_cols])
+            dico_GeneID_to_UniProt[line[0]]=line[2]
+
+        with requests.Session() as s:
+            download = s.get('https://reactome.org/download/current/UniProt2Reactome.txt')
+            decoded_content = download.content.decode('utf-8')
+            tab_file = csv.reader(decoded_content.splitlines(), delimiter='\t')
+
+        dico_nodes_uniprot = {}
+        uniProt_index=0
+        pathway_description_index=3
+        species_index=5
+        for line in tab_file :
+            if line[species_index]==species_dict[species]:
+                if line[uniProt_index] in dico_nodes_uniprot :
+                    dico_nodes_uniprot[line[uniProt_index]].append(line[pathway_description_index])
+                else :
+                    dico_nodes_uniprot[line[uniProt_index]] = [line[pathway_description_index]]
+
+        with requests.Session() as s:
+            r = s.get('https://www.reactome.org/download/current/NCBI2Reactome.txt')
+            r.encoding = r.apparent_encoding
+            tab_file = csv.reader(r.text.splitlines(), delimiter='\t')
+
+        dico_nodes_geneid = {}
+        uniProt_index=0
+        pathway_description_index=3
+        species_index=5
+        for line in tab_file :
+            if line[species_index]==species_dict[species]:
+                if line[uniProt_index] in dico_nodes_geneid :
+                    dico_nodes_geneid[line[uniProt_index]].append(line[pathway_description_index])
+                else :
+                    dico_nodes_geneid[line[uniProt_index]] = [line[pathway_description_index]]
+
+        dico={}
+        dico_nodes={}
+        dico_nodes['GeneID']=dico_nodes_geneid
+        dico_nodes['UniProt-AC']=dico_nodes_uniprot
+        dico['network']=dico_network
+        dico['nodes']=dico_nodes
         dico['convert']=dico_GeneID_to_UniProt
 
     #writing output
@@ -377,7 +401,7 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
     name = species+" ("+species_dict[species]+") "+time.strftime("%d/%m/%Y")
     id = species+"_"+interactome+"_"+ time.strftime("%d-%m-%Y")
 
-    with open(path, 'w') as handle:
+    with open(path, 'w', encoding="utf-8") as handle:
         json.dump(dico, handle, sort_keys=True)
 
     data_table_entry = dict(id=id, name = name, value = species, path = path)
