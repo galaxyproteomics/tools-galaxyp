@@ -8,9 +8,9 @@ suppressMessages(library("pathview"))
 suppressMessages(library(KEGGREST))
 
 read_file <- function(path,header){
-    file <- try(read.csv(path,header=header, sep="\t",stringsAsFactors = FALSE, quote="\"", check.names = F, comment.char = "#"),silent=TRUE)
+    file <- try(read.csv(path,header=header, sep="\t",stringsAsFactors = FALSE, quote="\"", check.names = F, comment.char = ""),silent=TRUE)
     if (inherits(file,"try-error")){
-      stop("File not found !")
+      stop("Read file error ! Please check your file (header, # character, etc) ")
     }else{
       return(file)
     }
@@ -75,6 +75,7 @@ clean_bad_character <- function(string)  {
 }
 
 get_list_from_cp <-function(list){
+  list = gsub(",","\t",list)
   list = strsplit(list, "[ \t\n]+")[[1]]
   list = list[list != ""]    #remove empty entry
   list = gsub("-.+", "", list)  #Remove isoform accession number (e.g. "-2")
