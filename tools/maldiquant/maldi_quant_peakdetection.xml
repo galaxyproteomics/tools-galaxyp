@@ -37,6 +37,7 @@
 
     ## Import imzML file
     coordinate_matrix = as.matrix(read.delim("$restriction_conditional.coordinates_file", header = $restriction_conditional.coordinates_header, stringsAsFactors = FALSE))[,1:2]
+    coordinate_matrix = coordinate_matrix[,c($restriction_conditional.column_x, $restriction_conditional.column_y)]
 
     maldi_data <- importImzMl('infile.imzML',
                      coordinates = coordinate_matrix, centroided = $centroids)
@@ -99,15 +100,16 @@
             cardinal_mzs = Cardinal::mz(msidata)
             maldi_data = list()
             for(number_spectra in 1:ncol(msidata)){
-                maldi_data[[number_spectra]] = createMassSpectrum(mass = cardinal_mzs, intensity = iData(msidata)[,number_spectra])
-                coordinates_info = cbind(cardinal_coordinates, c(1:length(maldi_data)))}
+                maldi_data[[number_spectra]] = createMassSpectrum(mass = cardinal_mzs, intensity = iData(msidata)[,number_spectra])}
+            coordinates_info = cbind(cardinal_coordinates, c(1:length(maldi_data)))
         }else{
             peaks = list()
             for (spectra in 1:ncol(msidata))
             {
                 single_peaks = createMassPeaks(Cardinal::mz(msidata), Cardinal::spectra(msidata)[,spectra], snr=as.numeric(rep("NA", nrow(msidata))))
                 peaks[[spectra]] = single_peaks
-            }}
+            }
+            coordinates_info = cbind(cardinal_coordinates, c(1:length(peaks)))}
     #end if
 #end if
 
@@ -125,10 +127,20 @@ title(main=paste("$filename"))
 
 ## plot input file spectrum: 
 #if $centroids:
-        plot(peaks[[1]], main="First spectrum of input file")
+    ## Choose random spectra for QC plots
+    random_spectra = sample(1:length(peaks), 4, replace=FALSE)
+    par(mfrow = c(2, 2), oma=c(0,0,2,0))
+    for (random_sample in random_spectra){
+        plot(peaks[[random_sample]],sub="", main=paste0("spectrum ", random_sample))}
+    title("Input spectra", outer=TRUE, line=0)
+
 #else
-    avgSpectra <- averageMassSpectra(maldi_data,method="mean")
-    plot(avgSpectra, main="Average spectrum of input file")
+    ## Choose random spectra for QC plots
+    random_spectra = sample(1:length(maldi_data), 4, replace=FALSE)
+    par(mfrow = c(2, 2), oma=c(0,0,2,0))
+    for (random_sample in random_spectra){
+        plot(maldi_data[[random_sample]],sub="", main=paste0("spectrum ", random_sample))}
+    title("Input spectra", outer=TRUE, line=0)
 #end if
 
 
@@ -162,10 +174,11 @@ title(main=paste("$filename"))
     annotation_input = input_tabular[,c($tabular_annotation.column_x, $tabular_annotation.column_y, $tabular_annotation.column_names)]
     colnames(annotation_input) = c("x", "y", "annotation") ## rename annotations header to default name "annotation"
 
-    ## merge with coordinate information of MSI data
+    ## merge provided annotation with coordinate information of MSI data
     colnames(coordinates_info)[3] = "pixel_index"
     merged_annotation = merge(coordinates_info, annotation_input, by=c("x", "y"), all.x=TRUE)
     merged_annotation[is.na(merged_annotation)] = "NA"
+    ## order coordinate information according to pixel index to make sure that the order stays the same
     merged_annotation = merged_annotation[order(merged_annotation\$pixel_index),]
     samples = as.factor(merged_annotation\$annotation)
 
@@ -199,20 +212,28 @@ title(main=paste("$filename"))
             maldi_data <- averageMassSpectra(maldi_data, labels=samples,method="mean") ## use average spectra for peak picking
             pixelnames = levels(samples)
             summarized_spectra = TRUE
-
+            random_spectra = sample(1:length(maldi_data), 4, replace=TRUE)
         #end if
 
         peaks <- detectPeaks(maldi_data, method="$method.methods_conditional.peak_method",
                   halfWindowSize=$method.methods_conditional.halfWindowSize,SNR=$method.methods_conditional.snr)
 
         ## QC plot and numbers
-        ## plot old spectrum with baseline in blue and picked peaks in green
-        noise = estimateNoise(maldi_data[[1]], method= "$method.methods_conditional.peak_method")
-        plot(maldi_data[[1]], main="First spectrum with noise line (blue) and picked peaks (green)")
-        lines(noise[,1], noise[,2]*$method.methods_conditional.snr, col="blue")
-        points(peaks[[1]], col="green", pch=20)
+        ## plot old spectra with baseline in blue and picked peaks in green
+        par(mfrow = c(2, 2), oma=c(0,0,2,0))
+        for (random_sample in random_spectra){
+            noise = estimateNoise(maldi_data[[random_sample]], method= "$method.methods_conditional.peak_method")
+            plot(maldi_data[[random_sample]], sub="", main=paste0("spectrum ", random_sample))
+            lines(noise[,1], noise[,2]*$method.methods_conditional.snr, col="blue")
+            points(peaks[[random_sample]], col="green", pch=20)}
+            title("S/N in blue and picked peaks in green", outer=TRUE, line=0)
+
         ## plot new spectrum
-        plot(peaks[[1]], main="First spectrum after peak detection")
+        par(mfrow = c(2, 2), oma=c(0,0,2,0))
+        for (random_sample in random_spectra){
+            plot(peaks[[random_sample]], sub="", main=paste0("spectrum ", random_sample))}
+        title("Picked peaks", outer=TRUE, line=0)
+
         pixel_number = length(peaks)
         minmz = round(min(unlist(lapply(peaks,mass))), digits=4)
         maxmz = round(max(unlist(lapply(peaks,mass))), digits=4)
@@ -242,14 +263,27 @@ title(main=paste("$filename"))
         print('monoisotopic peaks')
         ##monoisotopic peaks
 
-        peaks = monoisotopicPeaks(peaks, minCor=$method.methods_conditional.minCor, tolerance=$method.methods_conditional.tolerance, distance=$method.methods_conditional.distance, size=$method.methods_conditional.size)
+        ## keep peaks to plot them with monoisotopic peaks
+        picked_peaks = peaks
 
-        ## QC plot and numbers
+        peaks = monoisotopicPeaks(peaks, minCor=$method.methods_conditional.minCor, 
+                tolerance=$method.methods_conditional.tolerance,
+                distance=$method.methods_conditional.distance, 
+                size=$method.methods_conditional.size)
+
         ## plot old spectrum with picked isotopes as green dots
-        plot(peaks[[1]], main="First spectrum with picked monoisotopic peaks (green)")
-        points(peaks[[1]], col="green", pch=20)
-        ## plot new spectrum
-        plot(peaks[[1]], main="First spectrum after monoisotopic peaks detection")
+        par(mfrow = c(2, 2), oma=c(0,0,2,0))
+        for (random_sample in random_spectra){
+            plot(picked_peaks[[random_sample]], sub="", main=paste0("spectrum ", random_sample))
+            points(peaks[[random_sample]], col="green", pch=20)}
+            title(paste0("Monoisotopic peaks in green"), outer=TRUE, line=0)
+
+
+        par(mfrow = c(2, 2), oma=c(0,0,2,0))
+        for (random_sample in random_spectra){
+            plot(peaks[[random_sample]], sub="", main=paste0("spectrum ", random_sample))}
+            title("Monoisotopic peaks", outer=TRUE, line=0)
+
         minmz = round(min(unlist(lapply(peaks,mass))), digits=4)
         maxmz = round(max(unlist(lapply(peaks,mass))), digits=4)
         mean_features = round(length(unlist(lapply(peaks,mass)))/length(peaks), digits=2)
@@ -290,7 +324,7 @@ title(main=paste("$filename"))
 
         #elif str($method.methods_conditional.reference_for_alignment.align_ref) == 'yes_reference':
             ## create reference mass_vector from tabular file
-            mass_vector = read.delim("$method.methods_conditional.reference_for_alignment.reference_file", header = $method.methods_conditional.reference_for_alignment.reference_header, stringsAsFactors = FALSE)[,$$method.methods_conditional.reference_for_alignment.mz_column]
+            mass_vector = read.delim("$method.methods_conditional.reference_for_alignment.reference_file", header = $method.methods_conditional.reference_for_alignment.reference_header, stringsAsFactors = FALSE)[,$method.methods_conditional.reference_for_alignment.mz_column]
             int_vector = rep(1,length(mass_vector))
             mass_list = createMassPeaks(mass_vector, int_vector)
 
@@ -304,7 +338,10 @@ title(main=paste("$filename"))
         #end if
 
         ## QC plot and numbers
-        plot(peaks[[1]], main="First spectrum with aligned spectra")
+        par(mfrow = c(2, 2), oma=c(0,0,2,0))
+        for (random_sample in random_spectra){
+            plot(peaks[[random_sample]], sub="", main=paste0("spectrum ", random_sample))}
+        title("Aligned spectra", outer=TRUE, line=0)
         minmz = round(min(unlist(lapply(peaks,mass))), digits=4)
         maxmz = round(max(unlist(lapply(peaks,mass))), digits=4)
         mean_features = round(length(unlist(lapply(peaks,mass)))/length(peaks), digits=2)
@@ -336,7 +373,10 @@ title(main=paste("$filename"))
         peaks <- binPeaks(peaks, tolerance=$method.methods_conditional.bin_tolerance, method="$method.methods_conditional.bin_method")
 
         ## QC plot and numbers
-        plot(peaks[[1]], main="First spectrum after binning")
+        par(mfrow = c(2, 2), oma=c(0,0,2,0))
+        for (random_sample in random_spectra){
+            plot(peaks[[random_sample]], sub="", main=paste0("spectrum ", random_sample))}
+        title("Binned spectra", outer=TRUE, line=0)
         minmz = round(min(unlist(lapply(peaks,mass))), digits=4)
         maxmz = round(max(unlist(lapply(peaks,mass))), digits=4)
         mean_features = round(length(unlist(lapply(peaks,mass)))/length(peaks), digits=2)
@@ -384,7 +424,10 @@ title(main=paste("$filename"))
         #end if
 
         ##QC plot and numbers
-        plot(peaks[[1]], main="First spectrum after m/z filtering")
+        par(mfrow = c(2, 2), oma=c(0,0,2,0))
+        for (random_sample in random_spectra){
+            plot(peaks[[random_sample]], sub="", main=paste0("spectrum ", random_sample))}
+        title("Filtered spectra", outer=TRUE, line=0)
         minmz = round(min(unlist(lapply(peaks,mass))), digits=4)
         maxmz = round(max(unlist(lapply(peaks,mass))), digits=4)
         mean_features = round(length(unlist(lapply(peaks,mass)))/length(peaks), digits=2)
@@ -423,7 +466,7 @@ if (length(peaks[!sapply(peaks, isEmpty)])>0){
 }else{print("There are no spectra with peaks left")}
 
 ## print table with QC values
-rownames(QC_numbers) = c("min m/z", "max mz", "# features", "median \n# features", "median\nintensity")
+rownames(QC_numbers) = c("min m/z", "max mz", "# features", "median \n# peaks (int.>0)", "median\nintensity")
 plot(0,type='n',axes=FALSE,ann=FALSE)
 grid.table(t(QC_numbers))
 
@@ -431,14 +474,14 @@ dev.off()
 
 if (summarized_spectra == FALSE){ 
     #if $infile.ext == 'imzml'
-        MALDIquantForeign::exportImzMl(peaks, file="out.imzMl", processed=$export_processed)
+        MALDIquantForeign::exportImzMl(peaks, file="out.imzMl", processed=TRUE)
     #elif $infile.ext == 'tabular'
         masspeaks_coordinates = matrix(unlist(strsplit(as.character(pixelnames), "\\_")), ncol=3, byrow=TRUE)
         ## extract x and y values and create the coordinate matrix in case tabular was input
         peaklist_coordinates = unique(cbind(as.numeric(masspeaks_coordinates[,2]), as.numeric(masspeaks_coordinates[,3])))
-        exportImzMl(peaks, file="out.imzMl", processed=$export_processed, coordinates=peaklist_coordinates)
+        exportImzMl(peaks, file="out.imzMl", processed=TRUE, coordinates=peaklist_coordinates)
     #elif $infile.ext == 'rdata'
-        MALDIquantForeign::exportImzMl(peaks, file="out.imzMl", processed=$export_processed, coordinates=cardinal_coordinates)
+        MALDIquantForeign::exportImzMl(peaks, file="out.imzMl", processed=TRUE, coordinates=cardinal_coordinates)
     #end if
 
 }
@@ -455,7 +498,9 @@ if (summarized_spectra == FALSE){
                 <option value="restrict">Yes, restrict to spectra of interest</option>
             </param>
             <when value="restrict">
-                <param name="coordinates_file" type="data" format="tabular" label="Tabular file with coordinates" help="x-values in first column, y-values in second column"/>
+                <param name="coordinates_file" type="data" format="tabular" label="Tabular file with coordinates"/>
+                <param name="column_x" data_ref="coordinates_file" label="Column with x values" type="data_column"/>
+                <param name="column_y" data_ref="coordinates_file" label="Column with y values" type="data_column"/>
                 <param name="coordinates_header" type="boolean" label="File contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
             </when>
             <when value="no_restriction"/>
@@ -560,7 +605,6 @@ if (summarized_spectra == FALSE){
                 </when>
             </conditional>
         </repeat>
-        <param name="export_processed" type="boolean" label="Export file as processed imzML" help="otherwise continuous imzML will be exported" checked="True" truevalue="TRUE" falsevalue="FALSE"/>
     </inputs>
     <outputs>
         <data format="imzml" name="outfile_imzml" label="${tool.name} on ${on_string}">
@@ -686,7 +730,7 @@ if (summarized_spectra == FALSE){
             ...    
 
 
-- Optional:  Tabular file with pixel coordinates to restrict reading of imzML files to coordinates of interest. The file has to contain x values in the first column and y values in the second columns. Further columns are allowed. Tabular files with any header name or no header at all are supported. 
+- Optional:  Tabular file with pixel coordinates to restrict reading of imzML files to coordinates of interest. Tabular files with any header name or no header at all are supported. 
 
     ::
 
@@ -750,8 +794,8 @@ if (summarized_spectra == FALSE){
 
 **Output**
 
-- centroided imzML file (processed or continuous), imzML file is empty when 'Detect peaks on average mass spectra' is chosen.
-- pdf with mass spectra plots after each preprocessing step and a table with key values after each preprocessing step
+- centroided, processed imzML file, imzML file is empty when 'Detect peaks on average mass spectra' is chosen.
+- pdf with mass spectra plots of four random spectra and a table with key values after each preprocessing step
 - peak list (tabular file) with the columns "snr", "mass", "intensity" and "spectrum"
 - tabular file with intensity matrix (m/z in rows and spectra in columns). If the input file was imzML in profile mode the intensities before peak picking are also stored in the matrix . For all other inputs not picked values are set to NA. For peak picking on the average of multiple spectra, each spectra group is a column with mean intensities for each m/z.
 

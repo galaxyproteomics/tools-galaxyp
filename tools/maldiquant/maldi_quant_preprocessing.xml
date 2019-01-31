@@ -42,6 +42,7 @@
     ## Import imzML file
 
     coordinate_matrix = as.matrix(read.delim("$restriction_conditional.coordinates_file", header = $restriction_conditional.coordinates_header, stringsAsFactors = FALSE))[,1:2]
+    coordinate_matrix = coordinate_matrix[,c($restriction_conditional.column_x, $restriction_conditional.column_y)]
 
     maldi_data = importImzMl('infile.imzML',
                      coordinates = coordinate_matrix)
@@ -65,16 +66,14 @@
         get(ls()[ls() != "fileName"])
         }
         msidata = loadRData('infile.RData')
-
         ## save coordinates
         cardinal_coordinates = as.matrix(Cardinal::coord(msidata)[,1:2])
         ## save mz values
         cardinal_mzs = Cardinal::mz(msidata)
-        ## create MALDIquant MassSpectrum object
+        ## create MALDIquant MassSpectrum object, order of pixels in iData is same as in coord(msidata):
         maldi_data = list()
         for(number_spectra in 1:ncol(msidata)){
         maldi_data[[number_spectra]] = MALDIquant::createMassSpectrum(mass = cardinal_mzs, intensity = iData(msidata)[,number_spectra])
-        coordinates_info = cbind(cardinal_coordinates, c(1:length(maldi_data)))
         }
     #end if
 
@@ -168,9 +167,12 @@ vectorofactions = "inputdata"
         print('baseline removing')
         ## Remove baseline
 
+        ## Choose random spectra for QC plots
+        random_spectra = sample(1:length(maldi_data), 4, replace=FALSE)
+
         #if str($method.methods_conditional.methods_for_baseline.baseline_method ) == 'SNIP':
         print('SNIP')
-            random_spectra = sample(1:length(maldi_data), 4, replace=FALSE)
+
             par(mfrow = c(2,2))
             for (random_sample in random_spectra){
                 maldi_data_baseline = estimateBaseline(maldi_data[[random_sample]],
@@ -182,24 +184,48 @@ vectorofactions = "inputdata"
                 method="SNIP",
                 iterations=$method.methods_conditional.methods_for_baseline.iterations)
 
+
         #elif str($method.methods_conditional.methods_for_baseline.baseline_method ) == 'TopHat':
         print('TopHat')
+
+            par(mfrow = c(2,2))
+            for (random_sample in random_spectra){
+                maldi_data_baseline = estimateBaseline(maldi_data[[random_sample]],
+                    method="TopHat", halfWindowSize=$method.methods_conditional.methods_for_baseline.tophat_halfWindowSize)
+                plot(maldi_data[[random_sample]], sub="", main=paste0("Estimated baseline for spectrum ", random_sample))
+                lines(maldi_data_baseline, col="blue", lwd=2)}
 
             maldi_data = removeBaseline(maldi_data,
                 method="TopHat",
                 halfWindowSize=$method.methods_conditional.methods_for_baseline.tophat_halfWindowSize)
 
+
         #elif str($method.methods_conditional.methods_for_baseline.baseline_method ) == 'ConvexHull':
         print('ConvexHull')
 
+            par(mfrow = c(2,2))
+            for (random_sample in random_spectra){
+                maldi_data_baseline = estimateBaseline(maldi_data[[random_sample]],
+                    method="ConvexHull")
+                plot(maldi_data[[random_sample]], sub="", main=paste0("Estimated baseline for spectrum ", random_sample))
+                lines(maldi_data_baseline, col="blue", lwd=2)}
+
             maldi_data = removeBaseline(maldi_data,
-                method="ConvecHull")
+                method="ConvexHull")
+
 
         #elif str($method.methods_conditional.methods_for_baseline.baseline_method ) == 'median':
         print('median')
 
+            par(mfrow = c(2,2))
+            for (random_sample in random_spectra){
+                maldi_data_baseline = estimateBaseline(maldi_data[[random_sample]],
+                    method="median", halfWindowSize=$method.methods_conditional.methods_for_baseline.median_halfWindowSize)
+                plot(maldi_data[[random_sample]], sub="", main=paste0("Estimated baseline for spectrum ", random_sample))
+                lines(maldi_data_baseline, col="blue", lwd=2)}
+
             maldi_data = removeBaseline(maldi_data,
-                method="TopHat",
+                method="median",
                 halfWindowSize=$method.methods_conditional.methods_for_baseline.median_halfWindowSize)
 
         #end if
@@ -272,14 +298,16 @@ vectorofactions = "inputdata"
             mass_vector = read.delim("$method.methods_conditional.reference_for_alignment.reference_file", header = $method.methods_conditional.reference_for_alignment.reference_header, stringsAsFactors = FALSE)[,$method.methods_conditional.reference_for_alignment.mz_column]
             int_vector = rep(1,length(mass_vector))
             mass_list = createMassPeaks(mass_vector, int_vector)
+print(mass_list)
 
         ## 2) calculate warping:
             warping_function <- determineWarpingFunctions(peaks,
                                   tolerance=$method.methods_conditional.tolerance, method="$method.methods_conditional.warping_method",
                                   allowNoMatches=$method.methods_conditional.allow_nomatch, reference = mass_list)
+print(length(warping_function))
         ## 3) warp spectra:
             maldi_data = warpMassSpectra(maldi_data, warping_function, emptyNoMatches=$method.methods_conditional.empty_nomatch)
-
+print(length(maldi_data))
         #end if
 
         #if $method.methods_conditional.remove_empty:
@@ -288,6 +316,7 @@ vectorofactions = "inputdata"
             ## only if there are empty spectra to remove
 
             if (length(findEmptyMassObjects(maldi_data))>0)
+print(findEmptyMassObjects(maldi_data))
                 {
 
                     #if $infile.ext == 'rdata'
@@ -316,12 +345,14 @@ vectorofactions = "inputdata"
         QC_numbers= cbind(QC_numbers, spectra_aligned)
         vectorofactions = append(vectorofactions, "aligned")
 
+    #elif str( $method.methods_conditional.method ) == 'skip_preprocessing':
+        ##for now as option to filter large files
 
     #end if
 
 #end for
 
-rownames(QC_numbers) = c("min m/z", "max mz", "# features", "median \n# features", "median\nintensity", "pixel\nnumber")
+rownames(QC_numbers) = c("min m/z", "max mz", "# features", "median \n# peaks (int.>0)", "median\nintensity", "pixel\nnumber")
 colnames(QC_numbers) = vectorofactions
 plot(0,type='n',axes=FALSE,ann=FALSE)
 grid.table(t(QC_numbers))
@@ -349,7 +380,9 @@ if (length(maldi_data)>0){
                 <option value="restrict">Yes, restrict to spectra of interest</option>
             </param>
             <when value="restrict">
-                <param name="coordinates_file" type="data" format="tabular" label="Tabular file with coordinates" help="x-values in first column, y-values in second column"/>
+                <param name="coordinates_file" type="data" format="tabular" label="Tabular file with coordinates"/>
+                <param name="column_x" data_ref="coordinates_file" label="Column with x values" type="data_column"/>
+                <param name="column_y" data_ref="coordinates_file" label="Column with y values" type="data_column"/>
                 <param name="coordinates_header" type="boolean" label="File contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
             </when>              
             <when value="no_restriction"/>
@@ -362,6 +395,7 @@ if (length(maldi_data)>0){
                     <option value="Baseline">Baseline removal</option>
                     <option value="Calibrate">Intensity calibration (normalization)</option>
                     <option value="Align">Align spectra (warping/phase correction)</option>
+                    <option value="skip_preprocessing">Skip preprocessing</option>
                     <validator type="empty_field" />
                 </param>
                 <when value="Transformation">
@@ -489,6 +523,7 @@ if (length(maldi_data)>0){
                         </when>
                     </conditional>
                 </when>
+                <when value="skip_preprocessing"/>
             </conditional>
         </repeat>
         <param name="export_processed" type="boolean" label="Export processed imzML" help="otherwise continuous imzML will be exported" truevalue="TRUE" falsevalue="FALSE"/>
@@ -506,6 +541,8 @@ if (length(maldi_data)>0){
             <conditional name="restriction_conditional">
                 <param name="restriction" value="restrict"/>
                 <param name="coordinates_file" value="restricted_pixels.tabular"/>
+                <param name="column_x" value="1"/>
+                <param name="column_y" value="2"/>
             </conditional>
             <conditional name="methods_conditional">
                 <param name="method" value="Transformation"/>
@@ -564,8 +601,8 @@ if (length(maldi_data)>0){
 
     - imzml file (upload imzml and ibd file via the "composite" function) `Introduction to the imzml format <https://ms-imaging.org/wp/imzml/>`_
     - Cardinal "MSImageSet" data saved as .RData
-- Only for Cardinal RData files and when remove empty spectra is chosen: Tabular file with coordinates annotations. Separate columns for x and y coordinates and a third column with pixel annotations. Tabular files with any header name or no header at all are supported
-- Optional: Tabular file with pixel coordinates to restrict reading of imzML files to coordinates of interest. The file has to contain x values in the first column and y values in the second columns. Further columns are allowed. Tabular files with any header name or no header at all are supported. 
+
+- Optional: Tabular file with pixel coordinates to restrict reading of imzML files to coordinates of interest. Tabular files with any header name or no header at all are supported. 
 
     ::
 
