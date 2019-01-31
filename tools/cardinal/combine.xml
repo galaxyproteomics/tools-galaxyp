@@ -1,4 +1,4 @@
-<tool id="cardinal_combine" name="MSI combine" version="@VERSION@.1">
+<tool id="cardinal_combine" name="MSI combine" version="@VERSION@.2">
     <description>
         combine several mass spectrometry imaging datasets into one
     </description>
@@ -30,9 +30,8 @@
 
         cat '${msi_combine}' &&
         Rscript '${msi_combine}' &&
-        #if $imzml_output:
+        #if str($imzml_output) == "imzml_format":
             mkdir $outfile_imzml.files_path &&
-            ls -l &&
             mv ./out.imzML "${os.path.join($outfile_imzml.files_path, 'imzml')}" | true &&
             mv ./out.ibd "${os.path.join($outfile_imzml.files_path, 'ibd')}" | true &&
         #end if
@@ -167,7 +166,8 @@ all_files = $num_infiles
         ## use name of Galaxy inputfile as combined sample annotation
         names_vector = character()
         #set escaped_element_identifier = re.sub('[^\w\-\s\[/]]', '_', str($infile.element_identifier))
-        if (sum(spectra(msidata_$i)[],na.rm=TRUE)>0) ## use only valid files
+
+        if (ncol(msidata_$i)>0 & nrow(msidata_$i) >0)
         {
             if (is.null(levels(msidata_$i\$combined_sample)))
             {
@@ -194,8 +194,7 @@ all_files = $num_infiles
     ## store files to combine them later and for each file check if it is valid
 
     #silent $msidata.append('msidata_'+str($i))
-    valid_dataset = append(valid_dataset, 
-         (ncol(msidata_$i)>0 & nrow(msidata_$i)>0 & sum(spectra(msidata_$i)[], na.rm=TRUE)>0))
+    valid_dataset = append(valid_dataset, ncol(msidata_$i)>0 & nrow(msidata_$i)>0) ## file with no intensities is considered valid
 
 #end for
 
@@ -217,13 +216,14 @@ all_files = $num_infiles
     position_df = cbind(coord(msidata_combined)[,1:2], msidata_combined\$combined_sample)
     colnames(position_df)[3] = "sample_name"
 
-     ## save as (.RData)
     msidata = msidata_combined
-    save(msidata, file="$msidata_combined")
-
     ## save msidata as imzML file
-    #if $imzml_output:
+    #if str($imzml_output) == "imzml_format":
         writeImzML(msidata, "out")
+    #elif str($imzml_output) == "rdata_format":
+        ## save as (.RData)
+        iData(msidata) = iData(msidata)[]
+        save(msidata, file="$outfile_rdata")
     #end if
 
 
@@ -251,17 +251,19 @@ print(paste0("Number of removed duplicated coordinates after combination: ", sum
 
     msidata_combined = do.call(combine, datasetlist)
 
-    ## save as (.RData)
-
     msidata = msidata_combined
-    save(msidata, file="$msidata_combined")
-
     ## save msidata as imzML file
-    writeImzML(msidata, "out")
+    #if str($imzml_output) == "imzml_format":
+        writeImzML(msidata, "out")
+    #elif str($imzml_output) == "rdata_format":
+        ## save as (.RData)
+        iData(msidata) = iData(msidata)[]
+        save(msidata, file="$outfile_rdata")
+    #end if
 
     ## create x,y,sample_name dataframe for QC pdf
 
-    position_df = cbind(coord(msidata), msidata\$combined_sample)
+    position_df = cbind(coord(msidata)[,1:2], msidata\$combined_sample)
     colnames(position_df)[3] = "sample_name"
 
 #end if
@@ -271,8 +273,6 @@ print(paste0("Number of removed duplicated coordinates after combination: ", sum
 ################################################################################
 
 ########### QC with pixels and their annotations ################################
-
-print(paste0("Number of NA in input file: ",sum(is.na(spectra(msidata)[]))))
 
 pdf("Combined_qc.pdf", width=15, height=15)
 
@@ -284,7 +284,7 @@ combine_plot = ggplot(position_df, aes(x=x, y=y, fill=sample_name))+
        theme_bw()+
        theme(text=element_text(family="ArialMT", face="bold", size=15))+
        theme(legend.position="bottom",legend.direction="vertical")+
-       guides(fill=guide_legend(ncol=5,byrow=TRUE))
+       guides(fill=guide_legend(ncol=4,byrow=TRUE))
 coord_labels = aggregate(cbind(x,y)~sample_name, data=position_df, mean)
 coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$sample_name)
 for(file_count in 1:nrow(coord_labels))
@@ -293,12 +293,10 @@ for(file_count in 1:nrow(coord_labels))
 print(combine_plot)
 
     #if str($annotation_cond.annotation_tabular) == 'annotation'
-
         ## annotation plots
 
         ## plot 1
-
-        column1_df = cbind(coord(msidata), msidata\$column1)
+        column1_df = cbind(coord(msidata)[,1:2], msidata\$column1)
         colnames(column1_df)[3] = "column1"
 
         if (sum(is.na(column1_df[3])) < nrow(column1_df)){
@@ -309,13 +307,13 @@ print(combine_plot)
                theme_bw()+
                theme(text=element_text(family="ArialMT", face="bold", size=15))+
                theme(legend.position="bottom",legend.direction="vertical")+
-               guides(fill=guide_legend(ncol=5,byrow=TRUE, title=annotation_colnames[1]))
+               guides(fill=guide_legend(ncol=4,byrow=TRUE, title=annotation_colnames[1]))
         print(column1_plot)}
         ##rename columnname for output tabular file
         colnames(column1_df)[3] = annotation_colnames[1]
 
         ## plot 2
-        column2_df = cbind(coord(msidata), msidata\$column2)
+        column2_df = cbind(coord(msidata)[,1:2], msidata\$column2)
         colnames(column2_df)[3] = "column2"
 
         if (sum(is.na(column2_df[3])) < nrow(column2_df)){
@@ -326,13 +324,14 @@ print(combine_plot)
                theme_bw()+
                theme(text=element_text(family="ArialMT", face="bold", size=15))+
                theme(legend.position="bottom",legend.direction="vertical")+
-               guides(fill=guide_legend(ncol=5,byrow=TRUE, title=annotation_colnames[2]))
+               guides(fill=guide_legend(ncol=4,byrow=TRUE, title=annotation_colnames[2]))
         print(column2_plot)}
+
         ##rename columnname for output tabular file
         colnames(column2_df)[3] = annotation_colnames[2]
 
         ## plot 3
-        column3_df = cbind(coord(msidata), msidata\$column3)
+        column3_df = cbind(coord(msidata)[,1:2], msidata\$column3)
         colnames(column3_df)[3] = "column3"
         if (sum(is.na(column3_df[3])) < nrow(column3_df)){
         column3_plot = ggplot(column3_df, aes(x=x, y=y, fill=column3))+
@@ -342,13 +341,13 @@ print(combine_plot)
                theme_bw()+
                theme(text=element_text(family="ArialMT", face="bold", size=15))+
                theme(legend.position="bottom",legend.direction="vertical")+
-               guides(fill=guide_legend(ncol=5,byrow=TRUE, title=annotation_colnames[3]))
+               guides(fill=guide_legend(ncol=4,byrow=TRUE, title=annotation_colnames[3]))
         print(column3_plot)}
         ##rename columnname for output tabular file
         colnames(column3_df)[3] = annotation_colnames[3]
 
         ## plot 4
-        column4_df = cbind(coord(msidata), msidata\$column4)
+        column4_df = cbind(coord(msidata)[,1:2], msidata\$column4)
         colnames(column4_df)[3] = "column4"
 
         if (sum(is.na(column4_df[3])) < nrow(column4_df)){
@@ -359,14 +358,14 @@ print(combine_plot)
                theme_bw()+
                theme(text=element_text(family="ArialMT", face="bold", size=15))+
                theme(legend.position="bottom",legend.direction="vertical")+
-               guides(fill=guide_legend(ncol=5,byrow=TRUE, title=annotation_colnames[4]))
+               guides(fill=guide_legend(ncol=4,byrow=TRUE, title=annotation_colnames[4]))
         print(column4_plot)}
         ##rename columnname for output tabular file
         colnames(column4_df)[3] = annotation_colnames[4]
 
         ## plot5
 
-        column5_df = cbind(coord(msidata), msidata\$column5)
+        column5_df = cbind(coord(msidata)[,1:2], msidata\$column5)
         colnames(column5_df)[3] = "column5"
         if (sum(is.na(column5_df[3])) < nrow(column5_df)){
         column5_plot = ggplot(column5_df, aes(x=x, y=y, fill=column5))+
@@ -376,20 +375,18 @@ print(combine_plot)
                theme_bw()+
                theme(text=element_text(family="ArialMT", face="bold", size=15))+
                theme(legend.position="bottom",legend.direction="vertical")+
-               guides(fill=guide_legend(ncol=5,byrow=TRUE, title=annotation_colnames[5]))
+               guides(fill=guide_legend(ncol=4,byrow=TRUE, title=annotation_colnames[5]))
         print(column5_plot)}
         ##rename columnname for output tabular file
         colnames(column5_df)[3] = annotation_colnames[5]
 
     #end if
-
     dev.off()
 
 ##################### annotation tabular output ################################
 
     if (length(features(msidata))> 0 & length(pixels(msidata)) > 0){
-
-position_df\$sample_name = gsub("^[^_]*_","",position_df\$sample_name)
+        position_df\$sample_name = gsub("^[^_]*_","",position_df\$sample_name)
 
         #if str($annotation_cond.annotation_tabular) == 'no_annotation':
 
@@ -399,7 +396,6 @@ position_df\$sample_name = gsub("^[^_]*_","",position_df\$sample_name)
             annotation_df_list = list(position_df, column1_df, column2_df, column3_df, column4_df, column5_df)
             combined_annotations = Reduce(function(...) merge(..., by=c("x", "y"), all=TRUE), annotation_df_list)
             write.table(combined_annotations, file="$pixel_annotations", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
-
         #end if 
 
     }else{
@@ -450,7 +446,7 @@ position_df\$sample_name = gsub("^[^_]*_","",position_df\$sample_name)
             </param>
             <when value="automatic_combine"/>
             <when value="xy_shifts">
-                <param name="coordinates_file" type="data" format="tabular" label="datasetnames, x and y values to shift pixel coordinates before combining"
+                <param name="coordinates_file" type="data" format="tabular" label="Datasetnames, x and y values to shift pixel coordinates before combining"
             help="Tabular file with three columns: 1 for the filename, 1 for the x-coordinate shift and 1 for the y-coordinate shift. Pixels with the same coordinates after shifting will be deleted."/>
                 <param name="column_x" data_ref="coordinates_file" label="Column with values for shift in x direction" type="data_column"/>
                 <param name="column_y" data_ref="coordinates_file" label="Column with values for shift in y direction" type="data_column"/>
@@ -458,15 +454,21 @@ position_df\$sample_name = gsub("^[^_]*_","",position_df\$sample_name)
                 <param name="xy_header" type="boolean" label="Tabular files contain a header line" truevalue="TRUE" falsevalue="FALSE"/>
             </when>
         </conditional>
-        <param name="imzml_output" type="boolean" label="Output of imzML file" truevalue="TRUE" falsevalue="FALSE"/>
+        <param name="imzml_output" type="select" display = "radio" optional = "False"
+               label="Output format" help= "Choose the output format">
+                <option value="imzml_format" selected="True">imzML</option>
+                <option value="rdata_format">RData</option>
+        </param>
     </inputs>
     <outputs>
-        <data format="rdata" name="msidata_combined" label="${tool.name} on ${on_string}"/>
+        <data format="imzml" name="outfile_imzml" label="${tool.name} on ${on_string} : imzML">
+            <filter>imzml_output=='imzml_format'</filter>
+        </data>
+        <data format="rdata" name="outfile_rdata" label="${tool.name} on ${on_string}: RData">
+            <filter>imzml_output == 'rdata_format'</filter>
+       </data>
         <data format="pdf" name="QC_overview" from_work_dir="Combined_qc.pdf" label = "${tool.name} on ${on_string}: QC"/>
         <data format="tabular" name="pixel_annotations" label="${tool.name} on ${on_string}: annotations"/>
-        <data format="imzml" name="outfile_imzml" label="${tool.name} on ${on_string} : imzML">
-            <filter>imzml_output</filter>
-       </data>
     </outputs>
     <tests>
         <test>
@@ -481,8 +483,9 @@ position_df\$sample_name = gsub("^[^_]*_","",position_df\$sample_name)
             <param name="column_x" value="1"/>
             <param name="column_y" value="2"/>
             <param name="column_names" value="3"/>
+            <param name="imzml_output" value="rdata_format"/>
             <output name="pixel_annotations" file="123_annotation_output.tabular"/>
-            <output name="msidata_combined" file="123_combined.RData" compare="sim_size" />
+            <output name="outfile_rdata" file="123_combined.RData" compare="sim_size" />
             <output name="QC_overview" file="123_combined_QC.pdf" compare="sim_size"/>
         </test>
         <test>
@@ -493,8 +496,9 @@ position_df\$sample_name = gsub("^[^_]*_","",position_df\$sample_name)
                 <param name="tabular_header" value="TRUE"/>
             </conditional>
             <param name="combine_method" value="automatic_combine"/>
+            <param name="imzml_output" value="rdata_format"/>
             <output name="pixel_annotations" file="12_annotation_output.tabular"/>
-            <output name="msidata_combined" file="12_combined.RData" compare="sim_size" />
+            <output name="outfile_rdata" file="12_combined.RData" compare="sim_size" />
             <output name="QC_overview" file="12_combined_QC.pdf" compare="sim_size"/>
         </test>
         <test>
@@ -505,8 +509,9 @@ position_df\$sample_name = gsub("^[^_]*_","",position_df\$sample_name)
                 <param name="tabular_header" value="TRUE"/>
             </conditional>
             <param name="combine_method" value="automatic_combine"/>
+            <param name="imzml_output" value="rdata_format"/>
             <output name="pixel_annotations" file="112_annotation_output.tabular"/>
-            <output name="msidata_combined" file="112_auto_combined.RData" compare="sim_size" />
+            <output name="outfile_rdata" file="112_auto_combined.RData" compare="sim_size" />
             <output name="QC_overview" file="112_auto_combined_QC.pdf" compare="sim_size"/>
         </test>
         <test>
@@ -515,8 +520,9 @@ position_df\$sample_name = gsub("^[^_]*_","",position_df\$sample_name)
                 <param name="annotation_tabular" value="no_annotation"/>
             </conditional>
             <param name="combine_method" value="automatic_combine"/>
+            <param name="imzml_output" value="rdata_format"/>
             <output name="pixel_annotations" file="2123_annotation_output.tabular"/>
-            <output name="msidata_combined" file="2123_auto_combined.RData" compare="sim_size" />
+            <output name="outfile_rdata" file="2123_auto_combined.RData" compare="sim_size" />
             <output name="QC_overview" file="2123_auto_combined_QC.pdf" compare="sim_size"/>
         </test>
     </tests>
@@ -566,9 +572,7 @@ This tool uses the Cardinal combine function to combine several mass spectrometr
 
 **Output**
 
-- 
-- MSI data as .RData output (can be read with the Cardinal package in R)
-- optional: MSI data as imzML file
+- MSI data as imzML file or .RData (can be read with the Cardinal package in R)
 - pdf that shows the pixel positions and annotations of the combined files
 - Tabular file with pixel annotations (x,y,column with input file names and up to five annotation columns)
 

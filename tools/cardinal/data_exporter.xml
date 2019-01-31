@@ -1,4 +1,4 @@
-<tool id="cardinal_data_exporter" name="MSI data exporter" version="@VERSION@.0">
+<tool id="cardinal_data_exporter" name="MSI data exporter" version="@VERSION@.1">
     <description>
         exports imzML and Analyze7.5 to tabular files
     </description>
@@ -22,26 +22,28 @@
 
 library(Cardinal)
 
-@READING_MSIDATA@
+@READING_MSIDATA_INRAM@
 
-npeaks= sum(spectra(msidata)[]>0, na.rm=TRUE)
-
-if (npeaks > 0){
+## to make sure that processed files work as well: 
+iData(msidata) = iData(msidata)[]
 
     ###################### Intensity matrix output ################################
 
     #if "int_matrix" in str($output_options).split(","):
         print("intensity matrix output")
 
-        spectramatrix = spectra(msidata)[]
         mz_names = gsub(" = ", "_", names(features(msidata)))
         mz_names = gsub("/", "", mz_names)
         pixel_names = gsub(", y = ", "_", names(pixels(msidata)))
         pixel_names = gsub(" = ", "y_", pixel_names)
 
-        spectramatrix = cbind(mz_names,spectramatrix)
+        spectramatrix = cbind(mz_names,spectra(msidata)[])
         newmatrix = rbind(c("mz_name", pixel_names), spectramatrix)
         write.table(newmatrix, file="$intensity_matrix", quote = FALSE, row.names = FALSE, col.names=FALSE, sep = "\t")
+        ## free up RAM space in case furhter steps will be run: 
+        rm(newmatrix)
+        rm(spectramatrix)
+        gc()
 
     #end if
 
@@ -59,6 +61,7 @@ if (npeaks > 0){
         full_sample_sd = apply(spectra(msidata)[],1,sd, na.rm=TRUE)
         full_sample_sem = full_sample_sd/full_sample_mean*100
         ## npeaks and sum of all intensities per spectrum and mz
+        npeaks= sum(spectra(msidata)[]>0, na.rm=TRUE)
         mzTIC = rowSums(spectra(msidata)[], na.rm=TRUE) ## calculate intensity sum for each m/z
         peakspermz = rowSums(spectra(msidata)[] > 0, na.rm=TRUE) ## calculate number of intensities > 0 for each m/z (max = number of spectra)
 
@@ -147,25 +150,31 @@ if (npeaks > 0){
         xycoordinates = coord(msidata)[,1:2]
 
         ## pixel name
-        pixel_names = gsub(", y = ", "_", names(pixels(msidata)))
-        pixel_names = gsub(" = ", "y_", pixel_names)
+        x_coords = unlist(lapply(strsplit(names(pixels(msidata)), ","), `[[`, 1))
+        y_coords = unlist(lapply(strsplit(names(pixels(msidata)), ","), `[[`, 2))
+        x_coordinates = gsub("x = ","",x_coords)
+        y_coordinates = gsub(" y = ","",y_coords)
+        pixel_names = paste0("xy_", x_coordinates, "_", y_coordinates)
 
         ## pixel order 
         pixelxyarray=1:length(pixels(msidata))
 
         ## number of pixels per spectrum: every intensity value > 0 counts as peak
-        peaksperpixel = colSums(spectra(msidata)[]> 0, na.rm=TRUE)
+        peaksperpixel = apply(spectra(msidata)[]> 0, 2, sum, na.rm=TRUE)
 
         ## Total ion chromatogram per spectrum
-        TICs = round(colSums(spectra(msidata)[], na.rm=TRUE), digits = 2)
+        TICs = round(apply(spectra(msidata)[],2, sum, na.rm=TRUE), digits = 2)
+
+        ## Median ion intensity per spectrum
+        med_int = round(apply(spectra(msidata)[], 2, median, na.rm=TRUE), digits = 2)
 
         ## Highest m/z per spectrum
         highestmz = apply(spectra(msidata)[],2,which.max) 
         highestmz_data = mz(msidata)[highestmz]
 
         ## Combine into dataframe; order is the same for all vectors
-        spectra_df = data.frame(pixel_names, xycoordinates, pixelxyarray, peaksperpixel, TICs, highestmz_data)
-        colnames(spectra_df) = c("spectra_names", "x_values", "y_values","pixel_order", "peaks_per_spectrum", "spectrum_TIC", "most_abundant_mz")
+        spectra_df = data.frame(pixel_names, xycoordinates, pixelxyarray, peaksperpixel, med_int, TICs, highestmz_data)
+        colnames(spectra_df) = c("spectra_names", "x_values", "y_values","pixel_order", "peaks_per_spectrum", "median_intensity", "spectrum_TIC", "most_abundant_mz")
 
         #if str($counting_calibrants.pixel_with_calibrants) == "yes_calibrants":
 
@@ -191,7 +200,8 @@ if (npeaks > 0){
                     filtered_data = msidata[mz(msidata) >= inputcalibrantmasses[mass]-plusminusvalues[mass] & mz(msidata) <= inputcalibrantmasses[mass]+plusminusvalues[mass],]
                     if (nrow(filtered_data) > 1 & sum(spectra(filtered_data)[],na.rm=TRUE) > 0){
                         ## intensity of all m/z > 0
-                        intensity_sum = colSums(spectra(filtered_data)[], na.rm=TRUE) > 0
+                          intensity_sum = apply(spectra(filtered_data)[],2,sum, na.rm=TRUE) > 0
+
                     }else if(nrow(filtered_data) == 1 & sum(spectra(filtered_data)[], na.rm=TRUE) > 0){
                         ## intensity of only m/z > 0
                         intensity_sum = spectra(filtered_data)[] > 0 
@@ -201,14 +211,15 @@ if (npeaks > 0){
                     pixelmatrix = rbind(pixelmatrix, intensity_sum)
                 }
                 ## for each pixel count TRUE (each calibrant m/z range with intensity > 0 is TRUE)
-                countvector= as.factor(colSums(pixelmatrix, na.rm=TRUE))
+                countvector= as.factor(apply(pixelmatrix, 2,sum,na.rm=TRUE))
+
             }else{countvector = rep(0,ncol(msidata))}
                 countdf= cbind(coord(msidata)[,1:2], countvector) ## add pixel coordinates to counts
-                colnames(countdf) = c("x_values", "y_values", "input m/z count")
+                colnames(countdf) = c("x_values", "y_values", "m/z count")
                 spectra_df = merge(spectra_df, countdf, by=c("x_values", "y_values"))
 
                 ## sort columns to have spectra_names as rowname in first column
-                spectra_df = spectra_df[c("spectra_names", "x_values", "y_values","pixel_order", "peaks_per_spectrum", "spectrum_TIC", "most_abundant_mz", "input m/z count")]
+                spectra_df = spectra_df[c("spectra_names", "x_values", "y_values","pixel_order", "peaks_per_spectrum", "median_intensity", "spectrum_TIC", "most_abundant_mz", "m/z count")]
 
         #end if
         #if str($tabular_annotation.load_annotation) == 'yes_annotation':
@@ -218,9 +229,9 @@ if (npeaks > 0){
 
             ## sort columns to have spectra_names as rowname in first column
             #if str($counting_calibrants.pixel_with_calibrants) == "yes_calibrants":
-                spectra_df = spectra_df[c("spectra_names", "x_values", "y_values","pixel_order", "peaks_per_spectrum", "spectrum_TIC", "most_abundant_mz", "input m/z count", "annotation")]
+                spectra_df = spectra_df[c("spectra_names", "x_values", "y_values","pixel_order", "peaks_per_spectrum", "median_intensity", "spectrum_TIC", "most_abundant_mz", "m/z count", "annotation")]
             #else
-                spectra_df = spectra_df[c("spectra_names", "x_values", "y_values","pixel_order", "peaks_per_spectrum", "spectrum_TIC", "most_abundant_mz", "annotation")]
+                spectra_df = spectra_df[c("spectra_names", "x_values", "y_values","pixel_order", "peaks_per_spectrum", "median_intensity", "spectrum_TIC", "most_abundant_mz", "annotation")]
             #end if
 
         #end if
@@ -231,10 +242,6 @@ if (npeaks > 0){
         write.table(spectra_df, file="$pixel_output", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
     #end if
 
-
-}else{
-    print("file has no features or pixels left")
-}
 
 
     ]]></configfile>
@@ -247,7 +254,7 @@ if (npeaks > 0){
             <option value="pixel_tabular">pixel output</option>
         </param>
         <conditional name="counting_calibrants">
-            <param name="pixel_with_calibrants" type="select" label="Add number of m/z of interest per spectrum to pixel output">
+            <param name="pixel_with_calibrants" type="select" label="Use file with m/z of interest to calculate their occurrence in each spectrum">
                 <option value="no_calibrants" selected="True">no</option>
                 <option value="yes_calibrants">yes</option>
             </param>
@@ -349,7 +356,7 @@ This tool provides multiple tabular output options for mass spectrometry imaging
 **Output options**
 
 - intensity matrix: m/z in rows, spectra in columns, filled with intensity values
-- spectra output: spectra in rows - for each spectrum: name, x and y coordinates,order, number of peaks (intensities > 0), total ion chromatogram (TIC), highest m/z feature per spectrum, optional count of input m/z per spectrum, optional spectrum annotation
+- spectra output: spectra in rows - for each spectrum: name, x and y coordinates,order, number of peaks (intensities > 0), total ion chromatogram (TIC), highest m/z feature per spectrum, optional count of m/z per spectrum, optional spectrum annotation
 - mz feature output: m/z in rows - for each m/z: name, m/z, mean, median, standard deviation (sd), standard error of the mean (sem), sum of all intensities per m/z, number of peaks (intensity > 0) per m/z
 - summarized intensities: pixel annotations will be used to group spectra into annotation groups and calculate mean, median and sd of the intensities per group
 
