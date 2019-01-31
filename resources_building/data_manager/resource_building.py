@@ -59,14 +59,14 @@ def HPA_sources(data_manager_dict, tissue, target_directory):
 #######################################################################################################
 # 2. Peptide Atlas
 #######################################################################################################
-def peptide_atlas_sources(data_manager_dict, tissue, target_directory):
+def peptide_atlas_sources(data_manager_dict, tissue, date, target_directory):
     # Define organism_id (here Human) - to be upraded when other organism added to the project
     organism_id = "2"
     # Extract sample_category_id and output filename
     tissue=tissue.split(".")
     sample_category_id = tissue[0]
     tissue_name = tissue[1]
-    output_file = tissue_name+"_"+time.strftime("%d-%m-%Y") + ".tsv"
+    output_file = tissue_name+"_"+date + ".tsv"
 
     query="https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id="+ \
     sample_category_id+"&display_options=ShowAbundances&organism_id="+organism_id+ \
@@ -81,7 +81,6 @@ def peptide_atlas_sources(data_manager_dict, tissue, target_directory):
     uni_dict = build_dictionary(cr)
 
     #columns of data table peptide_atlas
-    date = time.strftime("%d-%m-%Y")
     tissue_id = tissue_name+"_"+date
     name = tissue_id.replace("-","/").replace("_"," ")
     path = os.path.join(target_directory,output_file)
@@ -418,6 +417,7 @@ def main():
     parser.add_argument("--id_mapping", metavar = ("ID_MAPPING_SPECIES"))
     parser.add_argument("--interactome", metavar = ("PPI"))
     parser.add_argument("--species")
+    parser.add_argument("--date")
     parser.add_argument("-o", "--output")
     args = parser.parse_args()
 
@@ -442,13 +442,14 @@ def main():
     ## Download source file from Peptide Atlas query
     try:
         peptide_atlas = args.peptideatlas
+        date = args.date
     except NameError:
         peptide_atlas = None
     if peptide_atlas is not None:
         #target_directory = "/projet/galaxydev/galaxy/tools/proteore/ProteoRE/tools/resources_building/test-data/"
         peptide_atlas = peptide_atlas.split(",")
         for pa_tissue in peptide_atlas:
-            peptide_atlas_sources(data_manager_dict, pa_tissue, target_directory)
+            peptide_atlas_sources(data_manager_dict, pa_tissue, date, target_directory)
 
     ## Download ID_mapping source file from Uniprot
     try:
