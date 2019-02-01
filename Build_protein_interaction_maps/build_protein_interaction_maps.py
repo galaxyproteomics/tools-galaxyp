@@ -104,14 +104,17 @@ def biogrid_output_files(ids,species) :
     
     nodes_file = [["Entrez gene ID","Official Symbol Interactor","Present in user input ids","ID present in Biogrid "+species,"Pathway"]]
     for id in ids_set:
+        #get pathway
         if id in ppi_dict['nodes']:
             description_pathway=";".join(ppi_dict['nodes'][id])
         else :
             description_pathway="NA"
         
-        #get gene_name
-        if id in ppi_dict['network']: gene_name = ppi_dict['network'][id][0][2]
-        else : gene_name="NA"
+        #get gene name
+        if id in ppi_dict['gene_name']:
+            gene_name = ppi_dict['gene_name'][id]
+        else : 
+            gene_name = "NA"
 
         #make line
         nodes_file.append([id]+[gene_name]+[id in ids]+[id not in ids_not_found]+[description_pathway])   
@@ -146,6 +149,33 @@ def bioplex_output_files(ids,id_type,species) :
             if id in ppi_dict['network'][id_type]: gene_name = ppi_dict['network'][id_type][id][0][2]
             else : gene_name="NA"
             nodes_file.append([id]+[gene_name]+[id in ids]+[id not in ids_not_found]+[description_pathway])
+    
+    return network_file,nodes_file
+
+def humap_output_files(ids,species) :
+    network_file=[["Entrez Gene Interactor A","Entrez Gene Interactor B","Gene symbol Interactor A","Gene symbol Interactor B","Interaction Score"]]
+    ids_set= set(ids)
+    ids_not_found=set([])
+    for id in ids :
+        if id in ppi_dict['network'] :
+            network_file.extend(ppi_dict['network'][id])
+            ids_set.update([interact[1] for interact in ppi_dict['network'][id]])
+        else : 
+            ids_not_found.add(id)
+    
+    nodes_file = [["Entrez gene ID","Official Symbol Interactor","Present in user input ids","ID present in Biogrid "+species,"Pathway"]]
+    for id in ids_set:
+        if id in ppi_dict['nodes']:
+            description_pathway=";".join(ppi_dict['nodes'][id])
+        else :
+            description_pathway="NA"
+        
+        #get gene_name
+        if id in ppi_dict['network']: gene_name = ppi_dict['network'][id][0][2]
+        else : gene_name="NA"
+
+        #make line
+        nodes_file.append([id]+[gene_name]+[id in ids]+[id not in ids_not_found]+[description_pathway])   
     
     return network_file,nodes_file
 
@@ -224,6 +254,8 @@ def main() :
         network_file, nodes_file = biogrid_output_files(ids,args.species)
     elif args.database=="bioplex":
         network_file, nodes_file = bioplex_output_files(ids,args.id_type,args.species)
+    elif args.database=="humap":
+        network_file, nodes_file = humap_output_files(ids,args.species)
 
     #convert blank to NA and sort files
     network_file = blank_to_NA(network_file)
