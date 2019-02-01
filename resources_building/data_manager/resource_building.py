@@ -279,16 +279,15 @@ def clean_nextprot_id (next_id,uniprotAc) :
 # 4. Build protein interaction maps files
 #######################################################################################################
 
-def get_interactant_name(line):
+def get_interactant_name(line,dico):
 
-    if line[0] in dico_geneid_to_gene_name :
-        print line[0]
-        interactant_A = dico_geneid_to_gene_name[line[0]]
+    if line[0] in dico :
+        interactant_A = dico[line[0]]
     else :
         interactant_A = "NA"
 
-    if line[1] in dico_geneid_to_gene_name :
-        interactant_B = dico_geneid_to_gene_name[line[1]]
+    if line[1] in dico :
+        interactant_B = dico[line[1]]
     else :
         interactant_B = "NA"
 
@@ -426,12 +425,9 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
 
         dico_geneid_to_gene_name={}
         for line in humap_nodes :
-            if check_entrez_geneid(line[5]):
-                if line[5] not in dico_geneid_to_gene_name:
-                    dico_geneid_to_gene_name[line[5]]=[line[4]]
-                else :
-                    if line[4] not in dico_geneid_to_gene_name[line[5]] :
-                        dico_geneid_to_gene_name[line[5]].append(line[4])
+            if check_entrez_geneid(line[4]):
+                if line[4] not in dico_geneid_to_gene_name:
+                    dico_geneid_to_gene_name[line[4]]=line[3]
 
         with requests.Session() as s:
             r = s.get('http://proteincomplexes.org/static/downloads/pairsWprob.txt')
