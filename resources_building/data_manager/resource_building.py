@@ -113,6 +113,13 @@ def check_uniprot_access (id) :
     else :
         return False
 
+def check_entrez_geneid (id) :
+    entrez_pattern = re.complie("[0-9]+|[A-Z]{1,2}_[0-9]+|[A-Z]{1,2}_[A-Z]{1,4}[0-9]+")
+    if entrez_pattern.match(id) :
+        return True
+    else :
+        return False
+
 #######################################################################################################
 # 3. ID mapping file
 #######################################################################################################
@@ -272,6 +279,21 @@ def clean_nextprot_id (next_id,uniprotAc) :
 # 4. Build protein interaction maps files
 #######################################################################################################
 
+def get_interactant_name(line):
+
+    if line[0] in dico_geneid_to_gene_name :
+        print line[0]
+        interactant_A = dico_geneid_to_gene_name[line[0]]
+    else :
+        interactant_A = "NA"
+
+    if line[1] in dico_geneid_to_gene_name :
+        interactant_B = dico_geneid_to_gene_name[line[1]]
+    else :
+        interactant_B = "NA"
+
+    return interactant_A, interactant_B
+
 def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
 
     species_dict={'Human':'Homo sapiens',"Mouse":"Mus musculus","Rat":"Rattus norvegicus"}
@@ -315,15 +337,15 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
             tab_file = csv.reader(r.content.splitlines(), delimiter='\t')
 
         dico_nodes = {}
-        uniProt_index=0
+        geneid_index=0
         pathway_description_index=3
         species_index=5
         for line in tab_file :
             if line[species_index]==species_dict[species]:
-                if line[uniProt_index] in dico_nodes :
-                    dico_nodes[line[uniProt_index]].append(line[pathway_description_index])
+                if line[geneid_index] in dico_nodes :
+                    dico_nodes[line[geneid_index]].append(line[pathway_description_index])
                 else :
-                    dico_nodes[line[uniProt_index]] = [line[pathway_description_index]]
+                    dico_nodes[line[geneid_index]] = [line[pathway_description_index]]
 
         dico={}
         dico['network']=dico_network
@@ -376,15 +398,15 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
             tab_file = csv.reader(r.content.splitlines(), delimiter='\t')
 
         dico_nodes_geneid = {}
-        uniProt_index=0
+        geneid_index=0
         pathway_description_index=3
         species_index=5
         for line in tab_file :
             if line[species_index]==species_dict[species]:
-                if line[uniProt_index] in dico_nodes_geneid :
-                    dico_nodes_geneid[line[uniProt_index]].append(line[pathway_description_index])
+                if line[geneid_index] in dico_nodes_geneid :
+                    dico_nodes_geneid[line[geneid_index]].append(line[pathway_description_index])
                 else :
-                    dico_nodes_geneid[line[uniProt_index]] = [line[pathway_description_index]]
+                    dico_nodes_geneid[line[geneid_index]] = [line[pathway_description_index]]
 
         dico={}
         dico_nodes={}
@@ -393,6 +415,61 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
         dico['network']=dico_network
         dico['nodes']=dico_nodes
         dico['convert']=dico_GeneID_to_UniProt
+
+    ##Humap
+    elif interactome=="humap":
+
+        with requests.Session() as s:
+            r = s.get('http://proteincomplexes.org/static/downloads/nodeTable.txt')
+            r = r.content.decode('utf-8')
+            humap_nodes = csv.reader(r.splitlines(), delimiter=',')
+
+        dico_geneid_to_gene_name={}
+        for line in humap_nodes :
+            if check_entrez_geneid(line[5]):
+                if line[5] not in dico_geneid_to_gene_name:
+                    dico_geneid_to_gene_name[line[5]]=[line[4]]
+                else :
+                    if line[4] not in dico_geneid_to_gene_name[line[5]] :
+                        dico_geneid_to_gene_name[line[5]].append(line[4])
+
+        with requests.Session() as s:
+            r = s.get('http://proteincomplexes.org/static/downloads/pairsWprob.txt')
+            r = r.content.decode('utf-8')
+            humap = csv.reader(r.splitlines(), delimiter='\t')
+
+        dico_network = {}
+        for line in humap :
+            if check_entrez_geneid(line[0]) and check_entrez_geneid(line[1]):
+
+                interactant_A, interactant_B = get_interactant_name(line,dico_geneid_to_gene_name)
+
+                if line[0] not in dico_network:
+                    dico_network[line[0]]=[line[:2]+[interactant_A,interactant_B,line[2]]]
+                else :
+                    dico_network[line[0]].append(line[:2]+[interactant_A,interactant_B,line[2]])
+
+        with requests.Session() as s:
+            r = s.get('https://www.reactome.org/download/current/NCBI2Reactome.txt')
+            r.encoding ="utf-8"
+            tab_file = csv.reader(r.content.splitlines(), delimiter='\t')
+
+        dico_nodes = {}
+        geneid_index=0
+        pathway_description_index=3
+        species_index=5
+        for line in tab_file :
+            if line[species_index]==species_dict[species]:
+                #Fill dictionary with pathways
+                if line[geneid_index] in dico_nodes :
+                    dico_nodes[line[geneid_index]].append(line[pathway_description_index])
+                else :
+                    dico_nodes[line[geneid_index]] = [line[pathway_description_index]]
+
+        dico={}
+        dico['network']=dico_network
+        dico['nodes']=dico_nodes
+        dico['gene_name']=dico_geneid_to_gene_name
 
     #writing output
     output_file = species+'_'+interactome+'_'+ time.strftime("%d-%m-%Y") + ".json"
@@ -464,7 +541,10 @@ def main():
     ## Download PPI ref files from biogrid/bioplex/humap
     try:
         interactome=args.interactome
-        species=args.species
+        if interactome == "biogrid" :
+            species=args.species
+        else :
+            species="Human"
     except NameError:
         interactome=None
         species=None

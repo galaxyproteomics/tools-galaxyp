@@ -149,6 +149,7 @@ Two different interactome sources:
 
 * BioGRID
 * Bioplex
+* Humap
 
 For each interactome, a python dictionary is made and saved into a json dictionary.
 This dictionary will be used by 'Build protein interaction maps' tool.
@@ -158,12 +159,18 @@ For BioGRID, the following two files are used to build a dictionary:
 * "https://downloads.thebiogrid.org/Download/BioGRID/Release-Archive/BIOGRID-3.5.167/BIOGRID-ORGANISM-3.5.167.tab2.zip"
 * "https://www.reactome.org/download/current/NCBI2Reactome.txt"
 
-For Bioplex, thfollowing files are used to build a dictionary:
+For Bioplex, the following files are used to build a dictionary:
 
 * "http://bioplex.hms.harvard.edu/data/BioPlex_interactionList_v4a.tsv"
 * "https://reactome.org/download/current/UniProt2Reactome.txt"
 
 One dictionary per interactome and one per species (human_biogrid, mouse_biogrid, human_bioplex, mouse_bioplex, ...)
+
+For Humap, the following files are used to build a dictionary:
+
+* "http://proteincomplexes.org/static/downloads/nodeTable.txt"
+* "http://proteincomplexes.org/static/downloads/pairsWprob.txt"
+* "https://www.reactome.org/download/current/NCBI2Reactome.txt"
 
 There is one data table per interactome: 
 
@@ -175,6 +182,10 @@ tool_data_table_conf:
       <file path="tool-data/proteore_biogrid_dictionaries.loc" />
     </table>
     <table name="proteore_bioplex_dictionaries" comment_char="#">
+      <columns>id, name, value, path</columns>
+      <file path="tool-data/proteore_bioplex_dictionaries.loc" />
+    </table>
+    <table name="proteore_humap_dictionaries" comment_char="#">
       <columns>id, name, value, path</columns>
       <file path="tool-data/proteore_bioplex_dictionaries.loc" />
     </table>
