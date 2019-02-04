@@ -114,7 +114,7 @@ def check_uniprot_access (id) :
         return False
 
 def check_entrez_geneid (id) :
-    entrez_pattern = re.complie("[0-9]+|[A-Z]{1,2}_[0-9]+|[A-Z]{1,2}_[A-Z]{1,4}[0-9]+")
+    entrez_pattern = re.compile("[0-9]+|[A-Z]{1,2}_[0-9]+|[A-Z]{1,2}_[A-Z]{1,4}[0-9]+")
     if entrez_pattern.match(id) :
         return True
     else :
