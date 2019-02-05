@@ -116,7 +116,7 @@ uto <- clean_df(uto,cols,rownames_col)
 uto <- uto[rowSums(is.na(uto)) != ncol(uto), ]  #remove emptylines
 
 if (header) {
-  col_names = names(data)
+  col_names = names(uto)
 } else {
   col_names = cols
 }
