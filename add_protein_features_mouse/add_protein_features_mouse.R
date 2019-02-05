@@ -159,13 +159,13 @@ main <- function() {
     }
     
     header = str2bool(args$header)
-    file = read.table(filename, header = header , sep = "\t", fill = TRUE, stringsAsFactors = FALSE, quote="", check.names = F)                                                  # Get file content
+    file = read.table(filename, header = header , sep = "\t", fill = TRUE, stringsAsFactors = FALSE, quote="", check.names = F, comment.char = "")                                                  # Get file content
     if (any(grep(";",file[,ncol]))) {file = one_id_one_line(file,ncol)}
     ids=file[,ncol]
   }
 
   # Read reference file
-  uniprot_file <- read.table(args$uniprot_file, header = TRUE , sep = "\t", fill = TRUE,stringsAsFactors = FALSE, quote="", check.names = F)
+  uniprot_file <- read.table(args$uniprot_file, header = TRUE , sep = "\t", fill = TRUE,stringsAsFactors = FALSE, quote="", check.names = F, comment.char = "")
 
   # Parse arguments
   pc_features = gsub("__ob__","[",gsub("__cb__","]",strsplit(args$pc_features, ",")[[1]]))
