@@ -80,7 +80,7 @@ clean_df <- function(mat,cols,rownames_col){
 }
 
 get_cols <-function(input_cols) {
-  input_cols <- gsub("c","",input_cols)
+  input_cols <- gsub("c","",gsub("C","",gsub(" ","",input_cols)))
   if (grepl(":",input_cols)) {
     first_col=unlist(strsplit(input_cols,":"))[1]
     last_col=unlist(strsplit(input_cols,":"))[2]
@@ -102,7 +102,7 @@ output <- rapply(strsplit(args$output,"\\."),c) #remove extension
 output <- paste(output[1:length(output)-1],collapse=".")
 output <- paste(output,args$type,sep=".")
 cols = get_cols(args$cols)
-rownames_col = as.integer(gsub("c","",args$row_names))
+rownames_col = as.integer(gsub("c","",gsub("C","",gsub(" ","",args$row_names))))
 if (length(cols) <=1 ){
   stop("You need several colums to build a heatmap")
 }
