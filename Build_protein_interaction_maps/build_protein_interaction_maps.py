@@ -111,10 +111,8 @@ def biogrid_output_files(ids,species) :
             description_pathway="NA"
         
         #get gene name
-        if id in ppi_dict['gene_name']:
-            gene_name = ppi_dict['gene_name'][id]
-        else : 
-            gene_name = "NA"
+        if id in ppi_dict['network']: gene_name = ppi_dict['network'][id][0][2]
+        else : gene_name="NA"
 
         #make line
         nodes_file.append([id]+[gene_name]+[id in ids]+[id not in ids_not_found]+[description_pathway])   
@@ -132,7 +130,7 @@ def bioplex_output_files(ids,id_type,species) :
         else :
             ids_not_found.add(id)
 
-    if id_type=="UniProt-AC" : nodes_file=[[id_type,"Present in user input ids","ID present in Bioplex "+species,"Pathway"]]
+    if id_type=="UniProt-AC" : nodes_file=[[id_type,"Present in user input ids","ID present in Human Bioplex","Pathway"]]
     else: nodes_file=[[id_type,"Official symbol Interactor","Present in user input ids","Present in interactome","Pathway"]]
     for id in ids_set:
 
@@ -163,16 +161,18 @@ def humap_output_files(ids,species) :
         else : 
             ids_not_found.add(id)
     
-    nodes_file = [["Entrez gene ID","Official Symbol Interactor","Present in user input ids","ID present in Biogrid "+species,"Pathway"]]
+    nodes_file = [["Entrez gene ID","Official Symbol Interactor","Present in user input ids","ID present in Hu.MAP","Pathway"]]
     for id in ids_set:
         if id in ppi_dict['nodes']:
             description_pathway=";".join(ppi_dict['nodes'][id])
         else :
             description_pathway="NA"
-        
-        #get gene_name
-        if id in ppi_dict['network']: gene_name = ppi_dict['network'][id][0][2]
-        else : gene_name="NA"
+
+        #get gene name
+        if id in ppi_dict['gene_name']:
+            gene_name = ppi_dict['gene_name'][id]
+        else : 
+            gene_name = "NA"
 
         #make line
         nodes_file.append([id]+[gene_name]+[id in ids]+[id not in ids_not_found]+[description_pathway])   
