@@ -9,22 +9,27 @@
 # 
 #
 
+import sys
+import sqlite3
+
+
 def main():
-    import sys
-    import sqlite3
     conn = sqlite3.connect(sys.argv[2])
     c = conn.cursor()
     c.execute("DROP table if exists novel")
     conn.commit()
     c.execute("CREATE TABLE novel(peptide text)")
     pepfile = open(sys.argv[1],"r")
-
+    
+    pep_seq = []
     for seq in pepfile.readlines():
         seq = seq.strip()
-        c.execute('INSERT INTO novel VALUES ("'+seq+'")')
-        conn.commit()
-
-    c.execute("SELECT distinct psm.sequence, ps.id, ps.sequence from db_sequence ps, psm_entries psm, novel n, proteins_by_peptide pbp where psm.sequence = n.peptide and pbp.peptide_ref = psm.id and pbp.id = ps.id")
+        pep_seq.append(tuple([seq]))
+    
+    c.executemany("insert into novel(peptide) values(?)", pep_seq)
+    conn.commit()
+    
+    c.execute("SELECT psm.sequence, ps.id, ps.sequence from db_sequence ps, psm_entries psm, novel n, proteins_by_peptide pbp where psm.sequence = n.peptide and pbp.peptide_ref = psm.id and pbp.id = ps.id")
     rows = c.fetchall()
 
     conn1 = sqlite3.connect(sys.argv[3])
