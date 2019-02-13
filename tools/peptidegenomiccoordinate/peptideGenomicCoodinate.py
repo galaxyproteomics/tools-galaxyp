@@ -29,7 +29,7 @@ def main():
     c.executemany("insert into novel(peptide) values(?)", pep_seq)
     conn.commit()
     
-    c.execute("SELECT psm.sequence, ps.id, ps.sequence from db_sequence ps, psm_entries psm, novel n, proteins_by_peptide pbp where psm.sequence = n.peptide and pbp.peptide_ref = psm.id and pbp.id = ps.id")
+    c.execute("SELECT distinct psm.sequence, ps.id, ps.sequence from db_sequence ps, psm_entries psm, novel n, proteins_by_peptide pbp where psm.sequence = n.peptide and pbp.peptide_ref = psm.id and pbp.id = ps.id")
     rows = c.fetchall()
 
     conn1 = sqlite3.connect(sys.argv[3])
