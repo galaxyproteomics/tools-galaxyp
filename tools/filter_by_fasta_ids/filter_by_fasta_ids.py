@@ -41,17 +41,16 @@ def FASTAReader_gen(fasta_filename):
             yield Sequence(header, sequence_parts)
 
 
-def target_match(targets, header):
+def target_match(targets, search_entry, pattern='>([^| ]+)'):
     ''' Matches '''
-    # Remove '>' and initial spaces from the header
-    header = header[1:].lstrip().upper()
-    # Search for an exact match among the targets
-    if header in targets:
-        return header
-    # Try to find an exact match for the first "word" in the header
-    header = header.split()[0]
-    if header in targets:
-        return header
+    search_entry = search_entry.upper()
+    m = re.search(pattern,search_entry)
+    if m:
+        target = m.group(len(m.groups()))
+        if target in targets:
+            return target
+    else:
+         print( 'No ID match: %s' % search_entry, file=sys.stdout)
     return None
 
 
@@ -64,6 +63,7 @@ def main():
     parser.add_argument('-d', help='Path to discarded entries file')
     header_criteria = parser.add_mutually_exclusive_group()
     header_criteria.add_argument('--id_list', help='Path to the ID list file')
+    parser.add_argument('--pattern', default=None, help='regex earch attern for ID in Fasta entry')
     header_criteria.add_argument('--header_regexp', help='Regular expression pattern the header should match')
     sequence_criteria = parser.add_mutually_exclusive_group()
     sequence_criteria.add_argument('--min_length', type=int, help='Minimum sequence length')
@@ -71,7 +71,13 @@ def main():
     parser.add_argument('--max_length', type=int, help='Maximum sequence length')
     parser.add_argument('--dedup', action='store_true', default=False, help='Whether to remove duplicate sequences')
     options = parser.parse_args()
-
+    
+    
+    pattern =  options.pattern if options.pattern else '>([^| ]+)'
+    if not re.match('^.*[(](?![?]:).*[)].*$',pattern):
+        print('pattern: "%s" did not include "%%s"' % pattern)
+        exit(1)
+    
     if options.min_length is not None and options.max_length is None:
         options.max_length = sys.maxsize
     if options.header_regexp:
@@ -100,12 +106,13 @@ def main():
         for entry in homd_db:
             print_entry = True
             if options.id_list:
-                target_matched_results = target_match(targets, entry.header)
+                target_matched_results = target_match(targets, entry.header, pattern=pattern)
                 if target_matched_results:
                     work_summary['found'] += 1
                     targets.remove(target_matched_results)
                 else:
                     print_entry = False
+            
             elif options.header_regexp:
                 if regexp.search(entry.header) is None:
                     print_entry = False
