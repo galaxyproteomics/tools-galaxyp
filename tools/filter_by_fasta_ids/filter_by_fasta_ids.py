@@ -63,7 +63,7 @@ def main():
     parser.add_argument('-d', help='Path to discarded entries file')
     header_criteria = parser.add_mutually_exclusive_group()
     header_criteria.add_argument('--id_list', help='Path to the ID list file')
-    parser.add_argument('--pattern', default=None, help='regex earch attern for ID in Fasta entry')
+    parser.add_argument('--pattern', help='regex earch attern for ID in Fasta entry')
     header_criteria.add_argument('--header_regexp', help='Regular expression pattern the header should match')
     sequence_criteria = parser.add_mutually_exclusive_group()
     sequence_criteria.add_argument('--min_length', type=int, help='Minimum sequence length')
@@ -73,10 +73,11 @@ def main():
     options = parser.parse_args()
     
     
-    pattern =  options.pattern if options.pattern else '>([^| ]+)'
-    if not re.match('^.*[(](?![?]:).*[)].*$',pattern):
-        print('pattern: "%s" did not include "%%s"' % pattern)
-        exit(1)
+    if options.pattern:
+        pattern =  options.pattern 
+        if not re.match('^.*[(](?![?]:).*[)].*$',pattern):
+            print('pattern: "%s" did not include "%%s"' % pattern)
+            exit(1)
     
     if options.min_length is not None and options.max_length is None:
         options.max_length = sys.maxsize
