@@ -278,6 +278,8 @@ vectorofactions = "inputdata"
         print('align')
         ##align spectra with 3 separate functions
 
+        ## create reference if needed
+
         ## 1) detect peaks:
         peaks <- detectPeaks(maldi_data, halfWindowSize=$method.methods_conditional.halfWindowSize,
                        method="$method.methods_conditional.peak_method", SNR=$method.methods_conditional.snr)
@@ -289,26 +291,50 @@ vectorofactions = "inputdata"
             warping_function <- determineWarpingFunctions(peaks,
                                   tolerance=$method.methods_conditional.tolerance, method="$method.methods_conditional.warping_method",
                                   allowNoMatches=$method.methods_conditional.allow_nomatch, minFrequency = $method.methods_conditional.reference_for_alignment.min_frequency)
+
         ## 3) warp spectra:
             maldi_data = warpMassSpectra(maldi_data, warping_function, emptyNoMatches=$method.methods_conditional.empty_nomatch)
 
 
         #elif str($method.methods_conditional.reference_for_alignment.align_ref) == 'yes_reference':
+
             ## create reference mass_vector from tabular file
             mass_vector = read.delim("$method.methods_conditional.reference_for_alignment.reference_file", header = $method.methods_conditional.reference_for_alignment.reference_header, stringsAsFactors = FALSE)[,$method.methods_conditional.reference_for_alignment.mz_column]
             int_vector = rep(1,length(mass_vector))
             mass_list = createMassPeaks(mass_vector, int_vector)
-print(mass_list)
 
-        ## 2) calculate warping:
-            warping_function <- determineWarpingFunctions(peaks,
-                                  tolerance=$method.methods_conditional.tolerance, method="$method.methods_conditional.warping_method",
-                                  allowNoMatches=$method.methods_conditional.allow_nomatch, reference = mass_list)
-print(length(warping_function))
-        ## 3) warp spectra:
-            maldi_data = warpMassSpectra(maldi_data, warping_function, emptyNoMatches=$method.methods_conditional.empty_nomatch)
-print(length(maldi_data))
+            #if str($method.methods_conditional.reference_for_alignment.separate_alignment) == "FALSE"
+            print('default alignment')
+
+                ## 2) calculate warping:
+                    warping_function <- determineWarpingFunctions(peaks,
+                                          tolerance=$method.methods_conditional.tolerance, method="$method.methods_conditional.warping_method",
+                                          allowNoMatches=$method.methods_conditional.allow_nomatch, reference = mass_list)
+
+                ## 3) warp spectra:
+                    maldi_data = warpMassSpectra(maldi_data, warping_function, emptyNoMatches=$method.methods_conditional.empty_nomatch)
+
+            #elif str($method.methods_conditional.reference_for_alignment.separate_alignment) == "TRUE"
+            print('spectra wise alignment')
+
+                maldi_data_new_list =list()
+
+                for (pixelnb in 1:length(peaks))
+                {
+                    ## 2) calculate warping:
+                        warping_function <- determineWarpingFunctions(peaks[[pixelnb]],
+                                              tolerance=$method.methods_conditional.tolerance, method="$method.methods_conditional.warping_method",
+                                              allowNoMatches=$method.methods_conditional.allow_nomatch, reference = mass_list)
+
+                    ## 3) warp spectra:
+                        maldi_data_new = warpMassSpectra(list(maldi_data[[pixelnb]]), warping_function, emptyNoMatches=$method.methods_conditional.empty_nomatch)
+                        maldi_data_new_list = c(maldi_data_new_list, maldi_data_new)
+
+                }
+                maldi_data = maldi_data_new_list
+            #end if
         #end if
+
 
         #if $method.methods_conditional.remove_empty:
             print(paste(length(findEmptyMassObjects(maldi_data)), " empty spectra were removed", sep=" "))
@@ -316,16 +342,15 @@ print(length(maldi_data))
             ## only if there are empty spectra to remove
 
             if (length(findEmptyMassObjects(maldi_data))>0)
-print(findEmptyMassObjects(maldi_data))
-                {
 
+                {
                     #if $infile.ext == 'rdata'
                         cardinal_coordinates = cardinal_coordinates[-findEmptyMassObjects(maldi_data),,drop=FALSE] ## remove coordinates of empty spectra for Cardinal RData input
                     #end if
 
                     maldi_data = removeEmptyMassObjects(maldi_data)
             }
-                #end if
+        #end if
 
         ## QC plot
 
@@ -520,6 +545,7 @@ if (length(maldi_data)>0){
                                 help="Tabular file"/>
                             <param name="mz_column" data_ref="reference_file" label="Column with m/z values" type="data_column"/>
                             <param name="reference_header" type="boolean" label="File contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
+                    <param name="separate_alignment" type="boolean" label="Spectrum wise alignment" help="Internal binning is omitted to avoid interaction between spectra" truevalue="TRUE" falsevalue="FALSE"/>
                         </when>
                     </conditional>
                 </when>
@@ -552,8 +578,10 @@ if (length(maldi_data)>0){
                 <param name="method" value="Basline"/>
                 <param name="baseline_method" value ="TopHat"/>
             </conditional>
-            <output name="outfile_imzml" file="outfile1.imzML" compare="sim_size"/>
-            <output name="outfile_imzml" file="outfile1.ibd" compare="sim_size"/>
+            <output name="outfile_imzml" ftype="imzml" file="preprocessing1.imzml.txt" lines_diff="4">
+                <extra_files type="file" file="outfile1.imzml" name="imzml" lines_diff="6"/>
+                <extra_files type="file" file="outfile1.ibd" name="ibd" compare="sim_size"/>
+            </output>
             <output name="plots" file="Preprocessing1_QC.pdf" compare="sim_size"/>
         </test>
         <test>
@@ -571,8 +599,10 @@ if (length(maldi_data)>0){
                     <param name="reference_file" value="inputpeptides.tabular" ftype="tabular"/>
                 </conditional>
             </conditional>
-            <output name="outfile_imzml" file="outfile2.imzML" compare="sim_size"/>
-            <output name="outfile_imzml" file="outfile2.ibd" compare="sim_size"/>
+            <output name="outfile_imzml" ftype="imzml" file="preprocessing2.imzml.txt" lines_diff="4">
+                <extra_files type="file" file="outfile2.imzml" name="imzml" lines_diff="6"/>
+                <extra_files type="file" file="outfile2.ibd" name="ibd" compare="sim_size"/>
+            </output>
             <output name="plots" file="Preprocessing2_QC.pdf" compare="sim_size"/>
         </test>
         <test>
@@ -584,8 +614,10 @@ if (length(maldi_data)>0){
                 <param name="method" value="Calibrate"/>
                 <param name="calibrate_method" value="median"/>
             </conditional>
-            <output name="outfile_imzml" file="outfile3.imzML" compare="sim_size"/>
-            <output name="outfile_imzml" file="outfile3.ibd" compare="sim_size"/>
+            <output name="outfile_imzml" ftype="imzml" file="preprocessing3.imzml.txt" lines_diff="4">
+                <extra_files type="file" file="outfile3.imzml" name="imzml" lines_diff="6"/>
+                <extra_files type="file" file="outfile3.ibd" name="ibd" compare="sim_size"/>
+            </output>
             <output name="plots" file="Preprocessing3_QC.pdf" compare="sim_size"/>
         </test>
     </tests>
@@ -668,3 +700,4 @@ if (length(maldi_data)>0){
     </help>
     <expand macro="citation"/>
 </tool>
+
