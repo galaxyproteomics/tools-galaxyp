@@ -76,7 +76,7 @@ def main():
     if options.pattern:
         pattern =  options.pattern 
         if not re.match('^.*[(](?![?]:).*[)].*$',pattern):
-            print('pattern: "%s" did not include "%%s"' % pattern)
+            print('pattern: "%s" did not include capture group "()" in regex ' % pattern)
             exit(1)
     
     if options.min_length is not None and options.max_length is None:
