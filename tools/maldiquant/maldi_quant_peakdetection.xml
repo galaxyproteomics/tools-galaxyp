@@ -314,26 +314,51 @@ title(main=paste("$filename"))
         print('align')
         ##align spectra with 2 separate functions
 
+
         #if str($method.methods_conditional.reference_for_alignment.align_ref) == 'no_reference':
-        ## 1) calculate warping:
-            warping_function <- determineWarpingFunctions(peaks,
-                                  tolerance=$method.methods_conditional.tolerance, method="$method.methods_conditional.warping_method",
-                                  allowNoMatches=$method.methods_conditional.allow_nomatch, minFrequency = $method.methods_conditional.reference_for_alignment.min_frequency)
-        ## 2) warp spectra:
-            peaks = warpMassPeaks(peaks, warping_function, emptyNoMatches=$method.methods_conditional.empty_nomatch)
+            ## 1) calculate warping:
+                warping_function <- determineWarpingFunctions(peaks,
+                                      tolerance=$method.methods_conditional.tolerance, method="$method.methods_conditional.warping_method",
+                                      allowNoMatches=$method.methods_conditional.allow_nomatch, minFrequency = $method.methods_conditional.reference_for_alignment.min_frequency)
+            ## 2) warp spectra:
+                peaks = warpMassPeaks(peaks, warping_function, emptyNoMatches=$method.methods_conditional.empty_nomatch)
+
 
         #elif str($method.methods_conditional.reference_for_alignment.align_ref) == 'yes_reference':
+
             ## create reference mass_vector from tabular file
             mass_vector = read.delim("$method.methods_conditional.reference_for_alignment.reference_file", header = $method.methods_conditional.reference_for_alignment.reference_header, stringsAsFactors = FALSE)[,$method.methods_conditional.reference_for_alignment.mz_column]
             int_vector = rep(1,length(mass_vector))
             mass_list = createMassPeaks(mass_vector, int_vector)
 
-        ## 1) calculate warping:
-            warping_function <- determineWarpingFunctions(peaks,
-                                  tolerance=$method.methods_conditional.tolerance, method="$method.methods_conditional.warping_method",
-                                  allowNoMatches=$method.methods_conditional.allow_nomatch, reference = mass_list)
-        ## 2) warp spectra:
-            peaks = warpMassPeaks(peaks, warping_function, emptyNoMatches=$method.methods_conditional.empty_nomatch)
+            #if str($method.methods_conditional.reference_for_alignment.separate_alignment) == "FALSE"
+            print('default alignment')
+
+                ## 1) calculate warping:
+                    warping_function <- determineWarpingFunctions(peaks,
+                                          tolerance=$method.methods_conditional.tolerance, method="$method.methods_conditional.warping_method",
+                                          allowNoMatches=$method.methods_conditional.allow_nomatch, reference = mass_list)
+                ## 2) warp spectra:
+                    peaks = warpMassPeaks(peaks, warping_function, emptyNoMatches=$method.methods_conditional.empty_nomatch)
+
+            #elif str($method.methods_conditional.reference_for_alignment.separate_alignment) == "TRUE"
+            print('spectra wise alignment')
+
+                peaks_new_list =list()
+
+                for (pixelnb in 1:length(peaks))
+                {
+
+                    ## 1) calculate warping:
+                        warping_function <- determineWarpingFunctions(peaks[[pixelnb]],
+                                              tolerance=$method.methods_conditional.tolerance, method="$method.methods_conditional.warping_method",
+                                              allowNoMatches=$method.methods_conditional.allow_nomatch, reference = mass_list)
+                    ## 2) warp spectra:
+                        peaks_new_list = warpMassPeaks(list(peaks[[pixelnb]]), warping_function, emptyNoMatches=$method.methods_conditional.empty_nomatch)
+                }
+                peaks_new = peaks_new_list
+
+            #end if
 
         #end if
 
@@ -563,7 +588,6 @@ if (summarized_spectra == FALSE){
                     <param name="tolerance" type="float" value="0.00005"
                         label="Tolerance = abs(mz1 - mz2)/mz2"
                         help="Maximal relative deviation of a peak position (m/z) to be considered as identical. For 50ppm use 0.00005 or 5e-5" />
-                    <param name="min_frequency" type="float" value="0.9" label="Only relevant if no external reference is given: Removal of all peaks which occur in less than minFrequency spectra to generate the reference m/z"/>
                     <param name="allow_nomatch" type="boolean" label="Don't throw an error when less than 2 reference m/z were found in a spectrum" truevalue="TRUE" falsevalue="FALSE"/>
                     <param name="empty_nomatch" type="boolean" label="If TRUE the intensity values of MassSpectrum or MassPeaks objects with missing (NA) warping functions are set to zero" truevalue="TRUE" falsevalue="FALSE"/>
                     <param name="remove_empty" type="boolean" label="Should empty spectra be removed" truevalue="TRUE" falsevalue="FALSE" help="For Cardinal RData files this step can only be performed if pixel annotations were provided"/>
@@ -582,6 +606,7 @@ if (summarized_spectra == FALSE){
                                 help="Tabular file"/>
                             <param name="mz_column" data_ref="reference_file" label="Column with m/z values" type="data_column"/>
                             <param name="reference_header" type="boolean" label="File contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
+                            <param name="separate_alignment" type="boolean" label="Spectrum wise alignment" help="Internal binning is omitted to avoid interaction between spectra" truevalue="TRUE" falsevalue="FALSE"/>
                         </when>
                     </conditional>
                 </when>
@@ -607,7 +632,7 @@ if (summarized_spectra == FALSE){
         </repeat>
     </inputs>
     <outputs>
-        <data format="imzml" name="outfile_imzml" label="${tool.name} on ${on_string}">
+        <data format="imzml" name="outfile_imzml" label="${tool.name} on ${on_string}: imzml">
             <!--filter>methods_conditional['method'] == 'Peak_detection'</filter-->
         </data>
         <data format="pdf" name="plots" from_work_dir="peaks_qc_plot.pdf" label = "${tool.name} on ${on_string}: QC"/>
@@ -653,6 +678,10 @@ if (summarized_spectra == FALSE){
             <output name="plots" file="peakdetection2_QC.pdf" compare="sim_size"/>
             <output name="masspeaks" file="masspeaks2.tabular"/>
             <output name="intensity_matrix" file="int2.tabular"/>
+            <output name="outfile_imzml" ftype="imzml" file="peak_detection2.imzml.txt" lines_diff="4">
+                <extra_files type="file" file="peak_detection2.imzml" name="imzml" lines_diff="6"/>
+                <extra_files type="file" file="peak_detection2.ibd" name="ibd" compare="sim_size"/>
+            </output>
         </test>
         <test>
             <param name="infile" value="" ftype="imzml">
@@ -693,6 +722,10 @@ if (summarized_spectra == FALSE){
             <output name="plots" file="peakdetection3_QC.pdf" compare="sim_size"/>
             <output name="intensity_matrix" file="intensity_matrix3.tabular"/>
             <output name="masspeaks" file="masspeaks3.tabular"/>
+            <output name="outfile_imzml" ftype="imzml" file="peak_detection3.imzml.txt" lines_diff="4">
+                <extra_files type="file" file="peak_detection3.imzml" name="imzml" lines_diff="6"/>
+                <extra_files type="file" file="peak_detection3.ibd" name="ibd" compare="sim_size"/>
+            </output>
         </test>
         <test>
             <param name="infile" value="testfile_squares.rdata" ftype="rdata"/>
@@ -703,6 +736,10 @@ if (summarized_spectra == FALSE){
             <output name="plots" file="peakdetection4_QC.pdf" compare="sim_size"/>
             <output name="intensity_matrix" file="intensity_matrix4.tabular"/>
             <output name="masspeaks" file="masspeaks4.tabular"/>
+            <output name="outfile_imzml" ftype="imzml" file="peak_detection4.imzml.txt" lines_diff="4">
+                <extra_files type="file" file="peak_detection4.imzml" name="imzml" lines_diff="6"/>
+                <extra_files type="file" file="peak_detection4.ibd" name="ibd" compare="sim_size"/>
+            </output>
         </test>
     </tests>
     <help>
