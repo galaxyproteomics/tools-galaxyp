@@ -11,10 +11,11 @@ def options():
                         boolean value if the keyword should be filtered in exact ["filename,ncol,true/false"]
         --value         The value to be filtered, the column number where this filter applies and the 
                         operation symbol ["value,ncol,=/>/>=/</<=/!="]
-        --values_range  range of values to be keep, example : --values_range 5 20 c1 true 
+        --values_range  range of values to be keep, example : --values_range 5 20 c1 true
+        --operation     'keep' or 'discard' lines concerned by filter(s)
         --operator      The operator used to filter with several keywords/values : AND or OR
         --o --output    The output filename
-        --filtered_file    The file contains removed lines
+        --discarded_lines    The file contains removed lines
         -s --sort_col   Used column to sort the file, ",true" for reverse sorting, ",false" otherwise example : c1,false
     """
     parser = argparse.ArgumentParser()
@@ -23,12 +24,14 @@ def options():
     parser.add_argument("--kw_file", nargs="+", action="append", help="")
     parser.add_argument("--value", nargs="+", action="append", help="")
     parser.add_argument("--values_range", nargs="+", action="append", help="")
+    parser.add_argument("--operation", default="keep", type=str, choices=['keep','discard'],help='')
     parser.add_argument("--operator", default="OR", type=str, choices=['AND','OR'],help='')
     parser.add_argument("-o", "--output", default="output.txt")
-    parser.add_argument("--filtered_file", default="filtered_output.txt")
+    parser.add_argument("--discarded_lines", default="filtered_output.txt")
     parser.add_argument("-s","--sort_col", help="")
 
     args = parser.parse_args()
+
     filters(args)
 
 def str_to_bool(v):
@@ -62,6 +65,7 @@ def filters(args):
     header = str_to_bool(args.input.split(",")[1])
     csv_file = blank_to_NA(read_file(filename))
     results_dict = {}
+    operator_dict = { "Equal" : "=" , "Higher" : ">" , "Equal-or-higher" : ">=" , "Lower" : "<" , "Equal-or-lower" : "<=" , "Different" : "!=" }
 
     if args.kw:
         keywords = args.kw
@@ -79,6 +83,7 @@ def filters(args):
     if args.value:
         for v in args.value:
             v[0] = v[0].replace(",",".")
+            v[2] = operator_dict[v[2]]
             if is_number("float", v[0]):
                 csv_file = comma_number_to_float(csv_file,column_from_txt(v[1]),header)
                 results_dict = filter_value(csv_file, header, results_dict, v[0], v[1], v[2])
@@ -123,6 +128,12 @@ def filters(args):
         reverse=str_to_bool(args.sort_col.split(",")[1])
         remaining_lines= sort_by_column(remaining_lines,sort_col,reverse,header)
         filtered_lines = sort_by_column(filtered_lines,sort_col,reverse,header)
+
+    #swap lists of lines (files) if 'keep' option selected
+    if args.operation == "keep" :
+        swap = remaining_lines, filtered_lines
+        remaining_lines = swap[1]
+        filtered_lines = swap[0]
     
     # Write results to output
     with open(args.output,"w") as output :
@@ -130,7 +141,7 @@ def filters(args):
         writer.writerows(remaining_lines)
 
     # Write filtered lines to filtered_output
-    with open(args.filtered_file,"w") as filtered_output :
+    with open(args.discarded_lines,"w") as filtered_output :
         writer = csv.writer(filtered_output,delimiter="\t")
         writer.writerows(filtered_lines)
 
