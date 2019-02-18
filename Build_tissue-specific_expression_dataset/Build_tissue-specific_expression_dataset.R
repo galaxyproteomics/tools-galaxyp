@@ -15,8 +15,6 @@ select_HPAimmunohisto<-function(hpa_ref, tissue, level, reliability) {
   return(res.imm)
 }
 
-    
-    
 select_HPARNAseq<-function(hpa_ref, sample) {
   HPA.rnaTissue = read.table(hpa_ref,header=TRUE,sep="\t",stringsAsFactors = FALSE)
   res.rna <- subset(HPA.rnaTissue, Sample%in%sample, select = -c(Unit))
@@ -60,12 +58,12 @@ main <- function() {
     level = strsplit(args$level, ",")[[1]]
     reliability = strsplit(args$reliability, ",")[[1]]
     # Calculation
-    res = select_HPAimmunohisto(hpa_ref, tissue, level, reliability)
+    res = suppressWarnings(select_HPAimmunohisto(hpa_ref, tissue, level, reliability))
   }
   else if (data_source == "rnaseq") {
     sample = strsplit(args$sample, ",")[[1]]
     # Calculation
-    res = select_HPARNAseq(hpa_ref, sample)
+    res = suppressWarnings(select_HPARNAseq(hpa_ref, sample))
   }
 
   # Write output
