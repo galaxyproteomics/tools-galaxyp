@@ -1,3 +1,5 @@
+options(warn=-1)  #TURN OFF WARNINGS !!!!!!
+
 # Read file and return file content as data.frame
 order_columns <- function (df,ncol,file){
   if (ncol==1){ #already at the right position
