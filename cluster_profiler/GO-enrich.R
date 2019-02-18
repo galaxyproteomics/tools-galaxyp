@@ -156,9 +156,12 @@ clusterProfiler = function() {
   #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/cluster_profiler/args.Rda")
   #load("/home/dchristiany/proteore_project/ProteoRE/tools/cluster_profiler/args.Rda")
   
-  plot = unlist(strsplit(args$plot,","))
+  
   go_represent=str2bool(args$go_represent)
   go_enrich=str2bool(args$go_enrich)
+  if (go_enrich){
+    plot = unlist(strsplit(args$plot,","))
+  }
   
   suppressMessages(library(args$species, character.only = TRUE, quietly = TRUE))
   
