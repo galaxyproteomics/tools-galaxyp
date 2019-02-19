@@ -155,91 +155,47 @@ roundValues = function(values){
 
 createDotPlot = function(data, onto){
   
-  values  = deleteInfChar(data$pvalues)
-  values = roundValues(values)
-  values = as.numeric(values)
-  
-  geneRatio = data$Significant/data$Annotated
-  goTerms = data$Term
-  count = data$Significant
-  
-  labely = paste("GO terms",onto,sep=" ")
-  ggplot(data,aes(x=geneRatio,y=goTerms, color=values,size=count)) +geom_point( ) + scale_colour_gradientn(colours=c("red","violet","blue")) + xlab("Gene Ratio") + ylab(labely) + labs(color="p-values\n" ) 
-  ggsave("dotplot.png", device = "png", dpi = 320, limitsize = TRUE, width = 15, height = 15, units="cm")
+    values  = deleteInfChar(data$pvalues)
+    values = roundValues(values)
+    values = as.numeric(values)
+    
+    geneRatio = data$Significant/data$Annotated
+    goTerms = data$Term
+    count = data$Significant
+    
+    labely = paste("GO terms",onto,sep=" ")
+    ggplot(data,aes(x=geneRatio,y=goTerms, color=values,size=count)) +geom_point( ) + scale_colour_gradientn(colours=c("red","violet","blue")) + xlab("Gene Ratio") + ylab(labely) + labs(color="p-values\n" ) 
+    ggsave("dotplot.png", device = "png", dpi = 320, limitsize = TRUE, width = 15, height = 15, units="cm")
 }
 
 createBarPlot = function(data, onto){
   
-  
-  values  = deleteInfChar(data$pvalues)
-  values = roundValues(values)
-  values = as.numeric(values)
-  
-  goTerms = data$Term
-  count = data$Significant
-  
-  labely = paste("GO terms",onto,sep=" ")
-  ggplot(data, aes(x=goTerms, y=count,fill=values,scale(scale = 0.5))) + ylab("Gene count") + xlab(labely) +geom_bar(stat="identity") + scale_fill_gradientn(colours=c("red","violet","blue")) + coord_flip() + labs(fill="p-values\n") 
-  ggsave("barplot.png", device = "png", dpi = 320, limitsize = TRUE, width = 15, height = 15, units="cm")
+    values  = deleteInfChar(data$pvalues)
+    values = roundValues(values)
+    values = as.numeric(values)
+    
+    goTerms = data$Term
+    count = data$Significant
+    
+    labely = paste("GO terms",onto,sep=" ")
+    ggplot(data, aes(x=goTerms, y=count,fill=values,scale(scale = 0.5))) + ylab("Gene count") + xlab(labely) +geom_bar(stat="identity") + scale_fill_gradientn(colours=c("red","violet","blue")) + coord_flip() + labs(fill="p-values\n") 
+    ggsave("barplot.png", device = "png", dpi = 320, limitsize = TRUE, width = 15, height = 15, units="cm")
 }
 
 # Produce the different outputs
 createOutputs = function(result, cut_result,text, barplot, dotplot, onto){
-  
+
   if (is.null(result)){
-    if (text){
-      err_msg = "None of the input ids can be found in the org package data, enrichment analysis cannot be realized. \n The inputs ids probably either have no associated GO terms or are not ENSG identifiers (e.g : ENSG00000012048)."
-      write.table(err_msg, file='result', quote=FALSE, sep='\t', col.names = T, row.names = F)
-    }
-    if (barplot){
-      png(filename="barplot.png")
-      plot.new()
-      #text(0,0,err_msg)
-      dev.off()
-    }
-    if (dotplot){
-      png(filename="dotplot.png")
-      plot.new()
-      #text(0,0,err_msg)
-      dev.off()
-    }
-    opt <- options(show.error.messages=FALSE)
-    on.exit(options(opt))
-    stop("null result")
-  }
+    err_msg = "None of the input ids can be found in the org package data, enrichment analysis cannot be realized. \n The inputs ids probably either have no associated GO terms or are not ENSG identifiers (e.g : ENSG00000012048)."
+    write.table(err_msg, file='result', quote=FALSE, sep='\t', col.names = F, row.names = F)
+  }else if (is.null(cut_result)){
+    err_msg = "Threshold was too stringent, no GO term found with pvalue equal or lesser than the threshold value."
+    write.table(err_msg, file='result.tsv', quote=FALSE, sep='\t', col.names = F, row.names = F)
+  }else {
+    write.table(cut_result, file='result.tsv', quote=FALSE, sep='\t', col.names = T, row.names = F)
   
-  if (is.null(cut_result)){
-    if (text){
-      err_msg = "Threshold was too stringent, no GO term found with pvalue equal or lesser than the threshold value."
-      write.table(err_msg, file='result', quote=FALSE, sep='\t', col.names = T, row.names = F)
-    }
-    if (barplot){
-      png(filename="barplot.png")
-      plot.new()
-      text(0,0,err_msg)
-      dev.off()
-    }
-    if (dotplot){
-      png(filename="dotplot.png")
-      plot.new()
-      text(0,0,err_msg)
-      dev.off()
-    }
-    opt <- options(show.error.messages=FALSE)
-    on.exit(options(opt))
-    stop("null cut_result")
-  }
-  
-  if (text){
-    write.table(cut_result, file='result', quote=FALSE, sep='\t', col.names = T, row.names = F)
-  }
-  
-  if (barplot){
-    createBarPlot(cut_result, onto)
-  }
-  
-  if (dotplot){
-    createDotPlot(cut_result, onto)
+    if (barplot){createBarPlot(cut_result, onto)}
+    if (dotplot){createDotPlot(cut_result, onto)}
   }
 }
 
@@ -318,8 +274,7 @@ if (input_type=="copy_paste"){
 
 #check of ENS ids
 if (! any(check_ens_ids(sample))){
-  print("no ensembl gene ids found in your ids list, please check your IDs in input or the selected column of your input file")
-  stop()
+  stop("no ensembl gene ids found in your ids list, please check your IDs in input or the selected column of your input file")
 }
 
 #get input if background genes
@@ -332,8 +287,7 @@ if (background){
   }
   #check of ENS ids
   if (! any(check_ens_ids(background_sample))){
-    print("no ensembl gene ids found in your background ids list, please check your IDs in input or the selected column of your input file")
-    stop()
+    stop("no ensembl gene ids found in your background ids list, please check your IDs in input or the selected column of your input file")
   }
 } else {
   background_sample=NULL
