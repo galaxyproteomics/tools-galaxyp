@@ -179,7 +179,7 @@ goprofiles = function() {
   species=args$species
 
   profiles = getprofile(input, id_type, level, duplicate,species)
-
+  
   for (index in onto_pos) {
     onto = names(profiles[index])
     profile=profiles[index]
