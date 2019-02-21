@@ -1,4 +1,5 @@
 #!/usr/bin/Rscript
+options(warn=-1)  #TURN OFF WARNINGS !!!!!!
 
 suppressMessages(library('plotly',quietly = T))
 suppressMessages(library('heatmaply',quietly = T))
