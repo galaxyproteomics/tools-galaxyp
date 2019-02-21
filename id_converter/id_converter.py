@@ -44,6 +44,7 @@ def one_id_one_line(input_file,nb_col,header) :
     for line in input_file :
         if line != [] and set(line) != {''}: 
             line[nb_col] = re.sub(r"\s+","",line[nb_col])
+            if line[nb_col] == "" : line[nb_col]='NA'
             if ";" in line[nb_col] :
                 ids = line[nb_col].split(";")
                 for id in ids :
