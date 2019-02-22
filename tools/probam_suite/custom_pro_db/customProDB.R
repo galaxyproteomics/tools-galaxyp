@@ -100,9 +100,9 @@ customProDB <- function(
     file.symlink(bai_file, paste(bamLink, ".bai", sep=""))
 
     # load customProDB from GitHub (NOTE: downloading the zip is faster than cloning the repo with git2r or devtools::install_github)
-    download.file("https://github.com/chambm/customProDB/archive/9db2223ef9932e50124b92d1bc49206af1f40fb3.zip", "customProDB.zip", quiet=TRUE)
+    download.file("https://github.com/chambm/customProDB/archive/13cbebf9e3f26507afbbb661c9e985da2fd0840a.zip", "customProDB.zip", quiet=TRUE)
     unzip("customProDB.zip")
-    devtools::load_all("customProDB-9db2223ef9932e50124b92d1bc49206af1f40fb3")
+    devtools::load_all("customProDB-13cbebf9e3f26507afbbb661c9e985da2fd0840a")
 
     easyRun(bamFile=bamLink, vcfFile=vcf_file, annotation_path=getwd(),
             rpkm_cutoff=rpkmCutoff, outfile_path=".", outfile_name="output",
