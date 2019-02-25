@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser()
 arguments = ["--raw_files", "--fasta_files", "--fixed_mods",
              "--var_mods", "--proteases", "--exp_design",
              "--missed_cleavages", "--min_unique_pep", "--mqpar_in",
-             "--num_threads", "--tool_dir", "--output_all", "--mqpar_out",
+             "--num_threads", "--output_all", "--mqpar_out",
              "--raw_file_names", "--mzTab", "--light_mods", "--medium_mods",
              "--heavy_mods", "--version"]
 
@@ -57,20 +57,18 @@ simple_args = ('missed_cleavages', 'min_unique_pep',
 list_args = ('fixed_mods', 'var_mods', 'proteases')
 
 # build mqpar.xml
-template_name = os.path.join(args['tool_dir'], 'template.xml')
-mqpar_in = args['mqpar_in'] if args['mqpar_in'] else template_name
 mqpar_temp = os.path.join(os.getcwd(), 'mqpar.xml')
+if args['mqpar_in']:
+    mqpar_in = args['mqpar_in']
+else:
+    subprocess.run(('maxquant', '-c', mqpar_temp))
+    mqpar_in = mqpar_temp
 mqpar_out = args['mqpar_out'] if args['mqpar_out'] else mqpar_temp
 
 m = mqparam.MQParam(mqpar_out, mqpar_in, args['exp_design'])
 if m.version != args['version']:
-    if args['mqpar_in']:
-        raise Exception('mqpar version is ' + m.version +
-                        '. Tool uses version {}.'.format(args['version']))
-    else:
-        # update the template
-        os.remove(template_name)
-        subprocess.run(('maxquant', '-c', template_name))
+    raise Exception('mqpar version is ' + m.version +
+                    '. Tool uses version {}.'.format(args['version']))
 
 # modify parameters
 m.add_rawfiles([os.path.join(os.getcwd(), name) for name in filenames])
