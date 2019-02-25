@@ -117,7 +117,6 @@ plot_size_from_nb_onto <- function(profile){
 make_plot <- function(profile,percent,title,onto,plot_opt){
   
   tmp <- plot_size_from_nb_onto (profile)
-  print (tmp)
   width <- tmp[1]
   height <- tmp[2]
   
