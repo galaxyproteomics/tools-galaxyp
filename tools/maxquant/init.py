@@ -6,6 +6,12 @@ TODO: Append function: only add modifications that are not
 already present, add modification entries to conda maxquant
 
 Authors: Damian Glaetzer <d.glaetzer@mailbox.org>
+
+Usage: init.py MODS_FILE ENZYMES_FILE
+FILES are the modifications/enzymes.xml of MaxQuant, located at
+<ANACONDA_DIR>/pkgs/maxquant-<VERSION>/bin/conf/.
+(for conda installations
+Updates modification parameters in macros.xml.
 """
 
 import xml.etree.ElementTree as ET
@@ -13,15 +19,6 @@ import os
 import sys
 import re
 from xml.dom import minidom
-
-usage = '\n'.join(("Usage: {} MODS_FILE ENZYMES_FILE".format(sys.argv[0]),
-                   "FILES are the modifications/enzymes.xml of MaxQuant.",
-                   "Updates modification parameters in macros.xml."))
-
-
-if len(sys.argv) != 3 or not (os.path.isfile(sys.argv[1])
-                              and os.path.isfile(sys.argv[2])):
-    print(usage)
 
 mods_root = ET.parse(sys.argv[1]).getroot()
 
