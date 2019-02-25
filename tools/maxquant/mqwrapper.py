@@ -49,7 +49,7 @@ files = args['raw_files'].split(',')
 filenames = args['raw_file_names'].split(',')
 for f, l in zip(files, filenames):
     if '/' in l:
-        raise Exception("File name contains '/'. This is ambigous " +
+        raise Exception("File name contains '/'. This is ambiguous " +
                         "with file paths. Please rename it.")
     os.link(f, l)
 
