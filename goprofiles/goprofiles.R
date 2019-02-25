@@ -79,30 +79,57 @@ getprofile = function(ids, id_type, level, duplicate,species) {
     #print("IDs unable to convert to ENTREZID: ")
     #print(NAs)
   }
-  
   # Create basic profiles
   profile.CC = basicProfile(genes_ids, onto='CC', level=level, orgPackage=species, empty.cats=F, ord=T, na.rm=T)
   profile.BP = basicProfile(genes_ids, onto='BP', level=level, orgPackage=species, empty.cats=F, ord=T, na.rm=T)
   profile.MF = basicProfile(genes_ids, onto='MF', level=level, orgPackage=species, empty.cats=F, ord=T, na.rm=T)
   profile.ALL = basicProfile(genes_ids, onto='ANY', level=level, orgPackage=species, empty.cats=F, ord=T, na.rm=T)
-  
   # Print profile
   # printProfiles(profile)
   
   return(c(profile.CC, profile.MF, profile.BP, profile.ALL))
 }
 
+plot_size_from_nb_onto <- function(profile){
+    width=10
+    if (nrow(profile[[1]]) <= 50 ){
+      height=8
+    } else if (nrow(profile[[1]]) <= 75 ){
+      height=11
+    } else if (nrow(profile[[1]]) <= 100 ){
+      height=14
+    } else if (nrow(profile[[1]]) <= 125 ){
+      height=17
+    } else if (nrow(profile[[1]]) <= 150 ){
+      height=20
+    } else if (nrow(profile[[1]]) <= 175 ){
+      height=23
+    } else if (nrow(profile[[1]]) <= 200 ){
+      height=26
+    } else if (nrow(profile[[1]]) <= 225 ){
+      height=28
+    } else {
+      height=30
+    }
+  return (c(width,height))
+}
+
 make_plot <- function(profile,percent,title,onto,plot_opt){
+  
+  tmp <- plot_size_from_nb_onto (profile)
+  print (tmp)
+  width <- tmp[1]
+  height <- tmp[2]
   
   if (plot_opt == "PDF") {
     file_name=paste("profile_",onto,".pdf",collapse="",sep="")
-    pdf(file_name)
+    pdf(file_name, width=width, heigh=height)
   } else if (plot_opt == "JPEG"){
     file_name=paste("profile_",onto,".jpeg",collapse="",sep="")
-    jpeg(file_name)
+    jpeg(file_name,width=width, height=height, units = "in", res=100)
   } else if (plot_opt == "PNG"){
     file_name=paste("profile_",onto,".png",collapse="",sep="")
-    png(file_name)
+    png(file_name,width=width, height=height, units = "in", res=100)
   }
   plotProfiles(profile, percentage=percent, multiplePlots=FALSE, aTitle=title)
   dev.off()
