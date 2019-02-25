@@ -15,7 +15,6 @@ Updates modification parameters in macros.xml.
 """
 
 import xml.etree.ElementTree as ET
-import os
 import sys
 import re
 from xml.dom import minidom
