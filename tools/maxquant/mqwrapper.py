@@ -9,10 +9,11 @@ based on the maxquant galaxy tool by John Chilton:
 https://github.com/galaxyproteomics/tools-galaxyp/tree/master/tools/maxquant
 """
 
-import os
 import argparse
-import subprocess
+import os
 import shutil
+import subprocess
+
 import mqparam
 
 # build parser

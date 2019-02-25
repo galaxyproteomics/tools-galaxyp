@@ -14,9 +14,9 @@ FILES are the modifications/enzymes.xml of MaxQuant, located at
 Updates modification parameters in macros.xml.
 """
 
-import xml.etree.ElementTree as ET
-import sys
 import re
+import sys
+import xml.etree.ElementTree as ET
 from xml.dom import minidom
 
 mods_root = ET.parse(sys.argv[1]).getroot()
