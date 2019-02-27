@@ -32,13 +32,13 @@ main <- function() {
   if("--help" %in% args) {
     cat("Selection and Annotation HPA
     Arguments:
-        --data_source: immuno/rnaseq
+        --data_source: IHC/RNAseq
         --hpe_ref: path to reference file normal_tissue.tsv/rna_tissue.tsv)
-          if immuno:
+          if IHC:
             --tissue: list of tissues
             --level: Not detected, Low, Medium, High
             --reliability: Supported, Approved, Enhanced, Uncertain
-          if rnaseq:
+          if RNAseq:
             --sample: Sample tissues 
         --output: output filename \n")
     q(save="no")
@@ -53,14 +53,14 @@ main <- function() {
   # Extract options
   data_source = args$data_source
   hpa_ref = args$hpa_ref
-  if (data_source == "immuno") {
+  if (data_source == "IHC") {
     tissue = strsplit(args$tissue, ",")[[1]]
     level = strsplit(args$level, ",")[[1]]
     reliability = strsplit(args$reliability, ",")[[1]]
     # Calculation
     res = suppressWarnings(select_HPAimmunohisto(hpa_ref, tissue, level, reliability))
   }
-  else if (data_source == "rnaseq") {
+  else if (data_source == "RNAseq") {
     sample = strsplit(args$sample, ",")[[1]]
     # Calculation
     res = suppressWarnings(select_HPARNAseq(hpa_ref, sample))
