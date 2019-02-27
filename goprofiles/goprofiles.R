@@ -90,27 +90,13 @@ getprofile = function(ids, id_type, level, duplicate,species) {
   return(c(profile.CC, profile.MF, profile.BP, profile.ALL))
 }
 
+#return height and width of plot in inches from profile
 plot_size_from_nb_onto <- function(profile){
     width=10
-    if (nrow(profile[[1]]) <= 50 ){
-      height=8
-    } else if (nrow(profile[[1]]) <= 75 ){
-      height=11
-    } else if (nrow(profile[[1]]) <= 100 ){
-      height=14
-    } else if (nrow(profile[[1]]) <= 125 ){
-      height=17
-    } else if (nrow(profile[[1]]) <= 150 ){
-      height=20
-    } else if (nrow(profile[[1]]) <= 175 ){
-      height=23
-    } else if (nrow(profile[[1]]) <= 200 ){
-      height=26
-    } else if (nrow(profile[[1]]) <= 225 ){
-      height=28
-    } else {
-      height=30
-    }
+    range = seq(50, 2000, by=25)
+    names(range) = seq(8,242, by=3)
+    nb_onto = round(nrow(profile[[1]])/25)*25
+    height= as.integer(names(which(range==nb_onto)))
   return (c(width,height))
 }
 
