@@ -48,9 +48,6 @@ args = vars(parser.parse_args())
 files = args['raw_files'].split(',')
 filenames = args['raw_file_names'].split(',')
 for f, l in zip(files, filenames):
-    if '/' in l:
-        raise Exception("File name contains '/'. This is ambiguous " +
-                        "with file paths. Please rename it.")
     os.link(f, l)
 
 # arguments for mqparam
@@ -67,7 +64,7 @@ if args['mqpar_in']:
 else:
     subprocess.run(('maxquant', '-c', mqpar_temp))
     mqpar_in = mqpar_temp
-mqpar_out = args['mqpar_out'] if args['mqpar_out'] else mqpar_temp
+mqpar_out = args['mqpar_out'] if args['mqpar_out'] != 'None' else mqpar_temp
 
 m = mqparam.MQParam(mqpar_out, mqpar_in, args['exp_design'])
 if m.version != args['version']:
@@ -93,7 +90,7 @@ m.set_silac(args['light_mods'].split(',') if args['light_mods'] else None,
 m.write()
 
 # build and run MaxQuant command
-cmd = ['maxquant', args['mqpar_out']]
+cmd = ['maxquant', mqpar_out]
 
 subprocess.run(cmd, check=True, cwd='./')
 
@@ -101,10 +98,10 @@ subprocess.run(cmd, check=True, cwd='./')
 for el in txt_output:
     destination = args[el]
     source = os.path.join(os.getcwd(), "combined", "txt", "{}.txt".format(el))
-    if destination and os.path.isfile(source):
+    if destination != 'None' and os.path.isfile(source):
         shutil.copy(source, destination)
 
-if args['mzTab']:
+if args['mzTab'] != 'None':
     source = os.path.join(os.getcwd(), "combined", "txt", "mzTab.mzTab")
     if os.path.isfile(source):
         shutil.copy(source, args['mzTab'])

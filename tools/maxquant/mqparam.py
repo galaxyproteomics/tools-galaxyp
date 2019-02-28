@@ -32,7 +32,7 @@ class MQParam:
     def __init__(self, mqpar_out, mqpar_in, exp_design):
         """Initialize MQParam class. mqpar_in can either be a template
         or a already suitable mqpar file.
-        >>> t = MQParam("test", './template.xml', None)
+        >>> t = MQParam("test", './test-data/template.xml', None)
         >>> t.root.tag
         'MaxQuantParams'
         >>> (t.root.find('maxQuantVersion')).text
@@ -49,7 +49,7 @@ class MQParam:
     def _add_child(el, name, text, attrib=None):
         """Add a child element to an element.
 
-        >>> t = MQParam("test", './template.xml', None)
+        >>> t = MQParam("test", './test-data/template.xml', None)
         >>> MQParam._add_child(t.root, "test", "test")
         >>> t.root.find('test').text == "test"
         True
@@ -89,7 +89,7 @@ class MQParam:
         modify other parameters accordingly.
         The raw file must be specified as absolute paths
         for maxquant to find them.
-        >>> t1 = MQParam("test", './template.xml', None)
+        >>> t1 = MQParam("test", './test-data/template.xml', None)
         >>> t1.add_rawfiles(('test1', ))
         >>> t1.root.find("filePaths")[0].text
         'test1'
@@ -97,7 +97,7 @@ class MQParam:
         '32767'
         >>> len(t1.root.find("fractions"))
         1
-        >>> t2 = MQParam("test", './template.xml', \
+        >>> t2 = MQParam("test", './test-data/template.xml', \
                          './test-data/exp_design_test.txt')
         >>> t2.add_rawfiles(('test-data/QEplus021874.raw', \
                              'test-data/QEplus021876.raw'))
@@ -136,7 +136,10 @@ class MQParam:
             for r in rawfiles:
                 names_to_paths[os.path.splitext(os.path.basename(r))[0]] = r
             for name in design['Name']:
-                names.append(names_to_paths[name] if name in names_to_paths
+                # same substitution as in maxquant.xml,
+                # passing the element identifiers
+                fname = re.sub('[^\w\-\s\.]', '_', name)
+                names.append(names_to_paths[fname] if fname in names_to_paths
                              else None)
 
             PTMslist = design['PTM']
@@ -177,7 +180,7 @@ class MQParam:
 
     def add_fasta_files(self, files):
         """Add fasta file groups.
-        >>> t = MQParam('test', './template.xml', None)
+        >>> t = MQParam('test', './test-data/template.xml', None)
         >>> t.add_fasta_files(('test1', 'test2'))
         >>> len(t.root.find('fastaFiles'))
         2
@@ -203,7 +206,7 @@ class MQParam:
 
     def set_simple_param(self, key, value):
         """Set a simple parameter.
-        >>> t = MQParam(None, './template.xml', None)
+        >>> t = MQParam(None, './test-data/template.xml', None)
         >>> t.set_simple_param('min_unique_pep', 4)
         >>> t.root.find('.minUniquePeptides').text
         '4'
@@ -224,7 +227,7 @@ class MQParam:
 
     def set_silac(self, light_mods, medium_mods, heavy_mods):
         """Set label modifications.
-        >>> t1 = MQParam('test', './template.xml', None)
+        >>> t1 = MQParam('test', './test-data/template.xml', None)
         >>> t1.set_silac(None, ('test1', 'test2'), None)
         >>> t1.root.find('.parameterGroups/parameterGroup/maxLabeledAa').text
         '2'
@@ -256,7 +259,7 @@ class MQParam:
 
     def set_list_params(self, key, vals):
         """Set a list parameter.
-        >>> t = MQParam(None, './template.xml', None)
+        >>> t = MQParam(None, './test-data/template.xml', None)
         >>> t.set_list_params('proteases', ('test 1', 'test 2'))
         >>> len(t.root.find('.parameterGroups/parameterGroup/enzymes'))
         2
