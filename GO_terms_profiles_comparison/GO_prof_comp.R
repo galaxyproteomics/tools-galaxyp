@@ -69,7 +69,7 @@ get_ids=function(inputtype, input, ncol, header) {
       ids=csv[,ncol]
     }
 
-    ids = unlist(strsplit(ids,";"))
+    ids = unlist(strsplit(as.character(ids),";"))
     ids = ids[which(!is.na(ids))]
 
     return(ids)
