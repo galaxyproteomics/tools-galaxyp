@@ -52,7 +52,7 @@ def HPA_sources(data_manager_dict, tissue, target_directory):
     tissue_name = tissue_name + " " + time.strftime("%d/%m/%Y")
     tissue_id = tissue_name.replace(" ","_").replace("/","-")
 
-    data_table_entry = dict(id=tissue_id, name = tissue_name, value = tissue, path = path)
+    data_table_entry = dict(id=tissue_id, name = tissue_name, tissue = tissue, value = path)
     _add_data_table_entry(data_manager_dict, data_table_entry, "proteore_protein_atlas")
 
 
@@ -476,7 +476,7 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
     with open(path, 'w') as handle:
         json.dump(dico, handle, sort_keys=True)
 
-    data_table_entry = dict(id=id, name = name, value = species, path = path)
+    data_table_entry = dict(id=id, name = name, species = species, value = path)
     _add_data_table_entry(data_manager_dict, data_table_entry, "proteore_"+interactome+"_dictionaries")
 
 
