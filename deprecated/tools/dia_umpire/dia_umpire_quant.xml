@@ -1,0 +1,443 @@
+<tool id="dia_umpire_quant" name="DIA_Umpire_Quant" version="@VERSION@.0">
+    <description>DIA quantitation and targeted re-extraction</description>
+    <macros>
+        <import>dia_umpire_macros.xml</import>
+    </macros>
+    <expand macro="requirements" />
+    <expand macro="stdio" />
+    <command>
+<![CDATA[
+#import shutil
+###  $shutil.copytree($se_input.extra_files_path.__str__,$work_path.__str__)
+## want to save all outputs in a directory output.extra_files_path to be used by 
+## Is file naming going to be a problem? May need to have a name param
+cat $quant_params > $dia_umpire_quant && echo "Thread = \$GALAXY_SLOTS" >> $dia_umpire_quant 
+&& cp -rp $se_input.extra_files_path.__str__ $work_path.__str__
+&& ln -s $protxml_input ${work_path}/$interact_prot_xml
+&& ln -s $searchdb_input ${work_path}/$searchdb_fa
+#for $input in $mzxml_inputs:
+&& ln -s $input ${work_path}/${input.name}
+#end for
+#for $input in $pepxml_inputs:
+&& ln -s $input ${work_path}/${input.name}
+#end for
+## Make sure pep.xml and prot.xml start with "interact-"
+## && echo "# $quant_params" >> $dia_umpire_quant 
+&& java -jar \$DIA_UMPIRE_QUANT_JAR $quant_params 
+&& cp $work_path/ProtSummary*.xls "$ProtSummary"
+&& cp $work_path/PeptideSummary*.xls "$PeptideSummary"
+&& cp $work_path/FragSummary*.xls "$FragSummary"
+&& cp $work_path/IDNoSummary*.xls "$IDNoSummary"
+&& cat $work_path/*.log "$logfile"
+]]>
+    </command>
+
+  <configfiles>
+    <configfile name="user_mods"><![CDATA[
+<?xml version="1.0"?>
+<MSModSpecSet
+    xmlns="http://www.ncbi.nlm.nih.gov"
+    xmlns:xs="http://www.w3.org/2001/XMLSchema-instance"
+    xs:schemaLocation="http://www.ncbi.nlm.nih.gov OMSSA.xsd"
+>
+  <MSModSpec>
+        <MSModSpec_mod>
+            <MSMod value="modificationwithneutrallosses">1</MSMod>
+        </MSModSpec_mod>
+        <MSModSpec_type>
+            <MSModType value="modaa">0</MSModType>
+        </MSModSpec_type>
+        <MSModSpec_name>test modification with neutral losses</MSModSpec_name>
+        <MSModSpec_monomass>123.456789</MSModSpec_monomass>
+        <MSModSpec_averagemass>0</MSModSpec_averagemass>
+        <MSModSpec_n15mass>0</MSModSpec_n15mass>
+        <MSModSpec_residues>
+            <MSModSpec_residues_E>B</MSModSpec_residues_E>
+            <MSModSpec_residues_E>O</MSModSpec_residues_E>
+        </MSModSpec_residues>
+        <MSModSpec_neutralloss>
+            <MSMassSet>
+                <MSMassSet_monomass>456.789123</MSMassSet_monomass>
+                <MSMassSet_averagemass>0</MSMassSet_averagemass>
+                <MSMassSet_n15mass>0</MSMassSet_n15mass>
+            </MSMassSet>
+            <MSMassSet>
+                <MSMassSet_monomass>789.123456</MSMassSet_monomass>
+                <MSMassSet_averagemass>0</MSMassSet_averagemass>
+                <MSMassSet_n15mass>0</MSMassSet_n15mass>
+            </MSMassSet>
+        </MSModSpec_neutralloss>
+        <MSModSpec_unimod>00</MSModSpec_unimod>
+        <MSModSpec_psi-ms>testMod</MSModSpec_psi-ms>
+    </MSModSpec>
+<MSModSpecSet
+]]>
+    </configfile>
+    <configfile name="quant_params"><![CDATA[
+#DIA-Umpire (version @VERSION@)
+#Data Independent Acquisition data processing and analysis package (Quantitation and targeted re-extraction module)
+
+#Working folder path: the program will process all mzXML files in the working folder (please make sure the corresponding pepXML files are in the same folder with mzXML file)
+#Internal spectral library file, output csv files will be stored in the working folder
+Path = ${work_path}/
+
+#Or you can specify all DIA mzXML files you want to analyze here (the working folder is still required for storing output files)
+#  ==File list begin
+#  ==File list end
+
+#No of threads
+Thread = 6
+
+InternalLibID = #if $InternalLibID then $InternalLibID else 'LibID'#
+
+#InternalLibSearch / TargetedExtraction both will work
+InternalLibSearch = $TargetedExtraction
+ExternalLibSearch = $external_settings.ExternalLibSearch
+#if $external_settings.ExternalLibSearch == 'true':
+ExternalLibPath = $external_settings.ExternalLibPath
+ExternalLibDecoyTag = $external_settings.ExternalLibDecoyTag
+ReSearchProb = $external_settings.ReSearchProb
+#end if
+
+#Fasta file path
+# Fasta = $searchdb_input
+Fasta = ${work_path}/$searchdb_fa
+
+#Combined prot.xml file
+Combined_Prot = ${work_path}/$interact_prot_xml
+
+#Decoy tag
+DecoyPrefix = $DecoyPrefix
+
+#FDR threshold
+#if $fdr_settings.advanced == 'yes':
+PeptideFDR = #if $fdr_settings.PeptideFDR then $fdr_settings.PeptideFDR else 0.01#
+ProteinFDR = #if $fdr_settings.ProteinFDR then $fdr_settings.ProteinFDR else 0.01#
+DataSetLevelPepFDR = false
+ProbThreshold = #if $fdr_settings.ProbThreshold then $fdr_settings.ProbThreshold else 0.99#
+#else
+PeptideFDR = 0.01
+ProteinFDR = 0.01
+ProbThreshold = 0.99
+#end if
+
+#UserMod path
+#if $usermod.mod_src == 'history':
+UserMod= $usermod.UserMods
+## #else if $usermod.mod_src == 'config':
+## UserMod= $user_mods
+#else:
+UserMod=
+#end if
+
+####Peptide-centric targeted re-extraction####
+#file format for external library: traML
+ExternalLibPath =
+ExternalLibDecoyTag= DECOY
+ReSearchProb=0.5
+
+####Peptide/Fragment selection for MS2-based quantitation####
+#if $quant_settings.advanced == 'yes':
+####Peptide filtering####
+#Use either peptide group weight (GW) or peptide weight (PepW) to filter non-unique peptide (computed by ProteinProphet),
+#Peptides with weight lower than threshold will be removed
+FilterWeight = #if $quant_settings.FilterWeight then $quant_settings.FilterWeight else GW#
+MinWeight = #if $quant_settings.MinWeight then $quant_settings.MinWeight else 0.9#
+####Peptide/Fragment selection for MS2-based quantitation####
+TopNFrag = #if $quant_settings.TopNFrag then $quant_settings.TopNFrag else 6#
+TopNPep = #if $quant_settings.TopNPep then $quant_settings.TopNPep else 6#
+Freq = #if $quant_settings.Freq then $quant_settings.Freq else 0.5#
+#else:
+####Peptide filtering####
+#Use either peptide group weight (GW) or peptide weight (PepW) to filter non-unique peptide (computed by ProteinProphet),
+#Peptides with weight lower than threshold will be removed
+FilterWeight = GW
+MinWeight = 0.9
+####Peptide/Fragment selection for MS2-based quantitation####
+TopNFrag = 6
+TopNPep = 6
+Freq = 0.5
+#end if
+]]>
+    </configfile>
+  </configfiles>
+
+    <inputs>
+        <param name="work_path" type="hidden" value="dia_output_dir"/>
+        <param name="interact_prot_xml" type="hidden" value="interact.prot.xml"/>
+        <param name="searchdb_fa" type="hidden" value="searchdb.fasta"/>
+        <param name="mzxml_inputs" type="data" format="mzxml" multiple="true" label="Proteomics Spectrum files in mzXML format"/>
+        <param name="pepxml_inputs" type="data" format="pepxml" multiple="true" label="PepXML"/>
+        <param name="protxml_input" type="data" format="protxml" label="ProtXML"/>
+        <param name="searchdb_input" type="data" format="fasta" label="Fasta Search Database"/>
+        <param name="se_input" type="data" format="dia_umpire.ser" label="DIA-Umpire SE Signal Extraction data"/> 
+        <param name="InternalLibID" type="text" value="" label="InternalLibID " >
+          <help>
+InternalLibID: Identifier for the internal spectral library.
+If you are processing the dataset for the first time, it will be used as the name for the new library, if you are reprocessing data (e.g. using different thresholds/FDR levels, etc.) first a library with that name will be looked up and used if found.
+Recommended value: you can use the same name for all analysis; however it is beneficial to provide unique meaningful names, to make the library more easily reusable.
+          </help>
+        </param>
+
+        <param name="TargetedExtraction" type="boolean" truevalue="true" falsevalue="false" checked="true" label="TargetedExtraction" >
+          <help>
+Whether to process targeted re-extraction across samples and replicates.
+          </help>
+        </param>
+
+        <param name="DecoyPrefix" type="text" value="REVERSED_" label="Decoy Prefix in Protein Search FASTA Database" >
+          <help>
+Typical values: if you are unsure what that prefix was, check protein names in the FASTA file. "rev_" and "DECOY_" are common choices.
+          </help>
+        </param>
+
+        <conditional name="usermod">
+          <param name="mod_src" type="select" label="User Modifications">
+            <help>
+            </help>
+            <option value="none">none</option>
+            <option value="history">From history dataset</option>
+            <!--
+            <option value="config">Build </option>
+            -->
+          </param>
+          <when value="none"/>
+          <when value="history">
+              <param name="UserMods" type="data" format="xml" label="User Modifications OMSSA XML"/>
+          </when>
+        </conditional>
+
+        <conditional name="external_settings">
+          <param name="ExternalLibSearch" type="select" label="Use ExternalLibSearch">
+            <help>
+ExternalLibSearch: Whether to process targeted extraction across samples and replicates to research unidentified peptide ions from specified external spectral library. Peptide ions in external library will be research if it satisfies the two conditions. (1) unidentified from initial database search, and (2) unidentified or identified but the probability was lower than the specified threswhold described below. 
+            </help>
+            <option value="false">no</option>
+            <option value="true">yes</option>
+          </param>
+          <when value="false"/>
+          <when value="true">
+            <param name="ExternalLibPath" type="data" format="dia_umpire.ser" label="DIA-Umpire ExternalLibPath">
+              <help>
+ExternalLibPath (new parameter in v1.4): File path of external spectral library file. Currently only traML and custom binary (.serFS) formats are supported, and a decoy spectrum for each forward peptide ion sequence is required in the library file. (Effective only when ExternalLibSearch is set as true)
+              </help>
+            </param>
+            <param name="ExternalLibDecoyTag" type="text" value="DECOY" label="Decoy tag of decoy spectra" >
+              <help>
+ExternalLibDecoyTag: Decoy tag of decoy spectra. (default: DECOY)
+              </help>
+            </param>
+            <param name="ReSearchProb" type="float" value="0.05" optional="true" min=".00" max="1." label="Probability threshold for re-search">
+              <help>
+ReSearchProb: Probability threshold to determine which peptide ion will be re-searched using external spectral library. (default: 0.5)
+              </help>
+            </param>
+          </when>
+        </conditional>
+<!--
+-->
+
+        <conditional name="fdr_settings">
+          <param name="advanced" type="select" label="Advanced FDR Estimation Settings" help="Usually do not need to be changed">
+            <option value="no">no</option>
+            <option value="yes">yes</option>
+          </param>
+          <when value="no"/>
+          <when value="yes">
+            <param name="PeptideFDR" type="float" value=".01" optional="true" min=".01" max=".1" label="PeptideFDR" >
+              <help>
+PeptideFDR: Target peptide level FDR.
+DIA-Umpire estimates peptide level FDR by target-decoy approach according to peptide ion's maximum PeptideProphet probability. (default: 0.01)
+Recommended value: 0.01 or 0.05 are the standard thresholds used in proteomics studies, corresponding to 1% and 5% FDR.
+              </help>
+            </param>
+            <param name="ProteinFDR" type="float" value=".01" optional="true" min=".01" max=".1" label="ProteinFDR" >
+              <help>
+ProteinFDR: Target protein level FDR.
+DIA-Umpire fist removes protein identifications with low protein group probability (&lt;0.5) and estimates protein level FDR of the remaining list by target-decoy approach according to the maximum peptide ion probability. (default: 0.01)
+Recommended value: 0.01 or 0.05.
+              </help>
+            </param>
+            <param name="ProbThreshold" type="float" value="0.99" optional="true" min=".00" max="1." label="ProbThreshold" >
+              <help>
+ProbThreshold: (0.0~0.99) Probability threshold for peptide-centric targeted extraction. This probability is calculated by DIA-Umpire based on LDA analysis of true and decoy targeted identifications. (default: 0.99)
+Recommended value: 0.99 corresponds to 99% confidence in an ID. Which means FDR should be less than 1% in that case.
+              </help>
+            </param>
+          </when>
+        </conditional>
+<!--
+-->
+        <conditional name="quant_settings">
+          <param name="advanced" type="select" label="Advanced Quantitation Settings" help="Usually do not need to be changed">
+            <option value="no">no</option>
+            <option value="yes">yes</option>
+          </param>
+          <when value="no"/>
+          <when value="yes">
+            <param name="FilterWeight" type="select" label="FilterWeight to remove shared peptides for protein quantitation">
+                <option value="GW" selected="true">peptide group weight</option>
+                <option value="PepW">peptide weight</option>
+            </param>
+            <param name="MinWeight" type="float" value=".9" optional="true" min="0.0" max="1.0" label="MinWeight" >
+              <help>
+Minimum weight (peptide group weight or peptide weight chosen from the previous option) threshold of peptides to be considered for protein quantitation. Higher weight (closer to 1) of a peptide for a protein is more likely to be a unique peptide for the protein. (default: 0.9)
+Recommended value: 0.9
+              </help>
+            </param>
+            <param name="TopNFrag" type="integer" value="6" optional="true" min="1" max="10" label="TopNFrag">
+              <help>
+Top N fragments in terms of fragment score (Pearson correlation fragment intensity) used for determining peptide ion intensity (default:6).
+Recommended value: 3 - 6
+              </help>
+            </param>
+            <param name="TopNPep" type="integer" value="6" optional="true" min="1" max="10" label="TopNPep">
+              <help>
+Top N peptide ions in terms of peptide ion intensity (determined by top fragments) used for determining protein intensity (default:6)
+Recommended value: 3~6
+              </help>
+            </param>
+            <param name="Freq" type="float" value=".5" optional="true" min=".1" max="1." label="Freq" >
+              <help>
+Minimum frequency of a peptide ion or fragment across all samples/replicates to
+be considered for Top N ranking. (default:0.5) Recommended value: 0.5 or more
+              </help>
+            </param>
+          </when>
+        </conditional>
+    </inputs>
+
+    <outputs>
+        <data format="txt" name="logfile" label="${tool.name} log"/>
+        <data format="dia_umpire.quant" name="dia_umpire_quant" label="${tool.name}}"/>
+        <data format="tabular" name="IDNoSummary" label="${tool.name}} IDNoSummary.xls"/>
+        <data format="tabular" name="FragSummary" label="${tool.name}} FragSummary.xls"/>
+        <data format="tabular" name="PeptideSummary" label="${tool.name}} PeptideSummary.xls"/>
+        <data format="tabular" name="ProtSummary" label="${tool.name}} ProtSummary.xls"/>
+    </outputs>
+    <tests>
+        <test>
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+=============================================================
+**DIA-Umpire quantitation and targeted re-extraction module**
+=============================================================
+
+DIA_Umpire_Quant.jar provides quantitation and targeted re-extraction analysis by taking results from Step A signal extraction and Step B untargeted MS/MS database search.
+
+Manual:  http://sourceforge.net/projects/diaumpire/files/Manual/DIA_Umpire_Manual_v1.4_pre.pdf
+
+**Input** (DIA-Umpire quantitation and targeted re-extraction module)
+=====================================================================
+
+  1. Identification results: a .pep.xml result file for each .mgf file and a prot.xml for the entire dataset.
+  2. Protein sequence database in FASTA format which was used in Step B (untargeted MS/MS database search).
+  3. All files, including the binary files (.serFS) and .mgf files generated from the signal extraction module, as well as the mzXML files converted from mgf files.
+  4. Quantitation parameter file (An example "diaumpire.quant_params" can be downloaded at http://goo.gl/wThAVI)
+
+**Parameters** (for parameter file diaumpire.quant_params)
+==========================================================
+
+  **Basic parameters** that the users usually need to modify accordingly.
+
+      *TargetedExtraction*: Whether to process targeted re-extraction across samples and replicates. Set it as false if you don't want to reprocess data but wish to export quantitation report based on different fragment/peptide selection options
+
+      *Fasta*: Path to a protein sequence database in FASTA format which was used for untargeted MS/MS database search.
+
+      *Combined_Prot*: Path to the combined ProteinProphet .prot.xml file.
+
+      *DecoyPrefix*: Tag/prefix of decoy protein names that you used for protein database search. Typical values: if you are unsure what that prefix was, check protein names in the FASTA file. "rev\_" and "DECOY\_" are common choices.
+
+      *InternalLibID*: Identifier for the internal spectral library.  If you are processing the dataset for the first time, it will be used as the name for the new library, if you are reprocessing data (e.g. using different thresholds/FDR levels, etc.) first a library with that name will be looked up and used if found.  Recommended value: you can use the same name for all analysis; however it is beneficial to provide unique meaningful names, to make the library more easily reusable.
+
+      *ExternalLibSearch*: (new parameter in v1.4): Whether to process targeted extraction across samples and replicates to research unidentified peptide ions from specified external spectral library. Peptide ions in external library will be research if it satisfies the two conditions. (1) unidentified from initial database search, and (2) unidentified or identified but the probability was lower than the specified threswhold described below. (Please note that this feature is still being tested, and contact us if you have any questions)
+
+      *ExternalLibPath*: (new parameter in v1.4): File path of external spectral library file. Currently only traML and custom binary (.serFS) formats are supported, and a decoy spectrum for each forward peptide ion sequence is required in the library file. (Effective only when ExternalLibSearch is set as true)
+
+      *ExternalLibDecoyTag*: (new parameter in v1.4): Decoy tag of decoy spectra. (default: DECOY)
+
+      *ReSearchProb*: (new parameter in v1.4): Probability threshold to determine which peptide ion will be re-searched using external spectral library. (default: 0.5)
+
+
+  **Advanced parameters** that usually do **not** need to be changed
+
+    **FDR estimation parameters**:
+
+        *PeptideFDR*: Target peptide level FDR.
+        DIA-Umpire estimates peptide level FDR by target-decoy approach according to peptide ion's maximum PeptideProphet probability. (default: 0.01)
+        Recommended value: 0.01 or 0.05 are the standard thresholds used in proteomics studies, corresponding to 1% and 5% FDR.
+
+        *ProteinFDR*: Target protein level FDR.
+        DIA-Umpire fist removes protein identifications with low protein group probability (<0.5) and estimates protein level FDR of the remaining list by target- decoy approach according to the maximum peptide ion's probability. (default: 0.01)
+        Recommended value: 0.01 or 0.05.
+
+        *ProbThreshold*: (0.0~0.99) Probability threshold for peptide-centric targeted extraction. This probability is calculated by DIA-Umpire based on LDA analysis of true and decoy targeted identifications. (default: 0.99)
+        Recommended value: 0.99 corresponds to 99% confidence in an ID. Which means FDR should be less than 1% in that case.
+
+    **Quantitation parameters**
+
+        *FilterWeight*: (GW or PepW) Choice of using peptide group weight or peptide weight (computed by ProteinProphet) to remove shared peptides for protein quantitation. (default: GW)
+        MinWeight: (0.0~0.99) Minimum weight (peptide group weight or peptide weight chosen from the previous option) threshold of peptides to be considered for protein quantitation. Higher weight (closer to 1) of a peptide for a protein is more likely to be a unique peptide for the protein. (default: 0.9)
+        Recommended value: 0.9
+
+        *TopNFrag*: Top N fragments in terms of fragment score (Pearson correlation x fragment intensity) used for determining peptide ion intensity (default:6).
+        Recommended value: 3~6
+
+        *TopNPep*: Top N peptide ions in terms of peptide ion intensity (determined by top
+        fragments) used for determining protein intensity (default:6)
+        Recommended value: 3~6
+
+        *Freq*: Minimum frequency of a peptide ion or fragment across all samples/replicates to
+        be considered for Top N ranking. (default:0.5) Recommended value: 0.5 or more
+
+**Output** (DIA-Umpire quantitation and targeted re-extraction module):
+=======================================================================
+
+  Binary files which include identification and quantitation information, and possibly the internal spectral library.
+
+  Three summary tables for protein, peptide ion, and fragment level reports (<filename> denotes the name of the raw file in which a peptide was identified)
+
+     1. Columns printed in protein summary table (ProtSummary.xls)
+
+        1. Protein Key: Protein accession number
+        2. <filename>_Prob: Protein identification probability
+        3. <filename>_Peptides: Number of identified peptide ions assigned to a protein
+        4. <filename>_PSMs: Number of identified pseudo MS/MS spectra assigned to a protein
+        5. <filename>_MS1_iBAQ: Protein abundance estimated by MS1 peptide intensities (See manuscript for details) (iBAQ: sum of all identified peptide intensities divided by the number of theoretical tryptic peptides)
+        6. <filename>_TopNpep/TopNfra, Freq>freq: Protein abundance estimated by top scored peptide ions and fragments (See manuscript for details).
+
+     2. Columns printed in peptide ion summary table (PeptideSummary.xls)
+
+        1. Peptide Key: Peptide ion identifier
+        2. Sequence: Peptide sequence
+        3. ModSeq: Peptide sequence with modification information
+        4. Proteins: Parent proteins
+        5. mz: Precursor m/z of peptide ion
+        6. Charge: Charge state of peptide ion
+        7. MaxProb: Maximum identification probability of peptide ion across the whole data- set from untargeted MS/MS database search
+        8. <filename>_Spec_Centric_Prob: Identification probability of a peptide ion from untargeted MS/MS database search
+        9. <filename>_Pep_Centric_Prob: Identification probability of a peptide ion from targeted re-extraction matching
+        10. <filename>_PSMs: The number of identified pseudo MS/MS spectra assigned to a peptide ion
+        11. <filename>_RT: Retention time of a peptide ion
+        12. <filename>_MS1: Peptide abundance estimated by MS1 precursor intensity 2.13. <filename>_TopNfra: Peptide abundance estimated by top N fragment ions
+
+     3. Columns printed in fragment summary table (FragSummary.xls)
+
+        1. Fragment Key: Fragment ion identifier
+        2. Protein: Parent protein accession number
+        3. Peptide: Parent peptide ion identifier
+        4. Fragment: Fragment ion type
+        5. FragMz: m/z of fragment ion
+        6. <filename>_RT: Retention time of parent peptide ion 
+        7. <filename>_Spec_Centric_Prob: Identification probability of peptide ion from untargeted MS/MS database search
+        8. <filename>_Pep_Centric_Prob: Identification probability of peptide ion from targeted re-extraction matching
+        9. <filename>_Intensity: fragment intensity
+        10. <filename>_Corr: Elution profile Pearson correlation between fragment ion and precursor peptide ion
+        11. <filename>_PPM: Mass error of an observed fragment m/z to the theoretical one
+
+]]>
+    </help>
+    <expand macro="citations" />
+</tool>
