@@ -40,7 +40,7 @@ def nb_col_to_int(nb_col):
 
 #return list of (unique) ids from string
 def get_input_ids_from_string(input) :
-    ids_list = list(set(re.split(r'\s+',input.replace("\r","").replace("\n"," ").replace("\t"," "))))
+    ids_list = list(set(re.split(r'\s+',input.replace(";"," ").replace("\r","").replace("\n"," ").replace("\t"," "))))
     if "" in ids_list : ids_list.remove("")
     #if "NA" in ids_list : ids_list.remove("NA")
     return ids_list
