@@ -34,6 +34,8 @@ def get_input_ids_from_file(input,nb_col,header) :
 #return input file by adding lines when there are more than one id per line
 def one_id_one_line(input_file,nb_col,header) :
 
+    print ("header",header)
+
     if header : 
         new_file = [input_file[0]]
         input_file = input_file[1:]
@@ -120,6 +122,7 @@ def main():
     if args.input_type=="file" :
         args.column_number = nb_col_to_int(args.column_number)
         header = str2bool(args.header)
+    
 
     #Get ref file to build dictionary
     csv.field_size_limit(sys.maxsize) # to handle big files
@@ -152,7 +155,7 @@ def main():
     if args.input_type == "list" :
         ids = get_input_ids_from_string(args.input)
     elif args.input_type == "file" :
-        input_file, ids = get_input_ids_from_file(args.input,args.column_number,args.header)
+        input_file, ids = get_input_ids_from_file(args.input,args.column_number,header)
 
     #Mapping ids
     result_dict = map_to_dictionary(ids,ids_dictionary,args.id_type,target_ids)
