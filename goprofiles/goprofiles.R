@@ -92,11 +92,16 @@ getprofile = function(ids, id_type, level, duplicate,species) {
 
 #return height and width of plot in inches from profile
 plot_size_from_nb_onto <- function(profile){
-    width=10
-    range = seq(50, 2000, by=25)
-    names(range) = seq(8,242, by=3)
-    nb_onto = round(nrow(profile[[1]])/25)*25
-    height= as.integer(names(which(range==nb_onto)))
+  width=10
+  range = seq(25, 2000, by=25)
+  names(range) = seq(5,242, by=3)
+  nb_onto = round(nrow(profile[[1]])/25)*25
+  if (nb_onto < 25) {nb_onto = 25}
+    if (nb_onto <= 2000) {
+      height= as.integer(names(which(range==nb_onto)))
+    } else {
+      height=250
+    }
   return (c(width,height))
 }
 
