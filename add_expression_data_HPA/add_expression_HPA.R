@@ -149,7 +149,7 @@ main = function() {
   
   inputtype = args$inputtype
   if (inputtype == "copypaste") {
-    input = strsplit(args$input, "[ \t\n]+")[[1]]
+    ids = strsplit(args$input, "[ \t\n]+")[[1]]
   } else if (inputtype == "tabfile") {
     filename = args$input
     ncol = args$column
@@ -165,8 +165,8 @@ main = function() {
     file = one_id_one_line(file,ncol)
     ids = unlist(sapply(as.character(file[,ncol]),function(x) rapply(strsplit(x,";"),c),USE.NAMES = FALSE))
     ids = ids[which(!is.na(ids))]
-    check_ensembl_geneids(ids)
   }
+  check_ensembl_geneids(ids)
 
   # Read protein atlas
   protein_atlas = args$atlas
