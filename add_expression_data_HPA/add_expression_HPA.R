@@ -19,6 +19,18 @@ str2bool <- function(x){
   }
 }
 
+check_ensembl_geneids <- function(vector,type) {
+  ensembl_geneid_pattern = "^ENS[A-Z]+[0-9]{11}|[A-Z]{3}[0-9]{3}[A-Za-z](-[A-Za-z])?|CG[0-9]+|[A-Z0-9]+[.][0-9]+|YM[A-Z][0-9]{3}[a-z][0-9]$"
+  res = grepl(ensembl_geneid_pattern,vector)
+  if (all(!res)){
+    print("No Ensembl geneIDs found in entered ids")
+    stop ("No Ensembl geneIDs found in entered ids")
+  } else if (any(!res)) {
+    print ('Some given ids are not Ensembl geneIDs:')
+    print (vector[which(!res)])
+  }
+}
+
 add_expression = function(input, atlas, options) {
   input <- unique(input[!is.na(input)])
   input <- gsub("[[:blank:]]|\u00A0","",input)
@@ -89,7 +101,7 @@ one_id_one_line <-function(tab,ncol){
   return(res)
 }
 
-main = function() {
+get_args <- function(){
   args <- commandArgs(TRUE)
   if(length(args)<1) {
     args <- c("--help")
@@ -116,6 +128,21 @@ main = function() {
   argsDF <- as.data.frame(do.call("rbind", parseArgs(args)))
   args <- as.list(as.character(argsDF$V2))
   names(args) <- argsDF$V1
+  
+  return(args)
+}
+
+is_col_in_file <- function(file,ncol) { 
+  is_in_file = (ncol <= ncol(file) && ncol > 0)
+  if (!is_in_file){
+    print(paste(sep = "", collapse = " ", c("Column",ncol,"not found in file") ))
+    stop(paste(sep = "", collapse = " ", c("Column",ncol,"not found in file")))
+  }
+}
+
+main = function() {
+  
+  args = get_args()
 
   #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/add_expression_data_HPA/args.rda")
   #load("/home/dchristiany/proteore_project/ProteoRE/tools/add_expression_data_HPA/args.rda")
@@ -134,9 +161,11 @@ main = function() {
     }
     header = str2bool(args$header)
     file = read_file(filename, header)
+    is_col_in_file(file,ncol)
     file = one_id_one_line(file,ncol)
-    input = unlist(sapply(as.character(file[,ncol]),function(x) rapply(strsplit(x,";"),c),USE.NAMES = FALSE))
-    input = input[which(!is.na(input))]
+    ids = unlist(sapply(as.character(file[,ncol]),function(x) rapply(strsplit(x,";"),c),USE.NAMES = FALSE))
+    ids = ids[which(!is.na(ids))]
+    check_ensembl_geneids(ids)
   }
 
   # Read protein atlas
@@ -146,11 +175,11 @@ main = function() {
   # Add expression
   output = args$output
   options = strsplit(args$select, ",")[[1]]
-  res = add_expression(input, protein_atlas, options)
+  res = add_expression(ids, protein_atlas, options)
   
   # Write output
   if (is.null(res)) {
-    write.table("None of the input ENSG ids are can be found in HPA data file",file=output,sep="\t",quote=FALSE,col.names=TRUE,row.names=FALSE)
+    write.table("None of the ENSG ids entered can be found in HPA data file",file=output,sep="\t",quote=FALSE,col.names=TRUE,row.names=FALSE)
   } else {
     if (inputtype == "copypaste") {
       input <- data.frame(input)
