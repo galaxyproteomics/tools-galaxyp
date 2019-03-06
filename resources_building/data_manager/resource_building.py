@@ -39,12 +39,15 @@ def HPA_sources(data_manager_dict, tissue, target_directory):
     if tissue == "HPA_normal_tissue":
         tissue_name = "HPA normal tissue"
         url = "https://www.proteinatlas.org/download/normal_tissue.tsv.zip"
+        table = "proteore_protein_atlas_normal_tissue"
     elif tissue == "HPA_pathology":
         tissue_name = "HPA pathology"
         url = "https://www.proteinatlas.org/download/pathology.tsv.zip"
+        table = "proteore_protein_atlas_tumor_tissue"
     elif tissue == "HPA_full_atlas":
         tissue_name = "HPA full atlas"
         url = "https://www.proteinatlas.org/download/proteinatlas.tsv.zip"
+        table = "proteore_protein_full_atlas"
     
     output_file = tissue +"_"+ time.strftime("%d-%m-%Y") + ".tsv"
     path = os.path.join(target_directory, output_file)
@@ -52,8 +55,9 @@ def HPA_sources(data_manager_dict, tissue, target_directory):
     tissue_name = tissue_name + " " + time.strftime("%d/%m/%Y")
     tissue_id = tissue_name.replace(" ","_").replace("/","-")
 
+
     data_table_entry = dict(id=tissue_id, name = tissue_name, tissue = tissue, value = path)
-    _add_data_table_entry(data_manager_dict, data_table_entry, "proteore_protein_atlas")
+    _add_data_table_entry(data_manager_dict, data_table_entry, table)
 
 
 #######################################################################################################
@@ -227,8 +231,8 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
     name = species +" (" + name_dict[species]+" "+time.strftime("%d/%m/%Y")+")"
     id = species+"_id_mapping_"+ time.strftime("%d-%m-%Y")
 
-    data_table_entry = dict(id=id, name = name, value = species, path = path)
-    _add_data_table_entry(data_manager_dict, data_table_entry, "proteore_id_mapping")
+    data_table_entry = dict(id=id, name = name, species = species, value = path)
+    _add_data_table_entry(data_manager_dict, data_table_entry, "proteore_id_mapping_"+species)
 
 def download_from_uniprot_ftp(file,target_directory) :
     ftp_dir = "pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/"
