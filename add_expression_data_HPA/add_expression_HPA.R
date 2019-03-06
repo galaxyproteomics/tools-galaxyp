@@ -26,7 +26,7 @@ check_ensembl_geneids <- function(vector,type) {
     print("No Ensembl geneIDs found in entered ids")
     stop ("No Ensembl geneIDs found in entered ids")
   } else if (any(!res)) {
-    print ('Some given ids are not Ensembl geneIDs:')
+    print (paste(sep="",collapse = " ",c(sum(!res, na.rm=TRUE),'given ids are not Ensembl geneIDs:')))
     print (vector[which(!res)])
   }
 }
