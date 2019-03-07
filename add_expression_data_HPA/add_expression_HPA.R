@@ -19,15 +19,21 @@ str2bool <- function(x){
   }
 }
 
+stopQuietly <- function(...) {
+  blankMsg <- sprintf("\r%s\r", paste(rep(" ", getOption("width")-1L), collapse=" "));
+  stop(simpleError(blankMsg));
+} # stopQuietly()
+
 check_ensembl_geneids <- function(vector,type) {
-  ensembl_geneid_pattern = "^ENS[A-Z]+[0-9]{11}|[A-Z]{3}[0-9]{3}[A-Za-z](-[A-Za-z])?|CG[0-9]+|[A-Z0-9]+[.][0-9]+|YM[A-Z][0-9]{3}[a-z][0-9]$"
+  ensembl_geneid_pattern = "^ENS[A-Z]+[0-9]{11}$|^[A-Z]{3}[0-9]{3}[A-Za-z](-[A-Za-z])?$|^CG[0-9]+$|^[A-Z0-9]+[.][0-9]+$|^YM[A-Z][0-9]{3}[a-z][0-9]$"
   res = grepl(ensembl_geneid_pattern,vector)
   if (all(!res)){
-    print("No Ensembl geneIDs found in entered ids")
-    stop ("No Ensembl geneIDs found in entered ids")
+    cat("No Ensembl geneIDs found in entered ids")
+    stopQuietly()
   } else if (any(!res)) {
-    print (paste(sep="",collapse = " ",c(sum(!res, na.rm=TRUE),'given ids are not Ensembl geneIDs:')))
-    print (vector[which(!res)])
+    cat(paste(sep="",collapse = " ",c(sum(!res, na.rm=TRUE),'IDs are not ENSG IDs, please check:\n')))
+    not_geneids <- sapply(vector[which(!res)], function(x) paste(sep="",collapse = "",x,"\n"),USE.NAMES = F)
+    cat(not_geneids)
   }
 }
 
@@ -135,8 +141,8 @@ get_args <- function(){
 is_col_in_file <- function(file,ncol) { 
   is_in_file = (ncol <= ncol(file) && ncol > 0)
   if (!is_in_file){
-    print(paste(sep = "", collapse = " ", c("Column",ncol,"not found in file") ))
-    stop(paste(sep = "", collapse = " ", c("Column",ncol,"not found in file")))
+    cat(paste(sep = "", collapse = " ", c("Column",ncol,"not found in file") ))
+    stopQuietly()
   }
 }
 
