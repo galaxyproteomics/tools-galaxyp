@@ -34,8 +34,6 @@ def get_input_ids_from_file(input,nb_col,header) :
 #return input file by adding lines when there are more than one id per line
 def one_id_one_line(input_file,nb_col,header) :
 
-    print ("header",header)
-
     if header : 
         new_file = [input_file[0]]
         input_file = input_file[1:]
