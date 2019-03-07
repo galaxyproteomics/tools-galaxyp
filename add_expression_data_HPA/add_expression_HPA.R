@@ -188,7 +188,7 @@ main = function() {
     write.table("None of the ENSG ids entered can be found in HPA data file",file=output,sep="\t",quote=FALSE,col.names=TRUE,row.names=FALSE)
   } else {
     if (inputtype == "copypaste") {
-      input <- data.frame(input)
+      ids <- data.frame(input)
       output_content = merge(input,res,by.x=1,by.y="row.names",incomparables = NA, all.x=T)
       colnames(output_content)[1] = "Ensembl"
     } else if (inputtype == "tabfile") {
