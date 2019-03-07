@@ -226,7 +226,7 @@ make_dotplot<-function(res.cmp,ontology) {
   #plot(p, type="dot") #
   output_path= paste("GO_profiles_comp_",ontology,".png",sep="")
   png(output_path,height = 720, width = 600)
-  pl <- plot(p, type="dot")
+  pl <- plot(pl, type="dot")
   print(pl)
   dev.off()
 }
