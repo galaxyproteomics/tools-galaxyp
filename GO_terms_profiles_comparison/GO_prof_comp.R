@@ -1,5 +1,8 @@
 options(warn=-1)  #TURN OFF WARNINGS !!!!!!
 suppressMessages(library(clusterProfiler,quietly = TRUE))
+suppressMessages(library(plyr, quietly = TRUE))
+suppressMessages(library(ggplot2, quietly = TRUE))
+suppressMessages(library(DOSE, quietly = TRUE))
 
 #return the number of character from the longest description found (from the 10 first)
 max_str_length_10_first <- function(vector){
@@ -95,14 +98,137 @@ check_ids <- function(vector,type) {
   }
 }
 
-make_dotplot<-function(res.cmp,ontology) {
+#res.cmp@compareClusterResult$Description <- sapply(as.vector(res.cmp@compareClusterResult$Description), function(x) {ifelse(nchar(x)>50, substr(x,1,50),x)},USE.NAMES = FALSE)
+fortify.compareClusterResult <- function(res.cmp, showCategory=30, by="geneRatio", split=NULL, includeAll=TRUE) {
+  clProf.df <- as.data.frame(res.cmp)
+  .split <- split
+  ## get top 5 (default) categories of each gene cluster.
+  if (is.null(showCategory)) {
+    result <- clProf.df
+  } else {
+    Cluster <- NULL # to satisfy codetools
+    topN <- function(res, showCategory) {
+      ddply(.data = res, .variables = .(Cluster), .fun = function(df, N) {
+              if (length(df$Count) > N) {
+                if (any(colnames(df) == "pvalue")) {
+                  idx <- order(df$pvalue, decreasing=FALSE)[1:N]
+                } else {
+                  ## for groupGO
+                  idx <- order(df$Count, decreasing=T)[1:N]
+                }
+                return(df[idx,])
+              } else {
+                return(df)
+              }
+            },
+            N=showCategory
+      )
+    }
+    if (!is.null(.split) && .split %in% colnames(clProf.df)) {
+      lres <- split(clProf.df, as.character(clProf.df[, .split]))
+      lres <- lapply(lres, topN, showCategory = showCategory)
+      result <- do.call('rbind', lres)
+    } else {
+      result <- topN(clProf.df, showCategory)
+    }    
+  }
+  ID <- NULL
+  if (includeAll == TRUE) {
+    result = subset(clProf.df, ID %in% result$ID)
+  }
+  ## remove zero count
+  result$Description <- as.character(result$Description) ## un-factor
+  GOlevel <- result[,c("ID", "Description")] ## GO ID and Term
+  GOlevel <- unique(GOlevel)
+  result <- result[result$Count != 0, ]
+  result$Description <- factor(result$Description,levels=rev(GOlevel[,2]))
+  if (by=="rowPercentage") {
+    Description <- Count <- NULL # to satisfy codetools
+    result <- ddply(result,.(Description),transform,Percentage = Count/sum(Count),Total = sum(Count))
+    ## label GO Description with gene counts.
+    x <- mdply(result[, c("Description", "Total")], paste, sep=" (")
+    y <- sapply(x[,3], paste, ")", sep="")
+    result$Description <- y
+    
+    ## restore the original order of GO Description
+    xx <- result[,c(2,3)]
+    xx <- unique(xx)
+    rownames(xx) <- xx[,1]
+    Termlevel <- xx[as.character(GOlevel[,1]),2]
+    
+    ##drop the *Total* column
+    result <- result[, colnames(result) != "Total"]
+    result$Description <- factor(result$Description, levels=rev(Termlevel))
+    
+  } else if (by == "count") {
+    ## nothing
+  } else if (by == "geneRatio") { ##default
+    gsize <- as.numeric(sub("/\\d+$", "", as.character(result$GeneRatio)))
+    gcsize <- as.numeric(sub("^\\d+/", "", as.character(result$GeneRatio)))
+    result$GeneRatio = gsize/gcsize
+    cluster <- paste(as.character(result$Cluster),"\n", "(", gcsize, ")", sep="")
+    lv <- unique(cluster)[order(as.numeric(unique(result$Cluster)))]
+    result$Cluster <- factor(cluster, levels = lv)
+  } else {
+    ## nothing
+  }
+  return(result)
+}
+
+##function plotting.clusteProfile from clusterProfiler pkg
+plotting.clusterProfile <- function(clProf.reshape.df,x = ~Cluster,type = "dot", colorBy = "p.adjust",by = "geneRatio",title="",font.size=12) {
   
-  res.cmp@compareClusterResult$Description <- sapply(as.vector(res.cmp@compareClusterResult$Description), function(x) {ifelse(nchar(x)>50, substr(x,1,50),x)},USE.NAMES = FALSE)
+  Description <- Percentage <- Count <- Cluster <- GeneRatio <- p.adjust <- pvalue <- NULL # to
+  if (type == "dot") {
+    if (by == "rowPercentage") {
+      p <- ggplot(clProf.reshape.df,
+                  aes_(x = x, y = ~Description, size = ~Percentage))
+    } else if (by == "count") {
+      p <- ggplot(clProf.reshape.df,
+                  aes_(x = x, y = ~Description, size = ~Count))
+    } else if (by == "geneRatio") { ##DEFAULT
+      p <- ggplot(clProf.reshape.df,
+                  aes_(x = x, y = ~Description, size = ~GeneRatio))
+    } else {
+      ## nothing here
+    }
+    if (any(colnames(clProf.reshape.df) == colorBy)) {
+      p <- p +
+        geom_point() +
+        aes_string(color=colorBy) +
+        scale_color_continuous(low="red", high="blue", guide=guide_colorbar(reverse=TRUE))
+      ## scale_color_gradientn(guide=guide_colorbar(reverse=TRUE), colors = enrichplot:::sig_palette)
+    } else {
+      p <- p + geom_point(colour="steelblue")
+    }
+  }
+  
+  p <- p + xlab("") + ylab("") + ggtitle(title) +
+    theme_dose(font.size)
+  
+  ## theme(axis.text.x = element_text(colour="black", size=font.size, vjust = 1)) +
+  ##     theme(axis.text.y = element_text(colour="black",
+  ##           size=font.size, hjust = 1)) +
+  ##               ggtitle(title)+theme_bw()
+  ## p <- p + theme(axis.text.x = element_text(angle=angle.axis.x,
+  ##                    hjust=hjust.axis.x,
+  ##                    vjust=vjust.axis.x))
+  
+  return(p)
+}
+
+make_dotplot<-function(res.cmp,ontology) {
+
+  dfok<-fortify.compareClusterResult(res.cmp)
+  dfok$Description <- sapply(as.vector(dfok$Description), function(x) {ifelse(nchar(x)>50, substr(x,1,50),x)},USE.NAMES = FALSE)
+  p<-plotting.clusterProfile(dfok, title="")
+
+  #plot(p, type="dot") #
   output_path= paste("GO_profiles_comp_",ontology,".png",sep="")
   png(output_path,height = 720, width = 600)
-	p <- dotplot(res.cmp, showCategory=30)
-	print(p)
-	dev.off()
+  pl <- plot(p, type="dot")
+  print(pl)
+  dev.off()
 }
 
 get_cols <-function(input_cols) {
@@ -144,9 +270,7 @@ main = function() {
   #to get the args of the command line
   args=get_args()  
   
-  #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/GO_terms_profiles_comparison/args.rda")
-  #load("/home/dchristiany/proteore_project/ProteoRE/tools/GO_terms_profiles_comparison/args.rda")
-  
+   
   ids1<-get_ids(args$inputtype1, args$input1, args$column1, args$header1) 
   ids2<-get_ids(args$inputtype2, args$input2, args$column2, args$header2)
   ont = strsplit(args$ont, ",")[[1]] 
