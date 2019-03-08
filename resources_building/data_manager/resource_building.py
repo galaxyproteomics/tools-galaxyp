@@ -444,10 +444,17 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
 
                 interactant_A, interactant_B = get_interactant_name(line,dico_geneid_to_gene_name)
 
+                #first interactant (first column)
                 if line[0] not in dico_network:
                     dico_network[line[0]]=[line[:2]+[interactant_A,interactant_B,line[2]]]
                 else :
                     dico_network[line[0]].append(line[:2]+[interactant_A,interactant_B,line[2]])
+
+                #second interactant (second column)
+                if line[1] not in dico_network:
+                    dico_network[line[1]]=[[line[1],line[0],interactant_B,interactant_A,line[2]]]
+                else :
+                    dico_network[line[1]].append([line[1],line[0],interactant_B,interactant_A,line[2]])
 
         with requests.Session() as s:
             r = s.get('https://www.reactome.org/download/current/NCBI2Reactome.txt')
