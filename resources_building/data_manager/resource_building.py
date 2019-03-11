@@ -490,6 +490,76 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
     data_table_entry = dict(id=id, name = name, species = species, value = path)
     _add_data_table_entry(data_manager_dict, data_table_entry, "proteore_"+interactome+"_dictionaries")
 
+#######################################################################################################
+# 5. nextprot (add protein features)
+#######################################################################################################
+
+def Build_nextprot_ref_file(target_directory):
+    nextprot_ids_file = "nextprot_ac_list_all.txt"
+    ids = id_list_from_nextprot_ftp(nextprot_ids_file,target_directory)
+
+    nextprot_file=[["NextprotID","MW","SeqLength","IsoPoint","Chr","SubcellLocations","Diseases","TMDomains","ProteinExistence"]]
+    for id in ids :
+        #print (id)
+        query="https://api.nextprot.org/entry/"+id+".json"
+        resp = requests.get(url=query)
+        data = resp.json()
+
+        #get info from json dictionary
+        mass_mol = data["entry"]["isoforms"][0]["massAsString"]
+        seq_length = data['entry']["isoforms"][0]["sequenceLength"]
+        iso_elec_point = data['entry']["isoforms"][0]["isoelectricPointAsString"]
+        chr_loc = data['entry']["chromosomalLocations"][0]["chromosome"]        
+        protein_existence = "PE"+str(data['entry']["overview"]['proteinExistence']['level'])
+
+        #put all subcell loc in a set
+        if "subcellular-location" in data['entry']["annotationsByCategory"].keys() :
+            subcell_locs = data['entry']["annotationsByCategory"]["subcellular-location"]
+            all_subcell_locs = set()
+            for loc in subcell_locs :
+                all_subcell_locs.add(loc['cvTermName'])
+            all_subcell_locs.discard("")
+            all_subcell_locs = ";".join(all_subcell_locs)
+        else :
+            all_subcell_locs = "NA"
+        
+        #put all subcell loc in a set
+        if ('disease') in data['entry']['annotationsByCategory'].keys() :
+            diseases = data['entry']['annotationsByCategory']['disease']
+            all_diseases = set()
+            for disease in diseases :
+                if (disease['cvTermName'] is not None and disease['cvTermName'] != ""):
+                    all_diseases.add(disease['cvTermName'])
+            if len(all_diseases) > 0 : all_diseases = ";".join(all_diseases)
+            else : all_diseases="NA"
+        else :
+            all_diseases="NA"
+
+        #get all tm domain
+        nb_domains = 0
+        if  "domain" in data['entry']['annotationsByCategory'].keys():
+            tm_domains = data['entry']['annotationsByCategory']["domain"]
+            for tm_domain in tm_domains :
+                if "properties" in tm_domain.keys() and tm_domain['properties']!=[]:
+                    domains = tm_domains["properties"]
+                    for domain in domains :
+                        if domain["name"]=="region structure" and domain["value"]=="Helical" :
+                            nb_domains+=1
+
+        
+        nextprot_file.append([id,mass_mol,str(seq_length),iso_elec_point,chr_loc,all_subcell_locs,all_diseases,str(nb_domains),protein_existence])
+    
+    output_file = 'nextprot_ref_'+ time.strftime("%d-%m-%Y") + ".tsv"
+    path = os.path.join(target_directory,output_file)
+    name = "neXtProt release "+time.strftime("%d-%m-%Y")
+    id = "nextprot_ref_"+time.strftime("%d-%m-%Y")
+
+    with open(path, 'w') as output:
+        writer = csv.writer(output,delimiter="\t")
+        writer.writerows(nextprot_file)
+
+    data_table_entry = dict(id=id, name = name, value = path)
+    _add_data_table_entry(data_manager_dict, data_table_entry, "proteore_nextprot_ref")
 
 #######################################################################################################
 # Main function
@@ -503,6 +573,7 @@ def main():
     parser.add_argument("--species")
     parser.add_argument("--date")
     parser.add_argument("-o", "--output")
+    parser.add_argument("--database")
     args = parser.parse_args()
 
     data_manager_dict = {}
@@ -557,7 +628,15 @@ def main():
         species=None
     if interactome is not None and species is not None:
         PPI_ref_files(data_manager_dict, species, interactome, target_directory)
- 
+
+    ## Build nextprot ref file for add protein features
+    try:
+        database=args.database
+    except NameError:
+        database=None
+    if database is not None :
+        Build_nextprot_ref_file(target_directory)
+
     #save info to json file
     filename = args.output
     open(filename, 'wb').write(to_json_string(data_manager_dict))
