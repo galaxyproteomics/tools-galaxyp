@@ -194,7 +194,7 @@ protein_features = function() {
     res = res[!duplicated(res$NextprotID),]
     output_content = merge(file, res,by.x=ncol,by.y="NextprotID",incomparables = NA,all.x=T)
     output_content = order_columns(output_content,ncol,id_type,file)
-    output_content = output_content[,-which(colnames(output_content)=="NextprotID")]      #remove nextprotID column
+    if (id_type=="Uniprot_AC"){output_content = output_content[,-which(colnames(output_content)=="NextprotID")]}      #remove nextprotID column
     output_content <- as.data.frame(apply(output_content, c(1,2), function(x) gsub("^$|^ $", NA, x)))  #convert "" et " " to NA
     write.table(output_content, output, row.names = FALSE, sep = "\t", quote = FALSE)
   } 
