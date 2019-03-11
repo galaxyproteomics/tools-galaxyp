@@ -1,4 +1,4 @@
-import argparse, re, csv
+import argparse, re, csv, sys
 
 def options():
     """
@@ -42,6 +42,12 @@ def str_to_bool(v):
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
+def proper_ncol (ncol,file):
+    if ncol not in range(len(file[0])):
+        print("Column "+str(ncol+1)+" not found in input file")
+        #traceback.print_exc(file=sys.stdout)
+        sys.exit(1)
+
 #Check if a variable is a float or an integer
 def is_number(number_format, n):
     float_format = re.compile(r"^[-]?[0-9][0-9]*.?[0-9]+$")
@@ -76,7 +82,7 @@ def filters(args):
         key_files = args.kw_file
         for kf in key_files:
             header = str_to_bool(kf[1])
-            ncol = column_from_txt(kf[2]) 
+            ncol = column_from_txt(kf[2],csv_file) 
             keywords = read_keywords_file(kf[0],header,ncol)
             results_dict=filter_keyword(csv_file, header, results_dict, keywords, kf[3], kf[4])
 
@@ -85,7 +91,7 @@ def filters(args):
             v[0] = v[0].replace(",",".")
             v[2] = operator_dict[v[2]]
             if is_number("float", v[0]):
-                csv_file = comma_number_to_float(csv_file,column_from_txt(v[1]),header)
+                csv_file = comma_number_to_float(csv_file,column_from_txt(v[1],csv_file),header)
                 results_dict = filter_value(csv_file, header, results_dict, v[0], v[1], v[2])
             else:
                 raise ValueError("Please enter a number in filter by value")
@@ -93,7 +99,7 @@ def filters(args):
     if args.values_range:
         for vr in args.values_range:
             vr[:2] = [value.replace(",",".") for value in vr[:2]]
-            csv_file = comma_number_to_float(csv_file,column_from_txt(vr[2]),header)
+            csv_file = comma_number_to_float(csv_file,column_from_txt(vr[2],csv_file),header)
             if (is_number("float", vr[0]) or is_number("int", vr[0])) and (is_number("float",vr[1]) or is_number("int",vr[1])):
                 results_dict = filter_values_range(csv_file, header, results_dict, vr[0], vr[1], vr[2], vr[3])
 
@@ -124,7 +130,7 @@ def filters(args):
     #sort of results by column
     if args.sort_col :
         sort_col=args.sort_col.split(",")[0]
-        sort_col=column_from_txt(sort_col)
+        sort_col=column_from_txt(sort_col,csv_file)
         reverse=str_to_bool(args.sort_col.split(",")[1])
         remaining_lines= sort_by_column(remaining_lines,sort_col,reverse,header)
         filtered_lines = sort_by_column(filtered_lines,sort_col,reverse,header)
@@ -239,7 +245,7 @@ def read_file(filename):
 #seek for keywords in rows of csvfile, return a dictionary of boolean (true if keyword found, false otherwise) 
 def filter_keyword(csv_file, header, results_dict, keywords, ncol, match):
     match=str_to_bool(match)
-    ncol=column_from_txt(ncol)
+    ncol=column_from_txt(ncol,csv_file)
     if type(keywords) != list : keywords = keywords.upper().split()            # Split list of filter keyword
 
     for id_line,line in enumerate(csv_file):
@@ -262,7 +268,7 @@ def filter_keyword(csv_file, header, results_dict, keywords, ncol, match):
 def filter_value(csv_file, header, results_dict, filter_value, ncol, opt):
 
     filter_value = float(filter_value)
-    ncol=column_from_txt(ncol)
+    ncol=column_from_txt(ncol,csv_file)
     nb_string=0
 
     for id_line,line in enumerate(csv_file):
@@ -297,7 +303,7 @@ def filter_values_range(csv_file, header, results_dict, bottom_value, top_value,
     inclusive=str_to_bool(inclusive)
     bottom_value = float(bottom_value)
     top_value=float(top_value)
-    ncol=column_from_txt(ncol)
+    ncol=column_from_txt(ncol,csv_file)
     nb_string=0
 
     for id_line, line in enumerate(csv_file):
@@ -332,13 +338,16 @@ def filter_values_range(csv_file, header, results_dict, bottom_value, top_value,
 
     return results_dict 
 
-def column_from_txt(ncol):
+def column_from_txt(ncol,file):
     if is_number("int", ncol.replace("c", "")): 
         ncol = int(ncol.replace("c", "")) - 1 
     else:
         raise ValueError("Please specify the column where "
                          "you would like to apply the filter "
                          "with valid format")
+
+    proper_ncol (ncol,file)
+    
     return ncol
 
 #return True if value is in the determined values, false otherwise
