@@ -494,7 +494,7 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
 # 5. nextprot (add protein features)
 #######################################################################################################
 
-def Build_nextprot_ref_file(target_directory):
+def Build_nextprot_ref_file(data_manager_dict,target_directory):
     nextprot_ids_file = "nextprot_ac_list_all.txt"
     ids = id_list_from_nextprot_ftp(nextprot_ids_file,target_directory)
 
@@ -635,7 +635,7 @@ def main():
     except NameError:
         database=None
     if database is not None :
-        Build_nextprot_ref_file(target_directory)
+        Build_nextprot_ref_file(data_manager_dict,target_directory)
 
     #save info to json file
     filename = args.output
