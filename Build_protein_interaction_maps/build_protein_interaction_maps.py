@@ -161,7 +161,7 @@ def humap_output_files(ids,species) :
         else : 
             ids_not_found.add(id)
     
-    nodes_file = [["Entrez gene ID","Official Symbol Interactor","Present in user input ids","ID present in Hu.MAP","Pathway"]]
+    nodes_file = [["Entrez gene ID","Official Symbol Interactor","Present in user input ids","ID present in Hu.MAP","Protein name","Pathway"]]
     for id in ids_set:
         if id in ppi_dict['nodes']:
             description_pathway=";".join(ppi_dict['nodes'][id])
@@ -174,8 +174,14 @@ def humap_output_files(ids,species) :
         else : 
             gene_name = "NA"
 
+        #get protein name 
+        if id in ppi_dict['protein_name']:
+            protein_name = ppi_dict['protein_name'][id]
+        else : 
+            protein_name = "NA"
+
         #make line
-        nodes_file.append([id]+[gene_name]+[id in ids]+[id not in ids_not_found]+[description_pathway])   
+        nodes_file.append([id]+[gene_name]+[id in ids]+[id not in ids_not_found]+[protein_name]+[description_pathway])   
     
     return network_file,nodes_file
 
