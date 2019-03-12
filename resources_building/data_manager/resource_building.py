@@ -428,11 +428,14 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
             humap_nodes = csv.reader(r.splitlines(), delimiter=',')
 
         dico_geneid_to_gene_name={}
+        dico_protein_name={}
         for line in humap_nodes :
             if check_entrez_geneid(line[4]):
                 if line[4] not in dico_geneid_to_gene_name:
                     dico_geneid_to_gene_name[line[4]]=line[3]
-
+                if line[4] not in dico_protein_name:
+                    dico_protein_name[line[4]]=line[5]
+            
         with requests.Session() as s:
             r = s.get('http://proteincomplexes.org/static/downloads/pairsWprob.txt')
             r = r.content.decode('utf-8')
@@ -477,6 +480,7 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
         dico['network']=dico_network
         dico['nodes']=dico_nodes
         dico['gene_name']=dico_geneid_to_gene_name
+        dico['protein_name']=dico_protein_name
 
     #writing output
     output_file = species+'_'+interactome+'_'+ time.strftime("%d-%m-%Y") + ".json"
