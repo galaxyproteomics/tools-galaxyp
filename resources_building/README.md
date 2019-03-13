@@ -6,6 +6,8 @@ For now, only resources files for tools listed below are handled:
 * Get MS/MS observations in tissue/fluid [Peptide Atlas]
 * Get expression profiles by (normal or tumor) tissue/cell type [Human Protein Atlas]
 * ID converter
+* Build Protein-Protein interaction network
+* Add protein features
 
 You can find a tutorial for galaxy data managers here:
 https://galaxyproject.org/admin/tools/data-managers/
@@ -19,7 +21,7 @@ To works, the data manager needs a data_manager_conf.xml file.
 This file defines data tables which will be fill by the data manager.
 It is thanks to this file that data tables are updated.
 
-For each by data manager job:
+For each data manager job:
 
 * a command line which run the data manager python script is made (like a regular tool) and a json dictionary
 * data manager script (resource_building.xml) will create output(s) file(s) and metadata into a json dictionary
@@ -32,15 +34,18 @@ example of each data table can be found in tool-data directory
 Files for this tools are just downloaded and referenced in the data table of Get expression profiles by (normal or tumor) tissue/cell type [Human Protein Atlas].
 api used : https://www.proteinatlas.org/about/download
 
-Each file created for Get expression profiles by (normal or tumor) tissue/cell type [Human Protein Atlas] are listed in the "proteore_peptide_atlas" data table
+Each file created for Get expression profiles by (normal or tumor) tissue/cell type [Human Protein Atlas] are listed respectively in "proteore_peptide_atlas_normal_tissue" data table and in "proteore_peptide_atlas_tumor_tissue" data table
 and saved in tool-data/peptide_atlas/ (default galaxy tool-data)
 
 ```
 tool_data_table_conf:
-  <tables>
-    <table name="proteore_protein_atlas" comment_char="#">
-      <columns>id, name, value, path</columns>
-      <file path="tool-data/proteore_protein_atlas.loc" />
+    <table name="proteore_protein_atlas_normal_tissue" comment_char="#">
+      <columns>id, name, tissue, value</columns>
+      <file path="tool-data/proteore_protein_atlas_normal_tissue.loc" />
+    </table>
+    <table name="proteore_protein_atlas_tumor_tissue" comment_char="#">
+      <columns>id, name, tissue, value</columns>
+      <file path="tool-data/proteore_protein_atlas_tumor_tissue.loc" />
     </table>
   </tables>
 ```
@@ -49,24 +54,23 @@ tool_data_table_conf:
 
 Ref files are downloaded for each tissue:
 
-
-* `Human Adrenal gland proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=432&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
-* `Human Brain proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=441&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
-* `Human Breast Proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=427&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
-* `Human CSF proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=434&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
-* `Human Digestive System proteome<"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=429&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
-* `Human female reproductive system proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=430&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
-* `Human Heart proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=418&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
-* `Human Kidney man Kidney Proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=424&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
-* `Human Liver proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=425&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
-* `Human Lung proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=419&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
-* `Human Male Reproductive System proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=431&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
-* `Human Pancreas proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=420&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
-* `Human Plasma Non-Glyco proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=465&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
-* `Human Spleen proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=421&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
-* `Human Testis and spermatozoa samples <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=463&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
-* `Human Urinary Bladder proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=422&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
-* `Human Urine proteome <"https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=423&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY">`_.
+* [Human Adrenal gland proteome](https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=432&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY)
+* [Human Brain proteome](https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=441&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY)
+* [Human Breast Proteome](https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=427&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY)
+* [Human CSF proteome](https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=434&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY)
+* [Human Digestive System proteome](https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=429&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY)
+* [Human female reproductive system proteome](https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=430&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY)
+* [Human Heart proteome](https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=418&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY)
+* [Human Kidney man Kidney Proteome](https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=424&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY)
+* [Human Liver proteome](https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=425&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY)
+* [Human Lung proteome](https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=419&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY)
+* [Human Male Reproductive System proteome](https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=431&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY)
+* [Human Pancreas proteome](https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=420&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY)
+* [Human Plasma Non-Glyco proteome](https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=465&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY)
+* [Human Spleen proteome](https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=421&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY)
+* [Human Testis and spermatozoa samples](https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=463&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY)
+* [Human Urinary Bladder proteome](https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=422&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY)
+* [Human Urine proteome](https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/GetProteins?&atlas_build_id=423&display_options=ShowAbundances&organism_id=2&redundancy_constraint=4&presence_level_constraint=1%2C2&gene_annotation_level_constraint=leaf&QUERY_NAME=AT_GetProteins&action=QUERY&output_mode=tsv&apply_action=QUERY)
 
 
 Example request for peptide atlas api:
@@ -129,30 +133,41 @@ Ids kept in the ref file are listed below:
 A tsv file is made (list of lists in python) from those files and saved.
 This tsv file will be load by id_converter and a python dictionary will be created from it (for each run of id_converter).
 Only a partial dictionary is made instead of a complete one. Only the dictionary for the input id type is made.
+This is the fastest solution found.
 
-Each tsv file created for ID converter (once per species) is listed in "proteore_id_mapping" loc file
+Each tsv file created for ID converter (once per species) is listed in a "proteore_id_mapping" loc file 
 and saved in tool-data/id_mapping/ (default galaxy tool-data)
+Files are located in tool-data/id_mapping
+There are one loc file per species :
 
 ```
 tool_data_table_conf: 
   <tables>
-    <table name="proteore_id_mapping" comment_char="#">
-      <columns>id, name, value, path</columns>
-      <file path="tool-data/proteore_id_mapping.loc" />
+    <table name="proteore_id_mapping_Human" comment_char="#">
+      <columns>id, name, species, value</columns>
+      <file path="tool-data/proteore_id_mapping_Human.loc" />
+    </table>
+    <table name="proteore_id_mapping_Mouse" comment_char="#">
+      <columns>id, name, species, value</columns>
+      <file path="tool-data/proteore_id_mapping_Mouse.loc" />
+    </table>
+    <table name="proteore_id_mapping_Rat" comment_char="#">
+      <columns>id, name, species, value</columns>
+      <file path="tool-data/proteore_id_mapping_Rat.loc" />
     </table>
   </tables>
 ```
 
-## Build protein interaction maps (PPI)
+## Build Protein-Protein interaction network (PPI)
 
-Two different interactome sources:
+Three different interactome sources:
 
 * BioGRID
 * Bioplex
 * Humap
 
 For each interactome, a python dictionary is made and saved into a json dictionary.
-This dictionary will be used by 'Build protein interaction maps' tool.
+This dictionary will be used by 'Build Protein-Protein interaction network' tool.
 
 For BioGRID, the following two files are used to build a dictionary:
 
@@ -173,6 +188,7 @@ For Humap, the following files are used to build a dictionary:
 * "https://www.reactome.org/download/current/NCBI2Reactome.txt"
 
 There is one data table per interactome: 
+Files are located in tool-data/PPI_dictionaries
 
 ```
 tool_data_table_conf: 
@@ -188,6 +204,25 @@ tool_data_table_conf:
     <table name="proteore_humap_dictionaries" comment_char="#">
       <columns>id, name, value, path</columns>
       <file path="tool-data/proteore_bioplex_dictionaries.loc" />
+    </table>
+  </tables>
+```
+## Add protein features
+
+One nextprot ref file is made for "Add protein features" tool.
+NeXtProt ids are downloaded from ftp://ftp.nextprot.org/pub/current_release/ac_lists/nextprot_ac_list_all.txt
+
+For each neXtProt ID, associated informations are collected with the neXtProt API :
+query="https://api.nextprot.org/entry/"+id+".json"
+
+The reference file created are referenced in "proteore_nextprot_ref" loc file and located in tool-data/proteore_nextprot_ref
+
+```
+tool_data_table_conf: 
+  <tables>
+    <table name='proteore_nextprot_ref' comment_char="#">
+      <columns>id, name, value</columns>
+      <file path="tool-data/proteore_nextprot_ref.loc"/>
     </table>
   </tables>
 ```
