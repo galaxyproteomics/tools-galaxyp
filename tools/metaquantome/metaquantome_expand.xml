@@ -5,11 +5,42 @@
     </macros>
     <expand macro="requirements" />
     <command detect_errors="exit_code"><![CDATA[
-        mkdir -p data && #slurp
-        @MAKE_SAMPS_TSV@
+        tar -xf $db_tar &&
         metaquantome expand
-        @EXPAND_PARAMS@
-        @DB_DIR@
+        --data_dir ./data
+        --samps '$samps'
+        --mode '$mode_args.mode'
+        #if $mode_args.mode == 'f'
+            --func_file='$mode_args.func_file'
+            --func_colname='$mode_args.func_colname'
+            --pep_colname_func='$mode_args.pep_colname_func'
+            --ontology='$mode_args.ontology_args.ontology'
+            #if $mode_args.ontology_args.ontology == 'go'
+                #if $mode_args.ontology_args.slim_down
+                    --slim_down
+                #end if
+            #end if
+        #end if
+        #if $mode_args.mode =='t'
+            --tax_file='$mode_args.tax_file'
+            --tax_colname='$mode_args.tax_colname'
+            --pep_colname_tax='$mode_args.pep_colname_tax'
+        #end if
+        #if $mode_args.mode == 'ft'
+            --func_file='$mode_args.func_file'
+            --func_colname='$mode_args.func_colname'
+            --pep_colname_func='$mode_args.pep_colname_func'
+            --ontology='$mode_args.ontology_args.ontology'
+            #if $mode_args.ontology_args.ontology == 'go'
+                #if $mode_args.ontology_args.slim_down
+                    --slim_down
+                #end if
+            #end if
+            --tax_file='$mode_args.tax_file'
+            --tax_colname='$mode_args.tax_colname'
+            --pep_colname_tax='$mode_args.pep_colname_tax'
+            --ft_tar_rank='$mode_args.ft_tar_rank'
+        #end if
         #if $input.input_type == 'nopep':
             --nopep --nopep_file='$input.nopep_file'
         #else:
@@ -19,8 +50,37 @@
        --outfile='$outfile'
     ]]></command>
     <inputs>
-        <expand macro="data_dir"/>
-        <expand macro="expand_params"/>
+        <param name="db_tar" type="data" format="tar" label="Database Archive File"
+          help="must be created by 'metaQuantome: download'"/>
+        <expand macro="SAMPS"/>
+        <conditional name="mode_args">
+            <param argument="--mode" type="select" label="Mode">
+                <option value="f">Functional analysis</option>
+                <option value="t">Taxonomic analysis</option>
+                <option value="ft">Functional-taxonomic interaction analysis</option>
+            </param>
+            <when value="f">
+                <expand macro="FUNC_FILE"/>
+                <expand macro="ONTOLOGY_ARGS"/>
+            </when>
+            <when value="t">
+                <expand macro="TAX_FILE"/>
+            </when>
+            <when value="ft">
+                <expand macro="FUNC_FILE"/>
+                <expand macro="ONTOLOGY_ARGS"/>
+                <expand macro="TAX_FILE"/>
+                <param argument="--ft_tar_rank" type="select" label="rank at which to group taxonomy">
+                    <option value="species">species</option>
+                    <option value="genus" selected="true">genus</option>
+                    <option value="family">family</option>
+                    <option value="order">order</option>
+                    <option value="class">class</option>
+                    <option value="phylum">phylum</option>
+                    <option value="kingdom">kingdom</option>
+                </param>
+            </when>
+        </conditional>
         <conditional name="input">
             <param name="input_type" type="select" label="Select input data">
                 <option value="int">tabular intensity file with peptide column</option>
@@ -39,7 +99,6 @@
                     help=""/>
             </when>
         </conditional>
-        <expand macro="output_samples_choice"/>
     </inputs>
     <outputs>
         <data format="tabular" name="outfile" label="${tool.name} on ${on_string} expanded"/>
@@ -47,23 +106,20 @@
     </outputs>
     <tests>
         <test>
+             <param name="db_tar" value="ec.tar" ftype="tar"/>
+             <param name="samps" value="samples_basic.tab" ftype="tabular"/>
              <param name="int_file" value="int_ttest.tab" ftype="tabular"/>
              <param name="pep_colname_int" value="peptide" />
              <param name="func_file" value="multiple_func.tab" />
              <param name="pep_colname_func" value="peptide" />
-             <param name="func_colname" value="go"/>
+             <param name="func_colname" value="ec"/>
              <param name="mode" value="f" />
-             <param name="ontology" value="go" />
-             <param name="samps_src" value="build" />
-             <repeat name="samps">
-                 <param name="group_name" value="s1"/>
-                 <param name="col_names" value="int1,int2,int3"/>
-             </repeat>
-             <repeat name="samps">
-                 <param name="group_name" value="s2"/>
-                 <param name="col_names" value="int4,int5,int6"/>
-             </repeat>
-             <output name="outfile" file="go_expanded.tab" ftype="tabular"/>
+             <param name="ontology" value="ec" />
+             <output name="outfile">
+               <assert_contents>
+                 <has_text text="1.2.7.10"/>
+               </assert_contents>
+             </output>
         </test>
     </tests>
     <help>
@@ -74,7 +130,7 @@ metaQuantome expand
 The *expand* module is the first step in the metaQuantome analysis workflow,
 and can be run to analyze function, taxonomy, or function and taxonomy together.
 
-Typically, the analyis workflow is expand, filter, stat, viz (for differential expression), or expand, filter, viz (for other analyses). 
+Typically, the analyis workflow is expand, filter, stat, viz (for differential expression), or expand, filter, viz (for other analyses).
 
 
 The following information is required for all 3 analysis modes.
