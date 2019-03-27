@@ -1,4 +1,4 @@
-<tool id="cardinal_preprocessing" name="MSI preprocessing" version="@VERSION@.2">
+<tool id="cardinal_preprocessing" name="MSI preprocessing" version="@VERSION@.3">
     <description>
         mass spectrometry imaging preprocessing
     </description>
@@ -39,8 +39,9 @@ library(ggplot2)
 
 @READING_MSIDATA@
 
+@READING_MSIDATA_INRAM@  ###change out
+
 ## remove duplicated coordinates, otherwise peak picking and log2 transformation will fail
-print(paste0(sum(duplicated(coord(msidata)[,1:2])), " duplicated coordinates were removed"))
 msidata <- msidata[,!duplicated(coord(msidata)[,1:2])]
 
 
@@ -131,6 +132,12 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                 print('sgolay smoothing')
 
                 msidata = smoothSignal(msidata, method="$method.methods_conditional.methods_for_smoothing.smoothing_method", window=$method.methods_conditional.window_smoothing, order = $method.methods_conditional.methods_for_smoothing.order_of_filters)
+
+                ## if selected replace negative intensities with zero
+                #if $method.methods_conditional.methods_for_smoothing.replace_negatives:
+                    spectra(msidata)[spectra(msidata)<0] = 0
+                #end if
+
             #elif str($method.methods_conditional.methods_for_smoothing.smoothing_method) == 'ma':
                 print('moving average smoothing')
 
@@ -268,10 +275,8 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
 
                 ## optional: replace NA with 0
                 #if $method.methods_conditional.methods_for_reduction.replace_NA_bin:
-                    ## binning seems to create normal R matrix but to be sure:
-                    iData(msidata) <- iData(msidata)[]
                     ## count and replace NAs
-                    print(paste0("Number of NA that were set to zero after binning:",sum(is.na(spectra(msidata)[]))))
+                    print(paste0("Number of NA that were set to zero after binning:",sum(is.na(spectra(msidata)))))
                     spectra(msidata)[is.na(spectra(msidata))] = 0 
                 #end if
 
@@ -316,13 +321,13 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             print('Transformation')
 
             ## convert data into R matrix what brings it automatically into memory and can take some take but next steps need R matrix
-            iData(msidata) <- iData(msidata)[]
+            ##iData(msidata) <- iData(msidata)[]
 
             #if str( $method.methods_conditional.transf_conditional.trans_type) == 'log2':
                 print('log2 transformation')
 
                 ## replace 0 with NA to prevent Inf
-                spectra_df = spectra(msidata)[]
+                spectra_df = spectra(msidata)[] ## convert into R matrix
                 spectra_df[spectra_df ==0] = NA
                 print(paste0("Number of 0 which were converted into NA:",sum(is.na(spectra_df))))
                 spectra(msidata) = spectra_df
@@ -330,13 +335,13 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                 spectra(msidata) = log2(spectra(msidata))
                 ## optional: replace NA with 0
                 #if $method.methods_conditional.transf_conditional.replace_NA_trans:
-                    spectra(msidata)[][is.na(spectra(msidata)[])] = 0
+                    spectra(msidata)[is.na(spectra(msidata))] = 0
                 #end if
 
             #elif str( $method.methods_conditional.transf_conditional.trans_type) == 'sqrt':
                 print('squareroot transformation')
 
-                spectra(msidata)[] = sqrt(spectra(msidata)[])
+                spectra(msidata) = sqrt(spectra(msidata)[])
 
            #end if
 
@@ -417,11 +422,12 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                         </param>
                         <when value="gaussian">
                             <param name="sd_gaussian" type="float" value="2"
-                                   label="The standard deviation for the Gaussian kernel (window/sd)"/>
+                                   label="The standard deviation for the Gaussian kernel. Default = window/4"/>
                         </when>
                         <when value="sgolay">
                             <param name="order_of_filters" type="integer" value="3"
                                    label="The order of the smoothing filter, must be smaller than window size"/>
+                            <param name="replace_negatives" type="boolean" label="Replace negative intensities with 0" truevalue="TRUE" falsevalue="FALSE" checked="True" help="Savitzky golay smoothing can introduce negative intensity values it is recommended to replace them with zero"/>
                         </when>
                         <when value="ma">
                             <param name="coefficients_ma_filter" type="float" value="1"
@@ -516,7 +522,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                                     <option value="mean" selected="True">mean</option>
                                     <option value="sum">sum</option>
                             </param>
-                            <param name="replace_NA_bin" type="boolean" label="Replace NA with 0" truevalue="TRUE" falsevalue="FALSE" help="Binning can introduce NAs, should they be replaced with 0"/>
+                            <param name="replace_NA_bin" type="boolean" label="Replace NA with 0" truevalue="TRUE" falsevalue="FALSE" checked="True" help="Binning can introduce NAs, should they be replaced with 0"/>
                         </when>
                         <when value="resample">
                             <param name="resample_step" type="float" value="1"
@@ -550,7 +556,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                             <option value="sqrt">sqrt</option>
                         </param>
                             <when value="log2">
-                                <param name="replace_NA_trans" type="boolean" label="Replace NA with 0" truevalue="TRUE" falsevalue="FALSE" help="0 values are set to NA before log2 transformation, after transformation they can be set back to 0"/>
+                                <param name="replace_NA_trans" type="boolean" label="Replace NA with 0" truevalue="TRUE" falsevalue="FALSE" checked="True" help="0 values are set to NA before log2 transformation, after transformation they can be set back to 0"/>
                             </when>
                             <when value="sqrt"/>
                     </conditional>
@@ -559,8 +565,8 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
         </repeat>
         <param name="imzml_output" type="select" display = "radio" optional = "False"
                label="Output format" help= "Choose the output format">
-                <option value="imzml_format" selected="True">imzML</option>
-                <option value="rdata_format">RData</option>
+                <option value="imzml_format" >imzML</option>
+                <option value="rdata_format" selected="True" >RData</option>
         </param>
     </inputs>
     <outputs>
@@ -763,7 +769,7 @@ This tool provides multiple Cardinal functions to preprocess mass spectrometry i
 **Output**
 
 - MSI data as imzML file or .RData (can be read with the Cardinal package in R)
-- pdf with key values and average mass spectra after each processing step
+- pdf with key values and four random mass spectra after each processing step
 
         ]]>
     </help>
