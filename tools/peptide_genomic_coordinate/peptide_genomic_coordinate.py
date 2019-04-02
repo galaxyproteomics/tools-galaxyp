@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 # 
 # Author: Praveen Kumar
 # University of Minnesota
@@ -7,8 +7,6 @@
 # 
 # python peptideGenomicCoordinate.py <peptide_list> <mz_to_sqlite DB> <genomic mapping file DB> <output.bed>
 # 
-#
-
 import sys
 import sqlite3
 
@@ -61,7 +59,7 @@ def main():
                 cds_end = int(each_entry[6])
                 pep_pos_start = (acc_seq.find(peptide)*3)
                 pep_pos_end = pep_pos_start + (len(peptide)*3)
-                if (pep_pos_start >= cds_start) and (pep_pos_end <= cds_end):
+                if pep_pos_start >= cds_start and pep_pos_end <= cds_end:
                     if strand == "+":
                         pep_start = start + pep_pos_start - cds_start
                         pep_end = start + pep_pos_end - cds_start
@@ -79,7 +77,7 @@ def main():
                 else:
                     if flag == 0:
                         if strand == "+":
-                            if (pep_pos_start >= cds_start) and (pep_pos_start <= cds_end) and (pep_pos_end > cds_end):
+                            if pep_pos_start >= cds_start and pep_pos_start <= cds_end and pep_pos_end > cds_end:
                                 pep_start = start + pep_pos_start - cds_start
                                 pep_end = end
                                 pep_thick_start = 0
@@ -88,7 +86,7 @@ def main():
                                 splice_flag = splice_flag + 1
                                 if splice_flag == 2:
                                     flag = 1
-                            elif (pep_pos_end >= cds_start) and (pep_pos_end <= cds_end) and (pep_pos_start < cds_start):
+                            elif pep_pos_end >= cds_start and pep_pos_end <= cds_end and pep_pos_start < cds_start:
                                 pep_start = start
                                 pep_end = start + pep_pos_end - cds_start
                                 pep_thick_start = (len(peptide)*3)-(pep_end-pep_start)
@@ -100,7 +98,7 @@ def main():
                             else:
                                 pass
                         else:
-                            if (pep_pos_start >= cds_start) and (pep_pos_start <= cds_end) and (pep_pos_end >= cds_end):
+                            if pep_pos_start >= cds_start and pep_pos_start <= cds_end and pep_pos_end >= cds_end:
                                 pep_start = start
                                 pep_end = end - pep_pos_start - cds_start
                                 pep_thick_start = 0
@@ -109,7 +107,7 @@ def main():
                                 splice_flag = splice_flag + 1
                                 if splice_flag == 2:
                                     flag = 1
-                            elif (pep_pos_end >= cds_start) and (pep_pos_end <= cds_end) and (pep_pos_start <= cds_start):
+                            elif pep_pos_end >= cds_start and pep_pos_end <= cds_end and pep_pos_start <= cds_start:
                                 pep_start = end - pep_pos_end + cds_start
                                 pep_end = end
                                 pep_thick_start = (len(peptide)*3)-(pep_end-pep_start)
@@ -120,6 +118,7 @@ def main():
                                     flag = 1
                             else:
                                 pass
+
             if len(spliced_peptide) == 0:
                 if strand == "+":
                     bed_line = [chromosome, str(pep_start), str(pep_end), peptide, "255", strand, str(pep_start), str(pep_end), "0", "1", str(pep_end-pep_start), "0"]
