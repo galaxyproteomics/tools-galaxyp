@@ -539,19 +539,18 @@ def Build_nextprot_ref_file(data_manager_dict,target_directory):
         else :
             all_diseases="NA"
 
-        #get all tm domain
+        #get all tm domain 
         nb_domains = 0
-        if  "domain" in data['entry']['annotationsByCategory'].keys():
-            tm_domains = data['entry']['annotationsByCategory']["domain"]
-            for tm_domain in tm_domains :
-                if "properties" in tm_domain.keys() and tm_domain['properties']!=[]:
-                    domains = tm_domains["properties"]
-                    for domain in domains :
-                        if domain["name"]=="region structure" and domain["value"]=="Helical" :
-                            nb_domains+=1
+        if  "transmembrane-region" in data['entry']['annotationsByCategory'].keys():
+            tm_domains = data['entry']['annotationsByCategory']["transmembrane-region"]
+            all_tm_domains = set()
+            for tm in tm_domains :
+                all_tm_domains.add(tm['cvTermName'])
+                nb_domains+=1
+                print "nb domains ++"
+                print (nb_domains)
 
-        
-        nextprot_file.append([id,mass_mol,str(seq_length),iso_elec_point,chr_loc,all_subcell_locs,all_diseases,str(nb_domains),protein_existence])
+    nextprot_file.append([id,mass_mol,str(seq_length),iso_elec_point,chr_loc,all_subcell_locs,all_diseases,str(nb_domains),protein_existence])
     
     output_file = 'nextprot_ref_'+ time.strftime("%d-%m-%Y") + ".tsv"
     path = os.path.join(target_directory,output_file)
