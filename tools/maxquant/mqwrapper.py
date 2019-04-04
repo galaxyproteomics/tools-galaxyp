@@ -18,14 +18,14 @@ import mqparam
 
 # build parser
 parser = argparse.ArgumentParser()
-arguments = ["--raw_files", "--fasta_files", "--fixed_mods",
+arguments = ["--raw_files", "--mzxml_files", "--fasta_files", "--fixed_mods",
              "--var_mods", "--proteases", "--exp_design",
              "--missed_cleavages", "--min_unique_pep", "--mqpar_in",
              "--num_threads", "--output_all", "--mqpar_out",
-             "--raw_file_names", "--mzTab", "--light_mods", "--medium_mods",
+             "--infile_names", "--mzTab", "--light_mods", "--medium_mods",
              "--heavy_mods", "--version"]
 
-flags = ("--calc_peak_properties", "--silac", "--write_mztab")
+flags = ("--calc_peak_properties", "--write_mztab")
 
 
 txt_output = ("evidence", "msms", "parameters",
@@ -44,10 +44,16 @@ for flag in flags:
 
 args = vars(parser.parse_args())
 
-# link rawfile datasets to .raw names for maxquant to accept them
-files = args['raw_files'].split(',')
-filenames = args['raw_file_names'].split(',')
-for f, l in zip(files, filenames):
+# link infile datasets to names with correct extension
+# for maxquant to accept them
+files = (args['raw_files'] if args['raw_files']
+         else args['mzxml_files']).split(',')
+ftype = ".raw" if args['raw_files'] else ".mzXML"
+filenames = args['infile_names'].split(',')
+filenames_with_ext = [(a if a.endswith(ftype) else a + ftype)
+                      for a in filenames]
+
+for f, l in zip(files, filenames_with_ext):
     os.link(f, l)
 
 # arguments for mqparam
@@ -72,7 +78,8 @@ if m.version != args['version']:
                     '. Tool uses version {}.'.format(args['version']))
 
 # modify parameters
-m.add_rawfiles([os.path.join(os.getcwd(), name) for name in filenames])
+m.add_infiles([os.path.join(os.getcwd(), name)
+               for name in filenames_with_ext])
 m.add_fasta_files(args['fasta_files'].split(','))
 
 for e in simple_args:
@@ -106,5 +113,5 @@ if args['mzTab'] != 'None':
     if os.path.isfile(source):
         shutil.copy(source, args['mzTab'])
 
-if args['output_all']:
+if args['output_all'] != 'None':
     subprocess.run(('tar', '-zcf', args['output_all'], './combined/txt/'))

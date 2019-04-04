@@ -58,39 +58,14 @@ class MQParam:
         child = ET.SubElement(el, name, attrib=attrib if attrib else {})
         child.text = text
 
-    @staticmethod
-    def get_orig_filename(filename):
-        """Search for the original file name in a raw file.
-        Not the best solution for mapping raw files uploaded in
-        galaxy to a locally created experimental design template."""
-
-        # 1st group: file name without extension
-        pattern = re.compile(r'[\\/]([^\./\\]+)\.raw')
-        with open(filename, mode='rb') as f:
-            # only look at first four lines
-            for i in range(0, 4):
-                line = f.readline()
-                temp = []
-                # ignore 0x00 bytes
-                for c in line:
-                    if c:
-                        temp.append(c)
-                ascii_line = bytes(temp).decode('ascii', 'ignore')
-                match = re.search(pattern, ascii_line)
-                if match:
-                    return match.group(1)
-
-        # raise error if file name could not be found
-        raise Exception('Unable to find file name in {}'.format(filename))
-
-    def add_rawfiles(self, rawfiles):
-        """Add a list of raw files to the mqpar.xml.
+    def add_infiles(self, infiles):
+        """Add a list of raw/mzxml files to the mqpar.xml.
         If experimental design template was specified,
         modify other parameters accordingly.
-        The raw file must be specified as absolute paths
+        The files must be specified as absolute paths
         for maxquant to find them.
         >>> t1 = MQParam("test", './test-data/template.xml', None)
-        >>> t1.add_rawfiles(('test1', ))
+        >>> t1.add_infiles(('test1', ))
         >>> t1.root.find("filePaths")[0].text
         'test1'
         >>> t1.root.find("fractions")[0].text
@@ -99,7 +74,7 @@ class MQParam:
         1
         >>> t2 = MQParam("test", './test-data/template.xml', \
                          './test-data/exp_design_test.txt')
-        >>> t2.add_rawfiles(('test-data/QEplus021874.raw', \
+        >>> t2.add_infiles(('test-data/QEplus021874.raw', \
                              'test-data/QEplus021876.raw'))
         >>> len(t2.root.find("filePaths"))
         2
@@ -112,10 +87,10 @@ class MQParam:
         """
 
         if not self.exp_design:  # no experimentalDesignTemplate.txt given
-            names = rawfiles
-            fracs = ('32767',) * len(rawfiles)
-            exps = [os.path.split(r)[1] for r in rawfiles]
-            PTMs = ['False'] * len(rawfiles)
+            names = infiles
+            fracs = ('32767',) * len(infiles)
+            exps = [os.path.split(f)[1] for f in infiles]
+            PTMs = ['False'] * len(infiles)
         else:  # parse experimentalDesignTemplate
             with open(self.exp_design) as design_file:
                 design = {}
@@ -130,14 +105,14 @@ class MQParam:
                             design[i] = []
                             index.append(i)
 
-            # map rawfiles to names in exp. design template
+            # map infiles to names in exp. design template
             names = []
             names_to_paths = {}
-            for r in rawfiles:
-                names_to_paths[os.path.splitext(os.path.basename(r))[0]] = r
+            for f in infiles:
+                names_to_paths[os.path.splitext(os.path.basename(f))[0]] = f
             for name in design['Name']:
                 # same substitution as in maxquant.xml,
-                # passing the element identifiers
+                # when passing the element identifiers
                 fname = re.sub('[^\w\-\s\.]', '_', name)
                 names.append(names_to_paths[fname] if fname in names_to_paths
                              else None)
@@ -153,7 +128,7 @@ class MQParam:
             exps = design['Experiment']
             fracs = design['Fraction']
 
-        # These parent nodes will get a child appended for each RAW file
+        # These parent nodes will get a child appended for each file
         nodenames = ('filePaths', 'experiments', 'fractions',
                      'ptms', 'paramGroupIndices', 'referenceChannel')
 
