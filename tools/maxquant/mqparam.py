@@ -1,7 +1,7 @@
 """
 Create a project-specific MaxQuant parameter file.
 
-TODO: load FASTA-template from template
+TODO: load FASTA template from mqpar template
 
 Authors: Damian Glaetzer <d.glaetzer@mailbox.org>
          Franziska Elsaesser <fels@leute.server.de>
@@ -74,12 +74,12 @@ class MQParam:
         1
         >>> t2 = MQParam("test", './test-data/template.xml', \
                          './test-data/exp_design_test.txt')
-        >>> t2.add_infiles(('test-data/QEplus021874.raw', \
-                             'test-data/QEplus021876.raw'))
+        >>> t2.add_infiles(('test-data/QEplus021874.thermo.raw', \
+                             'test-data/QEplus021876.thermo.raw'))
         >>> len(t2.root.find("filePaths"))
         2
         >>> t2.root.find("filePaths")[1].text
-        'test-data/QEplus021876.raw'
+        'test-data/QEplus021876.thermo.raw'
         >>> t2.root.find("experiments")[1].text
         '2'
         >>> t2.root.find("fractions")[0].text
@@ -108,8 +108,11 @@ class MQParam:
             # map infiles to names in exp. design template
             names = []
             names_to_paths = {}
+            # strip path and extension
             for f in infiles:
-                names_to_paths[os.path.splitext(os.path.basename(f))[0]] = f
+                b = os.path.basename(f)
+                basename = b[:-6] if b.endswith('.mzXML') else b[:-11]
+                names_to_paths[basename] = f
             for name in design['Name']:
                 # same substitution as in maxquant.xml,
                 # when passing the element identifiers

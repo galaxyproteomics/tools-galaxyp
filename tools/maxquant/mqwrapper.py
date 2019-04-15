@@ -48,9 +48,10 @@ args = vars(parser.parse_args())
 # for maxquant to accept them
 files = (args['raw_files'] if args['raw_files']
          else args['mzxml_files']).split(',')
-ftype = ".raw" if args['raw_files'] else ".mzXML"
+ftype = ".thermo.raw" if args['raw_files'] else ".mzXML"
 filenames = args['infile_names'].split(',')
-filenames_with_ext = [(a if a.endswith(ftype) else a + ftype)
+filenames_with_ext = [(a if a.endswith(ftype)
+                       else os.path.splitext(a)[0] + ftype)
                       for a in filenames]
 
 for f, l in zip(files, filenames_with_ext):
@@ -68,6 +69,7 @@ mqpar_temp = os.path.join(os.getcwd(), 'mqpar.xml')
 if args['mqpar_in']:
     mqpar_in = args['mqpar_in']
 else:
+    # create mqpar template
     subprocess.run(('maxquant', '-c', mqpar_temp))
     mqpar_in = mqpar_temp
 mqpar_out = args['mqpar_out'] if args['mqpar_out'] != 'None' else mqpar_temp
