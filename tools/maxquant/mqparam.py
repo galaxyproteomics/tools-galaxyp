@@ -1,10 +1,12 @@
 """
 Create a project-specific MaxQuant parameter file.
 
-TODO: load FASTA template from mqpar template
+TODO: check validity of parsed experimental design template
+      add support for paramter groups
+      add reporter ion MS2
+      add label free quantification
 
-Authors: Damian Glaetzer <d.glaetzer@mailbox.org>
-         Franziska Elsaesser <fels@leute.server.de>
+Author: Damian Glaetzer <d.glaetzer@mailbox.org>
 """
 
 import os
@@ -58,7 +60,57 @@ class MQParam:
         child = ET.SubElement(el, name, attrib=attrib if attrib else {})
         child.text = text
 
-    def add_infiles(self, infiles):
+    def make_exp_design(self, infiles):
+        """Create a dict representing an experimental design from
+        an experimental design template and a list of input files.
+        If the experimental design template is None, create a default
+        design with one experiment for each input file, no fractions and
+        parameter group 0 for all files.
+        """
+        design = {s : [] for s in ("Name", "PTM", "Fraction",
+                                   "Experiment", "ParameterGroup", "ReferenceChannel")}
+        if not self.exp_design:
+            design["Name"] = infiles
+            design["Fraction"] = ('32767',) * len(infiles)
+            design["Experiment"] = [os.path.split(f)[1] for f in infiles]
+            design["PTM"] = ('False',) * len(infiles)
+            design["ParameterGroup"] =  (0,) * len(infiles)
+            design["ReferenceChannel"] = ('',) * len(infiles)
+        else:
+            with open(self.exp_design) as design_file:
+                index_line = design_file.readline.strip()
+                index = []
+                for i in index_line.split('\t'):
+                    if i in design:
+                        index.append(i)
+                    else:
+                        raise Exception("Invalid comlumn index in "
+                                        + "experimental design template: {}".format(i))
+                for line in design_file:
+                    row = line.strip().split('\t')
+                    for e, i in zip_longest(row, index):
+                        design[i].append(e)
+
+            # map infiles to names in exp. design template
+            names = []
+            names_to_paths = {}
+            # strip path and extension
+            for f in infiles:
+                b = os.path.basename(f)
+                basename = b[:-6] if b.endswith('.mzXML') else b[:-11]
+                names_to_paths[basename] = f
+            for name in design['Name']:
+                # same substitution as in maxquant.xml,
+                # when passing the element identifiers
+                fname = re.sub('[^\w\-\s\.]', '_', name)
+                names.append(names_to_paths[fname] if fname in names_to_paths
+                             else None)
+            # replace original file names with matching galaxy datasets 
+            design['Name'] = names
+
+        return design
+        
+    def add_infiles(self, infiles, interactive):
         """Add a list of raw/mzxml files to the mqpar.xml.
         If experimental design template was specified,
         modify other parameters accordingly.
@@ -131,9 +183,14 @@ class MQParam:
             exps = design['Experiment']
             fracs = design['Fraction']
 
-        # These parent nodes will get a child appended for each file
-        nodenames = ('filePaths', 'experiments', 'fractions',
-                     'ptms', 'paramGroupIndices', 'referenceChannel')
+        # These parent nodes will get a child appended for each file.
+        # In non-interactive mode with no exp. design given, we only
+        # change the file names.
+        if not (interactive or self.exp_design):
+            nodenames = ('filePaths', )
+        else:
+            nodenames = ('filePaths', 'experiments', 'fractions',
+                         'ptms', 'paramGroupIndices', 'referenceChannel')
 
         # Get parent nodes from document
         nodes = dict()
@@ -150,11 +207,12 @@ class MQParam:
         for i in range(0, len(names)):
             if names[i]:
                 MQParam._add_child(nodes['filePaths'], 'string', names[i])
-                MQParam._add_child(nodes['experiments'], 'string', exps[i])
-                MQParam._add_child(nodes['fractions'], 'short', fracs[i])
-                MQParam._add_child(nodes['ptms'], 'boolean', PTMs[i])
-                MQParam._add_child(nodes['paramGroupIndices'], 'int', '0')
-                MQParam._add_child(nodes['referenceChannel'], 'string', '')
+                if (interactive or self.exp_design):
+                    MQParam._add_child(nodes['experiments'], 'string', exps[i])
+                    MQParam._add_child(nodes['fractions'], 'short', fracs[i])
+                    MQParam._add_child(nodes['ptms'], 'boolean', PTMs[i])
+                    MQParam._add_child(nodes['paramGroupIndices'], 'int', '0')
+                    MQParam._add_child(nodes['referenceChannel'], 'string', '')
 
     def add_fasta_files(self, files):
         """Add fasta file groups.
