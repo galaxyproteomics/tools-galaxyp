@@ -501,7 +501,18 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
 def Build_nextprot_ref_file(data_manager_dict,target_directory):
     nextprot_ids_file = "nextprot_ac_list_all.txt"
     ids = id_list_from_nextprot_ftp(nextprot_ids_file,target_directory)
-
+    
+    output_file = 'nextprot_ref_'+ time.strftime("%d-%m-%Y") + ".tsv"
+    path = os.path.join(target_directory,output_file)
+    name = "neXtProt release "+time.strftime("%d-%m-%Y")
+    id = "nextprot_ref_"+time.strftime("%d-%m-%Y")
+    
+    
+    with open(path, 'w') as output:
+        writer = csv.writer(output,delimiter="\t")
+    
+    
+        
     nextprot_file=[["NextprotID","MW","SeqLength","IsoPoint","Chr","SubcellLocations","Diseases","TMDomains","ProteinExistence"]]
     for id in ids :
         #print (id)
@@ -547,18 +558,10 @@ def Build_nextprot_ref_file(data_manager_dict,target_directory):
             for tm in tm_domains :
                 all_tm_domains.add(tm['cvTermName'])
                 nb_domains+=1
-                print "nb domains ++"
-                print (nb_domains)
+             #   print "nb domains ++"
+              #  print (nb_domains)
 
-    nextprot_file.append([id,mass_mol,str(seq_length),iso_elec_point,chr_loc,all_subcell_locs,all_diseases,str(nb_domains),protein_existence])
-    
-    output_file = 'nextprot_ref_'+ time.strftime("%d-%m-%Y") + ".tsv"
-    path = os.path.join(target_directory,output_file)
-    name = "neXtProt release "+time.strftime("%d-%m-%Y")
-    id = "nextprot_ref_"+time.strftime("%d-%m-%Y")
-
-    with open(path, 'w') as output:
-        writer = csv.writer(output,delimiter="\t")
+        nextprot_file.append([id,mass_mol,str(seq_length),iso_elec_point,chr_loc,all_subcell_locs,all_diseases,str(nb_domains),protein_existence])
         writer.writerows(nextprot_file)
 
     data_table_entry = dict(id=id, name = name, value = path)
