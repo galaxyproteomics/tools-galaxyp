@@ -508,8 +508,8 @@ def Build_nextprot_ref_file(data_manager_dict,target_directory):
     id = "nextprot_ref_"+time.strftime("%d-%m-%Y")
     
     
-    with open(path, 'w') as output:
-        writer = csv.writer(output,delimiter="\t")
+    output = open(path, 'w')
+    writer = csv.writer(output,delimiter="\t")
     
     
         
