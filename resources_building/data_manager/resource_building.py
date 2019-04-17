@@ -514,6 +514,8 @@ def Build_nextprot_ref_file(data_manager_dict,target_directory):
     
         
     nextprot_file=[["NextprotID","MW","SeqLength","IsoPoint","Chr","SubcellLocations","Diseases","TMDomains","ProteinExistence"]]
+    writer.writerows(nextprot_file)
+    
     for id in ids :
         #print (id)
         query="https://api.nextprot.org/entry/"+id+".json"
@@ -560,7 +562,7 @@ def Build_nextprot_ref_file(data_manager_dict,target_directory):
                 nb_domains+=1
              #   print "nb domains ++"
               #  print (nb_domains)
-
+        nextprot_file.clear()
         nextprot_file.append([id,mass_mol,str(seq_length),iso_elec_point,chr_loc,all_subcell_locs,all_diseases,str(nb_domains),protein_existence])
         writer.writerows(nextprot_file)
 
