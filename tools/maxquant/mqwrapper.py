@@ -1,7 +1,7 @@
 """
 Run MaxQuant on a modified mqpar.xml.
 Use maxquant conda package.
-TODO: add support for protein groups
+TODO: add support for parameter groups
 
 Authors: Damian Glaetzer <d.glaetzer@mailbox.org>
 
@@ -25,7 +25,7 @@ arguments = ["--raw_files", "--mzxml_files", "--fasta_files", "--fixed_mods",
              "--infile_names", "--mzTab", "--light_mods", "--medium_mods",
              "--heavy_mods", "--version"]
 
-flags = ("--calc_peak_properties", "--write_mztab")
+flags = ("--calc_peak_properties", "--write_mztab", "--interactive")
 
 
 txt_output = ("evidence", "msms", "parameters",
@@ -81,7 +81,7 @@ if m.version != args['version']:
 
 # modify parameters
 m.add_infiles([os.path.join(os.getcwd(), name)
-               for name in filenames_with_ext])
+               for name in filenames_with_ext], args['interactive'])
 m.add_fasta_files(args['fasta_files'].split(','))
 
 for e in simple_args:

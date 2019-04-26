@@ -60,15 +60,18 @@ class MQParam:
         child = ET.SubElement(el, name, attrib=attrib if attrib else {})
         child.text = text
 
-    def make_exp_design(self, infiles):
+    def _make_exp_design(self, infiles):
         """Create a dict representing an experimental design from
         an experimental design template and a list of input files.
         If the experimental design template is None, create a default
         design with one experiment for each input file, no fractions and
         parameter group 0 for all files.
+        >>> t2 = MQParam("test", './test-data/template.xml', \
+                         './test-data/two/exp_design_template.txt')
+        >>> design = t2._make_exp_design(['./test-data/BSA_min_21.mzXML', \
+                                          './test-data/BSA_min22'])
         """
-        design = {s : [] for s in ("Name", "PTM", "Fraction",
-                                   "Experiment", "ParameterGroup", "ReferenceChannel")}
+        design = {s : [] for s in ("Name", "PTM", "Fraction", "Experiment")}
         if not self.exp_design:
             design["Name"] = infiles
             design["Fraction"] = ('32767',) * len(infiles)
@@ -78,7 +81,7 @@ class MQParam:
             design["ReferenceChannel"] = ('',) * len(infiles)
         else:
             with open(self.exp_design) as design_file:
-                index_line = design_file.readline.strip()
+                index_line = design_file.readline().strip()
                 index = []
                 for i in index_line.split('\t'):
                     if i in design:
@@ -117,7 +120,7 @@ class MQParam:
         The files must be specified as absolute paths
         for maxquant to find them.
         >>> t1 = MQParam("test", './test-data/template.xml', None)
-        >>> t1.add_infiles(('test1', ))
+        >>> t1.add_infiles(('test1', ), True)
         >>> t1.root.find("filePaths")[0].text
         'test1'
         >>> t1.root.find("fractions")[0].text
@@ -127,7 +130,7 @@ class MQParam:
         >>> t2 = MQParam("test", './test-data/template.xml', \
                          './test-data/exp_design_test.txt')
         >>> t2.add_infiles(('test-data/QEplus021874.thermo.raw', \
-                             'test-data/QEplus021876.thermo.raw'))
+                             'test-data/QEplus021876.thermo.raw'), True)
         >>> len(t2.root.find("filePaths"))
         2
         >>> t2.root.find("filePaths")[1].text
@@ -138,57 +141,22 @@ class MQParam:
         '3'
         """
 
-        if not self.exp_design:  # no experimentalDesignTemplate.txt given
-            names = infiles
-            fracs = ('32767',) * len(infiles)
-            exps = [os.path.split(f)[1] for f in infiles]
-            PTMs = ['False'] * len(infiles)
-        else:  # parse experimentalDesignTemplate
-            with open(self.exp_design) as design_file:
-                design = {}
-                index = []
-                for line in design_file:
-                    if design:
-                        row = line.strip().split('\t')
-                        for e, i in zip_longest(row, index):
-                            design[i].append(e)
-                    else:
-                        for i in line.strip().split('\t'):
-                            design[i] = []
-                            index.append(i)
-
-            # map infiles to names in exp. design template
-            names = []
-            names_to_paths = {}
-            # strip path and extension
-            for f in infiles:
-                b = os.path.basename(f)
-                basename = b[:-6] if b.endswith('.mzXML') else b[:-11]
-                names_to_paths[basename] = f
-            for name in design['Name']:
-                # same substitution as in maxquant.xml,
-                # when passing the element identifiers
-                fname = re.sub('[^\w\-\s\.]', '_', name)
-                names.append(names_to_paths[fname] if fname in names_to_paths
-                             else None)
-
-            PTMslist = design['PTM']
-            PTMs = []
-            for item in PTMslist:
-                if item == 'True':
-                    PTMs.append(item)
-                else:
-                    PTMs.append('False')
-
-            exps = design['Experiment']
-            fracs = design['Fraction']
+        design = self._make_exp_design(infiles)
+        print(design)
 
         # These parent nodes will get a child appended for each file.
+        # In non-interactive mode their order in the orig. mqpar needs
+        # to be kept.
         # In non-interactive mode with no exp. design given, we only
         # change the file names.
-        if not (interactive or self.exp_design):
-            nodenames = ('filePaths', )
+        if not interactive:
+            index = []
+            non_indexed = []
+            for child in self.root.find('filePaths')
+            if not self.experimental_design:
+                nodenames = ('filePaths', )
         else:
+            index = range(0, len(design['Name'))
             nodenames = ('filePaths', 'experiments', 'fractions',
                          'ptms', 'paramGroupIndices', 'referenceChannel')
 
@@ -204,17 +172,22 @@ class MQParam:
             node.tag = nodename
 
         # Append sub-elements to nodes (one per file)
-        for i in range(0, len(names)):
-            if names[i]:
-                MQParam._add_child(nodes['filePaths'], 'string', names[i])
+        for i in range(0, len(design['Name'])):
+            if design['Name'][i]:
+                MQParam._add_child(nodes['filePaths'], 'string', design['Name'][i])
                 if (interactive or self.exp_design):
-                    MQParam._add_child(nodes['experiments'], 'string', exps[i])
-                    MQParam._add_child(nodes['fractions'], 'short', fracs[i])
-                    MQParam._add_child(nodes['ptms'], 'boolean', PTMs[i])
-                    MQParam._add_child(nodes['paramGroupIndices'], 'int', '0')
-                    MQParam._add_child(nodes['referenceChannel'], 'string', '')
+                    MQParam._add_child(nodes['experiments'], 'string',
+                                       design['Experiment'][i])
+                    MQParam._add_child(nodes['fractions'], 'short',
+                                       design['Fraction'][i])
+                    MQParam._add_child(nodes['ptms'], 'boolean',
+                                       design['PTM'][i])
+                    MQParam._add_child(nodes['paramGroupIndices'], 'int',
+                                       design['ParameterGroup'][i])
+                    MQParam._add_child(nodes['referenceChannel'], 'string',
+                                       design['ReferenceChannel'][i])
 
-    def add_fasta_files(self, files):
+    def add_fasta_files(self, files, identifier=r'>([^\s]*)', description=r'>(.*)'):
         """Add fasta file groups.
         >>> t = MQParam('test', './test-data/template.xml', None)
         >>> t.add_fasta_files(('test1', 'test2'))
@@ -227,8 +200,6 @@ class MQParam:
         fasta_node.clear()
         fasta_node.tag = "fastaFiles"
 
-        identifier = r'>([^\s]*)'
-        description = r'>(.*)'
         for index in range(len(files)):
             filepath = '<fastaFilePath>' + files[index]
             fasta = self.fasta_template.replace('<fastaFilePath>', filepath)
