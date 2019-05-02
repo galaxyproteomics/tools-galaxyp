@@ -18,10 +18,62 @@ str2bool <- function(x){
   }
 }
 
+#take data frame, return  data frame
+split_ids_per_line <- function(line,ncol){
+  
+  #print (line)
+  header = colnames(line)
+  line[ncol] = gsub("[[:blank:]]","",line[ncol])
+  
+  if (length(unlist(strsplit(as.character(line[ncol]),";")))>1) {
+    if (length(line)==1 ) {
+      lines = as.data.frame(unlist(strsplit(as.character(line[ncol]),";")),stringsAsFactors = F)
+    } else {
+      if (ncol==1) {                                #first column
+        lines = suppressWarnings(cbind(unlist(strsplit(as.character(line[ncol]),";")), line[2:length(line)]))
+      } else if (ncol==length(line)) {                 #last column
+        lines = suppressWarnings(cbind(line[1:ncol-1],unlist(strsplit(as.character(line[ncol]),";"))))
+      } else {
+        lines = suppressWarnings(cbind(line[1:ncol-1], unlist(strsplit(as.character(line[ncol]),";"),use.names = F), line[(ncol+1):length(line)]))
+      }
+    }
+    colnames(lines)=header
+    return(lines)
+  } else {
+    return(line)
+  }
+}
+
+#create new lines if there's more than one id per cell in the column in order to have only one id per line
+one_id_one_line <-function(tab,ncol){
+  if (ncol(tab)>1){
+    tab[,ncol] = sapply(tab[,ncol],function(x) gsub("[[:blank:]]","",x))
+    header=colnames(tab)
+    res=as.data.frame(matrix(ncol=ncol(tab),nrow=0))
+    for (i in 1:nrow(tab) ) {
+      lines = split_ids_per_line(tab[i,],ncol)
+      res = rbind(res,lines)
+    }
+  }else {
+    res = unlist(sapply(tab[,1],function(x) strsplit(x,";")),use.names = F)
+    res = data.frame(res[which(!is.na(res[res!=""]))],stringsAsFactors = F)
+    colnames(res)=colnames(tab)
+  }
+  return(res)
+}
+
 nb_obs_PeptideAtlas <- function(input, atlas_file) {
   ## Calculate the sum of n_observations for each ID in input
   atlas = read_file(atlas_file, T)
   return(atlas$nb_obs[match(input,atlas$Uniprot_AC)])
+}
+
+#function to create a list of infos from file path
+extract_info_from_path <- function(path) {
+  file_name=strsplit(tail(strsplit(path,"/")[[1]],n=1),"\\.")[[1]][1]
+  date=tail(strsplit(file_name,"_")[[1]],n=1)
+  tissue=paste(strsplit(file_name,"_")[[1]][1:2],collapse="_")
+  return (c(date,tissue,file_name,path))
 }
 
 main = function() {
@@ -47,8 +99,8 @@ main = function() {
   args <- as.list(as.character(argsDF$V2))
   names(args) <- argsDF$V1
   
-  #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/retrieve_msbased_pepatlas/args.Rda")
-  #load("/home/dchristiany/proteore_project/ProteoRE/tools/retrieve_msbased_pepatlas/args.Rda")
+  #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/Get_ms-ms_observations/args.Rda")
+  #load("/home/dchristiany/proteore_project/ProteoRE/tools/Get_ms-ms_observations/args.Rda")
   
   # Extract input
   input_type = args$input_type
@@ -65,18 +117,11 @@ main = function() {
     }
     header = str2bool(args$header)
     file = read_file(filename, header)
+    file = one_id_one_line(file,ncol) #only one id per line
     input = sapply(file[,ncol],function(x) strsplit(as.character(x),";")[[1]][1],USE.NAMES = F)
   }
-
+  
   output = args$output
-
-  #function to create a list of infos from file path
-  extract_info_from_path <- function(path) {
-    file_name=strsplit(tail(strsplit(path,"/")[[1]],n=1),"\\.")[[1]][1]
-    date=tail(strsplit(file_name,"_")[[1]],n=1)
-    tissue=paste(strsplit(file_name,"_")[[1]][1:2],collapse="_")
-    return (c(date,tissue,file_name,path))
-  }
   
   #data_frame building
   paths=strsplit(args$atlas,",")[[1]]
@@ -86,7 +131,6 @@ main = function() {
   
   # Annotations
   res = sapply(df$path, function(x) nb_obs_PeptideAtlas(input, x), USE.NAMES = FALSE)
-  
   colnames(res)=df$filename
 
   # Write output
