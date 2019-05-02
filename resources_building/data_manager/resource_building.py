@@ -505,13 +505,10 @@ def Build_nextprot_ref_file(data_manager_dict,target_directory):
     output_file = 'nextprot_ref_'+ time.strftime("%d-%m-%Y") + ".tsv"
     path = os.path.join(target_directory,output_file)
     name = "neXtProt release "+time.strftime("%d-%m-%Y")
-    id = "nextprot_ref_"+time.strftime("%d-%m-%Y")
-    
+    release_id = "nextprot_ref_"+time.strftime("%d-%m-%Y")
     
     output = open(path, 'w')
     writer = csv.writer(output,delimiter="\t")
-    
-    
         
     nextprot_file=[["NextprotID","MW","SeqLength","IsoPoint","Chr","SubcellLocations","Diseases","TMDomains","ProteinExistence"]]
     writer.writerows(nextprot_file)
@@ -566,7 +563,7 @@ def Build_nextprot_ref_file(data_manager_dict,target_directory):
         nextprot_file.append([id,mass_mol,str(seq_length),iso_elec_point,chr_loc,all_subcell_locs,all_diseases,str(nb_domains),protein_existence])
         writer.writerows(nextprot_file)
 
-    data_table_entry = dict(id=id, name = name, value = path)
+    data_table_entry = dict(id=release_id, name = name, value = path)
     _add_data_table_entry(data_manager_dict, data_table_entry, "proteore_nextprot_ref")
 
 #######################################################################################################
