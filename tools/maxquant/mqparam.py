@@ -141,24 +141,31 @@ class MQParam:
         '3'
         """
 
-        design = self._make_exp_design(infiles)
-        print(design)
-
-        # These parent nodes will get a child appended for each file.
-        # In non-interactive mode their order in the orig. mqpar needs
-        # to be kept.
-        # In non-interactive mode with no exp. design given, we only
-        # change the file names.
-        if not interactive:
-            index = []
-            non_indexed = []
-            for child in self.root.find('filePaths')
-            if not self.experimental_design:
-                nodenames = ('filePaths', )
-        else:
-            index = range(0, len(design['Name'))
+        # Create experimental design for interactive mode.
+        # In non-interactive mode only filepaths are modified, but
+        # their order from the original mqpar must be kept.
+        if interactive:
+            index = range(len(infiles))
             nodenames = ('filePaths', 'experiments', 'fractions',
                          'ptms', 'paramGroupIndices', 'referenceChannel')
+            design = self._make_exp_design(infiles)
+        else:
+            index = [-1] * len(infiles)
+            i = 0
+            for child in self.root.find('filePaths'):
+                basename = os.path.basename(child.text)
+                basename_with_sub = re.sub('[^\w\-\s\.]', '_', basename)
+                # match infiles to their names in mqpar.xml,
+                # ignore files missing in mqpar.xml
+                try:
+                    index[i] = infiles.index(basename_with_sub)
+                    i += 1
+                except ValueError:
+                    raise ValueError("no matching infile found for {}",
+                                     child.text)
+                
+            nodenames = ('filePaths', )
+            design = {'Name' : infiles}
 
         # Get parent nodes from document
         nodes = dict()
@@ -172,10 +179,10 @@ class MQParam:
             node.tag = nodename
 
         # Append sub-elements to nodes (one per file)
-        for i in range(0, len(design['Name'])):
-            if design['Name'][i]:
+        for i in index:
+            if i > 0 and design['Name'][i]:
                 MQParam._add_child(nodes['filePaths'], 'string', design['Name'][i])
-                if (interactive or self.exp_design):
+                if interactive:
                     MQParam._add_child(nodes['experiments'], 'string',
                                        design['Experiment'][i])
                     MQParam._add_child(nodes['fractions'], 'short',
