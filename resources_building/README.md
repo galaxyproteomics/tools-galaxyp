@@ -207,6 +207,7 @@ tool_data_table_conf:
     </table>
   </tables>
 ```
+
 ## Add protein features
 
 One nextprot ref file is made for "Add protein features" tool.
