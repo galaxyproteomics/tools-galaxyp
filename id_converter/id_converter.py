@@ -1,4 +1,4 @@
-import sys, os, argparse, re, csv
+import sys, os, argparse, re, csv, itertools
 
 def get_args() :
     parser = argparse.ArgumentParser()
@@ -58,6 +58,22 @@ def one_id_one_line(input_file,nb_col,header) :
 
     return new_file, ids_list
 
+def output_one_id_one_line(line,convert_ids,target_ids):
+
+    if "GO" in target_ids : 
+        go_index = target_ids.index("GO")
+        convert_ids[go_index] = [";".join(convert_ids[go_index])]
+
+    if "MIM" in target_ids : 
+        mim_index = target_ids.index("MIM")
+        convert_ids[mim_index] = [";".join(convert_ids[mim_index])]
+
+    res = itertools.product(*convert_ids)   #getting all possibilities between lists of ids
+    res = [list(e) for e in res]            #conert to lists
+    res = [line+list(ids) for ids in res]   #adding the rest of the line
+
+    return(res)
+        
 #return the column number in int format
 def nb_col_to_int(nb_col):
     try :
@@ -90,7 +106,7 @@ def map_to_dictionary(ids,ids_dictionary,id_in,id_out) :
     for id in ids : 
         for target_id in id_out :
             if id in ids_dictionary :
-                res = ";".join(ids_dictionary[id][target_id])
+                res = ids_dictionary[id][target_id]
             else :
                 res=""
             
@@ -167,10 +183,12 @@ def main():
 
     if args.input_type=="file" :
         for line in input_file :
-            output_file.append(line+result_dict[line[args.column_number]])
+            tmp = output_one_id_one_line(line,result_dict[line[args.column_number]],target_ids)
+            output_file.extend(tmp)
     elif args.input_type=="list" :
         for id in ids :
-            output_file.append([id]+result_dict[id])
+            tmp = output_one_id_one_line([id],result_dict[id],target_ids)
+            output_file.extend(tmp)
 
     #convert blank to NA
     output_file = blank_to_NA(output_file)
