@@ -137,10 +137,8 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
     files=["idmapping_selected.tab.gz","idmapping.dat.gz"]
 
     #header
-    if human : tab = [["UniProt-AC","UniProt-ID","GeneID","RefSeq","GI","PDB","GO","PIR","MIM","UniGene","Ensembl_Gene","Ensembl_Transcript","Ensembl_Protein","neXtProt","BioGrid","STRING","KEGG"]]
-    else : tab = [["UniProt-AC","UniProt-ID","GeneID","RefSeq","GI","PDB","GO","PIR","MIM","UniGene","Ensembl_Gene","Ensembl_Transcript","Ensembl_Protein","BioGrid","STRING","KEGG"]]
-
-    #print("header ok")
+    if human : tab = [["UniProt-AC","UniProt-AC_reviewed","UniProt-ID","GeneID","RefSeq","GI","PDB","GO","PIR","MIM","UniGene","Ensembl_Gene","Ensembl_Transcript","Ensembl_Protein","neXtProt","BioGrid","STRING","KEGG"]]
+    else : tab = [["UniProt-AC","UniProt-AC_reviewed","UniProt-ID","GeneID","RefSeq","GI","PDB","GO","PIR","MIM","UniGene","Ensembl_Gene","Ensembl_Transcript","Ensembl_Protein","BioGrid","STRING","KEGG"]]
 
     #get selected.tab and keep only ids of interest
     selected_tab_file=species_dict[species]+"_"+files[0]
@@ -152,6 +150,22 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
     os.remove(tab_path)
 
     #print("selected_tab ok")
+
+    #get uniprot-AC reviewed
+    organism = species_dict[species].split("_")[1]
+    query = "https://www.uniprot.org/uniprot/?query=reviewed:yes+AND+organism:"+organism+"&format=list"
+
+    with requests.Session() as s:
+        download = s.get(query)
+        decoded_content = download.content.decode('utf-8')
+        uniprot_reviewed_list = decoded_content.splitlines()
+
+    for line in tab[1:]:
+        UniProtAC = line[0]
+        if UniProtAC in uniprot_reviewed_list :
+            line.insert(1,UniProtAC)
+        else : 
+            line.insert(1,"")
 
     """
     Supplementary ID to get from HUMAN_9606_idmapping.dat :
@@ -204,7 +218,7 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
 
     #print ("tab ok")
 
-    #add missing nextprot ID for human
+    #add missing nextprot ID for human or replace old ones
     if human : 
         #build next_dict
         nextprot_ids = id_list_from_nextprot_ftp("nextprot_ac_list_all.txt",target_directory)
@@ -217,7 +231,7 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
         for line in tab[1:] : 
             uniprotID=line[0]
             nextprotID=line[13]
-            if nextprotID == '' and uniprotID in next_dict :
+            if uniprotID in next_dict and (nextprotID == '' or (nextprotID != "NX_"+uniprotID and next_dict[uniprotID] == "NX_"+uniprotID)) :
                 line[13]=next_dict[uniprotID]
 
     output_file = species+"_id_mapping_"+ time.strftime("%d-%m-%Y") + ".tsv"
@@ -229,9 +243,10 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
 
     name_dict={"Human" : "Homo sapiens", "Mouse" : "Mus musculus", "Rat" : "Rattus norvegicus"}
     name = species +" (" + name_dict[species]+" "+time.strftime("%d/%m/%Y")+")"
-    id = species+"_id_mapping_"+ time.strftime("%d-%m-%Y")
+    release = species+"_id_mapping_"+ time.strftime("%d-%m-%Y")
+    id = str(10000000000 - int(time.strftime("%d%m%Y")))    #new ids must be inferior to previous id -> sort by <filter> in xml only in descending order
 
-    data_table_entry = dict(id=id, name = name, species = species, value = path)
+    data_table_entry = dict(id=id, release=release , name = name, species = species, value = path)
     _add_data_table_entry(data_manager_dict, data_table_entry, "proteore_id_mapping_"+species)
 
 def download_from_uniprot_ftp(file,target_directory) :
