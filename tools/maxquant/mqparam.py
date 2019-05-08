@@ -9,6 +9,7 @@ TODO: check validity of parsed experimental design template
 Author: Damian Glaetzer <d.glaetzer@mailbox.org>
 """
 
+import ntpath
 import os
 import re
 import xml.etree.ElementTree as ET
@@ -160,8 +161,11 @@ class MQParam:
             infilenames = [os.path.basename(f).split('.')[0] for f in infiles]
             i = 0
             for child in self.root.find('filePaths'):
-                basename = os.path.basename(child.text).split('.')[0]
-                basename_with_sub = re.sub(self.substitution_rx, '_', basename)
+                # either windows or posix path
+                basename = min(os.path.basename(child.text),
+                               ntpath.basename(child.text))
+                basename_with_sub = re.sub(self.substitution_rx, '_',
+                                           basename.split('.')[0])
                 # match infiles to their names in mqpar.xml,
                 # ignore files missing in mqpar.xml
                 try:
