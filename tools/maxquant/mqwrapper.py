@@ -23,9 +23,9 @@ arguments = ["--raw_files", "--mzxml_files", "--fasta_files", "--fixed_mods",
              "--missed_cleavages", "--min_unique_pep", "--mqpar_in",
              "--num_threads", "--output_all", "--mqpar_out",
              "--infile_names", "--mzTab", "--light_mods", "--medium_mods",
-             "--heavy_mods", "--version"]
+             "--heavy_mods", "--version", "--substitution_rx"]
 
-flags = ("--calc_peak_properties", "--write_mztab", "--interactive")
+flags = ("--calc_peak_properties", "--write_mztab")
 
 
 txt_output = ("evidence", "msms", "parameters",
@@ -74,14 +74,15 @@ else:
     mqpar_in = mqpar_temp
 mqpar_out = args['mqpar_out'] if args['mqpar_out'] != 'None' else mqpar_temp
 
-m = mqparam.MQParam(mqpar_out, mqpar_in, args['exp_design'])
+m = mqparam.MQParam(mqpar_out, mqpar_in, args['exp_design'],
+                    substitution_rx=args['substitution_rx'])
 if m.version != args['version']:
     raise Exception('mqpar version is ' + m.version +
                     '. Tool uses version {}.'.format(args['version']))
 
-# modify parameters
+# modify parameters, interactive mode if no mqpar_in was specified
 m.add_infiles([os.path.join(os.getcwd(), name)
-               for name in filenames_with_ext], args['interactive'])
+               for name in filenames_with_ext], not args['mqpar_in'])
 m.add_fasta_files(args['fasta_files'].split(','))
 
 for e in simple_args:
