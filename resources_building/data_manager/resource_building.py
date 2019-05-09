@@ -244,7 +244,7 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
     name_dict={"Human" : "Homo sapiens", "Mouse" : "Mus musculus", "Rat" : "Rattus norvegicus"}
     name = species +" (" + name_dict[species]+" "+time.strftime("%d/%m/%Y")+")"
     release = species+"_id_mapping_"+ time.strftime("%d-%m-%Y")
-    id = str(10000000000 - int(time.strftime("%d%m%Y")))    #new ids must be inferior to previous id -> sort by <filter> in xml only in descending order
+    id = str(10000000000 - int(time.strftime("%Y%m%d")))    #new ids must be inferior to previous id -> sort by <filter> in xml only in descending order
 
     data_table_entry = dict(id=id, release=release , name = name, species = species, value = path)
     _add_data_table_entry(data_manager_dict, data_table_entry, "proteore_id_mapping_"+species)
