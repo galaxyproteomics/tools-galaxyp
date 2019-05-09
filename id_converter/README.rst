@@ -25,7 +25,9 @@ If your input is a multiple-column file, the mapped IDs column(s) will be added 
 
 * neXtProt ID (e.g. NX_P31946)
 
-* Uniprot accession number (e.g. P31946)
+* UniProt accession number (e.g. P31946 - reviewed entries only)
+
+* UniProt accession number (e.g. P31946 - reviewed and unreviewed entries)
 
 * Uniprot ID (e.g 1433B_HUMAN)
 
@@ -69,6 +71,9 @@ This tool converts human IDs using file built from:
 * HUMAN_9606_idmapping.dat (Uniprot 23/10/18)
     Tarball downloaded from ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/
 
+* Human uniprot-AC entries reviewed : https://www.uniprot.org/uniprot/?query=reviewed:yes+AND+organism:9606&format=list
+
+
 * nextprot_ac_list_all.txt (Nextprot released on 10/10/2018)
     Downloaded from ftp://ftp.nextprot.org/pub/current_release/ac_lists/
 
@@ -78,8 +83,13 @@ This tool converts human IDs using file built from:
 * MOUSE_10090_idmapping.dat (Uniprot 23/10/18)
     Tarball downloaded from ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/
 
+* Mouse uniprot-AC entries reviewed : https://www.uniprot.org/uniprot/?query=reviewed:yes+AND+organism:10090&format=list
+
+
 * RAT_10116_idmapping.dat (Uniprot 23/10/18)
     Tarball downloaded from ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/
 
 * RAT_10116_idmapping_selected.tab (Uniprot 23/10/18)
     Tarball downloaded from ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/
+
+* Rat uniprot-AC entries reviewed : https://www.uniprot.org/uniprot/?query=reviewed:yes+AND+organism:10116&format=list
