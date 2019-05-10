@@ -60,16 +60,15 @@ def one_id_one_line(input_file,nb_col,header) :
 
 def output_one_id_one_line(line,convert_ids,target_ids):
 
-    if "GO" in target_ids : 
-        go_index = target_ids.index("GO")
-        convert_ids[go_index] = [";".join(convert_ids[go_index])]
+    ids_not_processed = ["GI","PDB","GO","PIR","MIM","UniGene","BioGrid","STRING"]  #ids with multiple ids per line in output file
+    ids_not_processed = [id for id in ids_not_processed if id in target_ids]    #ids present in target_ids with multiple ids per line in output file
 
-    if "MIM" in target_ids : 
-        mim_index = target_ids.index("MIM")
-        convert_ids[mim_index] = [";".join(convert_ids[mim_index])]
+    for id_not_processed in ids_not_processed :
+        index = target_ids.index(id_not_processed)
+        convert_ids[index] = [";".join(convert_ids[index])]
 
     res = itertools.product(*convert_ids)   #getting all possibilities between lists of ids
-    res = [list(e) for e in res]            #conert to lists
+    res = [list(e) for e in res]            #convert to lists
     res = [line+list(ids) for ids in res]   #adding the rest of the line
 
     return(res)
@@ -165,38 +164,49 @@ def main():
                 if len(ids_dictionary[id][ids_dictionary_index[other_id_type]]) > 1 and '' in ids_dictionary[id][ids_dictionary_index[other_id_type]] : 
                     ids_dictionary[id][ids_dictionary_index[other_id_type]].remove('')
 
+    print ("dictionary created")
+
     #Get file and/or ids from input 
     if args.input_type == "list" :
         ids = get_input_ids_from_string(args.input)
     elif args.input_type == "file" :
         input_file, ids = get_input_ids_from_file(args.input,args.column_number,header)
 
+    print ("starting mapping")
+
     #Mapping ids
     result_dict = map_to_dictionary(ids,ids_dictionary,args.id_type,target_ids)
 
+    print ("mapping done")
+
+    print ("creating output file")
     #creating output file 
-    if header : 
-        output_file=[input_file[0]+target_ids]
-        input_file = input_file[1:]
-    else :
-        output_file=[[args.id_type]+target_ids]
-
-    if args.input_type=="file" :
-        for line in input_file :
-            tmp = output_one_id_one_line(line,result_dict[line[args.column_number]],target_ids)
-            output_file.extend(tmp)
-    elif args.input_type=="list" :
-        for id in ids :
-            tmp = output_one_id_one_line([id],result_dict[id],target_ids)
-            output_file.extend(tmp)
-
-    #convert blank to NA
-    output_file = blank_to_NA(output_file)
-
-    #write output file 
     with open(args.output,"w") as output :
         writer = csv.writer(output,delimiter="\t")
-        writer.writerows(output_file)
+        #writer.writerows(output_file)
+
+        #write header
+        if header : 
+            writer.writerow(input_file[0]+target_ids)
+            input_file = input_file[1:]
+        else :
+            writer.writerow([args.id_type]+target_ids)
+
+        #write lines 
+        if args.input_type=="file" :
+            for line in input_file :
+                tmp = output_one_id_one_line(line,result_dict[line[args.column_number]],target_ids)
+                tmp = blank_to_NA(tmp)
+                for row in tmp :
+                    writer.writerow(row)
+        elif args.input_type=="list" :
+            for id in ids :
+                tmp = output_one_id_one_line([id],result_dict[id],target_ids)
+                tmp = blank_to_NA(tmp)
+                for row in tmp :
+                    writer.writerow(row)
+
+        print ("output file created")
 
 if __name__ == "__main__":
     main()
