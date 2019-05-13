@@ -89,10 +89,10 @@ def main():
         work_summary['duplicates'] = 0
 
     if options.id_list:
-        targets = []
+        targets = set()
         with open(options.id_list) as f_target:
             for line in f_target:
-                targets.append(line.strip().upper())
+                targets.add(line.strip().upper())
         work_summary['wanted'] = len(targets)
 
     homd_db = FASTAReader_gen(options.i)
