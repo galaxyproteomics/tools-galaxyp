@@ -47,20 +47,24 @@ def input_to_dict(inputs):
         if input_type == "file":
             header = inputs[i][3]
             ncol = inputs[i][4]
-            file_content = open(input_file, "r").readlines()
+            with open(input_file,"r") as handle :
+                file_content = csv.reader(handle,delimiter="\t")
+                file_content = list(file_content)   #csv object to list
             
-            # Check if column number is in right form
-            if isnumber("int", ncol.replace("c", "")):
-                if header == "true":
-                    file_content = [x.strip() for x in [line.split("\t")[int(ncol.replace("c", ""))-1].split(";")[0] for line in file_content[1:]]]     # take only first IDs
+                # Check if column number is in right form
+                if isnumber("int", ncol.replace("c", "")):
+                    if header == "true":
+                        file_content = [x for x in [line[int(ncol.replace("c", ""))-1].split(";") for line in file_content[1:]]]     # gets ids from defined column
+                    else:
+                        file_content = [x for x in [line[int(ncol.replace("c", ""))-1].split(";") for line in file_content]] 
                 else:
-                    file_content = [x.strip() for x in [line.split("\t")[int(ncol.replace("c", ""))-1].split(";")[0] for line in file_content]]     # take only first IDs
-            else:
-                raise ValueError("Please fill in the right format of column number")        
+                    raise ValueError("Please fill in the right format of column number")        
         else:
             ids = set()
             file_content = inputs[i][0].split()
+            file_content = [x.split(";") for x in file_content]
             
+        file_content = [item.strip() for sublist in file_content for item in sublist if item != '']   #flat list of list of lists, remove empty items    
         ids.update(file_content)
         if 'NA' in ids : ids.remove('NA')
         comp_dict[title] = ids
