@@ -69,6 +69,15 @@ annot.HPAcancer<-function(input, HPA_cancer_tissue, cancer, not_mapped_option) {
   return(res)
 }
 
+clean_ids <- function(ids){
+  
+  ids = gsub(" ","",ids)
+  ids = ids[which(ids!="")]
+  ids = ids[which(ids!="NA")]
+  ids = ids[!is.na(ids)]
+ 
+  return(ids) 
+}
 
 main <- function() {
   args <- commandArgs(TRUE)
@@ -109,16 +118,17 @@ main <- function() {
   # Extract input
   input_type = args$input_type
   if (input_type == "list") {
-    list_id = strsplit(args$input, "[ \t\n]+")[[1]]
+    ids = unlist(strsplit(strsplit(args$input, "[ \t\n]+")[[1]],";"))
   } else if (input_type == "file") {
     filename = args$input
     column_number = as.numeric(gsub("c", "" ,args$column_number))
     header = str2bool(args$header)
     file = read_file(filename, header)
-    list_id = sapply(strsplit(file[,column_number], ";"), "[", 1)
+    ids = unlist(strsplit(file[,column_number], ";"))
   }
-  input = list_id
-
+  #filter ids
+  ids = clean_ids(ids)
+  
   # Read reference file
   reference_file = read_file(args$ref_file, TRUE)
 
@@ -130,11 +140,11 @@ main <- function() {
     level = strsplit(args$level, ",")[[1]]
     reliability = strsplit(args$reliability, ",")[[1]]
     # Calculation
-    res = annot.HPAnorm(input, reference_file, tissue, level, reliability, not_mapped_option)
+    res = annot.HPAnorm(ids, reference_file, tissue, level, reliability, not_mapped_option)
   } else if (atlas=="cancer") {
     cancer = strsplit(args$cancer, ",")[[1]]
     # Calculation
-    res = annot.HPAcancer(input, reference_file, cancer, not_mapped_option)
+    res = annot.HPAcancer(ids, reference_file, cancer, not_mapped_option)
   }
   
   # Write output
