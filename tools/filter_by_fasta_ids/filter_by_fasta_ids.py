@@ -61,11 +61,11 @@ def main():
     parser.add_argument('-d', help='Path to discarded entries file')
     header_criteria = parser.add_mutually_exclusive_group()
     header_criteria.add_argument('--id_list', help='Path to the ID list file')
-    parser.add_argument('--pattern', help='regex earch attern for ID in FASTA entry')
+    parser.add_argument('--pattern', help='regex search pattern for ID in FASTA entry')
     header_criteria.add_argument('--header_regexp', help='Regular expression pattern the header should match')
     sequence_criteria = parser.add_mutually_exclusive_group()
     sequence_criteria.add_argument('--min_length', type=int, help='Minimum sequence length')
-    sequence_criteria.add_argument('--sequence_regexp', help='Regular expression pattern the header should match')
+    sequence_criteria.add_argument('--sequence_regexp', help='Regular expression pattern the sequence should match')
     parser.add_argument('--max_length', type=int, help='Maximum sequence length')
     parser.add_argument('--dedup', action='store_true', default=False, help='Whether to remove duplicate sequences')
     options = parser.parse_args()
@@ -89,10 +89,10 @@ def main():
         work_summary['duplicates'] = 0
 
     if options.id_list:
-        targets = []
+        targets = set()
         with open(options.id_list) as f_target:
             for line in f_target:
-                targets.append(line.strip().upper())
+                targets.add(line.strip().upper())
         work_summary['wanted'] = len(targets)
 
     homd_db = FASTAReader_gen(options.i)
