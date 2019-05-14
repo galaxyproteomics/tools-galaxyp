@@ -1,7 +1,4 @@
-import os
-import re
-import json
-import argparse
+import os, re, json, argparse, csv
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -42,22 +39,29 @@ def data_json(identifiers):
     """
     trash = []
     if identifiers[1] == "list":
-        ids = "\n".join(id_valid(identifiers[0].split())[0])
+        ids = identifiers[0].split()
+        ids = [x.split(";") for x in ids]    
+        ids = [item.strip() for sublist in ids for item in sublist if item != '']
         json_string = os.popen("curl -H \"Content-Type: text/plain\" -d \"$(printf '%s')\" -X POST --url www.reactome.org/AnalysisService/identifiers/\?pageSize\=1\&page\=1" % ids).read()
         if len(id_valid(identifiers[0].split())[1]) > 0:
             trash = id_valid(identifiers[0].split())[1]
     elif identifiers[1] == "file":
         header = identifiers[2]
-        mq = open(identifiers[0]).readlines()
-        if isnumber("int", identifiers[3].replace("c", "")):
-            if header == "true":
-                idens = [x.split("\t")[int(identifiers[3].replace("c", ""))-1] for x in mq[1:]]
-            else:
-                idens = [x.split("\t")[int(identifiers[3].replace("c", ""))-1] for x in mq]
-            ids = "\n".join(id_valid(idens)[0])
-            json_string = os.popen("curl -H \"Content-Type: text/plain\" -d \"$(printf '%s')\" -X POST --url www.reactome.org/AnalysisService/identifiers/\?pageSize\=1\&page\=1 2> stderr" % ids).read()
-            if len(id_valid(idens)[1]) > 0:
-                trash = id_valid(idens)[1]
+        with open(identifiers[0],"r") as mq :
+            file_content = csv.reader(mq,delimiter="\t")
+            file_content = list(file_content)   #csv object to list
+            ncol = identifiers[3]
+            if isnumber("int", ncol.replace("c", "")):
+                if header == "true":
+                    idens = [x for x in [line[int(ncol.replace("c", ""))-1].split(";") for line in file_content[1:]]]
+                else:
+                    idens = [x for x in [line[int(ncol.replace("c", ""))-1].split(";") for line in file_content]] 
+
+                idens = [item.strip() for sublist in idens for item in sublist if item != '']   #flat list of list of lists, remove empty items 
+                ids = "\n".join(id_valid(idens)[0])
+                json_string = os.popen("curl -H \"Content-Type: text/plain\" -d \"$(printf '%s')\" -X POST --url www.reactome.org/AnalysisService/identifiers/\?pageSize\=1\&page\=1 2> stderr" % ids).read()
+                if len(id_valid(idens)[1]) > 0:
+                    trash = id_valid(idens)[1]
     #print(json_string)
     j = json.loads(json_string)
     print ("Identifiers not found: " + str(j["identifiersNotFound"]))
