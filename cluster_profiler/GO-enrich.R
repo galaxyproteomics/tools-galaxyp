@@ -107,6 +107,15 @@ enrich.GO <- function(geneid, universe, orgdb, ontology, pval_cutoff, qval_cutof
   }
 }
 
+clean_ids <- function(ids){
+  ids = gsub(" ","",ids)
+  ids = ids[which(ids!="")]
+  ids = ids[which(ids!="NA")]
+  ids = ids[!is.na(ids)]
+ 
+  return(ids) 
+}
+
 check_ids <- function(vector,type) {
   uniprot_pattern = "^([OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9]([A-Z][A-Z0-9]{2}[0-9]){1,2})$"
   entrez_id = "^([0-9]+|[A-Z]{1,2}_[0-9]+|[A-Z]{1,2}_[A-Z]{1,4}[0-9]+)$"
@@ -179,7 +188,7 @@ clusterProfiler = function() {
   id_type = args$id_type
   
   if (input_type == "text") {
-    input = strsplit(args$input, "[ \t\n]+")[[1]]
+    input = unlist(strsplit(strsplit(args$input, "[ \t\n]+")[[1]],";"))
   } else if (input_type == "file") {
     filename = args$input
     ncol = args$ncol
@@ -193,7 +202,7 @@ clusterProfiler = function() {
     file = read_file(filename, header)              # Extract Protein IDs list
     input =  unlist(sapply(as.character(file[,ncol]),function(x) rapply(strsplit(x,";"),c),USE.NAMES = FALSE))
   }
-  
+  input = clean_ids(input)
   
   ## Get input gene list from input IDs
   #ID format Conversion 
@@ -222,7 +231,7 @@ clusterProfiler = function() {
     if (!is.null(args$universe_type)) {
       universe_type = args$universe_type
       if (universe_type == "text") {
-        universe = strsplit(args$universe, "[ \t\n]+")[[1]]
+        universe = unlist(strsplit(strsplit(args$input, "[ \t\n]+")[[1]],";"))
       } else if (universe_type == "file") {
         universe_filename = args$universe
         universe_ncol = args$uncol
@@ -238,6 +247,7 @@ clusterProfiler = function() {
         # Extract Protein IDs list
         universe <- unlist(sapply(universe_file[,universe_ncol], function(x) rapply(strsplit(x,";"),c),USE.NAMES = FALSE))
       }
+      universe = clean_ids(input)
       universe_id_type = args$universe_id_type
       ##to initialize
       if (universe_id_type=="Uniprot" & any(check_ids(universe,"uniprot"))) {
