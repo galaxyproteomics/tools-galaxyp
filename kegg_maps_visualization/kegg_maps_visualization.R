@@ -75,6 +75,7 @@ clean_bad_character <- function(string)  {
 }
 
 get_list_from_cp <-function(list){
+  list = gsub(";","\t",list)
   list = gsub(",","\t",list)
   list = strsplit(list, "[ \t\n]+")[[1]]
   list = list[list != ""]    #remove empty entry
