@@ -76,6 +76,16 @@ extract_info_from_path <- function(path) {
   return (c(date,tissue,file_name,path))
 }
 
+clean_ids <- function(ids){
+  
+  ids = gsub(" ","",ids)
+  ids = ids[which(ids!="")]
+  ids = ids[which(ids!="NA")]
+  ids = ids[!is.na(ids)]
+ 
+  return(ids) 
+}
+
 main = function() {
   args <- commandArgs(TRUE)
   if(length(args)<1) {
@@ -105,7 +115,7 @@ main = function() {
   # Extract input
   input_type = args$input_type
   if (input_type == "list") {
-    input = strsplit(args$input, "[ \t\n]+")[[1]]
+    input = unlist(strsplit(strsplit(args$input, "[ \t\n]+")[[1]],";"))
   } else if (input_type == "file") {
     filename = args$input
     ncol = args$column
@@ -120,7 +130,7 @@ main = function() {
     file = one_id_one_line(file,ncol) #only one id per line
     input = sapply(file[,ncol],function(x) strsplit(as.character(x),";")[[1]][1],USE.NAMES = F)
   }
-  
+  input = clean_ids(input)
   output = args$output
   
   #data_frame building
