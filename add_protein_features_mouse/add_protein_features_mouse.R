@@ -11,6 +11,7 @@ order_columns <- function (df,ncol,file){
 }
 
 get_list_from_cp <-function(list){
+  list = gsub(";","\t",list)
   list = strsplit(list, "[ \t\n]+")[[1]]
   list = gsub("NA","",list)
   list = list[list != ""]    #remove empty entry
