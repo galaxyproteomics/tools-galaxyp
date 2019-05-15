@@ -79,7 +79,7 @@ class MQParam:
         >>> design['Fraction']
         ['1', '2']
         """
-        design = {s : [] for s in ("Name", "PTM", "Fraction", "Experiment")}
+        design = {s: [] for s in ("Name", "PTM", "Fraction", "Experiment")}
         if not self.exp_design:
             design["Name"] = infiles
             design["Fraction"] = ('32767',) * len(infiles)
@@ -93,8 +93,8 @@ class MQParam:
                     if i in design:
                         index.append(i)
                     else:
-                        raise Exception("Invalid comlumn index in "
-                                        + "experimental design template: {}".format(i))
+                        raise Exception("Invalid comlumn index in experimental"
+                                        + " design template: {}".format(i))
                 for line in design_file:
                     row = line.strip().split('\t')
                     for e, i in zip_longest(row, index):
@@ -114,11 +114,11 @@ class MQParam:
                 fname = re.sub(self.substitution_rx, '_', name)
                 names.append(names_to_paths[fname] if fname in names_to_paths
                              else None)
-            # replace original file names with matching links to galaxy datasets
+            # replace orig. file names with matching links to galaxy datasets
             design['Name'] = names
 
         return design
-        
+
     def add_infiles(self, infiles, interactive):
         """Add a list of raw/mzxml files to the mqpar.xml.
         If experimental design template was specified,
@@ -147,7 +147,6 @@ class MQParam:
         '3'
         """
 
-        print(interactive)
         # Create experimental design for interactive mode.
         # In non-interactive mode only filepaths are modified, but
         # their order from the original mqpar must be kept.
@@ -175,9 +174,9 @@ class MQParam:
                 except ValueError:
                     raise ValueError("no matching infile found for "
                                      + child.text)
-                
+
             nodenames = ('filePaths', )
-            design = {'Name' : infiles}
+            design = {'Name': infiles}
 
         # Get parent nodes from document
         nodes = dict()
@@ -193,7 +192,8 @@ class MQParam:
         # Append sub-elements to nodes (one per file)
         for i in index:
             if i > -1 and design['Name'][i]:
-                MQParam._add_child(nodes['filePaths'], 'string', design['Name'][i])
+                MQParam._add_child(nodes['filePaths'], 'string',
+                                   design['Name'][i])
                 if interactive:
                     MQParam._add_child(nodes['experiments'], 'string',
                                        design['Experiment'][i])
@@ -204,7 +204,9 @@ class MQParam:
                     MQParam._add_child(nodes['paramGroupIndices'], 'int', 0)
                     MQParam._add_child(nodes['referenceChannel'], 'string', '')
 
-    def add_fasta_files(self, files, identifier=r'>([^\s]*)', description=r'>(.*)'):
+    def add_fasta_files(self, files,
+                        identifier=r'>([^\s]*)',
+                        description=r'>(.*)'):
         """Add fasta file groups.
         >>> t = MQParam('test', './test-data/template.xml', None)
         >>> t.add_fasta_files(('test1', 'test2'))
