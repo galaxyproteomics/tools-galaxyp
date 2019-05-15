@@ -62,7 +62,7 @@ class MQParam:
         """
 
         child = ET.SubElement(el, name, attrib=attrib if attrib else {})
-        child.text = text
+        child.text = str(text)
 
     def _make_exp_design(self, infiles):
         """Create a dict representing an experimental design from

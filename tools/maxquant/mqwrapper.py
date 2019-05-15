@@ -50,11 +50,11 @@ files = (args['raw_files'] if args['raw_files']
          else args['mzxml_files']).split(',')
 ftype = ".thermo.raw" if args['raw_files'] else ".mzXML"
 filenames = args['infile_names'].split(',')
-filenames_with_ext = [(a if a.endswith(ftype)
-                       else os.path.splitext(a)[0] + ftype)
-                      for a in filenames]
+fnames_with_ext = [(a if a.endswith(ftype)
+                    else os.path.splitext(a)[0] + ftype)
+                   for a in filenames]
 
-for f, l in zip(files, filenames_with_ext):
+for f, l in zip(files, fnames_with_ext):
     os.link(f, l)
 
 # arguments for mqparam
@@ -81,8 +81,8 @@ if m.version != args['version']:
                     '. Tool uses version {}.'.format(args['version']))
 
 # modify parameters, interactive mode if no mqpar_in was specified
-m.add_infiles([os.path.join(os.getcwd(), name)
-               for name in filenames_with_ext], not args['mqpar_in'])
+m.add_infiles([os.path.join(os.getcwd(), name) for name in fnames_with_ext],
+              True if args['mqpar_in'] == 'None' else False)
 m.add_fasta_files(args['fasta_files'].split(','))
 
 for e in simple_args:
