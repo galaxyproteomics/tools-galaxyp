@@ -82,7 +82,7 @@ if m.version != args['version']:
 
 # modify parameters, interactive mode if no mqpar_in was specified
 m.add_infiles([os.path.join(os.getcwd(), name) for name in fnames_with_ext],
-              True if args['mqpar_in'] == 'None' else False)
+              not args['mqpar_in'])
 m.add_fasta_files(args['fasta_files'].split(','))
 
 for e in simple_args:

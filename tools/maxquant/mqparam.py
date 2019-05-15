@@ -147,6 +147,7 @@ class MQParam:
         '3'
         """
 
+        print(interactive)
         # Create experimental design for interactive mode.
         # In non-interactive mode only filepaths are modified, but
         # their order from the original mqpar must be kept.
@@ -172,8 +173,8 @@ class MQParam:
                     index[i] = infilenames.index(basename_with_sub)
                     i += 1
                 except ValueError:
-                    raise ValueError("no matching infile found for {}",
-                                     child.text)
+                    raise ValueError("no matching infile found for "
+                                     + child.text)
                 
             nodenames = ('filePaths', )
             design = {'Name' : infiles}
