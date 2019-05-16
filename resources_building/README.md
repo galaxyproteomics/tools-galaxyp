@@ -40,11 +40,11 @@ and saved in tool-data/peptide_atlas/ (default galaxy tool-data)
 ```
 tool_data_table_conf:
     <table name="proteore_protein_atlas_normal_tissue" comment_char="#">
-      <columns>id, name, tissue, value</columns>
+      <columns>id, release, name, tissue, value</columns>
       <file path="tool-data/proteore_protein_atlas_normal_tissue.loc" />
     </table>
     <table name="proteore_protein_atlas_tumor_tissue" comment_char="#">
-      <columns>id, name, tissue, value</columns>
+      <columns>id, release, name, tissue, value</columns>
       <file path="tool-data/proteore_protein_atlas_tumor_tissue.loc" />
     </table>
   </tables>
@@ -144,15 +144,15 @@ There are one loc file per species :
 tool_data_table_conf: 
   <tables>
     <table name="proteore_id_mapping_Human" comment_char="#">
-      <columns>id, name, species, value</columns>
+      <columns>id, release, name, species, value</columns>
       <file path="tool-data/proteore_id_mapping_Human.loc" />
     </table>
     <table name="proteore_id_mapping_Mouse" comment_char="#">
-      <columns>id, name, species, value</columns>
+      <columns>id, release, name, species, value</columns>
       <file path="tool-data/proteore_id_mapping_Mouse.loc" />
     </table>
     <table name="proteore_id_mapping_Rat" comment_char="#">
-      <columns>id, name, species, value</columns>
+      <columns>id, release, name, species, value</columns>
       <file path="tool-data/proteore_id_mapping_Rat.loc" />
     </table>
   </tables>
@@ -194,15 +194,15 @@ Files are located in tool-data/PPI_dictionaries
 tool_data_table_conf: 
   <tables>
     <table name="proteore_biogrid_dictionaries" comment_char="#">
-      <columns>id, name, value, path</columns>
+      <columns>id, release, name, value, path</columns>
       <file path="tool-data/proteore_biogrid_dictionaries.loc" />
     </table>
     <table name="proteore_bioplex_dictionaries" comment_char="#">
-      <columns>id, name, value, path</columns>
+      <columns>id, release, name, value, path</columns>
       <file path="tool-data/proteore_bioplex_dictionaries.loc" />
     </table>
     <table name="proteore_humap_dictionaries" comment_char="#">
-      <columns>id, name, value, path</columns>
+      <columns>id, release, name, value, path</columns>
       <file path="tool-data/proteore_bioplex_dictionaries.loc" />
     </table>
   </tables>
@@ -222,7 +222,7 @@ The reference file created are referenced in "proteore_nextprot_ref" loc file an
 tool_data_table_conf: 
   <tables>
     <table name='proteore_nextprot_ref' comment_char="#">
-      <columns>id, name, value</columns>
+      <columns>id, release, name, value</columns>
       <file path="tool-data/proteore_nextprot_ref.loc"/>
     </table>
   </tables>

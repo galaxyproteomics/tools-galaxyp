@@ -53,10 +53,11 @@ def HPA_sources(data_manager_dict, tissue, target_directory):
     path = os.path.join(target_directory, output_file)
     unzip(url, path)    #download and save file
     tissue_name = tissue_name + " " + time.strftime("%d/%m/%Y")
-    tissue_id = tissue_name.replace(" ","_").replace("/","-")
+    release = tissue_name.replace(" ","_").replace("/","-")
+    id = str(10000000000 - int(time.strftime("%Y%m%d")))
 
 
-    data_table_entry = dict(id=tissue_id, name = tissue_name, tissue = tissue, value = path)
+    data_table_entry = dict(id=id, release=release, name = tissue_name, tissue = tissue, value = path)
     _add_data_table_entry(data_manager_dict, data_table_entry, table)
 
 
@@ -501,12 +502,13 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
     output_file = species+'_'+interactome+'_'+ time.strftime("%d-%m-%Y") + ".json"
     path = os.path.join(target_directory,output_file)
     name = species+" ("+species_dict[species]+") "+time.strftime("%d/%m/%Y")
-    id = species+"_"+interactome+"_"+ time.strftime("%d-%m-%Y")
+    release = species+"_"+interactome+"_"+ time.strftime("%d-%m-%Y")
+    id = str(10000000000 - int(time.strftime("%Y%m%d")))
 
     with open(path, 'w') as handle:
         json.dump(dico, handle, sort_keys=True)
 
-    data_table_entry = dict(id=id, name = name, species = species, value = path)
+    data_table_entry = dict(id=id, release=release, name = name, species = species, value = path)
     _add_data_table_entry(data_manager_dict, data_table_entry, "proteore_"+interactome+"_dictionaries")
 
 #######################################################################################################
@@ -572,13 +574,15 @@ def Build_nextprot_ref_file(data_manager_dict,target_directory):
             for tm in tm_domains :
                 all_tm_domains.add(tm['cvTermName'])
                 nb_domains+=1
-             #   print "nb domains ++"
-              #  print (nb_domains)
+                #print "nb domains ++"
+                #print (nb_domains)
         nextprot_file[:] = [] 
         nextprot_file.append([id,mass_mol,str(seq_length),iso_elec_point,chr_loc,all_subcell_locs,all_diseases,str(nb_domains),protein_existence])
         writer.writerows(nextprot_file)
 
-    data_table_entry = dict(id=release_id, name = name, value = path)
+        id = str(10000000000 - int(time.strftime("%Y%m%d")))
+
+    data_table_entry = dict(id=id, release=release_id, name = name, value = path)
     _add_data_table_entry(data_manager_dict, data_table_entry, "proteore_nextprot_ref")
 
 #######################################################################################################
