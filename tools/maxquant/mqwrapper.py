@@ -74,7 +74,8 @@ else:
     mqpar_in = mqpar_temp
 mqpar_out = args['mqpar_out'] if args['mqpar_out'] != 'None' else mqpar_temp
 
-m = mqparam.MQParam(mqpar_out, mqpar_in, args['exp_design'],
+exp_design = args['exp_design'] if args['exp_design'] != 'None' else None
+m = mqparam.MQParam(mqpar_out, mqpar_in, exp_design,
                     substitution_rx=args['substitution_rx'])
 if m.version != args['version']:
     raise Exception('mqpar version is ' + m.version +
