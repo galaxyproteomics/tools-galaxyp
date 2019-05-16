@@ -60,7 +60,8 @@ def one_id_one_line(input_file,nb_col,header) :
 
 def output_one_id_one_line(line,convert_ids,target_ids):
 
-    ids_not_processed = ["GI","PDB","GO","PIR","MIM","UniGene","BioGrid","STRING"]  #ids with multiple ids per line in output file
+    #ids_not_processed = ["GI","PDB","GO","PIR","MIM","UniGene","BioGrid","STRING"]  #ids with multiple ids per line in output file
+    ids_not_processed = ["UniProt-AC","UniProt-AC_reviewed","UniProt-ID","GeneID","RefSeq","GI","PDB","GO","PIR","MIM","UniGene","Ensembl_Gene","Ensembl_Transcript","Ensembl_Protein","BioGrid","STRING","KEGG"] # All Ids
     ids_not_processed = [id for id in ids_not_processed if id in target_ids]    #ids present in target_ids with multiple ids per line in output file
 
     for id_not_processed in ids_not_processed :
@@ -164,7 +165,7 @@ def main():
                 if len(ids_dictionary[id][ids_dictionary_index[other_id_type]]) > 1 and '' in ids_dictionary[id][ids_dictionary_index[other_id_type]] : 
                     ids_dictionary[id][ids_dictionary_index[other_id_type]].remove('')
 
-    print ("dictionary created")
+    #print ("dictionary created")
 
     #Get file and/or ids from input 
     if args.input_type == "list" :
@@ -172,14 +173,14 @@ def main():
     elif args.input_type == "file" :
         input_file, ids = get_input_ids_from_file(args.input,args.column_number,header)
 
-    print ("starting mapping")
+    #print ("starting mapping")
 
     #Mapping ids
     result_dict = map_to_dictionary(ids,ids_dictionary,args.id_type,target_ids)
 
-    print ("mapping done")
+    #print ("mapping done")
 
-    print ("creating output file")
+    #print ("creating output file")
     #creating output file 
     with open(args.output,"w") as output :
         writer = csv.writer(output,delimiter="\t")
