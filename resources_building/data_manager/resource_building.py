@@ -499,10 +499,10 @@ def PPI_ref_files(data_manager_dict, species, interactome, target_directory):
         dico['protein_name']=dico_protein_name
 
     #writing output
-    output_file = species+'_'+interactome+'_'+ time.strftime("%d-%m-%Y") + ".json"
+    output_file = species+'_'+interactome+'_'+ time.strftime("%Y-%m-%d") + ".json"
     path = os.path.join(target_directory,output_file)
     name = species+" ("+species_dict[species]+") "+time.strftime("%d/%m/%Y")
-    release = species+"_"+interactome+"_"+ time.strftime("%d-%m-%Y")
+    release = species+"_"+interactome+"_"+ time.strftime("%Y-%m-%d")
     id = str(10000000000 - int(time.strftime("%Y%m%d")))
 
     with open(path, 'w') as handle:
