@@ -2,9 +2,10 @@
 Create a project-specific MaxQuant parameter file.
 
 TODO: check validity of parsed experimental design template
-      add support for paramter groups
+      add support for parameter groups
       add reporter ion MS2
       add label free quantification
+      don't hardcode parse rules for fasta files
 
 Author: Damian Glaetzer <d.glaetzer@mailbox.org>
 """
@@ -33,7 +34,7 @@ class MQParam:
     </FastaFileInfo>"""
 
     def __init__(self, mqpar_out, mqpar_in, exp_design,
-                 substitution_rx='[^\w\-\s\.]'):
+                 substitution_rx=r'[^\s\S]'):  # no sub by default
         """Initialize MQParam class. mqpar_in can either be a template
         or a already suitable mqpar file.
         >>> t = MQParam("test", './test-data/template.xml', None)
@@ -168,10 +169,10 @@ class MQParam:
                                            basename.split('.')[0])
                 # match infiles to their names in mqpar.xml,
                 # ignore files missing in mqpar.xml
-                try:
+                if basename_with_sub in infilenames:
                     index[i] = infilenames.index(basename_with_sub)
                     i += 1
-                except ValueError:
+                else:
                     raise ValueError("no matching infile found for "
                                      + child.text)
 
@@ -183,7 +184,7 @@ class MQParam:
         for nodename in nodenames:
             node = self.root.find(nodename)
             if node is None:
-                raise ValueError('Element {} not found in XML document'
+                raise ValueError('Element {} not found in parameter file'
                                  .format(nodename))
             nodes[nodename] = node
             node.clear()
@@ -243,10 +244,33 @@ class MQParam:
                          'min_unique_pep': '.minUniquePeptides',
                          'num_threads': 'numThreads',
                          'calc_peak_properties': '.calcPeakProperties',
-                         'write_mztab': 'writeMzTab'}
+                         'write_mztab': 'writeMzTab',
+                         'min_peptide_len': 'minPepLen',
+                         'max_peptide_mass': 'maxPeptideMass',
+                         'ibaq': 'ibaq',  # lfq global options
+                         'ibaq_log_fit': 'ibaqLogFit',
+                         'separate_lfq': 'separateLfq',
+                         'lfq_stabilize_large_ratios':
+                         'lfqStabilizeLargeRatios',
+                         'lfq_require_msms': 'lfqRequireMsms',
+                         'advanced_site_intensities':
+                         'advancedSiteIntensities',
+                         'lfq_mode':  # lfq param group options
+                         '.parameterGroups/parameterGroup/lfqMode',
+                         'lfq_skip_norm':
+                         '.parameterGroups/parameterGroup/lfqSkipNorm',
+                         'lfq_min_edges_per_node':
+                         '.parameterGroups/parameterGroup/lfqMinEdgesPerNode',
+                         'lfq_avg_edges_per_node':
+                         '.parameterGroups/parameterGroup/lfqAvEdgesPerNode',
+                         'lfq_min_ratio_count':
+                         '.parameterGroups/parameterGroup/lfqMinRatioCount'}
 
         if key in simple_params:
             node = self.root.find(simple_params[key])
+            if node is None:
+                raise ValueError('Element {} not found in parameter file'
+                                 .format(simple_params[key]))
             node.text = str(value)
         else:
             raise ValueError("Parameter not found.")
@@ -304,6 +328,9 @@ class MQParam:
 
         if key in params:
             node = self.root.find(params[key])
+            if node is None:
+                raise ValueError('Element {} not found in parameter file'
+                                 .format(params[key]))
             node.clear()
             node.tag = params[key].split('/')[-1]
             for e in vals:

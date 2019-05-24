@@ -23,9 +23,17 @@ arguments = ["--raw_files", "--mzxml_files", "--fasta_files", "--fixed_mods",
              "--missed_cleavages", "--min_unique_pep", "--mqpar_in",
              "--num_threads", "--output_all", "--mqpar_out",
              "--infile_names", "--mzTab", "--light_mods", "--medium_mods",
-             "--heavy_mods", "--version", "--substitution_rx"]
+             "--heavy_mods", "--version", "--substitution_rx",
+             "--min_peptide_len", "--max_peptide_mass", "--lfq_mode",
+             "--lfq_min_edges_per_node", "--lfq_avg_edges_per_node",
+             "--lfq_min_ratio_count"]
 
-flags = ("--calc_peak_properties", "--write_mztab")
+flags = (  # global opts
+         "--calc_peak_properties", "--write_mztab",
+         "--ibaq", "--ibaq_log_fit",
+         "--separate_lfq", "--lfq_stabilize_large_ratios",
+         "--lfq_require_msms", "--advanced_site_intensities",
+         "--lfq_skip_norm")
 
 
 txt_output = ("evidence", "msms", "parameters",
@@ -34,8 +42,7 @@ txt_output = ("evidence", "msms", "parameters",
               "modificationSpecificPeptides", "ms3Scans",
               "msmsScans", "mzRange", "peptideSection", "summary")
 
-for el in txt_output:
-    arguments.append('--' + el)
+arguments += ['--' + el for el in txt_output]
 
 for arg in arguments:
     parser.add_argument(arg)
@@ -60,7 +67,13 @@ for f, l in zip(files, fnames_with_ext):
 # arguments for mqparam
 simple_args = ('missed_cleavages', 'min_unique_pep',
                'num_threads', 'calc_peak_properties',
-               'write_mztab')
+               'write_mztab', 'min_peptide_len',
+               'max_peptide_mass', 'lfq_mode',
+               'lfq_min_edges_per_node',
+               'lfq_avg_edges_per_node', 'lfq_min_ratio_count',
+               'ibaq', 'ibaq_log_fit', 'separate_lfq',
+               'lfq_stabilize_large_ratios', 'lfq_require_msms',
+               'advanced_site_intensities', 'lfq_skip_norm')
 
 list_args = ('fixed_mods', 'var_mods', 'proteases')
 
