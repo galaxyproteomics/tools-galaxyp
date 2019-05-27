@@ -63,6 +63,10 @@ If your input is a multiple-column file, the mapped IDs column(s) will be added 
 
 Nextprot and OMIM are only available for Human.
 
+.. class:: warningmark
+
+For Uniprot-AC, only Uniprot-AC reviewed are considered here, except for releases before 27-05-2019 where all uniprot-AC (at the time) are considered.
+
 This tool converts human IDs using file built from:
 
 * HUMAN_9606_idmapping_selected.tab (Uniprot 23/10/2018)
