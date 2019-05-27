@@ -207,7 +207,7 @@ def main():
                 for row in tmp :
                     writer.writerow(row)
 
-        print ("output file created")
+        #print ("output file created")
 
 if __name__ == "__main__":
     main()
