@@ -163,8 +163,9 @@ class MQParam:
             i = 0
             for child in self.root.find('filePaths'):
                 # either windows or posix path
-                basename = min(os.path.basename(child.text),
-                               ntpath.basename(child.text))
+                win = ntpath.basename(child.text)
+                posix = os.path.basename(child.text)
+                basename = win if len(win) < len(posix) else posix
                 basename_with_sub = re.sub(self.substitution_rx, '_',
                                            basename.split('.')[0])
                 # match infiles to their names in mqpar.xml,
@@ -339,7 +340,7 @@ class MQParam:
             raise ValueError("Parameter {} not found.".format(key))
 
     def write(self):
-        rough_string = ET.tostring(self.root, 'utf-8')
+        rough_string = ET.tostring(self.root, 'utf-8', short_empty_elements=False)
         reparsed = minidom.parseString(rough_string)
         pretty = reparsed.toprettyxml(indent="\t")
         even_prettier = re.sub(r"\n\s+\n", r"\n", pretty)

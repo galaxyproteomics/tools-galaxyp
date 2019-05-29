@@ -107,9 +107,10 @@ for e in list_args:
     if args[e]:
         m.set_list_params(e, args[e].split(','))
 
-m.set_silac(args['light_mods'].split(',') if args['light_mods'] else None,
-            args['medium_mods'].split(',') if args['medium_mods'] else None,
-            args['heavy_mods'].split(',') if args['heavy_mods'] else None)
+if args['light_mods'] or args['medium_mods'] or args['heavy_mods']:
+    m.set_silac(args['light_mods'].split(',') if args['light_mods'] else None,
+                args['medium_mods'].split(',') if args['medium_mods'] else None,
+                args['heavy_mods'].split(',') if args['heavy_mods'] else None)
 
 m.write()
 
