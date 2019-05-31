@@ -18,31 +18,59 @@ import mqparam
 
 # build parser
 parser = argparse.ArgumentParser()
-arguments = ["--raw_files", "--mzxml_files", "--fasta_files", "--fixed_mods",
-             "--var_mods", "--proteases", "--exp_design",
-             "--missed_cleavages", "--min_unique_pep", "--mqpar_in",
-             "--num_threads", "--output_all", "--mqpar_out",
-             "--infile_names", "--mzTab", "--light_mods", "--medium_mods",
-             "--heavy_mods", "--version", "--substitution_rx",
-             "--min_peptide_len", "--max_peptide_mass", "--lfq_mode",
-             "--lfq_min_edges_per_node", "--lfq_avg_edges_per_node",
-             "--lfq_min_ratio_count"]
 
-flags = (  # global opts
-         "--calc_peak_properties", "--write_mztab",
-         "--ibaq", "--ibaq_log_fit",
-         "--separate_lfq", "--lfq_stabilize_large_ratios",
-         "--lfq_require_msms", "--advanced_site_intensities",
-         "--lfq_skip_norm")
+# input, special outputs and others
+other_args = ('raw_files', 'mzxml_files', 'fasta_files',
+              'description_parse_rule', 'identifier_parse_rule',
+              'exp_design', 'mqpar_in', 'output_all',
+              'mqpar_out', 'infile_names', 'mzTab',
+              'version', 'substitution_rx')
 
+# txt result files
+txt_output = ('evidence', 'msms', 'parameters',
+              'peptides', 'proteinGroups', 'allPeptides',
+              'libraryMatch', 'matchedFeatures',
+              'modificationSpecificPeptides', 'ms3Scans',
+              'msmsScans', 'mzRange', 'peptideSection',
+              'summary')
 
-txt_output = ("evidence", "msms", "parameters",
-              "peptides", "proteinGroups", "allPeptides",
-              "libraryMatch", "matchedFeatures",
-              "modificationSpecificPeptides", "ms3Scans",
-              "msmsScans", "mzRange", "peptideSection", "summary")
+# arguments for mqparam
+## global
+global_flags = ('calc_peak_properties',
+                'write_mztab',
+                'ibaq',
+                'ibaq_log_fit',
+                'separate_lfq',
+                'lfq_stabilize_large_ratios',
+                'lfq_require_msms',
+                'advanced_site_intensities')
 
-arguments += ['--' + el for el in txt_output]
+global_simple_args = ('min_unique_pep',
+                      'num_threads',
+                      'min_peptide_len',
+                      'max_peptide_mass')
+
+## parameter group specific
+param_group_flags = ('lfq_skip_norm',)
+
+param_group_simple_args = ('missed_cleavages',
+                           'lfq_mode',
+                           'lfq_min_edges_per_node',
+                           'lfq_avg_edges_per_node',
+                           'lfq_min_ratio_count')
+
+param_group_silac_args = ('light_mods', 'medium_mods', 'heavy_mods')
+
+list_args = ('fixed_mods', 'var_mods', 'proteases')
+
+arguments = ['--' + el for el in (txt_output
+                                  + global_simple_args
+                                  + param_group_simple_args
+                                  + list_args
+                                  + param_group_silac_args
+                                  + other_args)]
+
+flags = ['--' + el for el in global_flags + param_group_flags]
 
 for arg in arguments:
     parser.add_argument(arg)
@@ -64,19 +92,6 @@ fnames_with_ext = [(a if a.endswith(ftype)
 for f, l in zip(files, fnames_with_ext):
     os.link(f, l)
 
-# arguments for mqparam
-simple_args = ('missed_cleavages', 'min_unique_pep',
-               'num_threads', 'calc_peak_properties',
-               'write_mztab', 'min_peptide_len',
-               'max_peptide_mass', 'lfq_mode',
-               'lfq_min_edges_per_node',
-               'lfq_avg_edges_per_node', 'lfq_min_ratio_count',
-               'ibaq', 'ibaq_log_fit', 'separate_lfq',
-               'lfq_stabilize_large_ratios', 'lfq_require_msms',
-               'advanced_site_intensities', 'lfq_skip_norm')
-
-list_args = ('fixed_mods', 'var_mods', 'proteases')
-
 # build mqpar.xml
 mqpar_temp = os.path.join(os.getcwd(), 'mqpar.xml')
 if args['mqpar_in']:
@@ -97,9 +112,14 @@ if m.version != args['version']:
 # modify parameters, interactive mode if no mqpar_in was specified
 m.add_infiles([os.path.join(os.getcwd(), name) for name in fnames_with_ext],
               not args['mqpar_in'])
-m.add_fasta_files(args['fasta_files'].split(','))
+m.add_fasta_files(args['fasta_files'].split(','),
+                  identifier=args['identifier_parse_rule'],
+                  description=args['description_parse_rule'])
 
-for e in simple_args:
+for e in (global_simple_args
+          + param_group_simple_args
+          + global_flags
+          + param_group_flags):
     if args[e]:
         m.set_simple_param(e, args[e])
 
