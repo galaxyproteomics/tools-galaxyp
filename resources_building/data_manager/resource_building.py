@@ -138,8 +138,8 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
     files=["idmapping_selected.tab.gz","idmapping.dat.gz"]
 
     #header
-    if human : tab = [["UniProt-AC","UniProt-AC_reviewed","UniProt-ID","GeneID","RefSeq","GI","PDB","GO","PIR","MIM","UniGene","Ensembl_Gene","Ensembl_Transcript","Ensembl_Protein","neXtProt","BioGrid","STRING","KEGG"]]
-    else : tab = [["UniProt-AC","UniProt-AC_reviewed","UniProt-ID","GeneID","RefSeq","GI","PDB","GO","PIR","MIM","UniGene","Ensembl_Gene","Ensembl_Transcript","Ensembl_Protein","BioGrid","STRING","KEGG"]]
+    if human : tab = [["UniProt-AC","UniProt-ID","GeneID","RefSeq","GI","PDB","GO","PIR","MIM","UniGene","Ensembl_Gene","Ensembl_Transcript","Ensembl_Protein","neXtProt","BioGrid","STRING","KEGG"]]
+    else : tab = [["UniProt-AC","UniProt-ID","GeneID","RefSeq","GI","PDB","GO","PIR","MIM","UniGene","Ensembl_Gene","Ensembl_Transcript","Ensembl_Protein","BioGrid","STRING","KEGG"]]
 
     #get selected.tab and keep only ids of interest
     selected_tab_file=species_dict[species]+"_"+files[0]
@@ -163,10 +163,8 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
 
     for line in tab[1:]:
         UniProtAC = line[0]
-        if UniProtAC in uniprot_reviewed_list :
-            line.insert(1,UniProtAC)
-        else : 
-            line.insert(1,"")
+        if UniProtAC not in uniprot_reviewed_list :
+            line[0]="NA"
 
     """
     Supplementary ID to get from HUMAN_9606_idmapping.dat :

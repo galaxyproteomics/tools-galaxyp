@@ -130,6 +130,10 @@ Ids kept in the ref file are listed below:
 * KEGG gene id (e.g. hsa:7529)
 * Nextprot and OMIM only applicable to Human species.
 
+
+Only reviewed Uniprot-AC are kept. 
+(query = "https://www.uniprot.org/uniprot/?query=reviewed:yes+AND+organism:"+organism+"&format=list")
+
 A tsv file is made (list of lists in python) from those files and saved.
 This tsv file will be load by id_converter and a python dictionary will be created from it (for each run of id_converter).
 Only a partial dictionary is made instead of a complete one. Only the dictionary for the input id type is made.
