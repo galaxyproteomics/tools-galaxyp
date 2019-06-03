@@ -40,6 +40,13 @@ You can copy/paste these identifiers or supply a tabular file (.csv, .tsv, .txt,
 
 Text (tables) and graphics representing the repartition and/or enrichment of GO categories. 
 
+**Packages used** 
+    - bioconductor-org.hs.eg.db v3.5.0
+    - bioconductor-org.mm.eg.db v3.5.0
+    - bioconductor-org.rn.eg.db v3.5.0
+    - dose v3.2.0
+    - clusterpofiler v 3.4.4
+
 **User manual / Documentation** of the clusterProfiler R package (functions and parameters):
 https://bioconductor.org/packages/3.7/bioc/vignettes/clusterProfiler/inst/doc/clusterProfiler.html
 (Very well explained)
