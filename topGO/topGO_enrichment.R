@@ -215,7 +215,7 @@ goEnrichment = function(geneuniverse,sample,background_sample,onto){
     return(c(NULL,NULL))
   }
   
-  geneList = factor(as.integer(allGenes %in% sample)) 
+  geneList = factor(as.integer(allGenes %in% sample)) #duplicated ids in sample count only for one
   if (length(levels(geneList)) == 1 ){
     stop("All or none of the background genes are found in tested genes dataset, enrichment analysis can't be done")
   }

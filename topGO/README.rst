@@ -66,3 +66,12 @@ Furthermore, the following corrections for multiple testing can also be applied 
 - BH
 - BY
 - fdr
+
+**Packages used**
+    - bioconductor-org.hs.eg.db v3.5.0
+    - bioconductor-org.mm.eg.db v3.5.0
+    - bioconductor-org.rn.eg.db v3.5.0
+    - bioconductor-annotationdbi v1.40.0
+    - bioconductor-go.db v3.5.0
+    - bioconductor-graph v1.56.0
+    - bioconductor-topgo v2.30.0
