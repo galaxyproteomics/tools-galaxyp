@@ -1,5 +1,5 @@
 options(warn=-1)  #TURN OFF WARNINGS !!!!!!
-#suppressMessages(library(clusterProfiler,quietly = TRUE))
+suppressMessages(library(clusterProfiler,quietly = TRUE))
 
 # Read file and return file content as data.frame
 read_file <- function(path,header){
