@@ -65,20 +65,13 @@ getprofile = function(ids, id_type, level, duplicate,species) {
   # Extract Gene Entrez ID
   if (id_type == "Entrez") {
     id = select(package, ids, "ENTREZID", multiVals = "first")
-    genes_ids = id$ENTREZID[which( ! is.na(id$ENTREZID))]
   } else {
-    genes_ids = c()
     id = select(package, ids, "ENTREZID", "UNIPROT", multiVals = "first")
-    if (duplicate == "TRUE") {
-      id = unique(id)
-    }
-    print(id[[1]])
-    genes_ids = id$ENTREZID[which( ! is.na(id$ENTREZID))]
-    # IDs that have NA ENTREZID
-    NAs = id$UNIPROT[which(is.na(id$ENTREZID))]
-    #print("IDs unable to convert to ENTREZID: ")
-    #print(NAs)
   }
+  if (duplicate) { id = unique(id) }
+  genes_ids = id$ENTREZID[which( ! is.na(id$ENTREZID))]
+  NAs = id$UNIPROT[which(is.na(id$ENTREZID))] # IDs that have NA ENTREZID
+  
   # Create basic profiles
   profile.CC = basicProfile(genes_ids, onto='CC', level=level, orgPackage=species, empty.cats=F, ord=T, na.rm=T)
   profile.BP = basicProfile(genes_ids, onto='BP', level=level, orgPackage=species, empty.cats=F, ord=T, na.rm=T)
@@ -178,8 +171,8 @@ goprofiles = function() {
     file = read_file(filename, header)
     # Extract Protein IDs list
     input = unlist(strsplit(as.character(file[,ncol]),";"))
-    input = input [which(!is.na(input))]
   }
+  input = input [which(!is.na(gsub("NA",NA,input)))]
   
   if (! any(check_ids(input,id_type))){
     stop(paste(id_type,"not found in your ids list, please check your IDs in input or the selected column of your input file"))
@@ -191,7 +184,7 @@ goprofiles = function() {
   level = args$level
   per = as.logical(args$per)
   title = args$title
-  duplicate = args$duplicate
+  duplicate = str2bool(args$duplicate)
   text_output = args$text_output
   species=args$species
 

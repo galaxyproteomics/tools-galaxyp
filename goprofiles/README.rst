@@ -28,3 +28,11 @@ Functional profile at a given GO level is obtained by counting the number of ide
 For more details about GoProfiles, please read: Salicrú et al. Comparison of lists of genes based on functional profiles. BMC Bioinformatics. 2011;12:401.(https://bmcbioinformatics.biomedcentral.com/articles/10.1186/1471-2105-12-401)  
 
 If your type of identifiers is not supported (i.e. different form Uniprot and Entrez), please use the **ID Converter** component in the ProteoRE section to convert your list of IDs first.
+
+
+**Packages used**
+    - bioconductor-org.hs.eg.db v3.5.0
+    - bioconductor-org.mm.eg.db v3.5.0
+    - bioconductor-annotationdbi v1.40.0
+    - bioconductor-biobase v2.98.0
+    - goprofiles v1.38.0
