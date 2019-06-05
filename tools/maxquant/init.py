@@ -11,6 +11,7 @@ Usage: init.py [-a] [-m MODS_FILE] [-e ENZYMES_FILE]
 FILES are the modifications/enzymes.xml of MaxQuant, located at
 <ANACONDA_DIR>/pkgs/maxquant-<VERSION>/bin/conf/.
 (for conda installations)
+
 Updates modification parameters in macros.xml.
 """
 
@@ -44,7 +45,8 @@ if args.modifications:
     standard_mods = []
     label_mods = []
     for m in mods:
-        if m.findtext('type') == 'Standard':
+        if (m.findtext('type') == 'Standard'
+            or m.findtext('type') == 'AaSubstitution'):
             standard_mods.append(m.get('title'))
         elif m.findtext('type') == 'Label':
             label_mods.append(m.get('title'))
