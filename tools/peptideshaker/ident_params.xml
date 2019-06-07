@@ -8,8 +8,7 @@
     </macros>
     <requirements>
       	<requirement type="package" version="@SEARCHGUI_VERSION@">searchgui</requirement>
-      	<requirement type="package" version="3.0">zip</requirement>
-        <requirement type="package">JQ</requirement>
+      <!--  <requirement type="package">JQ</requirement>-->
     </requirements>
     <expand macro="stdio" />
     <command>
@@ -21,22 +20,30 @@
         cwd=`pwd`;
         export HOME=\$cwd;
 
-        echo 'DB: ${input_database.display_name} sequences: ${input_database.metadata.sequences}';
+        echo "" > $temp_stderr &&
 
         ## copy the input FASTA file to the working folder
-        cp '${input_database}' './input_database.fasta';
+        ## cp '${input_database}' './input_database.fasta';
 
+        ## copy the input Parameters file, if it exists, to the working folder
+        #if $input_parameters_file
+          cp '${input_parameters_file}' './input_parameters_file.par' &&
+        #end if
 
+        echo 'running Identification Parameters CLI' &&
         #####################################################
         ## generate IdentificationParameters for SearchGUI ##
         #####################################################
         (searchgui eu.isas.searchgui.cmd.IdentificationParametersCLI
             --exec_dir="./bin/"
-            -out './SEARCHGUI_IdentificationParameters_temp.par'
+            -out './IdentificationParameters.par'
 
           ## SPECTRUM MATCHING PARAMETERS
 
-            -db './input_database.fasta'
+            ## -db './input_database.fasta'
+            #if $input_parameters_file
+              -id_params './input_parameters_file.par'
+            #end if
 
             -frag_tol '${spectrum_matching_options.fragment_tol}'
             -frag_ppm '${spectrum_matching_options.fragment_tol_units}'
@@ -427,50 +434,27 @@
                 -novor_mass_analyzer ${advanced_options.searchengines_advanced_options.novor.novor_mass_analyzer}
             #end if
 
-        2> $temp_stderr);
 
-        ## reading from the original .par file
-        content_par_target_path=`cat ./SEARCHGUI_IdentificationParameters_temp.par`;
-        ## modifying the .par file
-        ## First we establish the new content for the path: .searchParameters.fastaFile.path
-        new_content_par_target_path=`jq '.searchParameters.fastaFile.path = \$newVal' --arg newVal './input_database.fasta' <<< "\$content_par_target_path"`;
-        ## Secondly, for .proteinInferencePreferences.proteinSequenceDatabase.path
-        new_content_par_target_path=`jq '.proteinInferencePreferences.proteinSequenceDatabase.path = \$newVal' --arg newVal './input_database.fasta' <<< "\$new_content_par_target_path"`;
+            ## DATABASE PROCESSING OPTIONS
 
-        ## we generate a new .par file filled with the new fasta path.
-        echo 'Final identification parameters file: ';
-        #set $new_par_target_path = './SEARCHGUI_IdentificationParameters.par';
-        echo $new_par_target_path;
-        echo "\$new_content_par_target_path" >> $new_par_target_path;
+            #if $advanced_options.database_processing_options.decoy_conditional.create_decoy_selector == "yes"
+                -fasta_target_decoy 1
+                -fasta_decoy_tag $advanced_options.database_processing_options.decoy_conditional.decoy_tag
+                -fasta_decoy_type $advanced_options.database_processing_options.decoy_conditional.decoy_type
+            #end if
+                -fasta_target_decoy 0
+                -fasta_decoy_file_tag $advanced_options.database_processing_options.decoy_file_tag
 
-        ## compress both parameters and fasta file for the output
-        (zip ./IdentificationParametersAndFasta.zip ./SEARCHGUI_IdentificationParameters.par 2>> $temp_stderr)
+        2> $temp_stderr) &&
 
-        &&
-
-        (zip -u ./IdentificationParametersAndFasta.zip ./input_database.fasta 2>> $temp_stderr);
-
-        exit_code_for_galaxy=\$?;
         cat $temp_stderr 2>&1;
-        (exit \$exit_code_for_galaxy)
 ]]>
     </command>
     <inputs>
 
-        <param format="fasta" name="input_database" type="data" label="Protein Database"
-            help="Select FASTA database from history"/>
+        <param format="json" name="input_parameters_file" type="data" label="Input parameters file" optional="true"
+            help="An identification parameters file to modify (optional)"/>
 
-        <section name="protein_database_options" expanded="false" title="Protein Database Options">
-            <param name="create_decoy" type="boolean" truevalue="True" falsevalue="False" checked="true"
-                label="Create a concatenated target/decoy database before running PeptideShaker"
-                help="Selecting this option will help PeptideShaker calculate FDR values" />
-            <param name="use_gene_mapping" type="boolean" truevalue="-useGeneMapping 1" falsevalue="-useGeneMapping 0" checked="false"
-                label="gene mappings will be used and saved along with the project (UniProt databases only)"
-                help="This should only be enabled for UniProt databaases" />
-            <param name="update_gene_mapping" type="boolean" truevalue="-updateGeneMapping 1" falsevalue="-updateGeneMapping 0" checked="false"
-                label="Update gene mappings automatically from Ensembl (UniProt databases only)"
-            help="This should only be enabled for UniProt databaases" />
-        </section>
 
         <!-- General Parameters -->
         <!-- <expand macro="general_options"/>-->
@@ -1244,23 +1228,48 @@
                     </when>
                 </conditional>
             </section>
+
+
+            <!-- DATABASE PROCESSING OPTIONS : TO IMPROVE AND IMPLEMENT -->
+
+            <section name="database_processing_options" expanded="false" title="Database Processing Options">
+                <conditional name="decoy_conditional">
+                    <param name="create_decoy_selector" type="select"
+                      label="Create a concatenated target/decoy database before running PeptideShaker"
+                      help="Selecting this option will help PeptideShaker calculate FDR values">
+                        <option value="yes" selected="True">Yes</option>
+                        <option value="no" >No</option>
+                    </param>
+                    <when value="no" />
+                    <when value="yes">
+                        <param name="decoy_tag" type="text" value="-REVERSED" label="The decoy flag">
+                        </param>
+                        <param name="decoy_type" type="select" label="Location of the decoy flag: prefix or suffix">
+                            <option value="0">Prefix</option>
+                            <option value="1" selected="True">Suffix</option>
+                        </param>
+                    </when>
+                </conditional>
+                <param name="decoy_file_tag" type="text" value="_concatenated_target_decoy" label="Target decoy suffix.">
+                </param>
+
+            </section>
+
         </section>
 
     </inputs>
     <outputs>
-      <!--  <data name="Searchgui_Identification_Parameters" format="par" from_work_dir="SEARCHGUI_IdentificationParameters.par" label="${tool.name}: PAR file on ${on_string}" /> -->
-        <data name="Identification_Parameters_And_Fasta" format="zip" from_work_dir="IdentificationParametersAndFasta.zip" label="${tool.name}: Compressed PAR and FASTA files on ${on_string}" />
+      <!--  <data name="Searchgui_Identification_Parameters" format="par" from_work_dir="IdentificationParameters.par" label="${tool.name}: PAR file on ${on_string}" /> -->
+        <data name="Identification_Parameters" format="json" from_work_dir="IdentificationParameters.par" label="${tool.name}: PAR files on ${on_string}" />
     </outputs>
     <tests>
 
         <!-- Test that default parameters generates a standar par file -->
         <test>
-            <param name="input_database" value="searchgui_tinydb1_concatenated_target_decoy.fasta" ftype="fasta"/>
-            <output name="Identification_Parameters_And_Fasta" file="IdentificationParametersAndFastaDefault.zip" ftype="zip" compare="sim_size" delta="1000" />
+            <output name="Identification_Parameters" file="Identification_Parameters_default.par" ftype="json" compare="sim_size" delta="1000" />
         </test>
         <!-- Test specific parameters -->
         <test>
-            <param name="input_database" value="searchgui_tinydb1_concatenated_target_decoy.fasta" ftype="fasta"/>
             <param name="precursor_ion_tol" value="100"/>
             <param name="fixed_modifications" value="Carbamidomethylation of C"/>
             <param name="variable_modifications" value="Oxidation of M"/>
@@ -1268,17 +1277,14 @@
             <param name="max_charge" value="3"/>
             <param name="xtandem_advanced" value="yes"/>
             <param name="xtandem_refine_selector" value="yes"/>
-            <output name="Identification_Parameters_And_Fasta" file="IdentificationParametersAndFastaSpecific.zip" ftype="zip" compare="sim_size" delta="1000" />
+            <output name="Identification_Parameters" file="Identification_Parameters_specific.par" ftype="json" compare="sim_size" delta="1000" />
         </test>
 
     </tests>
     <help>
 **What it does**
 
-Creates a zip file containing:
-
-- A fasta file.
-- A parameters file (.par) which can be used independently by SearchGUI or PeptideShaker apps. It makes reference to the previous fasta file.
+Creates a parameters file (.par) which can be used independently by SearchGUI or PeptideShaker apps.
 
 A FASTA file with decoy sequences generated by FastaCLI is recommended if SearchGUI and PeptideShaker are going to use the output of this tool.
 
