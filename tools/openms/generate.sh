@@ -11,7 +11,7 @@ function get_tests {
 	echo '<xml name="tests_'$id'">'
 	cat OpenMS/src/tests/topp/CMakeLists.txt | grep -v "^\s*#" | egrep -v "_prep|_convert|WRITEINI|WRITECTD|INVALIDVALUE" | grep " $id\_" | grep add_test | egrep "TOPP|UTILS" | while read line
 	do
-		line=$(echo $line | sed 's/add_test("//; s/)$//; s/"//g; s/\${TOPP_BIN_PATH}\///g;s/\${DATA_DIR_TOPP}\///g; s/-test//; s#THIRDPARTY/##')
+		line=$(echo $line | sed 's/add_test("//; s/)$//; s/"//g; s/\${TOPP_BIN_PATH}\///g;s/\${DATA_DIR_TOPP}\///g; s/-test//; s#THIRDPARTY/##g')
 		test_id=$(echo $line | cut -d" " -f 1)
 		tool_id=$(echo $line | cut -d" " -f 2)
 		if [[ $test_id =~ _out_?[0-9]? ]]; then
@@ -56,13 +56,13 @@ function prepare_test_data {
 	id=$1
 	cat OpenMS/src/tests/topp/CMakeLists.txt | grep -v "^\s*#" | egrep -v "WRITEINI|WRITECTD|INVALIDVALUE|DIFF" | egrep "$id\_.*[0-9]+(_prep|_convert)?" | grep add_test | egrep "TOPP|UTILS" | while read line
 	do
-		line=$(echo $line | sed 's/add_test("//; s/)[^)]*$//; s/\${TOPP_BIN_PATH}\///g;s/\${DATA_DIR_TOPP}\///g; s/-test//; s#THIRDPARTY/##' | cut -d" " -f2-)
+		line=$(echo $line | sed 's/add_test("//; s/)[^)]*$//; s/\${TOPP_BIN_PATH}\///g;s/\${DATA_DIR_TOPP}\///g; s/-test//; s#THIRDPARTY/##g' | cut -d" " -f2-)
 		echo $line
 	done 
 }
 
 
-# reset old data
+reset old data
 rm xml/*xml
 echo "<macros>" > xml/macros_test.xml
 echo "" > prepare_test_data.sh
@@ -87,10 +87,10 @@ echo "" > prepare_test_data.sh
 # git clone https://github.com/genericworkflownodes/CTDopts
 # export PYTHONPATH=/home/berntm/projects/tools-galaxyp/tools/openms/gen-test/CTDopts
 # git clone https://github.com/WorkflowConversion/CTDConverter.git
-# 
+
 python CTDConverter/convert.py galaxy -i ctd/*ctd -o xml/ -s ../tools_blacklist.txt -f ../filetypes.txt -m ../macros.xml -t ../tool.conf  -p ../hardcoded_params.txt -b version log debug test java_memory java_permgen
 #-b version log debug test in_type executable pepnovo_executable param_model_directory rt_concat_trafo_out param_id_pool
-
+# 
 # mods for all xml files
 # - add aggressive error checks
 # - make command and help CDATA
@@ -102,7 +102,7 @@ do
 
 	id=$(basename $i .xml)
 
-	#if [[ $id != "MassCalculator" ]]; then
+	#if [[ $id != "IDFileConverter" ]]; then
 	#	continue
 	#fi
 	echo postprocessing $id
@@ -144,7 +144,7 @@ do
 	for x in $(grep 'type="data"' $i | sed 's/.*name="\([^"]\+\)".*/\1/' | uniq)
 	do
 		X=$(echo $x | sed 's/param_//')
-		sed -i -e "s#\(<command>\)#\1ln -s \$$x '$x.\${$x.ext}' \&\&\n#" $i
+		sed -i -e "s@\(<command>\)@\1#if str(\$$x)!=\"None:\"\nln -s \$$x '$x.\${$x.ext}' \&\&\n#end if\n@" $i
 		sed -i -e "s#-$X .*#-$X '$x.\${$x.ext}'\n#" $i
 	done
 
@@ -164,8 +164,17 @@ do
 	# add CDATA to command and add aggressive error checks 
 	sed -i -e 's#<command>#<command detect_errors="aggressive"><![CDATA[\n#g' $i
 	sed -i -e 's#</command>#]]></command>#g' $i
-
 done
+
+## tool specific changes 
+# AccurateMassSearch db_mapping|db_struct|positive_adducts|negative_adducts are documented as mandatory, but they are optional 
+for i in db_mapping db_struct positive_adducts negative_adducts
+do
+	sed -i -e 's/\(<param name="param_'$i'".*\)optional="False"/\1optional="True"/' xml/AccurateMassSearch.xml
+        sed -i -e 's/\(<param name="param_'$i'".*\)value="[^"]\+"/\1/' xml/AccurateMassSearch.xml
+done
+
+
 
 echo "</macros>" >> xml/macros_test.xml
 
