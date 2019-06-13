@@ -164,7 +164,8 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
     for line in tab[1:]:
         UniProtAC = line[0]
         if UniProtAC not in uniprot_reviewed_list :
-            line[0]="NA"
+            line[0]=""
+            line[1]=""
 
     """
     Supplementary ID to get from HUMAN_9606_idmapping.dat :

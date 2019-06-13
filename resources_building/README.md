@@ -131,7 +131,7 @@ Ids kept in the ref file are listed below:
 * Nextprot and OMIM only applicable to Human species.
 
 
-Only reviewed Uniprot-AC are kept. 
+Only reviewed Uniprot-AC are kept (and corresponding uniprot ID). 
 (query = "https://www.uniprot.org/uniprot/?query=reviewed:yes+AND+organism:"+organism+"&format=list")
 
 A tsv file is made (list of lists in python) from those files and saved.
