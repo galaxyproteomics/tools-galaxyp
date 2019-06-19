@@ -69,31 +69,16 @@ For Uniprot-AC, only Uniprot-AC reviewed are considered here, except for release
 
 This tool converts human IDs using file built from:
 
-* HUMAN_9606_idmapping_selected.tab (Uniprot 23/10/2018)
-    Tarball downloaded from ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/
-
-* HUMAN_9606_idmapping.dat (Uniprot 23/10/18)
-    Tarball downloaded from ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/
-
-* Human uniprot-AC entries reviewed : https://www.uniprot.org/uniprot/?query=reviewed:yes+AND+organism:9606&format=list
-
-
-* nextprot_ac_list_all.txt (Nextprot released on 10/10/2018)
-    Downloaded from ftp://ftp.nextprot.org/pub/current_release/ac_lists/
-
-* MOUSE_10090_idmapping_selected.tab (Uniprot 23/10/2018)
-    Tarball downloaded from ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/
-
-* MOUSE_10090_idmapping.dat (Uniprot 23/10/18)
-    Tarball downloaded from ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/
-
-* Mouse uniprot-AC entries reviewed : https://www.uniprot.org/uniprot/?query=reviewed:yes+AND+organism:10090&format=list
-
-
-* RAT_10116_idmapping.dat (Uniprot 23/10/18)
-    Tarball downloaded from ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/
-
-* RAT_10116_idmapping_selected.tab (Uniprot 23/10/18)
-    Tarball downloaded from ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/
-
-* Rat uniprot-AC entries reviewed : https://www.uniprot.org/uniprot/?query=reviewed:yes+AND+organism:10116&format=list
+* Current release of Uniprot, for idmapping_selected.tab and idmapping.dat for Human, Mouse and Rat: ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism
+* All previous release of uniprot can be found here: ftp://ftp.uniprot.org/pub/databases/uniprot/previous_releases/
+* **nextprot_ac_list_all.txt (Nextprot released on 13/02/2019 - current)**: ftp://ftp.nextprot.org/pub/current_release/ac_lists/
+* All previous release of **nextprot_ac_list_all.txt** can be foud here: ftp://ftp.nextprot.org/pub/previous_releases/
+* `Human uniprot-AC entries reviewed (05/06/2019) <https://www.uniprot.org/uniprot/?query=reviewed:yes+AND+organism:9606+AND+created:[20120720%20TO%2020190605]&format=list>`_. 
+* `Mouse uniprot-AC entries reviewed (05/06/2019) <https://www.uniprot.org/uniprot/?query=reviewed:yes+AND+organism:10090+AND+created:[20120720%20TO%2020190605]&format=list>`_. 
+* `Rat uniprot-AC entries reviewed (05/06/2019) <https://www.uniprot.org/uniprot/?query=reviewed:yes+AND+organism:10116+AND+created:[20120720%20TO%2020190605]&format=list>`_.
+* `Human uniprot-AC entries reviewed (08/05/2019) <https://www.uniprot.org/uniprot/?query=reviewed:yes+AND+organism:9606+AND+created:[20120720%20TO%2020190508]&format=list>`_. 
+* `Mouse uniprot-AC entries reviewed (08/05/2019) <https://www.uniprot.org/uniprot/?query=reviewed:yes+AND+organism:10090+AND+created:[20120720%20TO%2020190508]&format=list>`_. 
+* `Rat uniprot-AC entries reviewed (08/05/2019) <https://www.uniprot.org/uniprot/?query=reviewed:yes+AND+organism:10116+AND+created:[20120720%20TO%2020190508]&format=list>`_.
+* `Human uniprot-AC entries reviewed (10/10/2018) <https://www.uniprot.org/uniprot/?query=reviewed:yes+AND+organism:9606+AND+created:[20120720%20TO%2020181010]&format=list>`_. 
+* `Mouse uniprot-AC entries reviewed (10/10/2018) <https://www.uniprot.org/uniprot/?query=reviewed:yes+AND+organism:10090+AND+created:[20120720%20TO%2020181010]&format=list>`_. 
+* `Rat uniprot-AC entries reviewed (10/10/2018) <https://www.uniprot.org/uniprot/?query=reviewed:yes+AND+organism:10116+AND+created:[20120720%20TO%2020181010]&format=list>`_.
