@@ -44,7 +44,7 @@ width_by_max_char <- function (nb_max_char) {
   return (width)
 }
 
-repartition.GO <- function(geneid, orgdb, ontology, level=3, readable=TRUE) {
+repartition_GO <- function(geneid, orgdb, ontology, level=3, readable=TRUE) {
   ggo<-groupGO(gene=geneid, 
                OrgDb = orgdb, 
                ont=ontology, 
@@ -66,7 +66,7 @@ repartition.GO <- function(geneid, orgdb, ontology, level=3, readable=TRUE) {
 }
 
 # GO over-representation test
-enrich.GO <- function(geneid, universe, orgdb, ontology, pval_cutoff, qval_cutoff,plot) {
+enrich_GO <- function(geneid, universe, orgdb, ontology, pval_cutoff, qval_cutoff,plot) {
   ego<-enrichGO(gene=geneid,
                 universe=universe,
                 OrgDb=orgdb,
@@ -126,7 +126,7 @@ check_ids <- function(vector,type) {
   }
 }
 
-clusterProfiler = function() {
+get_args <- function(){
   args <- commandArgs(TRUE)
   if(length(args)<1) {
     args <- c("--help")
@@ -162,9 +162,17 @@ clusterProfiler = function() {
   args <- as.list(as.character(argsDF$V2))
   names(args) <- argsDF$V1
   
+  return(args)
+}
+
+
+main <- function() {
+  
+  #get args from command
+  args <- get_args()
+
   #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/cluster_profiler/args.Rda")
   #load("/home/dchristiany/proteore_project/ProteoRE/tools/cluster_profiler/args.Rda")
-  
   
   go_represent=str2bool(args$go_represent)
   go_enrich=str2bool(args$go_enrich)
@@ -275,14 +283,14 @@ clusterProfiler = function() {
   ##enrichGO : GO over-representation test
   for (onto in ontology) {
     if (go_represent) {
-      ggo<-repartition.GO(gene, orgdb, onto, level, readable=TRUE)
+      ggo<-repartition_GO(gene, orgdb, onto, level, readable=TRUE)
       if (is.list(ggo)){ggo <- as.data.frame(apply(ggo, c(1,2), function(x) gsub("^$|^ $", NA, x)))}  #convert "" and " " to NA
       output_path = paste("cluster_profiler_GGO_",onto,".tsv",sep="")
       write.table(ggo, output_path, sep="\t", row.names = FALSE, quote = FALSE )
     }
 
     if (go_enrich) {
-      ego<-enrich.GO(gene, universe_gene, orgdb, onto, pval_cutoff, qval_cutoff,plot)
+      ego<-enrich_GO(gene, universe_gene, orgdb, onto, pval_cutoff, qval_cutoff,plot)
       if (is.list(ego)){ego <- as.data.frame(apply(ego, c(1,2), function(x) gsub("^$|^ $", NA, x)))}  #convert "" and " " to NA
       output_path = paste("cluster_profiler_EGO_",onto,".tsv",sep="")
       write.table(ego, output_path, sep="\t", row.names = FALSE, quote = FALSE )
@@ -290,4 +298,6 @@ clusterProfiler = function() {
   }
 }
 
-clusterProfiler()
+if(!interactive()) {
+  main()
+}
