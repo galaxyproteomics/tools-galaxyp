@@ -62,7 +62,7 @@ function prepare_test_data {
 }
 
 
-reset old data
+#reset old data
 rm xml/*xml
 echo "<macros>" > xml/macros_test.xml
 echo "" > prepare_test_data.sh
@@ -72,10 +72,9 @@ echo "" > prepare_test_data.sh
 
 # git clone -b release/2.3.0 https://github.com/OpenMS/OpenMS.git
 
+# generate ctd files using the binaries in the conda package 
 # /home/berntm/miniconda3/bin/conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults --name __openms@$VERSION openms=$VERSION
-# 
 # conda activate __openms@2.3
-# 
 # mkdir ctd
 # for i in bin/*
 # do
@@ -83,10 +82,12 @@ echo "" > prepare_test_data.sh
 # 	$b -write_ctd ctd/
 # 	sed -i -e 's/²/^2/' ctd/$b.ctd
 # done
-# 
+# conda deactivate
+
 # git clone https://github.com/genericworkflownodes/CTDopts
 # export PYTHONPATH=/home/berntm/projects/tools-galaxyp/tools/openms/gen-test/CTDopts
 # git clone https://github.com/WorkflowConversion/CTDConverter.git
+
 
 python CTDConverter/convert.py galaxy -i ctd/*ctd -o xml/ -s ../tools_blacklist.txt -f ../filetypes.txt -m ../macros.xml -t ../tool.conf  -p ../hardcoded_params.txt -b version log debug test java_memory java_permgen
 #-b version log debug test in_type executable pepnovo_executable param_model_directory rt_concat_trafo_out param_id_pool
@@ -100,70 +101,86 @@ python CTDConverter/convert.py galaxy -i ctd/*ctd -o xml/ -s ../tools_blacklist.
 for i in xml/*xml
 do
 
-	id=$(basename $i .xml)
+	id=$(basename "$i" .xml)
 
-	#if [[ $id != "IDFileConverter" ]]; then
+	#if [[ $id != "PercolatorAdapter" ]]; then
 	#	continue
 	#fi
-	echo postprocessing $id
+	echo postprocessing "$id"
 
-	sed -i -e '/.*<expand macro="references"/d' $i
-	sed -i -e 's#<help>#<help><![CDATA[#g' $i
-	sed -i -e 's#</help>#]]></help>\n<expand macro="references"/>#g' $i
-	sed -i -e 's/#$//' $i
-	sed -i -e 's#<expand macro="requirements"/>#<expand macro="requirements">\n  </expand>#' $i
-	if grep -lq '\-r.*_executable' $i
+	# move references below help and add CDATA to help
+	sed -i -e '/.*<expand macro="references"/d' "$i"
+	sed -i -e 's#<help>#<help><![CDATA[#g' "$i"
+	sed -i -e 's#</help>#]]></help>\n<expand macro="references"/>#g' "$i"
+
+	# remove empty comment lines	
+	sed -i -e 's/#$//' "$i"
+
+	# make it possible to extend requirements
+	sed -i -e 's#<expand macro="requirements"/>#<expand macro="requirements">\n  </expand>#' "$i"
+
+	# add R requirement to tools that need it (i.e. have a parameter -rscript_executable / -r_executable)
+	if grep -lq '\-r.*_executable' "$i"
 	then
-		sed -i -e 's#<expand macro="requirements">#<expand macro="requirements"/>\n    <requirement type="package" version="3.3.1">r-base</requirement>#' $i
+		sed -i -e 's#<expand macro="requirements">#&\n    <requirement type="package" version="3.3.1">r-base</requirement>#' "$i"
 	fi
 
-	if grep -lq "percolator_executable" $i
+	# add requirements for external programs
+	if grep -lq "percolator_executable" "$i"
 	then
-		sed -i -e 's#<expand macro="requirements">#<expand macro="requirements"/>\n    <requirement type="package" version="3.2.1">percolator</requirement>\n  </expand>#' $i
+		sed -i -e 's#<expand macro="requirements">#&\n    <requirement type="package" version="3.2.1">percolator</requirement>#' "$i"
 	fi
-	if grep -lq "comet_executable" $i
+	if grep -lq "comet_executable" "$i"
 	then
-		sed -i -e 's#<expand macro="requirements">#<expand macro="requirements"/>\n    <requirement type="package" version="2018014">comet-ms</requirement>\n  </expand>#' $i
+		sed -i -e 's#<expand macro="requirements">#&\n    <requirement type="package" version="2018014">comet-ms</requirement>#' "$i"
 	fi
-	if grep -lq "fido_executable" $i
+	if grep -lq "fido_executable" "$i"
 	then
-		sed -i -e 's#<expand macro="requirements">#<expand macro="requirements"/>\n    <requirement type="package" version="1.0">fido</requirement>\n  </expand>#' $i
+		sed -i -e 's#<expand macro="requirements">#&\n    <requirement type="package" version="1.0">fido</requirement>#' "$i"
 	fi
-	if grep -lq "xtandem_executable" $i
+	if grep -lq "xtandem_executable" "$i"
 	then
-		sed -i -e 's#<expand macro="requirements">#<expand macro="requirements"/>\n    <requirement type="package" version="15.12.15.2">xtandem</requirement>\n  </expand>#' $i
+		sed -i -e 's#<expand macro="requirements">#&\n    <requirement type="package" version="15.12.15.2">xtandem</requirement>\n#' "$i"
 	fi
 	#TODO requirements for ommsa, myrimatch, luciphor (also -executable)
 	#TODO requirements for java?
 
-	if grep -lq "in_type" $i
+	# remove the in_type parameter (which allows the user to set the type of the input 
+	# manually) from the tools and stick to the default bahaviour to determine it from 
+	# file extension or content
+	if grep -lq "in_type" "$i"
 	then
-		sed -i -e '/in_type/d' $i
+		sed -i -e '/in_type/d' "$i"
 	fi
-	
-	for x in $(grep 'type="data"' $i | sed 's/.*name="\([^"]\+\)".*/\1/' | uniq)
+
+	# process all data parameters (loops over all names)
+	# - add a command for linking the data set to the workdir (param_name.extension)
+	# - adapt the parameter to use the link
+	for x in $(grep 'type="data"' "$i" | sed 's/.*name="\([^"]\+\)".*/\1/' | uniq)
 	do
-		X=$(echo $x | sed 's/param_//')
-		sed -i -e "s@\(<command>\)@\1#if str(\$$x)!=\"None:\"\nln -s \$$x '$x.\${$x.ext}' \&\&\n#end if\n@" $i
-		sed -i -e "s#-$X .*#-$X '$x.\${$x.ext}'\n#" $i
+		X=$(echo "$x" | sed 's/param_//')
+		sed -i -e "s@\(<command>\)@\1#if str(\$$x)!=\"None:\"\nln -s \$$x '\${$x.element_identifier).\${$x.ext}' \&\&\n#end if\n@" "$i"
+		sed -i -e "s#^-$X .*#-$X '\${$x.element_identifier}.\${$x.ext}'\n#" "$i"
+
 	done
 
-	if grep -lq "out_type" $i
-	then
-		sed -i -e 's#<data name="param_out" .*"/>#<data name="param_out" metadata_source="param_in" auto_format="true"/>#' $i
-	fi
+#	# TODO???
+# 	if grep -lq "out_type" "$i"
+# 	then
+# 		sed -i -e 's#<data name="param_out" .*"/>#<data name="param_out" metadata_source="param_in" auto_format="true"/>#' "$i"
+# 	fi
 
 	# TODO remove empty advanced options section
 
-	# add tests
-	sed -i -e "s#\(</outputs>\)#\1\n  <tests>\n    <expand macro=\"tests_$id\"/>\n  </tests>#" $i
-	sed -i -e "s#\(</macros>\)#    <import>macros_test.xml</import>\n  \1#" $i
-	get_tests $id >> xml/macros_test.xml
-	prepare_test_data $id >> prepare_test_data.sh
+	# add tests and scripts to create test data
+	sed -i -e "s#\(</outputs>\)#\1\n  <tests>\n    <expand macro=\"tests_$id\"/>\n  </tests>#" "$i"
+	sed -i -e "s#\(</macros>\)#    <import>macros_test.xml</import>\n  \1#" "$i"
+	get_tests "$id" >> xml/macros_test.xml
+	prepare_test_data "$id" >> prepare_test_data.sh
 
 	# add CDATA to command and add aggressive error checks 
-	sed -i -e 's#<command>#<command detect_errors="aggressive"><![CDATA[\n#g' $i
-	sed -i -e 's#</command>#]]></command>#g' $i
+	sed -i -e 's#<command>#<command detect_errors="aggressive"><![CDATA[\n#g' "$i"
+	sed -i -e 's#</command>#]]></command>#g' "$i"
 done
 
 ## tool specific changes 
@@ -174,9 +191,15 @@ do
         sed -i -e 's/\(<param name="param_'$i'".*\)value="[^"]\+"/\1/' xml/AccurateMassSearch.xml
 done
 
+# TODO the following tools need output data sets (in tests, but probably also in outputs as well)
+# PrecursorIonSelector
+# RTPredict
 
 
 echo "</macros>" >> xml/macros_test.xml
+# some parameter names have ':' in them which needes to be replaced by '_'
+# - note this happens automatically in tool ctd and xml files
+sed -i -e 's/:/_/g' macros_test.xml
 
 ##copy test data from OpenMS sources
 mkdir -p xml/test-data
@@ -191,6 +214,8 @@ do
 done
 
 
+
+# conda activate __openms@2.3
 # chmod u+x prepare_test_data.sh
 # cd xml/test-data
 # ../../prepare_test_data.sh
