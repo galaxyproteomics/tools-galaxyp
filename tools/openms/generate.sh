@@ -1,8 +1,9 @@
 #!/bin/bash
 
-VERSION=2.3
-CONDAPKG=https://anaconda.org/bioconda/openms/2.3.0/download/linux-64/openms-2.3.0-py27h932d754_3.tar.bz2
-#https://anaconda.org/bioconda/openms/2.4.0/download/linux-64/openms-2.4.0-py27h574aadf_1.tar.bz2
+# VERSION=2.3
+# CONDAPKG=https://anaconda.org/bioconda/openms/2.3.0/download/linux-64/openms-2.3.0-py27h932d754_3.tar.bz2
+VERSION=2.4
+CONDAPKG=https://anaconda.org/bioconda/openms/2.4.0/download/linux-64/openms-2.4.0-py27h574aadf_1.tar.bz2
 
 
 # parse test definitions from OpenMS sources for a tool with a given id
@@ -63,18 +64,19 @@ function prepare_test_data {
 
 
 #reset old data
-rm xml/*xml
+mkdir -p xml
+rm -f xml/*xml
 echo "<macros>" > xml/macros_test.xml
 echo "" > prepare_test_data.sh
 
 # wget $CONDAPKG 
 # tar -xf $(basename $CONDAPKG)
 
-# git clone -b release/2.3.0 https://github.com/OpenMS/OpenMS.git
+# git clone -b release/$VERSION.0 https://github.com/OpenMS/OpenMS.git
 
 # generate ctd files using the binaries in the conda package 
-# /home/berntm/miniconda3/bin/conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults --name __openms@$VERSION openms=$VERSION
-# conda activate __openms@2.3
+# conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults --name __openms@$VERSION openms=$VERSION
+# conda activate __openms@$VERSION
 # mkdir ctd
 # for i in bin/*
 # do
@@ -85,7 +87,7 @@ echo "" > prepare_test_data.sh
 # conda deactivate
 
 # git clone https://github.com/genericworkflownodes/CTDopts
-# export PYTHONPATH=/home/berntm/projects/tools-galaxyp/tools/openms/gen-test/CTDopts
+export PYTHONPATH=/home/berntm/projects/tools-galaxyp/tools/openms/gen-test/CTDopts
 # git clone https://github.com/WorkflowConversion/CTDConverter.git
 
 
@@ -195,6 +197,7 @@ done
 # PrecursorIonSelector
 # RTPredict
 
+cp ../macros.xml xml/
 
 echo "</macros>" >> xml/macros_test.xml
 # some parameter names have ':' in them which needes to be replaced by '_'
@@ -215,7 +218,7 @@ done
 
 
 
-# conda activate __openms@2.3
+# conda activate __openms@$VERSION
 # chmod u+x prepare_test_data.sh
 # cd xml/test-data
 # ../../prepare_test_data.sh
