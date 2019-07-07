@@ -18,22 +18,22 @@
         #set $temp_stderr = "peptideshaker_stderr"
         #set $bin_dir = "bin"
 
-
         mkdir output_reports &&
         cwd=`pwd` &&
         export HOME=\$cwd &&
 
         echo "" > $temp_stderr &&
 
+        ## copy the input .fasta file to the working folder
+        cp '${input_fasta_file}' './input_fasta_file.fasta';
+
         ln -s '$searchgui_input' searchgui_input.zip &&
         jar xvf searchgui_input.zip SEARCHGUI_IdentificationParameters.par &&
-
         #if str($exporting_options.output_reports) != "None"
             #set $output_reports_list = set(str($exporting_options.output_reports).split(','))
         #else
             #set $output_reports_list = set()
 	      #end if
-
         ######################
         ## PeptideShakerCLI ##
         ######################
@@ -41,9 +41,8 @@
             --exec_dir="\$cwd/${bin_dir}"
             -gui 0
             -temp_folder \$cwd/PeptideShakerCLI
-            -experiment '$exp_str'
-            -sample '$samp_str'
-            -replicate 1
+            -reference '$exp_str'
+            -fasta_file './input_fasta_file.fasta'
             -identification_files \$cwd/searchgui_input.zip
             -id_params \$cwd/SEARCHGUI_IdentificationParameters.par
             -out \$cwd/peptideshaker_output.cpsx
@@ -51,7 +50,6 @@
             -zip \$cwd/peptideshaker_output.zip
 	      #end if
             -threads "\${GALAXY_SLOTS:-12}"
-
 
         ##################################
         ## mzidCLI options ##
@@ -85,22 +83,41 @@
             #end if
         #end if
 
-        ##################################
-        ## PeptideShaker Report options ##
-        ##################################
+        ####################################################################
+        ##    PeptideShaker Identification Features Reports options       ##
+        ####################################################################
         ## Generate Reports if the user has selected one of the 11 additional reports
         #if len($output_reports_list) > 0
                 -out_reports \$cwd/output_reports
                 -reports #echo ','.join($output_reports_list)#
         #end if
 
+        ####################################################
+        ##    PeptideShaker Follow-Up Analysis options    ##
+        ####################################################
+
+        #if $exporting_options.followup_conditional.followup_conditional_selector == "yes"
+            #if $exporting_options.followup_conditional.followup_export_accession_numbers != "off"
+                -accessions_file \$cwd/output_reports/proteins_accession_numbers.txt -accessions_type $exporting_options.followup_conditional.followup_export_accession_numbers
+            #end if
+            #if $exporting_options.followup_conditional.followup_export_sequences != "off"
+                -sequences_file \$cwd/output_reports/proteins_sequences.fasta -sequences_type $exporting_options.followup_conditional.followup_export_sequences
+            #end if
+            #if $exporting_options.followup_conditional.followup_export_proteoforms != "off"
+                -proteoforms_file \$cwd/output_reports/proteins_proteoforms.txt
+            #end if
+        #end if
+
         2>> $temp_stderr)
 
         ## If the user chose to zip the results but also export reports out of the zip, we have to unzip them
         #if $exporting_options.zip_conditional.zip_output_boolean == 'zip' and $exporting_options.zip_conditional.export_reports_when_zip:
-            && unzip \$cwd/peptideshaker_output.zip 'reports/*' -d \$cwd/output_reports
+            && unzip \$cwd/peptideshaker_output.zip 'reports/*' -d \$cwd
+            && mv reports/* output_reports
+            && rm -r reports
         #end if
 
+        ## Renaming identification features reports to findable names and moving them to the root folder
 	      #if len(output_reports_list)>0:
             #if '0' in $output_reports_list:
                 && find \$cwd/output_reports -name '*Certificate_of_Analysis.txt' -exec bash -c 'mv "$0" "certificate.txt"' {} \;
@@ -140,6 +157,17 @@
             #end if
         #end if
 
+        ## Moving followup analysis to the root folder
+        #if $exporting_options.followup_conditional.followup_export_accession_numbers != "off"
+            && mv \$cwd/output_reports/proteins_accession_numbers.txt \$cwd/proteins_accession_numbers.txt
+        #end if
+        #if $exporting_options.followup_conditional.followup_export_sequences != "off"
+            && mv \$cwd/output_reports/proteins_sequences.fasta \$cwd/proteins_sequences.fasta
+        #end if
+        #if $exporting_options.followup_conditional.followup_export_proteoforms != "off"
+            && mv \$cwd/output_reports/proteins_proteoforms.txt \$cwd/proteins_proteoforms.txt
+        #end if
+
         && cat $temp_stderr 2>&1;
 ]]>
     </command>
@@ -151,6 +179,7 @@
             </options>
         </param>
 
+        <param format="fasta" name="input_fasta_file" type="data" label="Fasta file"/>
 
         <conditional name="contact_options">
             <param name="contact_options_selector" type="select" label="Specify Contact Information for mzIdendML"
@@ -208,7 +237,35 @@
                 </when>
             </conditional>
 
-            <param name="output_reports" type="select" display="checkboxes" multiple="True" optional="true" label="Reports to be generated">
+            <!-- FOLLOW-UP REPORTS  -->
+            <conditional name="followup_conditional">
+                <param name="followup_conditional_selector" type="select" label="Follow-up analysis export options">
+                    <option value="yes">Export follow-up analysis</option>
+                    <option value="no" selected="True">No</option>
+                </param>
+                <when value="no" />
+                <when value="yes">
+                    <param name="followup_export_accession_numbers" label="Proteins: Export accession numbers as TXT" type="select" help="Exports the protein accessions in text format">
+                        <option value="0" >Main Accession of Validated Protein Groups</option>
+                        <option value="1" >All Accessions of Validated Protein Groups</option>
+                        <option value="2" >Non-Validated Accessions</option>
+                        <option value="off" selected="True">Do not export</option>
+                    </param>
+                    <param name="followup_export_sequences" label="Proteins: Export sequences as FASTA" type="select" help="Exports the protein details in fasta format">
+                        <option value="0" >Main Accession of Validated Protein Groups</option>
+                        <option value="1" >All Accessions of Validated Protein Groups</option>
+                        <option value="2" >Non-Validated Accessions</option>
+                        <option value="off" selected="True">Do not export</option>
+                    </param>
+                    <param name="followup_export_proteoforms" label="Proteins: Export proteoforms as TXT" type="select">
+                        <option value="on">Export</option>
+                        <option value="off" selected="True">Do not export</option>
+                    </param>
+                </when>
+            </conditional>
+
+            <!-- IDENTIFICATION FEATURES REPORTS  -->
+            <param name="output_reports" type="select" display="checkboxes" multiple="True" optional="true" label="Identification features reports to be generated">
                 <option value="3">PSM Report</option>
                 <option value="4">PSM Report with non-validated matches</option>
                 <option value="2">PSM Phosphorylation Report</option>
@@ -241,6 +298,19 @@
             <discover_datasets pattern="(?P&lt;designation&gt;.+)\.txt" format="tabular" directory="output_reports" visible="true" assign_primary_output="true" />
         </data>
         -->
+
+        <!-- Follow-up analysis -->
+        <data format="txt" name="output_proteins_accessions" from_work_dir="proteins_accession_numbers.txt" label="${tool.name} on ${on_string}: Proteins Accession Numbers">
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or (exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_reports_when_zip'] is True) ) and exporting_options['followup_conditional']['followup_conditional_selector'] == 'yes' and exporting_options['output_reports']['followup_conditional']['followup_export_accession_numbers'] != 'off' </filter>
+        </data>
+        <data format="txt" name="output_proteins_sequences" from_work_dir="proteins_sequences.fasta" label="${tool.name} on ${on_string}: Proteins Sequences">
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or (exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_reports_when_zip'] is True) ) and exporting_options['followup_conditional']['followup_conditional_selector'] == 'yes' and exporting_options['output_reports']['followup_conditional']['followup_export_sequences'] != 'off' </filter>
+        </data>
+        <data format="txt" name="output_proteoforms" from_work_dir="proteins_proteoforms.txt" label="${tool.name} on ${on_string}: Proteins Proteoforms">
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or (exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_reports_when_zip'] is True) ) and exporting_options['followup_conditional']['followup_conditional_selector'] == 'yes' and exporting_options['output_reports']['followup_conditional']['followup_export_proteoforms'] != 'off' </filter>
+        </data>
+
+        <!-- Identification Features outputs -->
 	      <data format="txt" name="output_certificate" from_work_dir="certificate.txt" label="${tool.name} on ${on_string}: Parameters">
             <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or (exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_reports_when_zip'] is True) ) and str(exporting_options['output_reports']) != 'None' and '0' in exporting_options['output_reports']</filter>
         </data>
@@ -280,7 +350,7 @@
     </outputs>
     <tests>
 
-        
+
 <!-- TESTS FROM OTHER BRANCH : TO TEST -->
 <!--		<test expect_num_outputs="1">
             <param name="searchgui_input" value="tiny_searchgui_modifications_result1.zip" ftype="searchgui_archive"/>
@@ -323,7 +393,7 @@
             <output name="output_cps" file="peptide_shaker_modifications_result1.cpsx" ftype="peptideshaker_archive" compare="sim_size" delta="3000"/>
 	          <output name="output_psm" file="peptide_shaker_modifications_result1.output_psm" ftype="tabular"/>
         </test>
--->        
+-->
     </tests>
     <help>
 **What it does**
