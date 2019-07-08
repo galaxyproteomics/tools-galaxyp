@@ -19,16 +19,40 @@
         #set $bin_dir = "bin"
 
         mkdir output_reports &&
+
+        #if $exporting_options.followup_conditional.followup_export_spectra != "off" and $exporting_options.zip_conditional.zip_output_boolean != 'zip':
+            mkdir output_spectra &&
+        #end if
         cwd=`pwd` &&
         export HOME=\$cwd &&
 
         echo "" > $temp_stderr &&
 
         ## copy the input .fasta file to the working folder
-        cp '${input_fasta_file}' './input_fasta_file.fasta';
+        cp '${input_fasta_file}' './input_fasta_file.fasta' &&
 
         ln -s '$searchgui_input' searchgui_input.zip &&
-        jar xvf searchgui_input.zip SEARCHGUI_IdentificationParameters.par &&
+
+        ## Taking into account optional parameters...
+        ## If we have a specific Identification Parameters file to use, we will use it instead of the one provided in the search_gui file
+        #if $optional_main_parameters.input_optional_identification_parameters:
+            cp '${optional_main_parameters.input_optional_identification_parameters}' SEARCHGUI_IdentificationParameters.par &&
+        #else:
+            jar xvf searchgui_input.zip SEARCHGUI_IdentificationParameters.par &&
+        #end if
+
+        ## If the user specified input spectra files, we use them
+        #if $optional_main_parameters.input_optional_spectrum_files != 'None':
+            mkdir mgf_input_files &&
+        #end if
+        #for $mgf in $optional_main_parameters.input_optional_spectrum_files:
+            #set $input_name = $mgf.element_identifier.split('/')[-1].replace(".mgf", "") + ".mgf"
+            ln -s -f '${mgf}' 'mgf_input_files/${input_name}' &&
+            #set $encoded_id = $__app__.security.encode_id($mgf.id)
+            echo 'Spectrums:${mgf.element_identifier}(API:${encoded_id})';
+        #end for
+
+
         #if str($exporting_options.output_reports) != "None"
             #set $output_reports_list = set(str($exporting_options.output_reports).split(','))
         #else
@@ -45,6 +69,9 @@
             -fasta_file './input_fasta_file.fasta'
             -identification_files \$cwd/searchgui_input.zip
             -id_params \$cwd/SEARCHGUI_IdentificationParameters.par
+        #if $optional_main_parameters.input_optional_spectrum_files != 'None':
+            -spectrum_files  \$cwd/mgf_input_files
+        #end if
             -out \$cwd/peptideshaker_output.cpsx
 	      #if $exporting_options.zip_conditional.zip_output_boolean == 'zip':
             -zip \$cwd/peptideshaker_output.zip
@@ -97,6 +124,9 @@
         ####################################################
 
         #if $exporting_options.followup_conditional.followup_conditional_selector == "yes"
+            #if $exporting_options.followup_conditional.followup_export_spectra != "off"
+                -spectrum_folder \$cwd/output_reports -psm_type $exporting_options.followup_conditional.followup_export_spectra
+            #end if
             #if $exporting_options.followup_conditional.followup_export_accession_numbers != "off"
                 -accessions_file \$cwd/output_reports/proteins_accession_numbers.txt -accessions_type $exporting_options.followup_conditional.followup_export_accession_numbers
             #end if
@@ -156,10 +186,10 @@
                 && find \$cwd/output_reports -name '*Extended_PSM_Report.txt' -exec bash -c 'mv "$0" "psmx.txt"' {} \;
             #end if
         #end if
-
+    
         ## Moving followup analysis to the root folder (it is necessary if zip option was not chosen, or it was chosen but also exporting out of the zip)
         #if $exporting_options.zip_conditional.zip_output_boolean != 'zip' or ($exporting_options.zip_conditional.zip_output_boolean == 'zip' and $exporting_options.zip_conditional.export_reports_when_zip):
-
+            ## Spectrum analysis are expected into the output_reports folder itself
             #if $exporting_options.followup_conditional.followup_export_accession_numbers != "off"
                 && mv \$cwd/output_reports/proteins_accession_numbers.txt \$cwd/proteins_accession_numbers.txt
             #end if
@@ -171,7 +201,6 @@
             #end if
         #end if
 
-        && echo "END"
         && cat $temp_stderr 2>&1;
 ]]>
     </command>
@@ -221,6 +250,11 @@
             </when>
         </conditional>
 
+        <section name="optional_main_parameters" expanded="false" title="Optional main parameters">
+              <param format="mgf" name="input_optional_spectrum_files" type="data" label="Spectrum files" optional="true" multiple="true"/>
+              <param format="json" name="input_optional_identification_parameters" type="data" label="Identification parameters" optional="true"/>
+        </section>
+
         <section name="exporting_options" expanded="true" title="Exporting options">
 
             <conditional name="mzidentml_conditional">
@@ -245,17 +279,26 @@
             <conditional name="followup_conditional">
                 <param name="followup_conditional_selector" type="select" label="Follow-up analysis export options">
                     <option value="yes">Export follow-up analysis</option>
-                    <option value="no" selected="True">No</option>
+                    <option value="no" selected="True">Do not export</option>
                 </param>
                 <when value="no" />
                 <when value="yes">
-                    <param name="followup_export_accession_numbers" label="Proteins: Export accession numbers as TXT" type="select" help="Exports the protein accessions in text format">
+                    <param name="followup_export_spectra" label="Spectra: Export spectrum files as MGF" type="select" help="Commonly: spectra of Non-Validated PSMs">
+                        <option value="0" >Spectra of Non-Validated PSMs</option>
+                        <option value="1" >Spectra of Non-Validated Peptides</option>
+                        <option value="2" >Spectra of Non-Validated Proteins</option>
+                        <option value="3" >Spectra of Validated PSMs</option>
+                        <option value="4" >Spectra of Validated PSMs of Validated Peptides</option>
+                        <option value="5" >Spectra of validated PSMs of Validated Peptides of Validated Proteins</option>
+                        <option value="off" selected="True">Do not export</option>
+                    </param>
+                    <param name="followup_export_accession_numbers" label="Proteins: Export accession numbers as TXT" type="select" help="Commonly: Main Accession of Validated Protein Groups">
                         <option value="0" >Main Accession of Validated Protein Groups</option>
                         <option value="1" >All Accessions of Validated Protein Groups</option>
                         <option value="2" >Non-Validated Accessions</option>
                         <option value="off" selected="True">Do not export</option>
                     </param>
-                    <param name="followup_export_sequences" label="Proteins: Export sequences as FASTA" type="select" help="Exports the protein details in fasta format">
+                    <param name="followup_export_sequences" label="Proteins: Export protein details/sequences in fasta format" type="select" help="Commonly: Main Accession of Validated Protein Group">
                         <option value="0" >Main Accession of Validated Protein Groups</option>
                         <option value="1" >All Accessions of Validated Protein Groups</option>
                         <option value="2" >Non-Validated Accessions</option>
@@ -304,14 +347,25 @@
         -->
 
         <!-- Follow-up analysis -->
+
+
+        <!--<data format="mgf" name="output_spectra" from_work_dir="spectra.mgf" label="${tool.name} on ${on_string}: Spectra">
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or (exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_reports_when_zip'] is True) ) and exporting_options['followup_conditional']['followup_conditional_selector'] == 'yes' and exporting_options['output_reports']['followup_conditional']['followup_export_spectra'] != 'off' </filter>
+        </data>
+        -->
+        <collection name="output_spectra" type="list" label="${tool.name} on ${on_string}: Spectra" >
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or (exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_reports_when_zip'] is True) ) and exporting_options['followup_conditional']['followup_conditional_selector'] == 'yes' and exporting_options['followup_conditional']['followup_export_spectra'] != 'off' </filter>
+            <discover_datasets pattern="__name_and_ext__" directory="output_reports" ext="mgf"/>
+        </collection>
+
         <data format="txt" name="output_proteins_accessions" from_work_dir="proteins_accession_numbers.txt" label="${tool.name} on ${on_string}: Proteins Accession Numbers">
-            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or (exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_reports_when_zip'] is True) ) and exporting_options['followup_conditional']['followup_conditional_selector'] == 'yes' and exporting_options['output_reports']['followup_conditional']['followup_export_accession_numbers'] != 'off' </filter>
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or (exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_reports_when_zip'] is True) ) and exporting_options['followup_conditional']['followup_conditional_selector'] == 'yes' and exporting_options['followup_conditional']['followup_export_accession_numbers'] != 'off' </filter>
         </data>
         <data format="fasta" name="output_proteins_sequences" from_work_dir="proteins_sequences.fasta" label="${tool.name} on ${on_string}: Proteins Sequences">
-            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or (exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_reports_when_zip'] is True) ) and exporting_options['followup_conditional']['followup_conditional_selector'] == 'yes' and exporting_options['output_reports']['followup_conditional']['followup_export_sequences'] != 'off' </filter>
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or (exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_reports_when_zip'] is True) ) and exporting_options['followup_conditional']['followup_conditional_selector'] == 'yes' and exporting_options['followup_conditional']['followup_export_sequences'] != 'off' </filter>
         </data>
         <data format="txt" name="output_proteoforms" from_work_dir="proteins_proteoforms.txt" label="${tool.name} on ${on_string}: Proteins Proteoforms">
-            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or (exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_reports_when_zip'] is True) ) and exporting_options['followup_conditional']['followup_conditional_selector'] == 'yes' and exporting_options['output_reports']['followup_conditional']['followup_export_proteoforms'] != 'off' </filter>
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or (exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_reports_when_zip'] is True) ) and exporting_options['followup_conditional']['followup_conditional_selector'] == 'yes' and exporting_options['followup_conditional']['followup_export_proteoforms'] != 'off' </filter>
         </data>
 
         <!-- Identification Features outputs -->
