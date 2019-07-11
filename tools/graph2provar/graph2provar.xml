@@ -1,0 +1,148 @@
+<tool id="graph2provar" name="Graph2Pro-var" version="1.0.0.1">
+    <description>Graph2Pro-var</description>
+    <requirements>
+        <requirement type="package" version="1.0.0">graph2ro-var</requirement>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+#import re
+#set $ram = '4g'
+#set $mgf_file = $re.sub('(?i)([.]?mgf)*$','.mgf',$re.sub('\W','_',$mgf.name))
+## cp $mgf $mgf_file &&
+ln -s $mgf $mgf_file &&
+#if $mods.source == 'history'
+ln -s $mods.mod_file mods.txt
+#else
+ln -s $mods_file mods.txt
+#end if
+##prepare Graph2Pep
+DBGraph2Pro -s $gnm -f -k $kmer -o G2P_.graph2pep.fasta &&
+createFixedReverseKR.py G2P_.graph2pep.fasta &&
+## createFixedReverseKR.py $gnm &&
+fastg2fasta.py $gnm G2P_.contig.fasta &&
+##prepare contig file and fgs
+run_FragGeneScan.pl -genome=G2P_.contig.fasta -out=G2P_.contig.fgs -complete=0 -train=complete -thread=\${GALAXY_SLOTS:-1} &&
+mv G2P_.contig.fgs.faa G2P_.contig.fgs.fasta &&
+##MSGF+ search against contigs
+msgf_plus -Xmx$ram -s ${mgf_file} -o G2P_.fgs.mzid -d G2P_.contig.fgs.fasta -inst 1 -t 15ppm -ti -1,2 -mod mods.txt -ntt 1 -tda 1 -maxCharge 7 -minCharge 1 -addFeatures 1 -n 1 -thread \${GALAXY_SLOTS:-1} &&
+msgf_plus -Xmx$ram edu.ucsd.msjava.ui.MzIDToTsv -i G2P_.fgs.mzid  -showDecoy 1 &&
+parseFDR_o.py G2P_.fgs.tsv $fdr &&
+##MSGF+ search against graph2pep
+rm -f *.contig.fgs.revCat.* &&
+msgf_plus -Xmx$ram -s ${mgf_file} -o G2P_.graph2pep.mzid -d G2P_.graph2pep.fixedKR.fasta -inst 1 -t 15ppm -ti -1,2 -mod mods.txt -ntt 1 -tda 0 -maxCharge 7 -minCharge 1 -addFeatures 1 -n 1 -thread \${GALAXY_SLOTS:-1} &&
+msgf_plus -Xmx$ram edu.ucsd.msjava.ui.MzIDToTsv -i G2P_.graph2pep.mzid -showDecoy 1 &&
+##run DBGraphPep2Pro and prepare *.step1.fasta
+rm -f *tsv.0.10.tsv &&
+parseFDR_o.py G2P_.fgs.tsv 0.10 &&
+parseFDR_o.py G2P_.graph2pep.tsv 0.10 &&
+step1output.py G2P_.fgs.tsv.0.10.tsv G2P_.contig.fgs.fasta G2P_.graph2pep.tsv.0.10.tsv G2P_.graph2pep.fasta G2P_.step1.output.old &&
+patchpos.py G2P_.contig.fasta G2P_.step1.output.old G2P_.step1.output &&
+rm -f G2P_.step1.output.old &&
+##prepare Graph2Pro database
+rm -f G2P_.step1.fasta G2P_.graph2pro.mzid G2P_.uncordant.rapsearch.fasta G2P_.mismatched.mzid G2P_.uncordant.mzid &&
+DBGraphPep2Pro -s $gnm -f -p G2P_.step1.output -o G2P_.step1.fasta.2 -k $kmer -d 5 &&
+awk 'FNR==NR{idlist[$2]; next} {s=substr($1,1,1); if (s==">") { id=substr($1, 2); if (id in idlist) { valid = 1; print ">" id; } else { valid = 0; }} else if (valid) print $0; }' FS="\t" G2P_.step1.output G2P_.contig.fgs.fasta > G2P_.step1.fasta.1 &&
+cat G2P_.step1.fasta.1  G2P_.step1.fasta.2 > G2P_.step1.fasta.12 &&
+cd-hit -i G2P_.step1.fasta.12 -c 1.0 -o G2P_.step1.fasta -d 0 &&
+mv G2P_.step1.fasta G2P_.graph2pro.fasta &&
+##search against graph2pro
+rm -f G2P_.graph2pro.mzid &&
+rm -f G2P_.graph2pro.revCat* &&
+msgf_plus -Xmx$ram -s ${mgf_file} -o G2P_.graph2pro.mzid -d G2P_.graph2pro.fasta -inst 1 -t 15ppm -ti -1,2 -mod mods.txt -ntt 1 -tda 1 -maxCharge 7 -minCharge 1 -addFeatures 1 -n 1 -thread \${GALAXY_SLOTS:-1} &&
+msgf_plus -Xmx$ram edu.ucsd.msjava.ui.MzIDToTsv -i G2P_.graph2pro.mzid -showDecoy 1 &&
+parseFDR_o.py G2P_.graph2pro.tsv $fdr &&
+echo Done
+    ]]></command>
+    <configfiles>
+        <configfile name="mods_file"><![CDATA[#slurp
+#if $mods.source == 'specify':
+NumMods=$mods.NumMods
+#if $mods.fixed
+# Fixed Modifications
+#for $m in $mods.fixed
+$m
+#end for
+#end if
+#if $mods.variable
+# Variable Modifications
+#for m in $mods.variable
+$m
+#end for
+#end if
+#else:
+NumMods=3
+# Fixed Modifications
+C2H3N1O1,C,fix,any,Carbamidomethyl # Fixed Carbamidomethyl C
+# Variable Modifications
+oO1,M,opt,any,Oxidation            # Oxidation M
+#end if
+#slurp
+]]></configfile>
+    </configfiles>
+    <inputs>
+        <param name="kmer" size="4" type="integer" value="99" label="k-mer size" />
+        <param type="data" name="gnm" format="fastg" label="FASTG file from MEGAHIT"/>
+        <param type="data" name="mgf" format="mgf" label="MGF file"/>
+        <param name="fdr" type="float" value="0.01" min="0.01" max="0.10" label="FDR" />
+        <param name="identity" size="4" type="integer" value="70" min="10" max="100" label="Percent identity for parseMismatch" />
+        <!--<param type="data" name="fastq_f" format="fastq" label="forward FASTQ reads"/>
+        <param type="data" name="fastq_r" format="fastq" label="Reverse FASTQ reads"/>-->
+        <conditional name="mods">
+            <param name="source" type="select" label="MS-GF+ Modifications from">
+                <option value="default">default</option>
+                <option value="specify">specify now</option>
+                <option value="history">history dataset</option>
+            </param>
+            <when value="default"/>
+            <when value="specify">
+                <param name="NumMods" type="integer" value="3" min="1" max="10" label="Max Number of Modifications per peptide" />
+                <param name="fixed" type="select" multiple="true" display="checkboxes" label="Fixed Modifications">
+                    <option value="C2H3N1O1,C,fix,any,Carbamidomethyl # Fixed Carbamidomethyl C" selected="true">Carbamidomethyl C</option>
+                    <option value="144.102063,*,fix,N-term,iTRAQ4plex # iTRAQ 4 plex">iTRAQ 4 plex</option>
+                    <option value="144.102063,K,fix,any,iTRAQ4plex # iTRAQ 4 plex">iTRAQ 4 plex</option>
+                </param>
+                <param name="variable" type="select" multiple="true" display="checkboxes" label="Variable Modifications">
+                    <option value="oO1,M,opt,any,Oxidation # Oxidation M" selected="true">Oxidation M</option>
+                    <option value="C2H3NO,*,opt,N-term,Carbamidomethyl # Variable Carbamidomethyl N-term">Variable Carbamidomethyl N-term</option>
+                    <option value="H-2O-1,E,opt,N-term,Glu->pyro-Glu # Pyro-glu from E">Pyro-glu from E</option>
+                    <option value="H-3N-1,Q,opt,N-term,Gln->pyro-Glu # Pyro-glu from Q">Pyro-glu from Q</option>
+                    <option value="C2H2O,*,opt,Prot-N-term,Acetyl # Acetylation Protein N-term">Acetylation Protein N-term</option>
+                    <option value="C2H2O1,K,opt,any,Acetyl # Acetylation K">Acetylation K</option>
+                    <option value="CH2,K,opt,any,Methyl # Methylation K">Methylation K</option>
+                    <option value="HO3P,STY,opt,any,Phospho # Phosphorylation STY">Phosphorylation STY</option>
+                </param>
+            </when> 
+            <when value="history">
+                <param type="data" name="mod_file" format="txt" label="MOD file for MSGF+"/>
+            </when> 
+        </conditional>
+    </inputs>
+    
+    <outputs>
+        <data name="modifications" format="txt" label="${tool.name} modifications.txt" from_work_dir="mods.txt"/>
+        <data name="outfile" format="fasta" label="graph2pro-var_output_database" from_work_dir="G2P_.graph2pro.fasta"/>
+    </outputs>
+    <tests>
+        <test>
+            <param name="fastg" value="k99.contigs.fastg"/>
+            <param name="mgf" value="SML.mgf"/>
+            <param name="mod_file" value="Mods_normal.txt"/>
+            <!--<param name="fastq_f" value="SML.1.fq"/>
+            <param name="fastq_r" value="SML.2.fq"/>-->
+            <output name="outfile" file="G2P_.graph2pro.fasta"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+        **Graph2Pro-var**
+
+        Graph2Pro-var Galaxy wrapper
+    ]]></help>
+    <citations>
+      <citation type="bibtex">
+@misc{peppointer,
+    author={Kumar, Praveen},
+    year={2019},
+    title={Graph2Pro-var}
+}
+      </citation>
+    </citations>
+</tool>
