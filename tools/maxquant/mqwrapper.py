@@ -22,7 +22,7 @@ parser = argparse.ArgumentParser()
 # input, special outputs and others
 other_args = ('raw_files', 'mzxml_files', 'fasta_files',
               'description_parse_rule', 'identifier_parse_rule',
-              'exp_design', 'mqpar_in', 'output_all',
+              'exp_design', 'output_all',
               'mqpar_out', 'infile_names', 'mzTab',
               'version', 'substitution_rx')
 
@@ -94,14 +94,10 @@ for f, l in zip(files, fnames_with_ext):
     os.link(f, l)
 
 # build mqpar.xml
-mqpar_temp = os.path.join(os.getcwd(), 'mqpar.xml')
-if args['mqpar_in']:
-    mqpar_in = args['mqpar_in']
-else:
-    # create mqpar template
-    subprocess.run(('maxquant', '-c', mqpar_temp))
-    mqpar_in = mqpar_temp
-mqpar_out = args['mqpar_out'] if args['mqpar_out'] != 'None' else mqpar_temp
+mqpar_in = os.path.join(os.getcwd(), 'mqpar.xml')
+subprocess.run(('maxquant', '-c', mqpar_in))
+mqpar_out = args['mqpar_out'] if args['mqpar_out'] != 'None' else mqpar_in
+
 
 exp_design = args['exp_design'] if args['exp_design'] != 'None' else None
 m = mqparam.MQParam(mqpar_out, mqpar_in, exp_design,
