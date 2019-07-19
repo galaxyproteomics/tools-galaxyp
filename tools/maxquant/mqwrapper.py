@@ -43,7 +43,8 @@ global_flags = ('calc_peak_properties',
                 'separate_lfq',
                 'lfq_stabilize_large_ratios',
                 'lfq_require_msms',
-                'advanced_site_intensities')
+                'advanced_site_intensities',
+                'match_between_runs')
 
 global_simple_args = ('min_unique_pep',
                       'num_threads',
@@ -149,6 +150,3 @@ if args['mzTab'] != 'None':
     source = os.path.join(os.getcwd(), "combined", "txt", "mzTab.mzTab")
     if os.path.isfile(source):
         shutil.copy(source, args['mzTab'])
-
-if args['output_all'] != 'None':
-    subprocess.run(('tar', '-zcf', args['output_all'], './combined/txt/'))

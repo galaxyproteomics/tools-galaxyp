@@ -248,6 +248,7 @@ class MQParam:
                          'write_mztab': 'writeMzTab',
                          'min_peptide_len': 'minPepLen',
                          'max_peptide_mass': 'maxPeptideMass',
+                         'match_between_runs': 'matchBetweenRuns',
                          'ibaq': 'ibaq',  # lfq global options
                          'ibaq_log_fit': 'ibaqLogFit',
                          'separate_lfq': 'separateLfq',
