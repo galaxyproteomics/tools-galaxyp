@@ -3,7 +3,7 @@ GalaxyP - PeptideShaker
 
 - Home: <https://github.com/galaxyproteomics/tools-galaxyp/>
 - Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/peptideshaker>
-- Tools ID: `peptide_shaker`, `search_gui`
+- Tools ID: `peptide_shaker`, `search_gui`, `ident_params`, `fasta_cli`
 
 
 Description
@@ -17,7 +17,7 @@ Includes tool wrappers for FastaCLI, IdentificationParametersCLI, SearchGUI and 
 
 FastaCLI adds decoy sequences to any fasta file.
 
-IdentificationParametersCLI allows to create a compressed zip file with a parameters (par) file which can be (re)used later to parameterize SearchGUI or PeptideShaker, and the fasta file referred.
+IdentificationParametersCLI allows to create a parameters (par) file which can be (re)used later to parameterize SearchGUI or PeptideShaker.
 
 The SearchGUI tool takes any number of mgf files and performs searches on these. It creates a large zip archive with all search results, the original database and spectra.
 
@@ -58,15 +58,6 @@ See:
 
 * <http://compomics.github.io/projects/peptide-shaker.html/>
 * <http://compomics.github.io/projects/searchgui.html/>
-
-
-Search GUI - Fixed and Variable Modifications
--------------------------------------------
-
- - Options for modifications are read from local data file: searchgui_mods.loc
-   This is copied from searchgui_mods.loc.sample on the first installation.
-
-The modifications are from:  https://github.com/compomics/compomics-utilities/blob/master/src/main/java/com/compomics/util/experiment/identification/search_parameters_cli/IdentificationParametersInputBean.java
 
 GalaxyP Community
 -----------------
@@ -109,3 +100,4 @@ Authors and contributors:
 * Gerben Menschaert
 * Elvis Ndah
 * Minnesota Supercomputing Institute, Univeristy of Minnesota
+* Carlos Horro
