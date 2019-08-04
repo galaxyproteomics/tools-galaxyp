@@ -5,43 +5,108 @@
     </requirements>
     <command>
 <![CDATA[
+#import re
 
-ln -s '$input' ./input.raw &&
+#set $temp_stderr = "thermo_converter_stderr"
 
-ThermoRawFileParser.sh
-    -i=input.raw
-    -o=./
+echo "" > $temp_stderr &&
+
+mkdir ./raws_folder &&
+mkdir ./output_folder &&
+#for $input_raw in $input:
+    #if len($input) > 1
+        #set $input_name = re.sub('[^\w\-\.]', '_',$input_raw.element_identifier.split('/')[-1].replace(".raw", "") + ".raw")
+        ln -s -f '${input_raw}' './raws_folder/${input_name}' &&
+    #else:
+        ln -s -f '${input_raw}' './raws_folder/input.raw' &&
+
+    #end if
+#end for
+
+(ThermoRawFileParser.sh
+    -d=./raws_folder
+    -o=./output_folder
     -f=$output_format
-    #if $metadata:
+    #if $output_metadata_boolean:
         --metadata=1
     #end if
-    &&
-    #if $output_format == '0':
-        mv ./input.mgf '$output'
-    #else:
-        mv ./input.mzML '$output'
+    #if $zlib_boolean is False:
+    -z
     #end if
+    #if $peakpicking_boolean is False:
+    -p
+    #end if
+
+    2>> $temp_stderr)
+
+    &&
+    #if len($input) == 1
+        #if $output_format == '0':
+            mv ./output_folder/input.mgf '$output' &&
+        #else:
+            mv ./output_folder/input.mzML '$output' &&
+        #end if
+        #if $output_metadata_boolean:
+            mv ./output_folder/input-metadata.txt ./input-metadata.txt &&
+        #end if    
+    #end if
+
+    cat $temp_stderr 2>&1;
 ]]>
     </command>
     <inputs>
-        <param name="input" type="data" format="thermo.raw" label="Thermo RAW file" help="" />
-        <param name="metadata" type="boolean" truevalue="" falsevalue="" checked="False"
+        <param name="input" type="data" format="thermo.raw" label="Thermo RAW file" help="" multiple="true" optional="False" />
+
+        <param name="output_metadata_boolean" type="boolean" truevalue="true" falsevalue="false" checked="False"
             label="Output metadata" help="" />
         <param name="output_format" type="select" label="Choose an output format">
             <option value="0">mgf</option>
             <option value="1" selected="True">mzml</option>
         </param>
+
+        <param name="zlib_boolean" type="boolean" truevalue="true" falsevalue="false" checked="True"
+            label="Use zlib compression for the m/z ratios and intensities (used by default)" help="" />
+        <param name="peakpicking_boolean" type="boolean" truevalue="true" falsevalue="false" checked="True"
+            label="Use the peak picking provided by the native thermo library (by default peak picking is
+                                   enabled)." help="" />
+
     </inputs>
     <outputs>
+
+        <!-- We use simple data outputs if we just have one file, for backwards compatibility -->
         <data format="mzml" name="output" from_work_dir="input.mzML" label="${tool.name} on ${on_string}">
             <change_format>
                 <when input="output_format" value="0" format="mgf" />
             </change_format>
+            <filter>len(input) == 1</filter>
         </data>
-        <data format="txt" name="output_metadata" from_work_dir="input-metadata.txt" label="${tool.name} on ${on_string}: Metadata">
-            <filter>metadata</filter>
+
+        <data format="txt" name="output_metadata" label="${tool.name} on ${on_string}: Metadata" from_work_dir="input-metadata.txt">
+            <filter>len(input) == 1</filter>
+            <filter>output_metadata_boolean</filter>
         </data>
+
+        <!-- We use collections if we have with multiple files -->
+        <collection name="output_mgf_collection" type="list" label="${tool.name} on ${on_string}: MGF">
+            <filter>output_format == "0"</filter>
+            <filter>len(input) > 1</filter>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.mgf" directory="output_folder" ext="mgf"/>
+        </collection>
+
+        <collection name="output_mzml_collection" type="list" label="${tool.name} on ${on_string}: mzML">
+            <filter>output_format == "1"</filter>
+            <filter>len(input) > 1</filter>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.mzML" ext="mzml" directory="output_folder"/>
+        </collection>
+
+        <collection name="output_metadata_collection" type="list" label="${tool.name} on ${on_string}: metadata">
+            <filter>output_metadata_boolean</filter>
+            <filter>len(input) > 1</filter>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)-metadata.txt" ext="txt" directory="output_folder"/>
+        </collection>
+
     </outputs>
+
     <tests>
         <test>
             <param name="input" value="fake_input.txt"/>
