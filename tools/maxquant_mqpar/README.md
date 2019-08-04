@@ -2,7 +2,7 @@ GalaxyP - MaxQuant
 ==================
 
 * Home: <https://github.com/galaxyproteomics/tools-galaxyp/>
-* Tool ID: `maxquant`
+* Tool ID: `maxquant_mqpar`
 * Tool Type: `default`
 
 
