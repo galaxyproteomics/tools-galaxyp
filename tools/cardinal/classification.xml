@@ -1,4 +1,4 @@
-<tool id="cardinal_classification" name="MSI classification" version="@VERSION@.2">
+<tool id="cardinal_classification" name="MSI classification" version="@VERSION@.3">
     <description>spatial classification of mass spectrometry imaging data</description>
     <macros>
         <import>macros.xml</import>
@@ -30,8 +30,9 @@ library(ggplot2)
 
 @READING_MSIDATA_INRAM@
 
-## to make sure that processed files work as well: 
-iData(msidata) = iData(msidata)[]
+
+## remove duplicated coordinates
+msidata <- msidata[,!duplicated(coord(msidata))]
 
 @DATA_PROPERTIES_INRAM@
 
@@ -61,7 +62,7 @@ title(main=paste0(Title," for file: \n\n", "$infile.display_name"))
 grid.table(property_df, rows= NULL)
 
 
-if (npeaks > 0 && sum(is.na(spectra(msidata)[]))==0){
+if (npeaks > 0 && sum(is.na(spectra(msidata)))==0){
 
     opar <- par()
 
@@ -172,7 +173,7 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)[]))==0){
                 ## one image for each sample/fold, 4 images per page
                 minimumy = min(coord(msidata.cv.pls)[,2])
                 maximumy = max(coord(msidata.cv.pls)[,2])
-                image(msidata.cv.pls, model = list(ncomp = ncomp_max),ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy),layout = c(2, 2))
+                image(msidata.cv.pls, model = list(ncomp = ncomp_max),ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy),layout = c(1, 1))
 
                 ## print table with summary in pdf
                 par(opar)
@@ -210,6 +211,23 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)[]))==0){
                 component = c($type_cond.method_cond.analysis_cond.pls_comp)
                 number_groups = length(levels(y_vector))
 
+                ### stop if multiple values for PLS components are selected what sets component to 0
+                tryCatch(
+                        {
+
+                        if (component==0)
+                            {
+                            stop(call.=FALSE)
+                            }
+                        },
+                        error=function(cond) {
+                        ## in case user used multiple inputs for component - this is only possible in cv apply
+                            message("Error during PLS training")
+                            message("Possible problems: Multiple values for component were selected - this is only possible in cvapply but not for PLS analysis or component was set to 0 but minimum for component is 1)")
+                            stop(call.=FALSE)
+                        }
+                    )    
+
                 ### pls analysis and coefficients plot
                 msidata.pls <- PLS(msidata, y = y_vector, ncomp = component, scale=$type_cond.method_cond.analysis_cond.pls_scale)
                 plot(msidata.pls, main="PLS coefficients per m/z")
@@ -231,17 +249,20 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)[]))==0){
 
                 ### m/z and pixel information output
                 pls_classes = data.frame(msidata.pls\$classes[[1]])
-                pixel_names = gsub(", y = ", "_", names(pixels(msidata)))
-                pixel_names = gsub(" = ", "y_", pixel_names)
-                x_coordinates = matrix(unlist(strsplit(pixel_names, "_")), ncol=3, byrow=TRUE)[,2]
-                y_coordinates = matrix(unlist(strsplit(pixel_names, "_")), ncol=3, byrow=TRUE)[,3]
+                ## pixel names and coordinates
+                ## to remove potential sample names and z dimension, split at comma and take only x and y 
+                x_coords = unlist(lapply(strsplit(names(pixels(msidata)), ","), `[[`, 1))
+                y_coords = unlist(lapply(strsplit(names(pixels(msidata)), ","), `[[`, 2))
+                x_coordinates = gsub("x = ","",x_coords)
+                y_coordinates = gsub(" y = ","",y_coords)
+                pixel_names = paste0("xy_", x_coordinates, "_", y_coordinates)
 
                 ## remove msidata to clean up RAM space
                 rm(msidata)
                 gc()
                 pls_classes2 = data.frame(pixel_names, x_coordinates, y_coordinates, pls_classes)
                 colnames(pls_classes2) = c("pixel names", "x", "y","predicted condition")
-                pls_toplabels = topLabels(msidata.pls, n=$type_cond.method_cond.analysis_cond.pls_toplabels)
+                pls_toplabels = topLabels(msidata.pls, n=Inf)
                 pls_toplabels[,4:6] <-round(pls_toplabels[,4:6],6)
                 write.table(pls_toplabels, file="$mzfeatures", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
                 write.table(pls_classes2, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
@@ -282,7 +303,8 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)[]))==0){
                 number_groups = length(levels(y_vector))
 
                 ## OPLS-cvApply:
-                msidata.cv.opls <- cvApply(msidata, .y = y_vector, .fold = fold_vector, .fun = "OPLS", ncomp = components, keep.Xnew = $type_cond.method_cond.opls_analysis_cond.xnew_cv)
+                msidata.cv.opls <- cvApply(msidata, .y = y_vector, .fold = fold_vector, .fun = "OPLS", ncomp = components)
+                ## for use to reduce msidata: keep.Xnew = $type_cond.method_cond.opls_analysis_cond.xnew_cv
 
                 ## remove msidata to clean up RAM space
                 rm(msidata)
@@ -315,7 +337,7 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)[]))==0){
                 ## one image for each sample/fold, 4 images per page
                 minimumy = min(coord(msidata.cv.opls)[,2])
                 maximumy = max(coord(msidata.cv.opls)[,2])
-                image(msidata.cv.opls, model = list(ncomp = ncomp_max),ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy),layout = c(2, 2))
+                image(msidata.cv.opls, model = list(ncomp = ncomp_max),ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy),layout = c(1, 1))
 
                 ## print table with summary in pdf
                 par(opar)
@@ -353,10 +375,28 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)[]))==0){
                 component = c($type_cond.method_cond.opls_analysis_cond.opls_comp)
                 number_groups = length(levels(y_vector))
 
+                ### stop if multiple values for OPLS components are selected what sets component to 0
+                tryCatch(
+                        {
+
+                        if (component==0)
+                            {
+                            stop(call.=FALSE)
+                            }
+                        },
+                        error=function(cond) {
+                        ## in case user used multiple inputs for component - this is only possible in cv apply
+                            message("Error during OPLS training")
+                            message("Possible problems: Multiple values for component were selected - this is only possible in cvapply but not for OPLS analysis or component was set to 0 but minimum for component is 1)")
+                            stop(call.=FALSE)
+                        }
+                    )    
 
                 ### opls analysis and coefficients plot
-                msidata.opls <- PLS(msidata, y = y_vector, ncomp = component, scale=$type_cond.method_cond.opls_analysis_cond.opls_scale, keep.Xnew = $type_cond.method_cond.opls_analysis_cond.xnew)
+                msidata.opls <- PLS(msidata, y = y_vector, ncomp = component, scale=$type_cond.method_cond.opls_analysis_cond.opls_scale)
+                ## to reduce msidata: keep.Xnew = $type_cond.method_cond.opls_analysis_cond.xnew
                 plot(msidata.opls, main="OPLS coefficients per m/z")
+
 
                 ### summary table of OPLS
                 summary_table = summary(msidata.opls)\$accuracy[[paste0("ncomp = ",component)]]
@@ -373,12 +413,15 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)[]))==0){
                 maximumy = max(coord(msidata)[,2])
                 print(image(msidata, mz = topLabels(msidata.opls)[1,1], normalize.image = "linear", contrast.enhance = "histogram",smooth.image="gaussian", ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy), main="best m/z heatmap"))
 
-                ## m/z and pixel information output
                 opls_classes = data.frame(msidata.opls\$classes[[1]])
-                pixel_names = gsub(", y = ", "_", names(pixels(msidata)))
-                pixel_names = gsub(" = ", "y_", pixel_names)
-                x_coordinates = matrix(unlist(strsplit(pixel_names, "_")), ncol=3, byrow=TRUE)[,2]
-                y_coordinates = matrix(unlist(strsplit(pixel_names, "_")), ncol=3, byrow=TRUE)[,3]
+                ## pixel names and coordinates
+                ## to remove potential sample names and z dimension, split at comma and take only x and y
+                x_coords = unlist(lapply(strsplit(names(pixels(msidata)), ","), `[[`, 1))
+                y_coords = unlist(lapply(strsplit(names(pixels(msidata)), ","), `[[`, 2))
+                x_coordinates = gsub("x = ","",x_coords)
+                y_coordinates = gsub(" y = ","",y_coords)
+                pixel_names = paste0("xy_", x_coordinates, "_", y_coordinates)
+
                 opls_classes2 = data.frame(pixel_names, x_coordinates, y_coordinates, opls_classes)
                 colnames(opls_classes2) = c("pixel names", "x", "y","predicted condition")
 
@@ -386,7 +429,7 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)[]))==0){
                 rm(msidata)
                 gc()
 
-                opls_toplabels = topLabels(msidata.opls, n=$type_cond.method_cond.opls_analysis_cond.opls_toplabels)
+                opls_toplabels = topLabels(msidata.opls, n=Inf)
                 opls_toplabels[,4:6] <-round(opls_toplabels[,4:6],6)
                 write.table(opls_toplabels, file="$mzfeatures", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
                 write.table(opls_classes2, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
@@ -461,7 +504,7 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)[]))==0){
                 s_value = as.numeric(substring(unlist(strsplit(best_params, ","))[3], 5)) ## remove space
                 minimumy = min(coord(msidata.cv.ssc)[,2])
                 maximumy = max(coord(msidata.cv.ssc)[,2])
-                image(msidata.cv.ssc, model = list( r = r_value, s = s_value ), ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy),layout=c(2,2))
+                image(msidata.cv.ssc, model = list( r = r_value, s = s_value ), ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy),layout=c(1,1))
 
                 ## print table with summary in pdf
                 par(opar)
@@ -504,6 +547,24 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
 
                 ### summary table SSC
                 ##############summary_table = summary(msidata.ssc)
+
+                ### stop if multiple values for r and s were used as input
+                tryCatch(
+                        {
+
+                        if (length(names(msidata.ssc@resultData))>1)
+                            {
+                            stop(call.=FALSE)
+                            }
+                        },
+                        error=function(cond) {
+                        ## in case user used multiple inputs for r or s stop - this is only possible in cv apply
+                            message("Error during SSC training")
+                            message("Possible problem: multiple values for r or s selected - this is only possible in cvapply but not for spatial shrunken centroid analysis)")
+                            stop(call.=FALSE)
+                        }
+                    )    
+
                 summary_table = summary(msidata.ssc)\$accuracy[[names(msidata.ssc@resultData)]]
                 summary_table2 = round(as.numeric(summary_table), digits=2)
                 summary_matrix = matrix(summary_table2, nrow=4, ncol=number_groups)
@@ -520,10 +581,15 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
 
                 ## m/z and pixel information output
                 ssc_classes = data.frame(msidata.ssc\$classes[[1]])
-                pixel_names = gsub(", y = ", "_", names(pixels(msidata)))
-                pixel_names = gsub(" = ", "y_", pixel_names)
-                x_coordinates = matrix(unlist(strsplit(pixel_names, "_")), ncol=3, byrow=TRUE)[,2]
-                y_coordinates = matrix(unlist(strsplit(pixel_names, "_")), ncol=3, byrow=TRUE)[,3]
+
+                ## pixel names and coordinates
+                ## to remove potential sample names and z dimension, split at comma and take only x and y 
+                x_coords = unlist(lapply(strsplit(names(pixels(msidata)), ","), `[[`, 1))
+                y_coords = unlist(lapply(strsplit(names(pixels(msidata)), ","), `[[`, 2))
+                x_coordinates = gsub("x = ","",x_coords)
+                y_coordinates = gsub(" y = ","",y_coords)
+                pixel_names = paste0("xy_", x_coordinates, "_", y_coordinates)
+
 
                 ## remove msidata to clean up RAM space
                 rm(msidata)
@@ -531,7 +597,7 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
 
                 ssc_classes2 = data.frame(pixel_names, x_coordinates, y_coordinates, ssc_classes)
                 colnames(ssc_classes2) = c("pixel names", "x", "y","predicted condition")
-                ssc_toplabels = topLabels(msidata.ssc, n=$type_cond.method_cond.ssc_analysis_cond.ssc_toplabels)
+                ssc_toplabels = topLabels(msidata.ssc, n=Inf)
                 ssc_toplabels[,6:9] <-round(ssc_toplabels[,6:9],6)
                 write.table(ssc_toplabels, file="$mzfeatures", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
                 write.table(ssc_classes2, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
@@ -598,7 +664,7 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
         y_coordinates = matrix(unlist(strsplit(pixel_names, "_")), ncol=3, byrow=TRUE)[,3]
         predicted_classes2 = data.frame(pixel_names, x_coordinates, y_coordinates, predicted_classes)
         colnames(predicted_classes2) = c("pixel names", "x", "y","predicted condition")
-        predicted_toplabels = topLabels(prediction, n=$type_cond.predicted_toplabels)
+        predicted_toplabels = topLabels(prediction, n=Inf)
         if (colnames(predicted_toplabels)[4] == "coefficients"){
             predicted_toplabels[,4:6] <-round(predicted_toplabels[,4:6],5)
 
@@ -684,13 +750,13 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
                             </param>
                             <when value="cvapply">
                                 <param name="plscv_comp" type="text" value="1:2"
-                                       label="The number of PLS-DA components" help="For cvapply multiple values are allowed (e.g. 1,2,3 or 2:5)">
+                                       label="The number of PLS-DA components" help="For cvapply multiple values are allowed (e.g. 1,2,3 or 2:5). Mininum is 1.">
                                 <expand macro="sanitizer_multiple_digits"/>
                                 </param>
                             </when>
                             <when value="PLS_analysis">
                                 <param name="pls_comp" type="integer" value="5"
-                                       label="The optimal number of PLS-DA components as indicated by cross-validations" help="Run cvApply first to optain optiaml number of PLS-DA components"/>
+                                       label="The optimal number of PLS-DA components as indicated by cross-validations (minimum is 1)" help="Run cvApply first to optain optimal number of PLS-DA components"/>
                                 <param name="pls_scale" type="boolean" label="Data scaling" truevalue="TRUE" falsevalue="FALSE"/>
                                 <param name="pls_toplabels" type="integer" value="100"
                                    label="Number of toplabels (m/z features) which should be written in tabular output"/>
@@ -708,19 +774,19 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
 
                             <when value="opls_cvapply">
                                 <param name="opls_cvcomp" type="text" value="1:2"
-                                       label="The number of OPLS-DA components" help="For cvapply multiple values are allowed (e.g. 1,2,3 or 2:5)">
+                                       label="The number of OPLS-DA components" help="For cvapply multiple values are allowed (e.g. 1,2,3 or 2:5). Minimum is 1.">
                                 <expand macro="sanitizer_multiple_digits"/>
                                 </param>
-                                <param name="xnew_cv" type="boolean" truevalue="TRUE" falsevalue="FALSE" label="Keep new matrix"/>
+                                <!--param name="xnew_cv" type="boolean" truevalue="TRUE" falsevalue="FALSE" label="Keep new matrix"/-->
                             </when>
 
                             <when value="opls_analysis">
                                 <param name="opls_comp" type="integer" value="5"
-                                       label="The optimal number of OPLS-DA components as indicated by cross-validations" help="Run cvApply first to optain optiaml number of OPLS-DA components"/>
-                                <param name="xnew" type="boolean" truevalue="TRUE" falsevalue="FALSE" label="Keep new matrix"/>
+                                       label="The optimal number of OPLS-DA components as indicated by cross-validations (minimum is 1)" help="Run cvApply first to optain optimal number of OPLS-DA components"/>
+                                <!--param name="xnew" type="boolean" truevalue="TRUE" falsevalue="FALSE" label="Keep new matrix"/-->
                                 <param name="opls_scale" type="boolean" truevalue="TRUE" falsevalue="FALSE" label="Data scaling"/>
-                                <param name="opls_toplabels" type="integer" value="100"
-                                   label="Number of toplabels (m/z features) which should be written in tabular output"/>
+                                <!--param name="opls_toplabels" type="integer" value="100"
+                                   label="Number of toplabels (m/z features) which should be written in tabular output"/-->
                             </when>
                         </conditional>
                     </when>
@@ -734,16 +800,16 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
                             <when value="ssc_cvapply"/>
 
                             <when value="ssc_analysis">
-                                <param name="ssc_toplabels" type="integer" value="100"
-                                   label="Number of toplabels (m/z features) which should be written in tabular output"/>
+                                <!--param name="ssc_toplabels" type="integer" value="100"
+                                   label="Number of toplabels (m/z features) which should be written in tabular output"/-->
                             </when>
                         </conditional>
                         <param name="ssc_r" type="text" value="2"
-                               label="The spatial neighborhood radius of nearby pixels to consider (r)" help="For cvapply multiple values are allowed (e.g. 1,2,3 or 2:5)">
+                               label="The spatial neighborhood radius of nearby pixels to consider (r)" help="For cvapply multiple values are allowed (e.g. 0,1,2,3 or 2:5)">
                         <expand macro="sanitizer_multiple_digits"/>
                         </param>
                         <param name="ssc_s" type="text" value="2"
-                               label="The sparsity thresholding parameter by which to shrink the t-statistics (s)" help="For cvapply multiple values are allowed (e.g. 1,2,3 or 2:5)">
+                               label="The sparsity thresholding parameter by which to shrink the t-statistics (s)." help="For cvapply multiple values are allowed (e.g. 0,1,2 or 2:5)">
                         <expand macro="sanitizer_multiple_digits"/>
                         </param>
                         <param name="ssc_kernel_method" type="select" display="radio" label = "The method to use to calculate the spatial smoothing kernels for the embedding. The 'gaussian' method refers to spatially-aware (SA) weights, and 'adaptive' refers to spatially-aware structurally-adaptive (SASA) weights">
@@ -757,8 +823,8 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
 
             <when value="prediction">
                 <param name="training_result" type="data" format="rdata" label="Result from previous classification training"/>
-                <param name="predicted_toplabels" type="integer" value="100"
-                                   label="Number of toplabels (m/z features) which should be written in tabular output"/>
+                <!--param name="predicted_toplabels" type="integer" value="100"
+                                   label="Number of toplabels (m/z features) which should be written in tabular output"/-->
                 <conditional name="new_y_values_cond">
                     <param name="new_y_values" type="select" label="Should new response values be used">
                         <option value="no_new_response" selected="True">old response should be used</option>
@@ -824,7 +890,7 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
                         <param name="PLS_method" value="PLS_analysis"/>
                         <param name="pls_comp" value="2"/>
                         <param name="pls_scale" value="TRUE"/>
-                        <param name="pls_toplabels" value="100"/>
+                        <!--param name="pls_toplabels" value="100"/-->
                     </conditional>
                 </conditional>
             </conditional>
@@ -875,7 +941,7 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
                         <param name="opls_comp" value="3"/>
                         <param name="xnew" value="FALSE"/>
                         <param name="opls_scale" value="FALSE"/>
-                        <param name="opls_toplabels" value="100"/>
+                        <!--param name="opls_toplabels" value="100"/-->
                     </conditional>
                 </conditional>
             </conditional>
@@ -923,7 +989,7 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
                     <param name="class_method" value="spatialShrunkenCentroids"/>
                     <conditional name="ssc_analysis_cond">
                         <param name="ssc_method" value="ssc_analysis"/>
-                        <param name="ssc_toplabels" value="20"/>
+                        <!--param name="ssc_toplabels" value="20"/-->
                      </conditional>
                     <param name="ssc_r" value="2"/>
                     <param name="ssc_s" value="2"/>
@@ -969,6 +1035,9 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
 This tool provides three different Cardinal functions for supervised classification of mass-spectrometry imaging data.
 
 @MSIDATA_INPUT_DESCRIPTION@
+            - NA intensities are not allowed
+            - duplicated coordinates will be removed
+
 - For training: tabular file with condition and fold for each pixel: Two columns for pixel coordinates (x and y values); one column with the condition for the pixel, which will be used for classification; for the cross validation (cvapply) another column with a fold is necessary, each fold must contain pixels of all response groups and is used for cross validation. Condition and fold columns are treated as factor to perform discriminant analysis (also when numeric values are provided).
 
     ::
@@ -991,12 +1060,24 @@ This tool provides three different Cardinal functions for supervised classificat
 
 - PLS-DA: partial least square discriminant analysis
 - O-PLS-DA: Orthogonal partial least squares discriminant analysis
-- Spatial shrunken centroids
+- Spatial shrunken centroids (more details in `Bemis et al. <https://doi.org/10.1074/mcp.O115.053918>`_)
+- training and prediction
+
+    - training can be done with cvapply that uses cross validation to find the best value for s, this requires not only a condition for each spectrum but also a fold (each fold should contain spectra of all conditions)
+    - training with the best value for s gives the top m/z features for each condition and the predicted classification group for each spectrum
+    - training result can be saved as RData file that can be reused for prediction of further samples
+
+
+.. image:: $PATH_TO_IMAGES/classification_overview.png
+   :width: 1000
+   :height: 465
+
+
 
 **Tips**
 
 - The classification function will only run on files with valid intensity values (NA are not allowed)
-- Only a single input file is accepted, several files have to be combined previously, for example with the msi_combine tool. 
+- Only a single input file is accepted, several files have to be combined previously, for example with the MSI combine tool. 
 
 
 **Output**

@@ -56,7 +56,7 @@ fnames_with_ext = [(a if a.endswith(ftype)
                    for a in filenames]
 
 for f, l in zip(files, fnames_with_ext):
-    os.link(f, l)
+    os.symlink(f, l)
 
 # build mqpar.xml
 mqpar_temp = os.path.join(os.getcwd(), 'mqpar.xml')
