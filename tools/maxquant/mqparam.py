@@ -84,7 +84,7 @@ class MQParam:
             try:
                 int(design['Fraction'][i])
             except ValueError as e:
-                raise Exception(msg + e)
+                raise Exception(msg + str(e))
 
     def _make_exp_design(self, infiles):
         """Create a dict representing an experimental design from
