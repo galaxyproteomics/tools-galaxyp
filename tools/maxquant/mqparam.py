@@ -252,6 +252,8 @@ class MQParam:
 
         for index in range(len(files)):
             filepath = '<fastaFilePath>' + files[index]
+            identifier = identifier.replace('<', '&lt;')
+            description = description.replace('<', '&lt;')
             fasta = self.fasta_template.replace('<fastaFilePath>', filepath)
             fasta = fasta.replace('<identifierParseRule>',
                                   '<identifierParseRule>' + identifier)
