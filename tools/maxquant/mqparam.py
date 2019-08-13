@@ -65,6 +65,27 @@ class MQParam:
         child = ET.SubElement(el, name, attrib=attrib if attrib else {})
         child.text = str(text)
 
+    @staticmethod
+    def _check_validity(design, len_infiles):
+        "Perform some checks on the exp. design template"
+        design_len = len(design['Name'])
+        match = len(list(filter(lambda x: bool(x), design['Name'])))
+        if match < len_infiles:
+            raise Exception("Error parsing experimental design template: " +
+                            "Found only {} matching entries ".format(design_len) +
+                            "for {} input files".format(len_infiles))
+        for i in range(0, design_len):
+            msg = "Error in line " + str(i + 2) + " of experimental design: "
+            if not (design['Name'][i] and design['Experiment'][i]):
+                raise Exception(msg + " Name or Experiment is empty.")
+            if design['PTM'][i].lower() not in ('true', 'false'):
+                raise Exception(msg + "Defines invalid PTM value, " +
+                                "should be 'True' or 'False'.")
+            try:
+                int(design['Fraction'][i])
+            except ValueError as e:
+                raise Exception(msg + e)
+
     def _make_exp_design(self, infiles):
         """Create a dict representing an experimental design from
         an experimental design template and a list of input files.
@@ -80,6 +101,7 @@ class MQParam:
         >>> design['Fraction']
         ['1', '2']
         """
+
         design = {s: [] for s in ("Name", "PTM", "Fraction", "Experiment")}
         if not self.exp_design:
             design["Name"] = infiles
@@ -94,11 +116,17 @@ class MQParam:
                     if i in design:
                         index.append(i)
                     else:
-                        raise Exception("Invalid comlumn index in experimental"
+                        raise Exception("Invalid column index in experimental"
                                         + " design template: {}".format(i))
+                line_no = 0
                 for line in design_file:
+                    line_no += 1
                     row = line.strip().split('\t')
                     for e, i in zip_longest(row, index):
+                        if i == "Fraction" and e == '':
+                            e = 32767
+                        elif i == "PTM" and not e:
+                            e = 'False'
                         design[i].append(e)
 
             # map infiles to names in exp. design template
@@ -117,6 +145,7 @@ class MQParam:
                              else None)
             # replace orig. file names with matching links to galaxy datasets
             design['Name'] = names
+            MQParam._check_validity(design, len(infiles))
 
         return design
 
