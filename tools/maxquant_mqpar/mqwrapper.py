@@ -20,23 +20,28 @@ import mqparam
 parser = argparse.ArgumentParser()
 
 # input, special outputs and others
-other_args = ('raw_files', 'mzxml_files', 'fasta_files',
-              'description_parse_rule', 'identifier_parse_rule',
-              'mqpar_in', 'output_all',
-              'mqpar_out', 'infile_names', 'mzTab',
-              'version', 'substitution_rx')
+other_args = ('raw_files',
+              'mzxml_files',
+              'fasta_files',
+              'description_parse_rule',
+              'identifier_parse_rule',
+              'mqpar_in',
+              'output_all',
+              'infile_names',
+              'version',
+              'substitution_rx')
 
 # txt result files
-txt_output = ('evidence', 'msms', 'parameters',
-              'peptides', 'proteinGroups', 'allPeptides',
-              'libraryMatch', 'matchedFeatures',
-              'modificationSpecificPeptides', 'ms3Scans',
-              'msmsScans', 'mzRange', 'peptideSection',
-              'summary')
+output = ('evidence', 'msms', 'parameters',
+          'peptides', 'proteinGroups', 'allPeptides',
+          'libraryMatch', 'matchedFeatures',
+          'modificationSpecificPeptides', 'ms3Scans',
+          'msmsScans', 'mzRange', 'peptideSection',
+          'summary', 'mqpar', 'mzTab')
 
 global_simple_args = ('num_threads',)
 
-arguments = ['--' + el for el in (txt_output
+arguments = ['--' + el for el in (output
                                   + other_args
                                   + global_simple_args)]
 
@@ -59,10 +64,8 @@ for f, l in zip(files, fnames_with_ext):
     os.symlink(f, l)
 
 # build mqpar.xml
-mqpar_temp = os.path.join(os.getcwd(), 'mqpar.xml')
-mqpar_out = args['mqpar_out'] if args['mqpar_out'] != 'None' else mqpar_temp
+mqpar_out = os.path.join(os.getcwd(), 'mqpar.xml')
 mqpar_in = args['mqpar_in']
-
 exp_design = None
 m = mqparam.MQParam(mqpar_out, mqpar_in, exp_design,
                     substitution_rx=args['substitution_rx'])
@@ -70,7 +73,7 @@ if m.version != args['version']:
     raise Exception('mqpar version is ' + m.version +
                     '. Tool uses version {}.'.format(args['version']))
 
-# modify parameters, interactive mode if no mqpar_in was specified
+# modify parameters, non-interactive mode
 m.add_infiles([os.path.join(os.getcwd(), name) for name in fnames_with_ext], False)
 m.add_fasta_files(args['fasta_files'].split(','),
                   identifier=args['identifier_parse_rule'],
@@ -78,22 +81,12 @@ m.add_fasta_files(args['fasta_files'].split(','),
 
 m.write()
 
-# build and run MaxQuant command
-cmd = ['maxquant', mqpar_out]
-
-subprocess.run(cmd, check=True, cwd='./')
+subprocess.run(('maxquant', mqpar_out), check=True, cwd='./')
 
 # copy results to galaxy database
-for el in txt_output:
+for el in output:
     destination = args[el]
-    source = os.path.join(os.getcwd(), "combined", "txt", "{}.txt".format(el))
+    ext = 'mzTab' if el == 'mzTab' else 'xml' if el == 'mqpar' else 'txt'
+    source = os.path.join(os.getcwd(), 'combined', 'txt', '{}.{}'.format(el, ext))
     if destination != 'None' and os.path.isfile(source):
         shutil.copy(source, destination)
-
-if args['mzTab'] != 'None':
-    source = os.path.join(os.getcwd(), "combined", "txt", "mzTab.mzTab")
-    if os.path.isfile(source):
-        shutil.copy(source, args['mzTab'])
-
-if args['output_all'] != 'None':
-    subprocess.run(('tar', '-zcf', args['output_all'], './combined/txt/'))
