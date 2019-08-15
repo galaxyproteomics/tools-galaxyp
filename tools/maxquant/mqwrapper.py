@@ -35,7 +35,7 @@ txt_output = ('evidence', 'msms', 'parameters',
               'summary')
 
 # arguments for mqparam
-## global
+# global
 global_flags = ('calc_peak_properties',
                 'write_mztab',
                 'ibaq',
@@ -51,7 +51,7 @@ global_simple_args = ('min_unique_pep',
                       'min_peptide_len',
                       'max_peptide_mass')
 
-## parameter group specific
+# parameter group specific
 param_group_flags = ('lfq_skip_norm',)
 
 param_group_simple_args = ('missed_cleavages',
