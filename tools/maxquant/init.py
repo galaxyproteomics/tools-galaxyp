@@ -45,8 +45,7 @@ if args.modifications:
     standard_mods = []
     label_mods = []
     for m in mods:
-        if (m.findtext('type') == 'Standard'
-            or m.findtext('type') == 'AaSubstitution'):
+        if (m.findtext('type') == 'Standard' or m.findtext('type') == 'AaSubstitution'):
             standard_mods.append(m.get('title'))
         elif m.findtext('type') == 'Label':
             label_mods.append(m.get('title'))
