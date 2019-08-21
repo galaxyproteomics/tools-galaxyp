@@ -1,21 +1,97 @@
 """
 Create a project-specific MaxQuant parameter file.
 
-TODO: check validity of parsed experimental design template
-      add support for parameter groups
+TODO: add support for parameter groups
       add reporter ion MS2
-      add label free quantification
-      don't hardcode parse rules for fasta files
 
 Author: Damian Glaetzer <d.glaetzer@mailbox.org>
 """
 
+import copy
 import ntpath
 import os
 import re
 import xml.etree.ElementTree as ET
 from itertools import zip_longest
 from xml.dom import minidom
+
+def et_add_child(el, name, text, attrib=None):
+    "Add a child element to an xml.etree.Element"
+    child = ET.SubElement(el, name, attrib=attrib if attrib else {})
+    child.text = str(text)
+
+
+class ParamGroup:
+    "Represents one parameter Group"
+
+    def __init__(self, root):
+        "Initialize with its xml.etree.ElementTree root Element."
+        self.root = root
+        
+        
+    def set_list_params(self, key, vals):
+        """Set a list parameter.
+        >>> t = MQParam(None, './test-data/template.xml', None)
+        >>> t.set_list_params('proteases', ('test 1', 'test 2'))
+        >>> len(t.root.find('.parameterGroups/parameterGroup/enzymes'))
+        2
+        >>> t.set_list_params('var_mods', ('Oxidation (M)', ))
+        >>> var_mods = '.parameterGroups/parameterGroup/variableModifications'
+        >>> t.root.find(var_mods)[0].text
+        'Oxidation (M)'
+        """
+        
+        # params = 'variableModifications','fixedModifications','enzymes'
+        
+        node = self.root[key]
+        if node is None:
+            raise ValueError('Element {} not found in parameter file'
+                             .format(params[key]))
+        node.clear()
+        node.tag = key
+        for e in vals:
+            et_add_child(node, name='string', text=e)
+                 
+    def set_simple_param(self, key, value):
+        """Set a simple parameter.
+        >>> t = MQParam(None, './test-data/template.xml', None)
+        >>> t.set_simple_param('min_unique_pep', 4)
+        >>> t.root.find('.minUniquePeptides').text
+        '4'
+        """
+        node = self.root[key]
+        if node is None:
+            raise ValueError('Element {} not found in parameter file'
+                             .format(simple_params[key]))
+        node.text = str(value)
+
+    def set_silac(self, light_mods, medium_mods, heavy_mods):
+        """Set label modifications.
+        >>> t1 = MQParam('test', './test-data/template.xml', None)
+        >>> t1.set_silac(None, ('test1', 'test2'), None)
+        >>> t1.root.find('.parameterGroups/parameterGroup/maxLabeledAa').text
+        '2'
+        >>> t1.root.find('.parameterGroups/parameterGroup/multiplicity').text
+        '3'
+        >>> t1.root.find('.parameterGroups/parameterGroup/labelMods')[1].text
+        'test1;test2'
+        >>> t1.root.find('.parameterGroups/parameterGroup/labelMods')[2].text
+        ''
+        """
+        multiplicity = 3 if medium_mods else 2 if heavy_mods else 1
+        max_label = str(max(len(light_mods) if light_mods else 0,
+                            len(medium_mods) if medium_mods else 0,
+                            len(heavy_mods) if heavy_mods else 0))
+        self.root['multiplicity'].text = str(multiplicity)
+        self.root['maxLabeledAa'].text = max_label
+
+        node = self.root['labelMods']
+        node[0].text = ';'.join(light_mods) if light_mods else ''
+        if multiplicity == 3:
+            et_add_child(node, name='string', text=';'.join(medium_mods))
+        if multiplicity > 1:
+            et_add_child(node, name='string',
+                               text=';'.join(heavy_mods) if heavy_mods else '')
 
 
 class MQParam:
@@ -51,19 +127,9 @@ class MQParam:
         self.version = self.root.find('maxQuantVersion').text
         # regex for substitution of certain file name characters
         self.substitution_rx = substitution_rx
-
-    @staticmethod
-    def _add_child(el, name, text, attrib=None):
-        """Add a child element to an element.
-
-        >>> t = MQParam("test", './test-data/template.xml', None)
-        >>> MQParam._add_child(t.root, "test", "test")
-        >>> t.root.find('test').text == "test"
-        True
-        """
-
-        child = ET.SubElement(el, name, attrib=attrib if attrib else {})
-        child.text = str(text)
+        self._paramGroupTemplate = copy.deepcopy(self.root['parameterGroups']
+                                                 ['parameterGroup'])
+        self._paramGroups = []
 
     @staticmethod
     def _check_validity(design, len_infiles):
@@ -222,17 +288,17 @@ class MQParam:
         # Append sub-elements to nodes (one per file)
         for i in index:
             if i > -1 and design['Name'][i]:
-                MQParam._add_child(nodes['filePaths'], 'string',
+                et_add_child(nodes['filePaths'], 'string',
                                    design['Name'][i])
                 if interactive:
-                    MQParam._add_child(nodes['experiments'], 'string',
+                    et_add_child(nodes['experiments'], 'string',
                                        design['Experiment'][i])
-                    MQParam._add_child(nodes['fractions'], 'short',
+                    et_add_child(nodes['fractions'], 'short',
                                        design['Fraction'][i])
-                    MQParam._add_child(nodes['ptms'], 'boolean',
+                    et_add_child(nodes['ptms'], 'boolean',
                                        design['PTM'][i])
-                    MQParam._add_child(nodes['paramGroupIndices'], 'int', 0)
-                    MQParam._add_child(nodes['referenceChannel'], 'string', '')
+                    et_add_child(nodes['paramGroupIndices'], 'int', 0)
+                    et_add_child(nodes['referenceChannel'], 'string', '')
 
     def add_fasta_files(self, files,
                         identifier=r'>([^\s]*)',
@@ -269,108 +335,22 @@ class MQParam:
         >>> t.root.find('.minUniquePeptides').text
         '4'
         """
-        # map simple params to their node in the xml tree
-        simple_params = {'missed_cleavages':
-                         '.parameterGroups/parameterGroup/maxMissedCleavages',
-                         'min_unique_pep': '.minUniquePeptides',
-                         'num_threads': 'numThreads',
-                         'calc_peak_properties': '.calcPeakProperties',
-                         'write_mztab': 'writeMzTab',
-                         'min_peptide_len': 'minPepLen',
-                         'max_peptide_mass': 'maxPeptideMass',
-                         'match_between_runs': 'matchBetweenRuns',
-                         'ibaq': 'ibaq',  # lfq global options
-                         'ibaq_log_fit': 'ibaqLogFit',
-                         'separate_lfq': 'separateLfq',
-                         'lfq_stabilize_large_ratios':
-                         'lfqStabilizeLargeRatios',
-                         'lfq_require_msms': 'lfqRequireMsms',
-                         'advanced_site_intensities':
-                         'advancedSiteIntensities',
-                         'lfq_mode':  # lfq param group options
-                         '.parameterGroups/parameterGroup/lfqMode',
-                         'lfq_skip_norm':
-                         '.parameterGroups/parameterGroup/lfqSkipNorm',
-                         'lfq_min_edges_per_node':
-                         '.parameterGroups/parameterGroup/lfqMinEdgesPerNode',
-                         'lfq_avg_edges_per_node':
-                         '.parameterGroups/parameterGroup/lfqAvEdgesPerNode',
-                         'lfq_min_ratio_count':
-                         '.parameterGroups/parameterGroup/lfqMinRatioCount'}
-
-        if key in simple_params:
-            node = self.root.find(simple_params[key])
-            if node is None:
-                raise ValueError('Element {} not found in parameter file'
-                                 .format(simple_params[key]))
-            node.text = str(value)
-        else:
-            raise ValueError("Parameter not found.")
-
-    def set_silac(self, light_mods, medium_mods, heavy_mods):
-        """Set label modifications.
-        >>> t1 = MQParam('test', './test-data/template.xml', None)
-        >>> t1.set_silac(None, ('test1', 'test2'), None)
-        >>> t1.root.find('.parameterGroups/parameterGroup/maxLabeledAa').text
-        '2'
-        >>> t1.root.find('.parameterGroups/parameterGroup/multiplicity').text
-        '3'
-        >>> t1.root.find('.parameterGroups/parameterGroup/labelMods')[1].text
-        'test1;test2'
-        >>> t1.root.find('.parameterGroups/parameterGroup/labelMods')[2].text
-        ''
-        """
-        multiplicity = 3 if medium_mods else 2 if heavy_mods else 1
-        max_label = str(max(len(light_mods) if light_mods else 0,
-                            len(medium_mods) if medium_mods else 0,
-                            len(heavy_mods) if heavy_mods else 0))
-        multiplicity_node = self.root.find('.parameterGroups/parameterGroup/'
-                                           + 'multiplicity')
-        multiplicity_node.text = str(multiplicity)
-        max_label_node = self.root.find('.parameterGroups/parameterGroup/'
-                                        + 'maxLabeledAa')
-        max_label_node.text = max_label
-
-        node = self.root.find('.parameterGroups/parameterGroup/labelMods')
-        node[0].text = ';'.join(light_mods) if light_mods else ''
-        if multiplicity == 3:
-            MQParam._add_child(node, name='string', text=';'.join(medium_mods))
-        if multiplicity > 1:
-            MQParam._add_child(node, name='string',
-                               text=';'.join(heavy_mods) if heavy_mods else '')
-
-    def set_list_params(self, key, vals):
-        """Set a list parameter.
-        >>> t = MQParam(None, './test-data/template.xml', None)
-        >>> t.set_list_params('proteases', ('test 1', 'test 2'))
-        >>> len(t.root.find('.parameterGroups/parameterGroup/enzymes'))
-        2
-        >>> t.set_list_params('var_mods', ('Oxidation (M)', ))
-        >>> var_mods = '.parameterGroups/parameterGroup/variableModifications'
-        >>> t.root.find(var_mods)[0].text
-        'Oxidation (M)'
-        """
-
-        params = {'var_mods':
-                  '.parameterGroups/parameterGroup/variableModifications',
-                  'fixed_mods':
-                  '.parameterGroups/parameterGroup/fixedModifications',
-                  'proteases':
-                  '.parameterGroups/parameterGroup/enzymes'}
-
-        if key in params:
-            node = self.root.find(params[key])
-            if node is None:
-                raise ValueError('Element {} not found in parameter file'
-                                 .format(params[key]))
-            node.clear()
-            node.tag = params[key].split('/')[-1]
-            for e in vals:
-                MQParam._add_child(node, name='string', text=e)
-        else:
-            raise ValueError("Parameter {} not found.".format(key))
+        node = self.root[key]
+        if node is None:
+            raise ValueError('Element {} not found in parameter file'
+                             .format(simple_params[key]))
+        node.text = str(value)
 
     def write(self):
+        """Write pretty formatted xml parameter file.
+        Compose it from global parameters and parameter Groups.
+        """
+        
+        template_pg = self.root['ParamGroups']['ParamGroup']
+        self.root['ParamGroups'].remove(template_pg)
+        for group in self.ParamGroups:
+            self.root['ParamGroups'].append(group)
+            
         rough_string = ET.tostring(self.root, 'utf-8', short_empty_elements=False)
         reparsed = minidom.parseString(rough_string)
         pretty = reparsed.toprettyxml(indent="\t")
