@@ -127,8 +127,6 @@ class MQParam:
         self.version = self.root.find('maxQuantVersion').text
         # regex for substitution of certain file name characters
         self.substitution_rx = substitution_rx
-        self._paramGroupTemplate = copy.deepcopy(self.root['parameterGroups']
-                                                 ['parameterGroup'])
         self._paramGroups = []
 
     @staticmethod
@@ -152,7 +150,10 @@ class MQParam:
             except ValueError as e:
                 raise Exception(msg + str(e))
 
-    def _make_exp_design(self, infiles):
+    def __getitem__(self, index):
+        return self._paramGroups[index]
+
+    def _make_exp_design(self, files, groups):
         """Create a dict representing an experimental design from
         an experimental design template and a list of input files.
         If the experimental design template is None, create a default
@@ -168,12 +169,13 @@ class MQParam:
         ['1', '2']
         """
 
-        design = {s: [] for s in ("Name", "PTM", "Fraction", "Experiment")}
+        design = {s: [] for s in ("Name", "PTM", "Fraction", "Experiment", "paramGroup")}
         if not self.exp_design:
-            design["Name"] = infiles
-            design["Fraction"] = ('32767',) * len(infiles)
-            design["Experiment"] = [os.path.split(f)[1] for f in infiles]
-            design["PTM"] = ('False',) * len(infiles)
+            design["Name"] = files
+            design["Fraction"] = ('32767',) * len(files)
+            design["Experiment"] = [os.path.split(f)[1] for f in files]
+            design["PTM"] = ('False',) * len(files)
+            design["paramGroup"] = groups
         else:
             with open(self.exp_design) as design_file:
                 index_line = design_file.readline().strip()
@@ -194,11 +196,11 @@ class MQParam:
                             e = 'False'
                         design[i].append(e)
 
-            # map infiles to names in exp. design template
+            # map files to names in exp. design template
             names = []
             names_to_paths = {}
             # strip path and extension
-            for f in infiles:
+            for f in files:
                 b = os.path.basename(f)
                 basename = b[:-6] if b.endswith('.mzXML') else b[:-11]
                 names_to_paths[basename] = f
@@ -210,69 +212,37 @@ class MQParam:
                              else None)
             # replace orig. file names with matching links to galaxy datasets
             design['Name'] = names
+            design['paramGroup'] = groups
             MQParam._check_validity(design, len(infiles))
 
         return design
 
-    def add_infiles(self, infiles, interactive):
+    def add_infiles(self, infiles):
         """Add a list of raw/mzxml files to the mqpar.xml.
         If experimental design template was specified,
         modify other parameters accordingly.
         The files must be specified as absolute paths
         for maxquant to find them.
-        >>> t1 = MQParam("test", './test-data/template.xml', None)
-        >>> t1.add_infiles(('test1', ), True)
-        >>> t1.root.find("filePaths")[0].text
-        'test1'
-        >>> t1.root.find("fractions")[0].text
-        '32767'
-        >>> len(t1.root.find("fractions"))
-        1
-        >>> t2 = MQParam("test", './test-data/template.xml', \
-                         './test-data/exp_design_test.txt')
-        >>> t2.add_infiles(('test-data/QEplus021874.thermo.raw', \
-                             'test-data/QEplus021876.thermo.raw'), True)
-        >>> len(t2.root.find("filePaths"))
-        2
-        >>> t2.root.find("filePaths")[1].text
-        'test-data/QEplus021876.thermo.raw'
-        >>> t2.root.find("experiments")[1].text
-        '2'
-        >>> t2.root.find("fractions")[0].text
-        '3'
+        Also add parameter Groups.
         """
-
-        # Create experimental design for interactive mode.
-        # In non-interactive mode only filepaths are modified, but
-        # their order from the original mqpar must be kept.
-        if interactive:
-            index = range(len(infiles))
-            nodenames = ('filePaths', 'experiments', 'fractions',
-                         'ptms', 'paramGroupIndices', 'referenceChannel')
-            design = self._make_exp_design(infiles)
+        if isinstance(infiles, dict):
+            files = []
+            groups = []
+            for group in infiles:
+                files += infiles[group]
+                groups += [str(group)] * len(infiles[group])
+            num_groups = max(infiles.keys())
         else:
-            index = [-1] * len(infiles)
-            # kind of a BUG: fails if filename starts with '.'
-            infilenames = [os.path.basename(f).split('.')[0] for f in infiles]
-            i = 0
-            for child in self.root.find('filePaths'):
-                # either windows or posix path
-                win = ntpath.basename(child.text)
-                posix = os.path.basename(child.text)
-                basename = win if len(win) < len(posix) else posix
-                basename_with_sub = re.sub(self.substitution_rx, '_',
-                                           basename.split('.')[0])
-                # match infiles to their names in mqpar.xml,
-                # ignore files missing in mqpar.xml
-                if basename_with_sub in infilenames:
-                    index[i] = infilenames.index(basename_with_sub)
-                    i += 1
-                else:
-                    raise ValueError("no matching infile found for "
-                                     + child.text)
+            files = infiles
+            groups = ('0', ) * len(infiles)
+            num_groups = 1
 
-            nodenames = ('filePaths', )
-            design = {'Name': infiles}
+        pg_node = self.root['parameterGroups']['parameterGroup']
+        self._paramGroups = [ParamGroup(copy.deepcopy(pg_node)) for i in num_groups]
+
+        nodenames = ('filePaths', 'experiments', 'fractions',
+                     'ptms', 'paramGroupIndices', 'referenceChannel')
+        design = self._make_exp_design(infiles)
 
         # Get parent nodes from document
         nodes = dict()
@@ -286,23 +256,44 @@ class MQParam:
             node.tag = nodename
 
         # Append sub-elements to nodes (one per file)
-        for i in index:
-            if i > -1 and design['Name'][i]:
-                et_add_child(nodes['filePaths'], 'string',
-                                   design['Name'][i])
-                if interactive:
-                    et_add_child(nodes['experiments'], 'string',
-                                       design['Experiment'][i])
-                    et_add_child(nodes['fractions'], 'short',
-                                       design['Fraction'][i])
-                    et_add_child(nodes['ptms'], 'boolean',
-                                       design['PTM'][i])
-                    et_add_child(nodes['paramGroupIndices'], 'int', 0)
-                    et_add_child(nodes['referenceChannel'], 'string', '')
+        for i, name in enumerate(design['Name']):
+            if name:
+                et_add_child(nodes['filePaths'], 'string', name)
+                et_add_child(nodes['experiments'], 'string',
+                             design['Experiment'][i])
+                et_add_child(nodes['fractions'], 'short',
+                             design['Fraction'][i])
+                et_add_child(nodes['ptms'], 'boolean',
+                             design['PTM'][i])
+                et_add_child(nodes['paramGroupIndices'], 'int',
+                             design['paramGroup'][i])
+                et_add_child(nodes['referenceChannel'], 'string', '')
 
-    def add_fasta_files(self, files,
-                        identifier=r'>([^\s]*)',
-                        description=r'>(.*)'):
+    def translate(self, infiles):
+        """Map a list of given infiles to the files specified in the parameter file.
+        Needed for the mqpar upload in galaxy. Removes the Path and then tries
+        to match the files."""
+        # kind of a BUG: fails if filename starts with '.'
+        infilenames = [os.path.basename(f).split('.')[0] for f in infiles]
+        filesNode = self.root['filePaths']
+        filesNode.clear()
+        filesNode.tag = nodename
+        for child in filesNode:
+            # either windows or posix path
+            win = ntpath.basename(child.text)
+            posix = os.path.basename(child.text)
+            basename = win if len(win) < len(posix) else posix
+            basename_with_sub = re.sub(self.substitution_rx, '_',
+                                       basename.split('.')[0])
+            # match infiles to their names in mqpar.xml,
+            # ignore files missing in mqpar.xml
+            if basename_with_sub in infilenames:
+                i = infilenames.index(basename_with_sub)
+                et_add_child(filesNode, 'string', infiles[i])
+            else:
+                raise ValueError("no matching infile found for " + child.text)
+
+    def add_fasta_files(self, files, identifier=r'>([^\s]*)', description=r'>(.*)'):
         """Add fasta file groups.
         >>> t = MQParam('test', './test-data/template.xml', None)
         >>> t.add_fasta_files(('test1', 'test2'))
@@ -345,11 +336,11 @@ class MQParam:
         """Write pretty formatted xml parameter file.
         Compose it from global parameters and parameter Groups.
         """
-        
-        template_pg = self.root['ParamGroups']['ParamGroup']
-        self.root['ParamGroups'].remove(template_pg)
-        for group in self.ParamGroups:
-            self.root['ParamGroups'].append(group)
+        if self._paramGroups:
+            template_pg = self.root['ParamGroups']['ParamGroup']
+            self.root['ParamGroups'].remove(template_pg)
+            for group in self.ParamGroups:
+                self.root['ParamGroups'].append(group)
             
         rough_string = ET.tostring(self.root, 'utf-8', short_empty_elements=False)
         reparsed = minidom.parseString(rough_string)
