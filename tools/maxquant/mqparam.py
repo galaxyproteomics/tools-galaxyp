@@ -1,8 +1,7 @@
 """
 Create a project-specific MaxQuant parameter file.
 
-TODO: add support for parameter groups
-      add reporter ion MS2
+TODO: add reporter ion MS2
 
 Author: Damian Glaetzer <d.glaetzer@mailbox.org>
 """
@@ -26,27 +25,19 @@ class ParamGroup:
 
     def __init__(self, root):
         "Initialize with its xml.etree.ElementTree root Element."
-        self.root = root
+        self._root = root
         
         
     def set_list_params(self, key, vals):
         """Set a list parameter.
-        >>> t = MQParam(None, './test-data/template.xml', None)
-        >>> t.set_list_params('proteases', ('test 1', 'test 2'))
-        >>> len(t.root.find('.parameterGroups/parameterGroup/enzymes'))
-        2
-        >>> t.set_list_params('var_mods', ('Oxidation (M)', ))
-        >>> var_mods = '.parameterGroups/parameterGroup/variableModifications'
-        >>> t.root.find(var_mods)[0].text
-        'Oxidation (M)'
         """
         
         # params = 'variableModifications','fixedModifications','enzymes'
         
-        node = self.root[key]
+        node = self._root.find(key)
         if node is None:
             raise ValueError('Element {} not found in parameter file'
-                             .format(params[key]))
+                             .format(key))
         node.clear()
         node.tag = key
         for e in vals:
@@ -54,38 +45,24 @@ class ParamGroup:
                  
     def set_simple_param(self, key, value):
         """Set a simple parameter.
-        >>> t = MQParam(None, './test-data/template.xml', None)
-        >>> t.set_simple_param('min_unique_pep', 4)
-        >>> t.root.find('.minUniquePeptides').text
-        '4'
         """
-        node = self.root[key]
+        node = self._root.find(key)
         if node is None:
             raise ValueError('Element {} not found in parameter file'
-                             .format(simple_params[key]))
+                             .format(key))
         node.text = str(value)
 
     def set_silac(self, light_mods, medium_mods, heavy_mods):
         """Set label modifications.
-        >>> t1 = MQParam('test', './test-data/template.xml', None)
-        >>> t1.set_silac(None, ('test1', 'test2'), None)
-        >>> t1.root.find('.parameterGroups/parameterGroup/maxLabeledAa').text
-        '2'
-        >>> t1.root.find('.parameterGroups/parameterGroup/multiplicity').text
-        '3'
-        >>> t1.root.find('.parameterGroups/parameterGroup/labelMods')[1].text
-        'test1;test2'
-        >>> t1.root.find('.parameterGroups/parameterGroup/labelMods')[2].text
-        ''
         """
         multiplicity = 3 if medium_mods else 2 if heavy_mods else 1
         max_label = str(max(len(light_mods) if light_mods else 0,
                             len(medium_mods) if medium_mods else 0,
                             len(heavy_mods) if heavy_mods else 0))
-        self.root['multiplicity'].text = str(multiplicity)
-        self.root['maxLabeledAa'].text = max_label
+        self._root.find('multiplicity').text = str(multiplicity)
+        self._root.find('maxLabeledAa').text = max_label
 
-        node = self.root['labelMods']
+        node = self._root.find('labelMods')
         node[0].text = ';'.join(light_mods) if light_mods else ''
         if multiplicity == 3:
             et_add_child(node, name='string', text=';'.join(medium_mods))
@@ -113,60 +90,66 @@ class MQParam:
                  substitution_rx=r'[^\s\S]'):  # no sub by default
         """Initialize MQParam class. mqpar_in can either be a template
         or a already suitable mqpar file.
-        >>> t = MQParam("test", './test-data/template.xml', None)
-        >>> t.root.tag
-        'MaxQuantParams'
-        >>> (t.root.find('maxQuantVersion')).text
-        '1.6.3.4'
+
+        Args:
+            mqpar_out: the file to write the resulting paramter file in
+
+            mqpar_in: a template parameter file
+
+            exp_design: a experimental design template (see MaxQuant documentation),
+            can be None
+
+            substitution_rx: a regular expression for replacements in the file names.
+            It is applied before comparing input file names (e.g. from the exp. design)
         """
 
         self.orig_mqpar = mqpar_in
         self.exp_design = exp_design
         self.mqpar_out = mqpar_out
-        self.root = ET.parse(mqpar_in).getroot()
-        self.version = self.root.find('maxQuantVersion').text
+        self._root = ET.parse(mqpar_in).getroot()
+        self.version = self._root.find('maxQuantVersion').text
         # regex for substitution of certain file name characters
         self.substitution_rx = substitution_rx
         self._paramGroups = []
 
+    def __getitem__(self, index):
+        return self._paramGroups[index]
+
     @staticmethod
     def _check_validity(design, len_infiles):
-        "Perform some checks on the exp. design template"
+        """Perform some checks on the exp. design template"""
         design_len = len(design['Name'])
         match = len(list(filter(lambda x: bool(x), design['Name'])))
         if match < len_infiles:
             raise Exception("Error parsing experimental design template: " +
-                            "Found only {} matching entries ".format(design_len) +
+                            "Found only {} matching entries ".format(match) +
                             "for {} input files".format(len_infiles))
         for i in range(0, design_len):
-            msg = "Error in line " + str(i + 2) + " of experimental design: "
-            if not (design['Name'][i] and design['Experiment'][i]):
-                raise Exception(msg + " Name or Experiment is empty.")
+            msg = "(in line " + str(i + 2) + " of experimental design) "
+            if not design['Experiment'][i]:
+                raise ValueError(msg + " Experiment is empty.")
             if design['PTM'][i].lower() not in ('true', 'false'):
-                raise Exception(msg + "Defines invalid PTM value, " +
+                raise ValueError(msg + "Defines invalid PTM value, " +
                                 "should be 'True' or 'False'.")
             try:
                 int(design['Fraction'][i])
             except ValueError as e:
-                raise Exception(msg + str(e))
-
-    def __getitem__(self, index):
-        return self._paramGroups[index]
+                raise ValueError(msg + str(e))
 
     def _make_exp_design(self, files, groups):
-        """Create a dict representing an experimental design from
-        an experimental design template and a list of input files.
-        If the experimental design template is None, create a default
-        design with one experiment for each input file, no fractions and
-        parameter group 0 for all files.
-        >>> t2 = MQParam("test", './test-data/template.xml', \
-                         './test-data/two/exp_design_template.txt')
-        >>> design = t2._make_exp_design(['./test-data/BSA_min_21.mzXML', \
-                                          './test-data/BSA_min_22.mzXML'])
-        >>> design['Name']
-        ['./test-data/BSA_min_21.mzXML', './test-data/BSA_min_22.mzXML']
-        >>> design['Fraction']
-        ['1', '2']
+        """Create a dict representing an experimental design from an
+        experimental design template and a list input files.
+        If the experimental design template is None, create a default 
+        design with one experiment for each input file and no fractions
+        for all files.
+
+        Args:
+            files: list of input file paths
+
+            groups: list of parameter group indices
+
+        Returns:
+            dict: The (complete) experimental design template
         """
 
         design = {s: [] for s in ("Name", "PTM", "Fraction", "Experiment", "paramGroup")}
@@ -190,8 +173,8 @@ class MQParam:
                 for line in design_file:
                     row = line.strip().split('\t')
                     for e, i in zip_longest(row, index):
-                        if i == "Fraction" and e == '':
-                            e = 32767
+                        if i == "Fraction" and not e:
+                            e = '32767'
                         elif i == "PTM" and not e:
                             e = 'False'
                         design[i].append(e)
@@ -213,7 +196,7 @@ class MQParam:
             # replace orig. file names with matching links to galaxy datasets
             design['Name'] = names
             design['paramGroup'] = groups
-            MQParam._check_validity(design, len(infiles))
+            MQParam._check_validity(design, len(files))
 
         return design
 
@@ -224,30 +207,27 @@ class MQParam:
         The files must be specified as absolute paths
         for maxquant to find them.
         Also add parameter Groups.
-        """
-        if isinstance(infiles, dict):
-            files = []
-            groups = []
-            for group in infiles:
-                files += infiles[group]
-                groups += [str(group)] * len(infiles[group])
-            num_groups = max(infiles.keys())
-        else:
-            files = infiles
-            groups = ('0', ) * len(infiles)
-            num_groups = 1
 
-        pg_node = self.root['parameterGroups']['parameterGroup']
-        self._paramGroups = [ParamGroup(copy.deepcopy(pg_node)) for i in num_groups]
+        Args:
+            infiles: a list of infile lists. first dimension denotes the
+            parameter group.
+
+        Returns:
+            None
+        """
+        
+        groups, files = zip(*[(num, f) for num, l in enumerate(files) for f in l])
+        pg_node = self._root['parameterGroups']['parameterGroup']
+        self._paramGroups = [ParamGroup(copy.deepcopy(pg_node)) for i in range(len(infiles))]
 
         nodenames = ('filePaths', 'experiments', 'fractions',
                      'ptms', 'paramGroupIndices', 'referenceChannel')
-        design = self._make_exp_design(infiles)
+        design = self._make_exp_design(files, groups)
 
         # Get parent nodes from document
         nodes = dict()
         for nodename in nodenames:
-            node = self.root.find(nodename)
+            node = self._root.find(nodename)
             if node is None:
                 raise ValueError('Element {} not found in parameter file'
                                  .format(nodename))
@@ -275,7 +255,7 @@ class MQParam:
         to match the files."""
         # kind of a BUG: fails if filename starts with '.'
         infilenames = [os.path.basename(f).split('.')[0] for f in infiles]
-        filesNode = self.root['filePaths']
+        filesNode = self._root['filePaths']
         filesNode.clear()
         filesNode.tag = nodename
         for child in filesNode:
@@ -297,12 +277,12 @@ class MQParam:
         """Add fasta file groups.
         >>> t = MQParam('test', './test-data/template.xml', None)
         >>> t.add_fasta_files(('test1', 'test2'))
-        >>> len(t.root.find('fastaFiles'))
+        >>> len(t._root.find('fastaFiles'))
         2
-        >>> t.root.find('fastaFiles')[0].find("fastaFilePath").text
+        >>> t._root.find('fastaFiles')[0].find("fastaFilePath").text
         'test1'
         """
-        fasta_node = self.root.find("fastaFiles")
+        fasta_node = self._root.find("fastaFiles")
         fasta_node.clear()
         fasta_node.tag = "fastaFiles"
 
@@ -315,7 +295,7 @@ class MQParam:
                                   '<identifierParseRule>' + identifier)
             fasta = fasta.replace('<descriptionParseRule>',
                                   '<descriptionParseRule>' + description)
-            ff_node = self.root.find('.fastaFiles')
+            ff_node = self._root.find('.fastaFiles')
             fastaentry = ET.fromstring(fasta)
             ff_node.append(fastaentry)
 
@@ -323,10 +303,10 @@ class MQParam:
         """Set a simple parameter.
         >>> t = MQParam(None, './test-data/template.xml', None)
         >>> t.set_simple_param('min_unique_pep', 4)
-        >>> t.root.find('.minUniquePeptides').text
+        >>> t._root.find('.minUniquePeptides').text
         '4'
         """
-        node = self.root[key]
+        node = self._root[key]
         if node is None:
             raise ValueError('Element {} not found in parameter file'
                              .format(simple_params[key]))
@@ -337,12 +317,13 @@ class MQParam:
         Compose it from global parameters and parameter Groups.
         """
         if self._paramGroups:
-            template_pg = self.root['ParamGroups']['ParamGroup']
-            self.root['ParamGroups'].remove(template_pg)
+            template_pg = self._root.find('.ParamGroups/ParamGroup')
+            pg_node = self._root.find('ParamGroups')
+            pg_node.remove(template_pg)
             for group in self.ParamGroups:
-                self.root['ParamGroups'].append(group)
+                pg_node.append(group)
             
-        rough_string = ET.tostring(self.root, 'utf-8', short_empty_elements=False)
+        rough_string = ET.tostring(self._root, 'utf-8', short_empty_elements=False)
         reparsed = minidom.parseString(rough_string)
         pretty = reparsed.toprettyxml(indent="\t")
         even_prettier = re.sub(r"\n\s+\n", r"\n", pretty)
