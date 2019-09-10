@@ -216,8 +216,8 @@ class MQParam:
             None
         """
         
-        groups, files = zip(*[(num, f) for num, l in enumerate(files) for f in l])
-        pg_node = self._root['parameterGroups']['parameterGroup']
+        groups, files = zip(*[(num, f) for num, l in enumerate(infiles) for f in l])
+        pg_node = self._root.find('parameterGroup')
         self._paramGroups = [ParamGroup(copy.deepcopy(pg_node)) for i in range(len(infiles))]
 
         nodenames = ('filePaths', 'experiments', 'fractions',
@@ -251,17 +251,26 @@ class MQParam:
 
     def translate(self, infiles):
         """Map a list of given infiles to the files specified in the parameter file.
-        Needed for the mqpar upload in galaxy. Removes the Path and then tries
-        to match the files."""
+        Needed for the mqpar upload in galaxy. Removes the path and then tries
+        to match the files.
+
+        Args:
+            infiles: list or tuple of the input files
+
+        Returns:
+            None
+        """
+        
         # kind of a BUG: fails if filename starts with '.'
         infilenames = [os.path.basename(f).split('.')[0] for f in infiles]
-        filesNode = self._root['filePaths']
+        filesNode = self._root.find('filePaths')
+        files_from_mqpar = [e.text for e in filesNode]
         filesNode.clear()
-        filesNode.tag = nodename
-        for child in filesNode:
+        filesNode.tag = 'filePaths'
+        for f in files_from_mqpar:
             # either windows or posix path
-            win = ntpath.basename(child.text)
-            posix = os.path.basename(child.text)
+            win = ntpath.basename(f)
+            posix = os.path.basename(f)
             basename = win if len(win) < len(posix) else posix
             basename_with_sub = re.sub(self.substitution_rx, '_',
                                        basename.split('.')[0])
@@ -271,7 +280,7 @@ class MQParam:
                 i = infilenames.index(basename_with_sub)
                 et_add_child(filesNode, 'string', infiles[i])
             else:
-                raise ValueError("no matching infile found for " + child.text)
+                raise ValueError("no matching infile found for " + f)
 
     def add_fasta_files(self, files, identifier=r'>([^\s]*)', description=r'>(.*)'):
         """Add fasta file groups.
