@@ -15,17 +15,21 @@ from itertools import zip_longest
 from xml.dom import minidom
 
 def et_add_child(el, name, text, attrib=None):
-    "Add a child element to an xml.etree.Element"
+    "Add a child element to an xml.etree.ElementTree.Element"
     child = ET.SubElement(el, name, attrib=attrib if attrib else {})
     child.text = str(text)
 
+    return child
+
 
 class ParamGroup:
-    "Represents one parameter Group"
+    """Represents one parameter Group
+    """
 
     def __init__(self, root):
-        "Initialize with its xml.etree.ElementTree root Element."
-        self._root = root
+        """Initialize with its xml.etree.ElementTree root Element.
+        """
+        self._root = copy.deepcopy(root)
         
         
     def set_list_params(self, key, vals):
@@ -70,6 +74,24 @@ class ParamGroup:
             et_add_child(node, name='string',
                                text=';'.join(heavy_mods) if heavy_mods else '')
 
+    def set_isobaric_label(self, internalLabel, terminalLabel, corrections, tmtLike):
+        """Add isobaric label info.
+        Args:
+            internalLabel: string
+            terminalLabel: string
+            corrections: iterable of floats, length 4
+            tmtLike: bool or string
+        Returns:
+            None
+        """
+        
+        iso_labels_node = self._root.find('isobaricLabels')
+        label = et_add_child(iso_labels_node, 'IsobaricLabelInfo', '')
+        et_add_child(label, 'internalLabel', internalLabel)
+        et_add_child(label, 'terminalLabel', terminalLabel)
+        for num, factor in zip(['M2', 'M1', 'P1', 'P2'], corrections):
+            et_add_child(label, 'correctionFactor' + num, str(factor))
+        et_add_child(label, 'tmtLike', str(tmtLike))
 
 class MQParam:
     """Represents a mqpar.xml and provides methods to modify
@@ -136,7 +158,7 @@ class MQParam:
             except ValueError as e:
                 raise ValueError(msg + str(e))
 
-    def _make_exp_design(self, files, groups):
+    def _make_exp_design(self, groups, files):
         """Create a dict representing an experimental design from an
         experimental design template and a list input files.
         If the experimental design template is None, create a default 
@@ -218,11 +240,11 @@ class MQParam:
         
         groups, files = zip(*[(num, f) for num, l in enumerate(infiles) for f in l])
         pg_node = self._root.find('parameterGroup')
-        self._paramGroups = [ParamGroup(copy.deepcopy(pg_node)) for i in range(len(infiles))]
+        self._paramGroups = [ParamGroup(pg_node) for i in range(len(infiles))]
 
         nodenames = ('filePaths', 'experiments', 'fractions',
                      'ptms', 'paramGroupIndices', 'referenceChannel')
-        design = self._make_exp_design(files, groups)
+        design = self._make_exp_design(groups, files)
 
         # Get parent nodes from document
         nodes = dict()
@@ -284,12 +306,13 @@ class MQParam:
 
     def add_fasta_files(self, files, identifier=r'>([^\s]*)', description=r'>(.*)'):
         """Add fasta file groups.
-        >>> t = MQParam('test', './test-data/template.xml', None)
-        >>> t.add_fasta_files(('test1', 'test2'))
-        >>> len(t._root.find('fastaFiles'))
-        2
-        >>> t._root.find('fastaFiles')[0].find("fastaFilePath").text
-        'test1'
+        Args:
+            files: List of fasta file paths
+            identifier: string, perl(?) regex to parse identifier
+            description: string, perl(?) regex to parse description
+
+        Returns:
+            None
         """
         fasta_node = self._root.find("fastaFiles")
         fasta_node.clear()
@@ -310,15 +333,11 @@ class MQParam:
 
     def set_simple_param(self, key, value):
         """Set a simple parameter.
-        >>> t = MQParam(None, './test-data/template.xml', None)
-        >>> t.set_simple_param('min_unique_pep', 4)
-        >>> t._root.find('.minUniquePeptides').text
-        '4'
         """
-        node = self._root[key]
+        node = self._root.find(key)
         if node is None:
             raise ValueError('Element {} not found in parameter file'
-                             .format(simple_params[key]))
+                             .format(key))
         node.text = str(value)
 
     def write(self):
