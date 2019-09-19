@@ -35,21 +35,21 @@ class TestParamGroup:
 
     def test_silac(self):
         t = ParamGroup(mk_pg_root())
-        t.set_silac(None, ('Arg10', 'Lys4'), None)
+        t.set_silac(None, None, ('Arg10', 'Lys4'))
         assert t._root.find('.maxLabeledAa').text == '2'
-        assert t._root.find('.multiplicity').text == '3'
+        assert t._root.find('.multiplicity').text == '2'
         assert t._root.find('.labelMods')[1].text == 'Arg10;Lys4'
-        assert t._root.find('.labelMods')[2].text == ''
+        assert t._root.find('.labelMods')[0].text == ''
 
     def test_isobaric_label(self):
         t = ParamGroup(mk_pg_root())
-        t.set_isobaric_label('iTRAQ4plex-Lys114', 'iTRAQ4plex-Nter114', (0.3, 1, 1.2, 0), True)
+        t.set_isobaric_label('iTRAQ4plex-Lys114', 'iTRAQ4plex-Nter114', 0.3, 1, 1.2, 0, True)
 
         assert len(t._root.find('isobaricLabels')) == 1
         assert len(t._root.find('isobaricLabels')[0]) == 7
         # assert len(t._root.find('IsobaricLabelInfo')) == 7
 
-        t.set_isobaric_label('iTRAQ4plex-Lys115', 'iTRAQ4plex-Nter115', (0.3, 1, 1.2, 0), True)
+        t.set_isobaric_label('iTRAQ4plex-Lys115', 'iTRAQ4plex-Nter115', 0.3, 1, 1.2, 0, True)
 
         assert len(t._root.find('isobaricLabels')) == 2
 

@@ -46,7 +46,7 @@ class ParamGroup:
         node.tag = key
         for e in vals:
             et_add_child(node, name='string', text=e)
-                 
+
     def set_simple_param(self, key, value):
         """Set a simple parameter.
         """
@@ -56,42 +56,53 @@ class ParamGroup:
                              .format(key))
         node.text = str(value)
 
-    def set_silac(self, light_mods, medium_mods, heavy_mods):
+    def set_silac(self, light_labels, medium_labels, heavy_labels):
         """Set label modifications.
         """
-        multiplicity = 3 if medium_mods else 2 if heavy_mods else 1
-        max_label = str(max(len(light_mods) if light_mods else 0,
-                            len(medium_mods) if medium_mods else 0,
-                            len(heavy_mods) if heavy_mods else 0))
+
+        if (medium_labels and not heavy_labels or
+            medium_labels and not light_labels):
+            raise Exception("Incorrect SILAC specification." +
+                            " Use medium only with light and heavy labels.")
+
+        multiplicity = 3 if medium_labels else 2 if heavy_labels else 1
+        max_label = str(max(len(light_labels) if light_labels else 0,
+                            len(medium_labels) if medium_labels else 0,
+                            len(heavy_labels) if heavy_labels else 0))
         self._root.find('multiplicity').text = str(multiplicity)
         self._root.find('maxLabeledAa').text = max_label
 
         node = self._root.find('labelMods')
-        node[0].text = ';'.join(light_mods) if light_mods else ''
+        node[0].text = ';'.join(light_labels) if light_labels else ''
         if multiplicity == 3:
-            et_add_child(node, name='string', text=';'.join(medium_mods))
+            et_add_child(node, name='string', text=';'.join(medium_labels))
         if multiplicity > 1:
             et_add_child(node, name='string',
-                               text=';'.join(heavy_mods) if heavy_mods else '')
+                               text=';'.join(heavy_labels) if heavy_labels else '')
 
-    def set_isobaric_label(self, internalLabel, terminalLabel, corrections, tmtLike):
+    def set_isobaric_label(self, internalLabel, terminalLabel,
+                           cm2, cm1, cp1, cp2, tmtLike):
         """Add isobaric label info.
         Args:
             internalLabel: string
             terminalLabel: string
-            corrections: iterable of floats, length 4
+            cm2: (float) correction factor 
+            cm1: (float) correction factor
+            cp1: (float) correction factor
+            cp2: (float) correction factor
             tmtLike: bool or string
         Returns:
             None
         """
-        
+
         iso_labels_node = self._root.find('isobaricLabels')
         label = et_add_child(iso_labels_node, 'IsobaricLabelInfo', '')
         et_add_child(label, 'internalLabel', internalLabel)
         et_add_child(label, 'terminalLabel', terminalLabel)
-        for num, factor in zip(['M2', 'M1', 'P1', 'P2'], corrections):
+        for num, factor in (('M2', cm2), ('M1', cm1), ('P1', cp1), ('P2', cp2)):
             et_add_child(label, 'correctionFactor' + num, str(factor))
         et_add_child(label, 'tmtLike', str(tmtLike))
+
 
 class MQParam:
     """Represents a mqpar.xml and provides methods to modify
@@ -308,9 +319,9 @@ class MQParam:
     def add_fasta_files(self, files, identifier=r'>([^\s]*)', description=r'>(.*)'):
         """Add fasta file groups.
         Args:
-            files: List of fasta file paths
-            identifier: string, perl(?) regex to parse identifier
-            description: string, perl(?) regex to parse description
+            files: (list) of fasta file paths
+            identifier: (string) perl(?) regex to parse identifier
+            description: (string) perl(?) regex to parse description
 
         Returns:
             None
@@ -334,6 +345,12 @@ class MQParam:
 
     def set_simple_param(self, key, value):
         """Set a simple parameter.
+        Args:
+            key: (string) XML tag of the parameter
+            value: the text of the parameter XML node
+
+        Returns:
+            None
         """
         node = self._root.find(key)
         if node is None:
