@@ -141,6 +141,7 @@ class MQParam:
     def _check_validity(design, len_infiles):
         """Perform some checks on the exp. design template"""
         design_len = len(design['Name'])
+        # 'Name' can be None, we need at least len_infiles valid entries
         match = len(list(filter(lambda x: bool(x), design['Name'])))
         if match < len_infiles:
             raise Exception("Error parsing experimental design template: " +
