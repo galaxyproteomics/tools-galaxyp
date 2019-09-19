@@ -1,0 +1,155 @@
+<tool id="searchtolib" name="SearchToLib" version="@VERSION@.0">
+    <description>PeCAn-based Peptide Detection Directly from Data-Independent Acquisition (DIA) MS/MS Data</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements" />
+    <command detect_errors="exit_code"><![CDATA[
+        @CMD_IMPORTS@
+        @LINK_SCAN_INPUTS@
+        @LINK_FASTA_INPUT@
+        @LINK_TARGET_FASTA@
+        for SCAN_FILE in `ls -1 inputs/*`; do 
+        echo "\$SCAN_FILE" &&
+        EncyclopeDIA -Djava.awt.headless=true -Xmx12g $search_app
+        -i \$SCAN_FILE
+        @FASTA_INPUT@
+        @TARGET_FASTA@
+        @COMMON_OPTIONS@
+        @MASS_LIBRARY_TOLERANCE@
+        @PERCOLATOR_OPTIONS@
+        @PEAK_OPTIONS@
+        @WINDOW_OPTIONS@
+        @MODIFICATION_OPTIONS@
+        @SEARCH_OPTIONS@ | tee -a search2lib.log
+        ; done && 
+        EncyclopeDIA -Djava.awt.headless=true -Xmx12g -libexport
+        $search_app
+        @SCAN_INPUTS@
+        @FASTA_INPUT@
+        @TARGET_FASTA@
+        @COMMON_OPTIONS@
+        @MASS_LIBRARY_TOLERANCE@
+        @PERCOLATOR_OPTIONS@
+        @PEAK_OPTIONS@
+        @WINDOW_OPTIONS@
+        @MODIFICATION_OPTIONS@
+        @SEARCH_OPTIONS@
+        -o gxpedia
+        | tee -a search2lib.log
+    ]]></command>
+    <inputs>
+        <expand macro="scan_inputs"/>
+        <expand macro="fasta_input"/>
+        <expand macro="target_fasta"/>
+        <param name="search_app" type="select" label="Search with">
+            <option value="" selected="true">EncyclopeDIA</option>
+            <option value="-pecan">Pecan</option>
+            <option value="-xcordia">XCorDIA</option>
+        </param>
+        <expand macro="common_options"/>
+        <expand macro="mass_library_tolerance"/>
+        <expand macro="percolator_options"/>
+        <expand macro="peak_options"/>
+        <expand macro="window_options"/>
+        <expand macro="modification_options"/>
+        <expand macro="search_options"/>
+        <param name="select_outputs" type="select" label="Select outputs" multiple="true">
+            <option value="log" selected="true">log</option>
+            <option value="elib" selected="true">elib</option>
+            <option value="features" selected="true">concatenated_features.txt</option>
+            <option value="results" selected="true">concatenated_results.txt</option>
+            <option value="decoy" selected="true">concatenated_decoy.txt</option>
+            <option value="peptides" selected="true">peptides.txt</option>
+            <option value="proteins" selected="true">proteins.txt</option>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="log" format="txt" label="${tool.name} ${on_string} log" from_work_dir="search2lib.log">
+            <filter>'log' in select_outputs</filter>
+        </data>
+        <data name="elib" format="elib" label="${tool.name} ${on_string} elib" from_work_dir="gxpedia">
+            <filter>'elib' in select_outputs</filter>
+        </data>
+        <data name="features" format="tabular" label="${tool.name} ${on_string} concatenated_features.txt" from_work_dir="inputs/gxpedia_concatenated_features.txt">
+            <filter>'features' in select_outputs</filter>
+            <actions>
+                <action name="column_names" type="metadata" default="id,TD,ScanNr,topN,rank,peakZScore,peakCalibratedScore,deltaSn,avgIdotp,midIdotp,peakScore,peakWeightedScore,NCI,CIMassErrMean,CIMassErrVar,precursorMassErrMean,precursorMassErrVar,peakSimilarity,sampledTimes,midTime,spectraNorm,pepLength,charge2,charge3,precursorMz,sequence,protein" />
+            </actions>
+        </data>
+        <data name="results" format="tabular" label="${tool.name} ${on_string} concatenated_results.txt" from_work_dir="inputs/gxpedia_concatenated_results.txt">
+            <filter>'results' in select_outputs</filter>
+            <actions>
+                <action name="column_names" type="metadata" default="PSMId,score,q-value,posterior_error_prob,peptide,proteinIds" />
+            </actions>
+        </data>
+        <data name="decoy" format="tabular" label="${tool.name} ${on_string} concatenated_decoy.txt" from_work_dir="inputs/gxpedia_concatenated_decoy.txt">
+            <filter>'decoy' in select_outputs</filter>
+            <actions>
+                <action name="column_names" type="metadata" default="PSMId,score,q-value,posterior_error_prob,peptide,proteinIds" />
+            </actions>
+        </data>
+        <data name="peptides" format="tabular" label="${tool.name} ${on_string} peptides.txt" from_work_dir="gxpedia.peptides.txt">
+            <filter>'peptides' in select_outputs</filter>
+            <actions>
+                <action name="column_names" type="metadata" default="Peptide,Protein,numFragments" />
+            </actions>
+        </data>
+        <data name="proteins" format="tabular" label="${tool.name} ${on_string} proteins.txt" from_work_dir="gxpedia.proteins.txt">
+            <filter>'proteins' in select_outputs</filter>
+            <actions>
+                <action name="column_names" type="metadata" default="Protein,NumPeptides,PeptideSequences" />
+            </actions>
+        </data>
+    </outputs>
+    <help><![CDATA[
+SearchToLIB uses EncyclopeDIA, Walnut (Pecan), or XCorDIA to create an DIA Elib for EncyclopeDIA DIA search
+Walnut is a FASTA database search engine for DIA data that uses PECAN-style scoring.
+You should prefix your arguments with a high memory setting, e.g. "-Xmx8g" for 8gb
+
+Required Parameters: 
+	-i	input .DIA or .MZML file
+	-f	background FASTA file
+
+Other Parameters: 
+	-t	target FASTA file (default: background FASTA file)
+	-tp	true/false target FASTA file contains peptides (default: false)
+	-o	output report file (default: [input file].pecan.txt)
+	-acquisition                          (default: overlapping dia)
+	-addDecoysToBackground                (default: false)
+	-alpha                                (default: 1.8)
+	-beta                                 (default: 0.4)
+	-dontRunDecoys                        (default: false)
+	-enzyme                               (default: trypsin)
+	-filterPeaklists                      (default: false)
+	-fixed                                (default: C=57.0214635)
+	-foffset                              (default: 0)
+	-frag                                 (default: YONLY)
+	-ftol                                 (default: 10)
+	-ftolunits                            (default: ppm)
+	-maxCharge                            (default: 3)
+	-maxLength                            (default: 100)
+	-maxMissedCleavage                    (default: 1)
+	-minCharge                            (default: 2)
+	-minEluteTime                         (default: 12)
+	-minIntensity                         (default: -1.0)
+	-minLength                            (default: 5)
+	-minNumOfQuantitativePeaks            (default: 3)
+	-minQuantitativeIonNumber             (default: 3)
+	-numberOfQuantitativePeaks            (default: 5)
+	-numberOfReportedPeaks                (default: 1)
+	-numberOfThreadsUsed                  (default: 12)
+	-percolatorProteinThreshold           (default: 0.01)
+	-percolatorThreshold                  (default: 0.01)
+	-percolatorVersionNumber              (default: 3)
+	-poffset                              (default: 0)
+	-precursorIsolationMargin             (default: 0)
+	-precursorWindowSize                  (default: -1)
+	-ptol                                 (default: 10)
+	-ptolunits                            (default: ppm)
+	-requireVariableMods                  (default: false)
+	-variable                             (default: -)
+
+    ]]></help>
+    <expand macro="citations" />
+</tool>
