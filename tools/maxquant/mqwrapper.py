@@ -1,13 +1,9 @@
 """
 Run MaxQuant on a modified mqpar.xml.
 Use maxquant conda package.
-TODO: add support for parameter groups
-      add reporter ion MS2
-      add support for custom modifications/labels
+TODO: add support for custom modifications/labels
 
 Authors: Damian Glaetzer <d.glaetzer@mailbox.org>
-
-based on the maxquant galaxy tool by John Chilton
 """
 
 import argparse
@@ -42,20 +38,20 @@ output = ('evidence', 'msms', 'parameters',
           'summary', 'mqpar', 'mzTab')
 
 # arguments for mqparam
-global_flags = ('calc_peak_properties',
-                'write_mztab',
+global_flags = ('calcPeakProperties',
+                'writeMzTab',
                 'ibaq',
-                'ibaq_log_fit',
-                'separate_lfq',
-                'lfq_stabilize_large_ratios',
-                'lfq_require_msms',
-                'advanced_site_intensities',
-                'match_between_runs')
+                'ibaqLogFit',
+                'separateLfq',
+                'lfqStabilizeLargeRatios',
+                'lfqRequireMsms',
+                'advancedSiteIntensities',
+                'matchBetweenRuns')
 
-global_simple_args = ('min_unique_pep',
-                      'num_threads',
-                      'min_peptide_len',
-                      'max_peptide_mass')
+global_simple_args = ('minUniquePeptides',
+                      'numThreads',
+                      'minPepLen',
+                      'maxPeptideMass')
 
 global_arguments = ['--' + el for el in (output
                                          + global_simple_args
@@ -108,9 +104,9 @@ for e in (global_simple_args + global_flags):
 
 
 # parameter group arguments
-param_group_flags = ('lfq_skip_norm',)
+param_group_flags = ('lfqSkipNorm',)
 
-simple_args = ('missed_cleavages',
+simple_args = ('maxMissedCleavages',
                'lfq_mode',
                'lfq_min_edges_per_node',
                'lfq_avg_edges_per_node',
