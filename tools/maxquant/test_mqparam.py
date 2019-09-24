@@ -3,6 +3,7 @@ create a new parameter file using '<MAXQUANT_CMD> -c ./mqpar.xml'
 """
 
 import pytest
+import yaml
 import xml.etree.ElementTree as ET
 from mqparam import MQParam, ParamGroup
 
@@ -14,16 +15,16 @@ def mk_pg_root():
 
 class TestParamGroup:
 
-    def test_list_params(self):
+    def test_list_param(self):
         t = ParamGroup(mk_pg_root())
-        t.set_list_params('enzymes', ('test 1', 'test 2'))
+        t.set_list_param('enzymes', ('test 1', 'test 2'))
         assert len(t._root.find('enzymes')) == 2
 
-        t.set_list_params('variableModifications', ('Oxidation (M)', ))
+        t.set_list_param('variableModifications', ('Oxidation (M)', ))
         assert t._root.find('variableModifications')[0].text == 'Oxidation (M)'
 
         with pytest.raises(ValueError):
-            t.set_list_params('foo', [])
+            t.set_list_param('foo', [])
 
     def test_simple_params(self):
         t = ParamGroup(mk_pg_root())
@@ -161,6 +162,10 @@ class TestMQParam:
         assert t._root.find('fastaFiles')[0].find("fastaFilePath").text == 'test1'
         assert t._root.find('fastaFiles')[0].find("identifierParseRule").text == '>([^\\s]*)'
 
+        
+        with pytest.raises(Exception):
+            t.add_fasta_files(('test3', 'test4'))
+
     def test_simple_param(self):
         t = MQParam(None, TEMPLATE_DIR, None)
         t.set_simple_param('minUniquePeptides', 4)
@@ -168,3 +173,25 @@ class TestMQParam:
 
         with pytest.raises(ValueError):
             t.set_simple_param('foo', 3)
+
+    def test_from_yaml(self, tmpdir):
+        conf1 = tmpdir / "conf1.yml"
+        conf1.write("""
+        numThreads: 4
+        fastaFiles: [test1.fasta,test2.fasta]
+        identifierParseRule: ^>.*\|(.*)\|.*$
+        paramGroups:
+          - files: [Test1.mzXML,Test2.mzXML] # paramGroup 0
+            fixedModifications: [mod1,mod2]
+            lfqMode: 1
+          - files: [Test3.mzXML,Test4.mzXML] # paramGroup 1
+            labelMods:
+              - []
+              - []
+              - [label1,label2]
+        """)
+        
+        conf_dict = yaml.load(conf1.read(), Loader=yaml.loader.SafeLoader)
+        assert len(conf_dict['paramGroups']) == 2
+        assert conf_dict['numThreads'] == 4
+        assert conf_dict['paramGroups'][1]['labelMods'][0] == []

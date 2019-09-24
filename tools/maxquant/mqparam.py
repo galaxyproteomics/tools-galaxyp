@@ -1,15 +1,14 @@
 """
 Create a project-specific MaxQuant parameter file.
 
-TODO: add reporter ion MS2
-
-Author: Damian Glaetzer <d.glaetzer@mailbox.org>
+TODO:
 """
 
 import copy
 import ntpath
 import os
 import re
+import yaml
 import xml.etree.ElementTree as ET
 from itertools import zip_longest
 from xml.dom import minidom
@@ -31,12 +30,9 @@ class ParamGroup:
         """
         self._root = copy.deepcopy(root)
         
-        
-    def set_list_params(self, key, vals):
+    def set_list_param(self, key, vals):
         """Set a list parameter.
         """
-        
-        # params = 'variableModifications','fixedModifications','enzymes'
         
         node = self._root.find(key)
         if node is None:
@@ -109,16 +105,6 @@ class MQParam:
     some of its parameters.
     """
 
-    fasta_template = """<FastaFileInfo>
-    <fastaFilePath></fastaFilePath>
-    <identifierParseRule></identifierParseRule>
-    <descriptionParseRule></descriptionParseRule>
-    <taxonomyParseRule></taxonomyParseRule>
-    <variationParseRule></variationParseRule>
-    <modificationParseRule></modificationParseRule>
-    <taxonomyId></taxonomyId>
-    </FastaFileInfo>"""
-
     def __init__(self, mqpar_out, mqpar_in, exp_design,
                  substitution_rx=r'[^\s\S]'):  # no sub by default
         """Initialize MQParam class. mqpar_in can either be a template
@@ -144,10 +130,19 @@ class MQParam:
         # regex for substitution of certain file name characters
         self.substitution_rx = substitution_rx
         self._paramGroups = []
+        self.once = False # for add_fasta_files. should only be done once
 
     def __getitem__(self, index):
-        return self._paramGroups[index]
+        """Return paramGroup if indexed with integer, else try to find
+        matching Element in XML root and return its text or None.
+        """
 
+        try:
+            return self._paramGroups[index]
+        except TypeError:
+            ret = self._root.find(index)
+            return ret.text if ret else None
+    
     @staticmethod
     def _check_validity(design, len_infiles):
         """Perform some checks on the exp. design template"""
@@ -316,32 +311,27 @@ class MQParam:
             else:
                 raise ValueError("no matching infile found for " + f)
 
-    def add_fasta_files(self, files, identifier=r'>([^\s]*)', description=r'>(.*)'):
+    def add_fasta_files(self, files, parseRules={}):
         """Add fasta file groups.
         Args:
             files: (list) of fasta file paths
-            identifier: (string) perl(?) regex to parse identifier
-            description: (string) perl(?) regex to parse description
+            parseRules: (dict) the parse rules as (tag, text)-pairs 
 
         Returns:
             None
         """
+        if self.once:
+            raise Exception("Don't use add_fasta_files twice on the same object.")
+        self.once = True
+        
         fasta_node = self._root.find("fastaFiles")
-        fasta_node.clear()
-        fasta_node.tag = "fastaFiles"
+        for f in range(len(files) - 1):
+            fasta_node.append(copy.deepcopy(fasta_node[0]))
 
-        for index in range(len(files)):
-            filepath = '<fastaFilePath>' + files[index]
-            identifier = identifier.replace('<', '&lt;')
-            description = description.replace('<', '&lt;')
-            fasta = self.fasta_template.replace('<fastaFilePath>', filepath)
-            fasta = fasta.replace('<identifierParseRule>',
-                                  '<identifierParseRule>' + identifier)
-            fasta = fasta.replace('<descriptionParseRule>',
-                                  '<descriptionParseRule>' + description)
-            ff_node = self._root.find('.fastaFiles')
-            fastaentry = ET.fromstring(fasta)
-            ff_node.append(fastaentry)
+        for i, f in enumerate(files):
+            fasta_node[i].find('fastaFilePath').text = f
+            for rule in parseRules:
+                fasta_node[i].find(rule).text = parseRules[rule]
 
     def set_simple_param(self, key, value):
         """Set a simple parameter.
@@ -358,6 +348,41 @@ class MQParam:
                              .format(key))
         node.text = str(value)
 
+    def from_yaml(self, conf):
+        """Read a yaml config file.
+        Args:
+            conf: (string) path to the yaml conf file
+
+        Returns:
+            None
+        """
+
+        with open(conf) as f:
+            conf_dict = yaml.load(f.read(), Loader=yaml.loader.SafeLoader)
+
+        paramGroups = conf_dict.pop('paramGroups')
+        self.add_infiles([pg.pop('files') for pg in paramGroups])
+        for i, pg in enumerate(paramGroups):
+            silac = pg.pop('labelMods', False)
+            if silac:
+                self[i].set_silac(*silac)
+            isobaricLabels = pg.pop('isobaricLabels', False)
+            if isobaricLabels:
+                for l in isobaricLabels:
+                    self[i].set_isobaric_label(*l)
+            for el in ['fixedModifications', 'variableModifications', 'enzymes']:
+                l = conf_dict.pop(el, False)
+                if l:
+                    self[i].set_list_param(el, l)
+            for key in pg:
+                self[i].set_simple_param(key, pg[key])
+
+        try:
+            fastafiles = conf_dict.pop('fastaFiles')
+            self.add_fasta_files(fastafiles,)
+        except:
+            pass
+                
     def write(self):
         """Write pretty formatted xml parameter file.
         Compose it from global parameters and parameter Groups.
