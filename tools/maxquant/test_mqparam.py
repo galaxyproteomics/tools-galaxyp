@@ -7,9 +7,9 @@ import yaml
 import xml.etree.ElementTree as ET
 from mqparam import MQParam, ParamGroup
 
-TEMPLATE_DIR = './test-data/template.xml'
+TEMPLATE_PATH = './test-data/template.xml'
 def mk_pg_root():
-    mqpar = ET.parse(TEMPLATE_DIR).getroot()
+    mqpar = ET.parse(TEMPLATE_PATH).getroot()
     return mqpar.find('.parameterGroups/parameterGroup')
 
 
@@ -67,7 +67,7 @@ class TestParamGroup:
 class TestMQParam:
 
     def test_version(self):
-        t = MQParam("test", TEMPLATE_DIR, None)
+        t = MQParam("test", TEMPLATE_PATH, None)
         assert t._root.find('maxQuantVersion').text == '1.6.3.4'
 
     def test_validity_check(self):
@@ -97,7 +97,7 @@ class TestMQParam:
 
     def test_exp_design(self, tmpdir):
         # default experimental design when None is specified
-        t = MQParam("test", TEMPLATE_DIR, None)
+        t = MQParam("test", TEMPLATE_PATH, None)
         design = t._make_exp_design((0, 0), ('./Test1.mzXML', './Test2.mzXML'))
         assert design['Name'] == ('./Test1.mzXML', './Test2.mzXML')
         assert design['Fraction'] == ('32767', '32767')
@@ -125,7 +125,7 @@ class TestMQParam:
             design = t._make_exp_design(('./Test2.mzXML',), (0,))
 
     def test_add_infiles(self):
-        t = MQParam("test", TEMPLATE_DIR, None)
+        t = MQParam("test", TEMPLATE_PATH, None)
         t.add_infiles([('/path/Test1.mzXML', '/path/Test2.mzXML'),
                        ('/path/Test3.mzXML', '/path/Test4.mzXML')])
 
@@ -138,7 +138,7 @@ class TestMQParam:
         assert t[1]
 
     def test_translate(self):
-        t = MQParam("test", TEMPLATE_DIR, None)
+        t = MQParam("test", TEMPLATE_PATH, None)
         t.add_infiles([('/posix/path/to/Test1.mzXML',
                         '/posix/path/to/Test2.mzXML'),
                        ('/path/dummy.mzXML',)])  # mqparam is not designed for windows
@@ -156,8 +156,9 @@ class TestMQParam:
 
 
     def test_fasta_files(self):
-        t = MQParam('test', TEMPLATE_DIR, None)
-        t.add_fasta_files(('test1', 'test2'))
+        t = MQParam('test', TEMPLATE_PATH, None)
+        t.add_fasta_files(('test1', 'test2'),
+                          parse_rules={'identifierParseRule': r'>([^\s]*)'})
         assert len(t._root.find('fastaFiles')) == 2
         assert t._root.find('fastaFiles')[0].find("fastaFilePath").text == 'test1'
         assert t._root.find('fastaFiles')[0].find("identifierParseRule").text == '>([^\\s]*)'
@@ -167,7 +168,7 @@ class TestMQParam:
             t.add_fasta_files(('test3', 'test4'))
 
     def test_simple_param(self):
-        t = MQParam(None, TEMPLATE_DIR, None)
+        t = MQParam(None, TEMPLATE_PATH, None)
         t.set_simple_param('minUniquePeptides', 4)
         assert t._root.find('.minUniquePeptides').text == '4'
 
@@ -179,7 +180,8 @@ class TestMQParam:
         conf1.write("""
         numThreads: 4
         fastaFiles: [test1.fasta,test2.fasta]
-        identifierParseRule: ^>.*\|(.*)\|.*$
+        parseRules:
+          identifierParseRule: ^>.*\|(.*)\|.*$
         paramGroups:
           - files: [Test1.mzXML,Test2.mzXML] # paramGroup 0
             fixedModifications: [mod1,mod2]
@@ -190,8 +192,9 @@ class TestMQParam:
               - []
               - [label1,label2]
         """)
+
+        t = MQParam("test", TEMPLATE_PATH, None)
+        t.from_yaml(str(conf1))
+        assert t['numThreads'] == '4'
+        assert t[1]
         
-        conf_dict = yaml.load(conf1.read(), Loader=yaml.loader.SafeLoader)
-        assert len(conf_dict['paramGroups']) == 2
-        assert conf_dict['numThreads'] == 4
-        assert conf_dict['paramGroups'][1]['labelMods'][0] == []

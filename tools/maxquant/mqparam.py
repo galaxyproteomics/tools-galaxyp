@@ -141,7 +141,7 @@ class MQParam:
             return self._paramGroups[index]
         except TypeError:
             ret = self._root.find(index)
-            return ret.text if ret else None
+            return ret.text if ret is not None else None
     
     @staticmethod
     def _check_validity(design, len_infiles):
@@ -246,7 +246,8 @@ class MQParam:
         """
         
         groups, files = zip(*[(num, f) for num, l in enumerate(infiles) for f in l])
-        pg_node = self._root.find('parameterGroup')
+        pg_node = self._root.find('parameterGroups')[0]
+        print(groups, files)
         self._paramGroups = [ParamGroup(pg_node) for i in range(len(infiles))]
 
         nodenames = ('filePaths', 'experiments', 'fractions',
@@ -311,7 +312,7 @@ class MQParam:
             else:
                 raise ValueError("no matching infile found for " + f)
 
-    def add_fasta_files(self, files, parseRules={}):
+    def add_fasta_files(self, files, parse_rules={}):
         """Add fasta file groups.
         Args:
             files: (list) of fasta file paths
@@ -330,8 +331,8 @@ class MQParam:
 
         for i, f in enumerate(files):
             fasta_node[i].find('fastaFilePath').text = f
-            for rule in parseRules:
-                fasta_node[i].find(rule).text = parseRules[rule]
+            for rule in parse_rules:
+                fasta_node[i].find(rule).text = parse_rules[rule]
 
     def set_simple_param(self, key, value):
         """Set a simple parameter.
@@ -359,7 +360,7 @@ class MQParam:
 
         with open(conf) as f:
             conf_dict = yaml.load(f.read(), Loader=yaml.loader.SafeLoader)
-
+        
         paramGroups = conf_dict.pop('paramGroups')
         self.add_infiles([pg.pop('files') for pg in paramGroups])
         for i, pg in enumerate(paramGroups):
@@ -371,18 +372,21 @@ class MQParam:
                 for l in isobaricLabels:
                     self[i].set_isobaric_label(*l)
             for el in ['fixedModifications', 'variableModifications', 'enzymes']:
-                l = conf_dict.pop(el, False)
+                l = pg.pop(el, False)
                 if l:
                     self[i].set_list_param(el, l)
             for key in pg:
                 self[i].set_simple_param(key, pg[key])
 
-        try:
-            fastafiles = conf_dict.pop('fastaFiles')
-            self.add_fasta_files(fastafiles,)
-        except:
-            pass
-                
+        fastafiles = conf_dict.pop('fastaFiles', False)
+        if fastafiles:
+            self.add_fasta_files(fastafiles, parse_rules=conf_dict.pop('parseRules', {}))
+        else:
+            raise Exception('No fasta files provided.')
+
+        for key in conf_dict:
+            self.set_simple_param(key, conf_dict[key])
+
     def write(self):
         """Write pretty formatted xml parameter file.
         Compose it from global parameters and parameter Groups.
