@@ -34,6 +34,12 @@ def __main__():
         help='Restrict Ensembl retrieval to regions e.g.:'
              + ' X,2:20000-25000,3:100-500+')
     parser.add_argument(
+        '-i', '--interval_file', default=None,
+        help='Regions from a bed, gff, or interval file')
+    parser.add_argument(
+        '-f', '--interval_format', choices=['bed','gff','interval'], default='interval',
+        help='Interval format has TAB-separated columns: Seq, Start, End, Strand')
+    parser.add_argument(
         '-B', '--biotypes', action='append', default=[],
         help='Restrict Ensembl biotypes to retrieve')
     parser.add_argument(
@@ -74,6 +80,27 @@ def __main__():
                         selected_regions[chrom].append([start, end, strand])
         if args.debug:
             print("selected_regions: %s" % selected_regions, file=sys.stderr)
+
+    if args.interval_file:
+        pat = r'^(?:chr)?([^\t]+)(?:\t(\d+)(?:\t(\d+)(?:\t([+-])?)?)?)?.*'
+        if args.interval_format == 'bed':
+            pat = r'^(?:chr)?([^\t]+)\t(\d+)\t(\d+)(?:(?:\t[^\t]+\t[^\t]+\t)([+-]))?.*'
+        elif args.interval_format == 'gff':
+            pat = r'^(?:chr)?([^\t]+)\t(\d+)\t(\d+)(?:(?:\t[^\t]+\t[^\t]+\t)([+-]))?.*'
+        with open(args.interval_file,'r') as fh:
+            for i, line in enumerate(fh):
+                if line.startswith('#'):
+                    continue
+                m = re.match(pat, line.rstrip())
+                if m:
+                    (chrom, start, end, strand) = m.groups()
+                    if chrom:
+                        if chrom not in selected_regions:
+                            selected_regions[chrom] = []
+                        selected_regions[chrom].append([start, end, strand])
+        if args.debug:
+            print("selected_regions: %s" % selected_regions, file=sys.stderr)
+               
 
     def retrieve_region(species, ref, start, stop, strand):
         transcript_count = 0
