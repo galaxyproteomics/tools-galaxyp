@@ -3,7 +3,6 @@ create a new parameter file using '<MAXQUANT_CMD> -c ./mqpar.xml'
 """
 
 import pytest
-import yaml
 import xml.etree.ElementTree as ET
 from mqparam import MQParam, ParamGroup
 
@@ -67,7 +66,7 @@ class TestParamGroup:
 class TestMQParam:
 
     def test_version(self):
-        t = MQParam("test", TEMPLATE_PATH, None)
+        t = MQParam(TEMPLATE_PATH, None)
         assert t._root.find('maxQuantVersion').text == '1.6.3.4'
 
     def test_validity_check(self):
@@ -97,7 +96,7 @@ class TestMQParam:
 
     def test_exp_design(self, tmpdir):
         # default experimental design when None is specified
-        t = MQParam("test", TEMPLATE_PATH, None)
+        t = MQParam(TEMPLATE_PATH, None)
         design = t._make_exp_design((0, 0), ('./Test1.mzXML', './Test2.mzXML'))
         assert design['Name'] == ('./Test1.mzXML', './Test2.mzXML')
         assert design['Fraction'] == ('32767', '32767')
@@ -125,7 +124,7 @@ class TestMQParam:
             design = t._make_exp_design(('./Test2.mzXML',), (0,))
 
     def test_add_infiles(self):
-        t = MQParam("test", TEMPLATE_PATH, None)
+        t = MQParam(TEMPLATE_PATH, None)
         t.add_infiles([('/path/Test1.mzXML', '/path/Test2.mzXML'),
                        ('/path/Test3.mzXML', '/path/Test4.mzXML')])
 
@@ -138,12 +137,12 @@ class TestMQParam:
         assert t[1]
 
     def test_translate(self):
-        t = MQParam("test", TEMPLATE_PATH, None)
+        t = MQParam(TEMPLATE_PATH, None)
         t.add_infiles([('/posix/path/to/Test1.mzXML',
                         '/posix/path/to/Test2.mzXML'),
                        ('/path/dummy.mzXML',)])  # mqparam is not designed for windows
 
-        t._root.find('filePaths')[2].text = 'D:\\Windows\Path\Test3.mzXML'
+        t._root.find('filePaths')[2].text = r'D:\Windows\Path\Test3.mzXML'
 
         t.translate(('/galaxy/working/Test3.mzXML',
                      '/galaxy/working/Test1.mzXML',
@@ -156,7 +155,7 @@ class TestMQParam:
 
 
     def test_fasta_files(self):
-        t = MQParam('test', TEMPLATE_PATH, None)
+        t = MQParam(TEMPLATE_PATH, None)
         t.add_fasta_files(('test1', 'test2'),
                           parse_rules={'identifierParseRule': r'>([^\s]*)'})
         assert len(t._root.find('fastaFiles')) == 2
@@ -168,7 +167,7 @@ class TestMQParam:
             t.add_fasta_files(('test3', 'test4'))
 
     def test_simple_param(self):
-        t = MQParam(None, TEMPLATE_PATH, None)
+        t = MQParam(TEMPLATE_PATH, None)
         t.set_simple_param('minUniquePeptides', 4)
         assert t._root.find('.minUniquePeptides').text == '4'
 
@@ -177,7 +176,7 @@ class TestMQParam:
 
     def test_from_yaml(self, tmpdir):
         conf1 = tmpdir / "conf1.yml"
-        conf1.write("""
+        conf1.write(r"""
         numThreads: 4
         fastaFiles: [test1.fasta,test2.fasta]
         parseRules:
@@ -193,8 +192,32 @@ class TestMQParam:
               - [label1,label2]
         """)
 
-        t = MQParam("test", TEMPLATE_PATH, None)
+        t = MQParam(TEMPLATE_PATH, None)
         t.from_yaml(str(conf1))
         assert t['numThreads'] == '4'
-        assert t[1]
-        
+        assert [child.text for child in t[1]._root.find('labelMods')] == ['', 'label1;label2']
+
+
+    def test_write(self, tmpdir):
+        yaml_conf = tmpdir / "conf.yml"
+        yaml_conf.write(r"""
+        numThreads: 4
+        fastaFiles: [test1.fasta,test2.fasta]
+        parseRules:
+          identifierParseRule: ^>.*\|(.*)\|.*$
+        paramGroups:
+          - files: [Test1.mzXML,Test2.mzXML] # paramGroup 0
+            fixedModifications: [mod1]
+            variableModifications: [mod2,mod3]
+            maxMissedCleavages: 1
+        """)
+        mqpar_out = tmpdir / "mqpar.xml"
+
+        t = MQParam(TEMPLATE_PATH, None)
+        t.from_yaml(str(yaml_conf))
+        t.write(str(mqpar_out))
+
+        test = ET.parse(str(mqpar_out)).getroot()
+        assert test.find('numThreads').text == '4'
+        assert test.find('fastaFiles')[1].find('identifierParseRule').text == '^>.*\\|(.*)\\|.*$'
+        assert [el.text for el in test.find('parameterGroups')[0].find('variableModifications')] == ['mod2', 'mod3']

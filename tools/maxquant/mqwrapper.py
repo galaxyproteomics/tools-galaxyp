@@ -6,6 +6,7 @@ TODO: add support for custom modifications/labels
 Authors: Damian Glaetzer <d.glaetzer@mailbox.org>
 """
 
+
 import argparse
 import os
 import shutil
@@ -25,7 +26,6 @@ other_args = ('infiles',
               'description_parse_rule',
               'identifier_parse_rule',
               'exp_design',
-              'output_all',
               'version',
               'substitution_rx')
 
