@@ -2945,10 +2945,9 @@ ModuleArgParser_PMD_FDR$methods(
     local_add_argument("--output_g_fdr"        , default = ""                  , help="full name and path to the g-FDR output file ")
     local_add_argument("--output_densities"    , default = ""                  , help="full name and path to the densities output file ")
     #local_add_argument("--score_field_name"    , default = ""                  , help="name of score field (in R format)")
-    local_add_argument("--input_file_type"     , default = "PMD_FDR_input_file", help="type of input file (currently supports: PSM_Report)")
+    local_add_argument("--input_file_type"     , default = "PMD_FDR_input_file", help="type of input file (currently supports: PMD_FDR_file_type, PSM_Report, MaxQuant_Evidence)")
   }
-)
-###############################################################################
+)###############################################################################
 #            Class: Data_Object_Parser
 ###############################################################################
 Data_Object_Parser <- setRefClass("Data_Object_Parser", 
