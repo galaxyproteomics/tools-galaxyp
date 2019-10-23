@@ -1,0 +1,279 @@
+<tool id="rawtools" name="Raw Tools" version="@RAWTOOLS_VERSION@.@TOOL_SUBVERSION@" profile="16.04">
+    <description>
+        Perform scan data parsing, quantification and quality control analysis of Thermo Orbitrap raw mass spectrometer files.
+    </description>
+    <macros>
+       <token name="@RAWTOOLS_VERSION@">1.4.2</token>
+       <token name="@TOOL_SUBVERSION@">0</token>
+       <xml name="input_fasta">
+         <param format="fasta" name="input_database" type="data" label="Protein Database"
+             help="Select FASTA database from history"/>
+       </xml>
+    </macros>
+    <requirements>
+        <requirement type="package" version="@RAWTOOLS_VERSION@">rawtools</requirement>
+    </requirements>
+    <command detect_errors="exit_code">
+<![CDATA[
+        #from datetime import datetime
+        #import json
+        #import os
+        #import re
+        #set $exp_str = "Galaxy_Experiment_%s" % datetime.now().strftime("%Y%m%d%H%M%s")
+        #set $samp_str = "Sample_%s" % datetime.now().strftime("%Y%m%d%H%M%s")
+        #set $temp_stderr = "rawtools_stderr"
+        #set $bin_dir = "bin"
+
+        mkdir output &&
+        cwd=`pwd` &&
+        ## TODO: To remove this patch when dropping support for Galaxy 17_09, adding profile="18.01" to the tool.
+        export HOME=\$cwd  &&
+
+        mkdir raws_folder &&
+        #for $input_raw in $input_raws:
+            #set $input_name = re.sub('[^\w\-\.]', '_',$input_raw.element_identifier.split('/')[-1].replace(".raw", "") + ".raw")
+            ln -s -f '${input_raw}' './raws_folder/${input_name}' &&
+        #end for
+
+        #####################
+        ## Raw Tools ##
+        #####################
+        (rawtools.sh
+
+            ## PARSING AND QUANTIFICATION OPTIONS
+
+            ## If any processing option is enabled in parsing & quantification, "parse" command is mandatory
+            #if $pq_options.pq_conditional.matrix_select  == "yes" or $pq_options.chromatogram_conditional.chromatogram_select == "yes" or $pq_options.mgf_conditional.mgf_select  == "yes" or  $pq_options.metrics_boolean  == "yes":
+                parse
+            #end if
+            --directory ./raws_folder
+
+            ## Generates Matrix file
+            #if $pq_options.pq_conditional.matrix_select == "yes":
+                --parse
+            #end if
+
+            ## Generates quantification information
+            #if $pq_options.pq_conditional.matrix_select == "yes" and $pq_options.pq_conditional.q_conditional.q_select == "yes" :
+                --quant
+                --labelingreagent ${pq_options.pq_conditional.q_conditional.q_labeling_reagent}
+            #end if
+
+            ## Unlabeled quant
+            #if $pq_options.pq_conditional.matrix_select == "yes" and $pq_options.pq_conditional.unlabeledquant_boolean  == "yes":
+                --unlabeledquant
+            #end if
+
+            ## Generates Mgf file
+            #if $pq_options.mgf_conditional.mgf_select == "yes":
+                --writemgf
+                --masscutoff ${pq_options.mgf_conditional.mgf_masscutoff}
+            ## DEPRECATED    --intensitycutoff ${pq_options.mgf_conditional.mgf_intensitycutoff}
+                #if $pq_options.mgf_conditional.mgf_refinement == "yes":
+                    -R
+                #end if
+            #end if
+
+            ## Generates chromatogram file
+            #if $pq_options.chromatogram_conditional.chromatogram_select == "yes":
+                --chro ${pq_options.chromatogram_conditional.chromatogram_type}${pq_options.chromatogram_conditional.chromatogram_order}
+            #end if
+
+            ## Generates metrics file
+            #if $pq_options.metrics_boolean  == "yes":
+                --metrics
+            #end if
+
+            --out \$cwd/output
+
+        2>> $temp_stderr) &&
+
+        cat $temp_stderr 2>&1;
+]]>
+    </command>
+    <inputs>
+        <param format="thermo.raw" name="input_raws" type="data" label="Raw file" multiple="true"
+            help="Select the raw file from history"/>
+        <param name="license_agreement" type="boolean" label="Do you agree to the vendor licenses?" help="This tool uses a proprietary vendor library; to run it you must agree to the vendor license. Read it at https://github.com/kevinkovalchik/RawTools/blob/master/RawFileReaderLicense">
+            <validator type="expression" message="You must agree to the vendor license to run RawTools.">True == value</validator>
+        </param>
+        <section name="pq_options" expanded="true" title="Parsing and Quantification">
+            <conditional name="pq_conditional">
+                <param name="matrix_select" type="select"
+                    label="Create Matrix file"
+                    help="Parses raw file meta and scan data and creates a tab-delimited text file.">
+                    <option value="yes" selected="True">Yes</option>
+                    <option value="no" >No</option>
+                </param>
+                <when value="yes">
+                    <conditional name="q_conditional">
+                        <param name="q_select" type="select"
+                          label="Quantification"
+                          help="Also quantifies reporter ions and write results to output matrix.">
+                            <option value="yes" >Yes</option>
+                            <option value="no" selected="True">No</option>
+                        </param>
+                        <when value="yes">
+                            <param name="q_labeling_reagent" label="Labeling reagent" type="select"
+                              help="Reagents used to label peptides.">
+                                <option value="TMT0" selected="True">TMT0</option>
+                                <option value="TMT2" >TMT2</option>
+                                <option value="TMT6" >TMT6</option>
+                                <option value="TMT10" >TMT10</option>
+                                <option value="TMT11" >TMT11</option>
+                                <option value="iTRAQ4" >iTRAQ4</option>
+                                <option value="iTRAQ8" >iTRAQ8</option>
+                            </param>
+                        </when>
+                        <when value="no" />
+                    </conditional>
+                    <param name="unlabeledquant_boolean" label="Unlabeled quant" type="boolean" truevalue="yes" falsevalue="no"
+                      help="Calculate areas of precursor peaks and writes them to the matrix file as ParentPeakArea column."/>
+                </when>
+                <when value="no" />
+            </conditional>
+
+            <conditional name="mgf_conditional">
+                <param name="mgf_select" type="select" label="Creates a mgf file"
+                  help="Creates a standard MGF file.">
+                    <option value="yes" >Yes</option>
+                    <option value="no" selected="True">No</option>
+                </param>
+                <when value="yes">
+                    <param name="mgf_masscutoff" label="Mass cutoff" value="0" type="float"
+                      help="Specify a mass cutoff to be applied when generating MGF files. May be of use if removal of reporter ions is desired prior to searching of MS2 spectra."/>
+                    <!--<param name="mgf_intensitycutoff" label="Intensity cutoff" value="0" type="float"
+                      help="Relative intensity cutoff for ions included in a MGF file. The value is relative to the highest intensity ion found in a given scan."/>
+                    -->
+                    <param name="mgf_refinement" label="Precursor mass and charge refinement" type="boolean" truevalue="yes" falsevalue="no" checked="false"
+                      help="Refine precursor charge and monoisotopic mass assignments. Highly recommended if monoisotopic precursor selection was turned off in the instrument method (or peptide match on a QE instrument)."/>
+
+                </when>
+                <when value="no" />
+            </conditional>
+            <conditional name="chromatogram_conditional">
+                <param name="chromatogram_select" type="select"
+                    label="Create chromatogram"
+                    help="Creates a text file of chromatographic data for investigation or plotting.">
+                    <option value="yes" >Yes</option>
+                    <option value="no" selected="True">No</option>
+                </param>
+                <when value="yes">
+                    <param name="chromatogram_type" label="Chromatogram type" type="select" help="MS Level">
+                        <option value="1" selected="True">MS1</option>
+                        <option value="2" >MS2</option>
+                        <option value="3" >MS3</option>
+                    </param>
+                    <param name="chromatogram_order" label="Chromatogram order" type="select" help="MS Order">
+                        <option value="T" >TIC</option>
+                        <option value="B" >Base peak</option>
+                        <option value="TB" selected="True">TIC and base peak</option>
+                    </param>
+                </when>
+                <when value="no" />
+            </conditional>
+            <param name="metrics_boolean" label="Create metrics" type="boolean" truevalue="yes" falsevalue="no"
+              help="Creates a text file containing general metrics about the Ms run." />
+
+        </section>
+
+        <!-- TODO: QUALITY CONTROL
+        <section name="quality_control_options" expanded="false" title="Quality control">
+
+        </section>
+        -->
+
+    </inputs>
+    <outputs>
+        <!-- Matrix -->
+
+        <collection name="output_matrix" type="list" label="${tool.name} - ${on_string}: Matrix">
+            <filter>pq_options['pq_conditional']['matrix_select'] == "yes"</filter>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.raw_Matrix.txt" ext="txt" directory="output"/>
+        </collection>
+
+        <!-- MGF file -->
+
+        <collection name="output_mgf" type="list" label="${tool.name} - ${on_string}: MGF">
+            <filter>pq_options['mgf_conditional']['mgf_select'] == "yes"</filter>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.mgf" ext="mgf" directory="output"/>
+        </collection>
+
+        <!-- Chromatogram file -->
+
+        <collection name="output_chromatogram" type="list" label="${tool.name} - ${on_string}: Chromatogram" >
+            <filter>pq_options['chromatogram_conditional']['chromatogram_select'] == "yes"</filter>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.raw_Ms_BP_chromatogram.txt" ext="txt" directory="output"/>
+        </collection>
+
+        <!-- Metrics file -->
+
+        <collection name="output_metrics" type="list" label="${tool.name} - ${on_string}: Metrics" >
+            <filter>pq_options['metrics_boolean'] is True</filter>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.raw_Metrics.txt" ext="txt" directory="output"/>
+        </collection>
+    </outputs>
+    <tests>
+
+        <!-- Test Matrix -->
+        <test>
+            <param name="input_raws" value="really_small.raw" ftype="thermo.raw"/>
+            <param name="license_agreement" value="true" />
+            <param name="pq_conditional|matrix_select" value="yes"/>
+            <output_collection name="output_matrix" type="list">
+                <element name="really_small" file="really_small.raw_Matrix.txt" ftype="txt" compare="sim_size" delta="3000"/>
+            </output_collection>
+        </test>
+
+        <!-- Test mgf conversion -->
+        <test>
+            <param name="input_raws" value="really_small.raw" ftype="thermo.raw"/>
+            <param name="license_agreement" value="true" />
+            <param name="pq_conditional|matrix_select" value="no"/>
+            <param name="mgf_conditional|mgf_select" value="yes"/>
+            <param name="mgf_conditional|mgf_refinement" value="yes"/>
+            <output_collection name="output_mgf" type="list">
+                <element name="really_small.raw" ftype="mgf">
+                    <assert_contents>
+                        <has_text text="PEPMASS=675.248779296875"/>
+                        <has_text text="RTINSECONDS=73.863181104"/>
+                        <has_text text="SCANS=36"/>
+                        <has_text text="121.31165 920.2368"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- Test chromatogram -->
+        <test>
+            <param name="input_raws" value="really_small.raw" ftype="thermo.raw"/>
+            <param name="license_agreement" value="true" />
+            <param name="pq_conditional|matrix_select" value="no"/>
+            <param name="chromatogram_conditional|chromatogram_select" value="yes"/>
+            <output_collection name="output_chromatogram" type="list" >
+                <element name="really_small" file="really_small.raw_Ms_BP_chromatogram.txt" ftype="txt" compare="sim_size" delta="3000"/>
+            </output_collection>
+        </test>
+
+
+    </tests>
+    <help>
+**What it does**
+
+RawTools is an open-source and freely available package designed to perform scan data parsing and quantification, and quality control analysis (to be developed in further versions) of Thermo Orbitrap raw mass spectrometer files.
+
+RawTools is written in C# and uses the Thermo RawFileReader library. RawTools is the replacement for RawQuant Python package.
+
+https://github.com/kevinkovalchik/RawTools
+
+**License**
+
+Raw Tools is a free open-source project, following an Apache License 2.0.
+
+RawFileReader reading tool. Copyright © 2016 by Thermo Fisher Scientific, Inc. All rights reserved.
+Using this software implies the acceptance of RawFileReader license terms.
+
+    </help>
+    <citations>
+        <citation type="doi">doi:10.1021/acs.jproteome.8b00721</citation>
+    </citations>
+</tool>
