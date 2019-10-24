@@ -6,26 +6,41 @@
 #
 #
 
+
+from pyteomics import mzml
+import os
+import sys
+import shutil
+import subprocess
+import re
+import pandas as pd
+from operator import itemgetter
+from itertools import groupby
+import random
+import argparse
+
 def main():
-    from pyteomics import mzml
-    import os
-    import sys
-    import shutil
-    import subprocess
-    import re
-    import pandas as pd
-    from operator import itemgetter
-    from itertools import groupby
-    import random
-    
     if len(sys.argv) >= 7:
+        parser = argparse.ArgumentParser()
+        parser.add_argument("msms", help="mzML File")
+        parser.add_argument("psm", help="PSM Report File")
+        parser.add_argument("out", help="Output filename")
+        parser.add_argument("filestring", help="MSMS File string as identifier")
+        parser.add_argument("remove_retain", help="Remove scans reported in the PSM report")
+        parser.add_argument("random", help="Random MSMS scans used with to use with --retain (default=0)", default=0)
+        args = parser.parse_args()
         # Start of Reading Scans from PSM file
         # Creating dictionary of PSM file: key = filename key = list of scan numbers
         
-        removeORretain = sys.argv[5].strip()
-        randomScans = int(sys.argv[6].strip())
+        # removeORretain = sys.argv[5].strip()
+        # randomScans = int(sys.argv[6].strip())
         
-        ScanFile = sys.argv[2]
+        removeORretain = args.remove_retain
+        randomScans = int(args.random)
+        
+        
+        # ScanFile = sys.argv[2]
+        ScanFile = args.psm
         spectrumTitleList = list(pd.read_csv(ScanFile, "\t")['Spectrum Title'])
         scanFileNumber = [[".".join(each.split(".")[:-3]), int(each.split(".")[-2:-1][0])] for each in spectrumTitleList]
         scanDict = {}
@@ -36,9 +51,11 @@ def main():
                 scanDict[each[0]] = [int(each[1])]
         # End of Reading Scans from PSM file
         
-        inputPath = sys.argv[1]
+        # inputPath = sys.argv[1]
+        inputPath = args.msms
         ##outPath = "/".join(sys.argv[3].split("/")[:-1])
-        outPath = sys.argv[3]
+        # outPath = sys.argv[3]
+        outPath = args.out
         ##outFile = sys.argv[3].split("/")[-1]
         allScanList = []
         # Read all scan numbers using indexedmzML/indexList/index/offset tags
@@ -48,7 +65,8 @@ def main():
                 allScanList.append(int(a.group(1)))
         allScanList = list(set(allScanList))
         # End of Reading mzML file
-        fraction_name = sys.argv[4]
+        # fraction_name = sys.argv[4]
+        fraction_name = args.filestring
         if fraction_name in scanDict.keys():
             scansInList = scanDict[fraction_name]
         else:
