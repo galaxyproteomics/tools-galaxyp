@@ -105,7 +105,7 @@ class MQParam:
     some of its parameters.
     """
 
-    def __init__(self, mqpar_in, exp_design, substitution_rx=r'[^\s\S]'):  # no sub by default
+    def __init__(self, mqpar_in, exp_design, yaml=None, substitution_rx=r'[^\s\S]'):  # no sub by default
         """Initialize MQParam class. mqpar_in can either be a template
         or a already suitable mqpar file.
 
@@ -127,6 +127,8 @@ class MQParam:
         self.substitution_rx = substitution_rx
         self._paramGroups = []
         self.once = False  # for add_fasta_files. should only be called once
+        if yaml:
+            self._from_yaml(yaml)
 
     def __getitem__(self, index):
         """Return paramGroup if indexed with integer, else try to find
@@ -210,7 +212,7 @@ class MQParam:
             # strip path and extension
             for f in files:
                 b = os.path.basename(f)
-                basename = b[:-6] if b.endswith('.mzXML') else b[:-11]
+                basename = b[:-6] if b.lower().endswith('.mzxml') else b[:-11]
                 names_to_paths[basename] = f
             for name in design['Name']:
                 # same substitution as in maxquant.xml,
@@ -344,7 +346,7 @@ class MQParam:
                              .format(key))
         node.text = str(value)
 
-    def from_yaml(self, conf):
+    def _from_yaml(self, conf):
         """Read a yaml config file.
         Args:
             conf: (string) path to the yaml conf file

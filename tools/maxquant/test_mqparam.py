@@ -13,7 +13,6 @@ def mk_pg_root():
 
 
 class TestParamGroup:
-
     def test_list_param(self):
         t = ParamGroup(mk_pg_root())
         t.set_list_param('enzymes', ('test 1', 'test 2'))
@@ -193,7 +192,7 @@ class TestMQParam:
         """)
 
         t = MQParam(TEMPLATE_PATH, None)
-        t.from_yaml(str(conf1))
+        t._from_yaml(str(conf1))
         assert t['numThreads'] == '4'
         assert [child.text for child in t[1]._root.find('labelMods')] == ['', 'label1;label2']
 
@@ -213,8 +212,7 @@ class TestMQParam:
         """)
         mqpar_out = tmpdir / "mqpar.xml"
 
-        t = MQParam(TEMPLATE_PATH, None)
-        t.from_yaml(str(yaml_conf))
+        t = MQParam(TEMPLATE_PATH, None, yaml=str(yaml_conf))
         t.write(str(mqpar_out))
 
         test = ET.parse(str(mqpar_out)).getroot()

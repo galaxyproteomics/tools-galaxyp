@@ -25,8 +25,9 @@ parser.add_argument('--version', '-v', help="""A version number. Raises exceptio
 match the MaxQuant version of the template. For usage in the Galaxy tool.""")
 
 args = parser.parse_args()
+kwargs = dict()
 if args.substitution_rx:
-    mqparam = MQParam(args.template, args.exp_design, substitution_rx=args.substitution_rx)
+    kwargs['substitution_rx'] = ''
 else:
     mqparam = MQParam(args.template, args.exp_design)
 if args.version and mqparam.version != args.version:

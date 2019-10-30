@@ -9,61 +9,16 @@
     </requirements>
     <command detect_errors="exit_code"><![CDATA[
     #import re
-    #import os
 
     maxquant -c mqpar.xml 2>/dev/null  ## MQ writes success of creation to stderr
     #set names = [re.sub('@SUBSTITUTION_RX@', '_', str($name.element_identifier)) for $name in $infile_names]
-    #set complete_names = [os.getcwd() + ($n if $n.endswith($ftype) else os.path.splitext($d)[0] + '.' + $ftype) for $n in ]
-    #for $source, $dest in zip($complete_names, $infiles) 
-      && ln -s dest, source
+    #set complete_names = [$n + $intput_opts.ftype for $pg in $paramGroups for $n in $pg.files]
+    #for $target, $link in zip($infiles, $complete_names)
+      && ln -s $target $link
     #end for
     && python3 '$__tool_directory__/create_mqpar.py'
-    --substitution_rx='@SUBSTITUTION_RX@'
     --exp_design='$search_opts.template'
-    
-    #if $search_opts.fixed_mods
-        --fixed_mods='$search_opts.fixed_mods'
-    #end if
-    #if $search_opts.var_mods
-        --var_mods='$search_opts.var_mods'
-    #end if
-    #if $search_opts.proteases
-        --proteases='$search_opts.proteases'
-    #end if
-    #if $search_opts.silac.light_mods
-        --light_mods='$search_opts.silac.light_mods'
-    #end if
-    #if $search_opts.silac.medium_mods
-        --medium_mods='$search_opts.silac.medium_mods'
-    #end if
-    #if $search_opts.silac.heavy_mods
-       --heavy_mods='$search_opts.silac.heavy_mods'
-    #end if
-    #if $search_opts.lfq.do_lfq == "--lfq_mode=1"
-        $search_opts.lfq.do_lfq.lfq_mode
-        --lfq_min_ratio_count=$search_opts.lfq.do_lfq.lfq_min_ratio_count
-        --lfq_min_edges_per_node=$search_opts.lfq.do_lfq.lfq_min_edges_per_node
-        --lfq_avg_edges_per_node=$search_opts.lfq.do_lfq.lfq_avg_edges_per_node
-        $search_opts.lfq.do_lfq.lfq_skip_norm
-    #end if
-
-    --evidence='$evidence'
-    --msms='$msms'
-    --parameters='$parameters'
-    --peptides='$peptides'
-    --proteinGroups='$proteinGroups'
-    --allPeptides='$allPeptides'
-    --libraryMatch='$libraryMatch'
-    --matchedFeatures='$matchedFeatures'
-    --modificationSpecificPeptides='$modificationSpecificPeptides'
-    --ms3Scans='$ms3Scans'
-    --msmsScans='$msmsScans'
-    --mzRange='$mzRange'
-    --peptideSection='$peptideSection'
-    --summary='$summary'
-    --mzTab='$mzTab'
-    --mqpar='$mqpar'
-
+    --version=1.6.3.4 ## TODO
     #if 'log' in $output_opts.output
         > '$log'
     #end if
@@ -78,6 +33,7 @@
             >> '$log' 2>>&1
         #end if
     #end if
+    ## TODO: add from_working_dir tags in outputs
     ]]></command>
 
     <configfiles>
@@ -101,7 +57,7 @@
             matchBetweenRuns: ${search_opts.match_between_runs}
             paramGroups:
             #for $pg in $paramGroups:
-              #set infile_names = TODO!!
+              #set infile_names = [$__tool_directory__ + $n + ${input_opts.ftype} for $n in ${pg.files}]
               - files: $infile_names
                 maxMissedCleavages: ${pg.maxMissedCleavages}
                 fixedModificaions: [${pg.fixedModifications}]
@@ -122,6 +78,7 @@
                 #end if
             #end for
         </configfile>
+
         <configfile name="qr_yaml">
             PTXQC:
               ReportFilename:
@@ -198,38 +155,25 @@
               qcMetric_EVD_ProteinCount: 450.0
               qcMetric_AverageQualOverall: 9999.0
         </configfile>
+
         <configfile name="qr">
             library(PTXQC)
             library(yaml)
             library(methods)
-
             args = commandArgs(trailingOnly=TRUE)
             yaml_config = yaml.load_file(input = args[1])
             r = createReport('./combined/txt', yaml_config)
             cat(paste0("\nReport generated as '", r\$report_file, "'\n\n"))
-
             file.copy(r\$report_file, args[2])
         </configfile>
     </configfiles>
 
     <inputs>
         <section name="input_opts" title="Input Options" expanded="True">
-            <conditional name="infile">
-                <param name="select" type="select" label="choose the type of your input files">
-                    <option value="raw_files">Thermo.raw</option>
-                    <option value="mzxml_files">mzXML</option>
-                </param>
-                <when value="raw_files"> 
-                    <param multiple="true" name="raw_files" type="data"
-                           format="thermo.raw" label="RAW Files"
-                           help="Specify one or more Thermo RAW files" />
-                </when>
-                <when value="mzxml_files">
-                    <param multiple="true" name="mzxml_files" type="data"
-                           format="mzxml" label="mzXML Files"
-                           help="Specify one or more mzXML files" />
-                </when>
-            </conditional>
+            <param name="ftype" type="select" label="choose the type of your input files">
+                <option value=".thermo.raw">thermo.RAW</option>
+                <option value=".mzxml">mzXML</option>
+            </param>
             <param format="fasta" multiple="true" name="fasta_files"
                    type="data" label="FASTA files"
                    help="Specify one or more FASTA databases." />
@@ -297,7 +241,9 @@
             </section>
         </section>
         
-        <repeat name="paramGroups" title="Parameter Groups">
+        <repeat name="paramGroups" title="Parameter Group">
+            <param type="data" format="thermo.raw,mzXML" name="files" label="Infiles" multiple="true"
+                   help="Only select infiles matching the filetype specified in the input options."/>
             <param type="integer" name="maxMissedCleavages"
 	           label="missed cleavages" value="1"/>
             <param name="fixedModifications" type="select" label="fixed modifications"
@@ -392,7 +338,7 @@
             </param>
         </section>
     </inputs>
-
+<!--
     <outputs>
         <expand macro="output" name="proteinGroups" label="MaxQuant Protein Groups"/>
         <expand macro="output" name="mqpar" label="mqpar.xml" format="xml"/>
@@ -410,15 +356,14 @@
         <expand macro="output" name="mzRange" label="mz range"/>
         <expand macro="output" name="peptideSection" label="peptide section"/>
         <expand macro="output" name="summary" label="MaxQuant summary"/>
-        <expand macro="output" format="tar" name="output_all" label="'combined/txt/' directory"/>
+        <expand macro="output" name="output_all" format="tar" label="'combined/txt/' directory"/>
         <expand macro="output" name="log" format="txt" label="log"/>
         <expand macro="output" name="ptxqc_report" format="pdf" label="PTXQC report"/>
     </outputs>
 
     <tests>
         <test>
-            <param name="select" value="mzxml_files" />
-            <param name="mzxml_files" value="BSA_min_23.mzXML" />
+            <param name="ftype" value=".mzxml" />
             <param name="fasta_files" value="bsa.fasta" />
             <param name="identifier_parse_rule" value="&gt;([^\s]*)" />
             <param name="description_parse_rule" value="&gt;(.*)" />
@@ -443,7 +388,7 @@
             <output name="modificationSpecificPeptides" file="single/combined/txt/modificationSpecificPeptides.txt" />
         </test>
     </tests>
-
+-->
     <help><![CDATA[
 MaxQuant is a quantitative proteomics software package designed for analyzing large mass-spectrometric data sets. 
 
