@@ -24,16 +24,17 @@ Necessary for usage in the Galaxy tool. Can usually be ignored.""")
 parser.add_argument('--version', '-v', help="""A version number. Raises exception if it doesn't
 match the MaxQuant version of the template. For usage in the Galaxy tool.""")
 
+# in case numThreads is a environment variable, otherwise it can be specified in the yaml file as well 
+parser.add_argument('--num_threads', '-t', help="Number of threads to specify in mqpar.")
+
 args = parser.parse_args()
-kwargs = dict()
+kwargs = dict(yaml=args.yaml)
 if args.substitution_rx:
-    kwargs['substitution_rx'] = ''
-else:
-    mqparam = MQParam(args.template, args.exp_design)
+    kwargs['substitution_rx'] = args.substitution_rx
+mqparam = MQParam(args.template, args.exp_design, **kwargs)
 if args.version and mqparam.version != args.version:
     raise Exception('mqpar version is ' + mqparam.version +
                     '. Tool uses version {}.'.format(args.version))
-
-mqparam.from_yaml(args.yaml)
+mqparam.set_simple_param('numThreads', args.num_threads)
 
 mqparam.write(args.mqpar_out if args.mqpar_out else 'mqpar.xml')

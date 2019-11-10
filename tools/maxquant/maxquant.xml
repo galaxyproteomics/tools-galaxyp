@@ -1,55 +1,62 @@
-<tool id="maxquant" name="MaxQuant" version="@VERSION@+galaxy1">
+<tool id="maxquant" name="MaxQuant" version="@VERSION@+galaxy2">
     <macros>
         <import>macros.xml</import>
     </macros>
     <requirements>
         <requirement type="package" version="@VERSION@">maxquant</requirement>
         <requirement type="package" version="3.7">python</requirement>
+        <requirement type="package" version="5.1.2">pyyaml</requirement>
         <requirement type="package" version="0.92.6">r-ptxqc</requirement>
     </requirements>
     <command detect_errors="exit_code"><![CDATA[
-    #import re
+    #import os
 
     maxquant -c mqpar.xml 2>/dev/null  ## MQ writes success of creation to stderr
-    #set names = [re.sub('@SUBSTITUTION_RX@', '_', str($name.element_identifier)) for $name in $infile_names]
-    #set complete_names = [$n + $intput_opts.ftype for $pg in $paramGroups for $n in $pg.files]
+    #set infiles = [$name for $pg in $paramGroups for $name in $pg.files]
+    #set complete_names = [os.path.basename(str($n)) + str($input_opts.ftype) for $n in $infiles]
     #for $target, $link in zip($infiles, $complete_names)
       && ln -s $target $link
     #end for
     && python3 '$__tool_directory__/create_mqpar.py'
+    #if $search_opts.template
     --exp_design='$search_opts.template'
-    --version=1.6.3.4 ## TODO
+    #end if
+    --version=@VERSION@
+    --num_threads=\${GALAXY_SLOTS:-1}
+    --yaml=$mq_conf
+    mqpar.xml
+    && maxquant mqpar.xml
     #if 'log' in $output_opts.output
         > '$log'
     #end if
-    && mv ./mqpar.xml ./combined/txt/mqpar.xml
+    && mv mqpar.xml combined/txt/mqpar.xml
+    && cp $mq_conf $config
     #if 'output_all' in $output_opts.output
         && tar -zcf '$output_all' ./combined/txt
     #end if
-
     #if "ptxqc_report" in $output_opts.output
     && Rscript $qr $qr_yaml '$ptxqc_report'
         #if 'log' in $output_opts.output
             >> '$log' 2>>&1
         #end if
     #end if
-    ## TODO: add from_working_dir tags in outputs
     ]]></command>
 
     <configfiles>
         <configfile name="mq_conf">
-            fastaFiles: ${input_opts.fasta_files}
+            fastaFiles: [${input_opts.fasta_files}]
             parseRules:
-              identifierParseRule: ${input_opts.identifier_parse_rule}
-              descriptionParseRule: ${input_opts.description_parse_rule}
-            numThreads: ${GALAXY_SLOTS:-1}
+              identifierParseRule: '${input_opts.identifier_parse_rule}'
+              descriptionParseRule: '${input_opts.description_parse_rule}'
             minUniquePeptides: ${search_opts.min_unique_pep}
             minPepLen: ${search_opts.min_peptide_len}
             maxPeptideMass: ${search_opts.max_peptide_mass}
             calcPeakProperties: ${search_opts.calc_peak_properties}
             writeMzTab: ${output_opts.write_mztab}
+            #if $search_opts.lfq_opts.do_ibaq.ibaq == 'True':
             ibaq: ${search_opts.lfq_opts.do_ibaq.ibaq}
             ibaqLogFit: ${search_opts.lfq_opts.do_ibaq.ibaqLogFit}
+            #end if
             separateLfq: ${search_opts.lfq_opts.separateLfq}
             lfqStabilizeLargeRatios: ${search_opts.lfq_opts.lfqStabilizeLargeRatios}
             lfqRequireMsms: ${search_opts.lfq_opts.lfqRequireMsms}
@@ -57,24 +64,24 @@
             matchBetweenRuns: ${search_opts.match_between_runs}
             paramGroups:
             #for $pg in $paramGroups:
-              #set infile_names = [$__tool_directory__ + $n + ${input_opts.ftype} for $n in ${pg.files}]
+              #set infile_names = [$__tool_directory__ + os.path.basename(str($n)) + str($input_opts.ftype) for $n in $pg.files]
               - files: $infile_names
                 maxMissedCleavages: ${pg.maxMissedCleavages}
-                fixedModificaions: [${pg.fixedModifications}]
+                fixedModifications: [${pg.fixedModifications}]
                 variableModifications: [${pg.variableModifications}]
                 enzymes: [${pg.enzymes}]
-                #if ${pg.quant_method} == 'silac':
+                #if $pg.quant_method == 'silac':
                 labelMods:
                   - [${pg.quant_method.light_labels}]
                   - [${pg.quant_method.medium_labels}]
                   - [${pg.quant_method.heavy_labels}]
                 #end if
-                #if ${pg.quant_method} == 'lfq':
+                #if $pg.quant_method == 'lfq':
                 lfqMode: 1
                 lfqSkipNorm: ${pg.quant_method.lfqSkipNorm}
                 lfqMinEdgesPerNode: ${pg.quant_method.lfqMinEdgesPerNode}
                 lfqAvEdgesPerNode: ${pg.quant_method.lfqAvEdgesPerNode}
-                lfqMinRatioCount: ${pg.quant_method.lfqMinRatioCount}
+=               lfqMinRatioCount: ${pg.quant_method.lfqMinRatioCount}
                 #end if
             #end for
         </configfile>
@@ -208,10 +215,10 @@
 	           label="minimum unique peptides" value="1" />
             <param name="calc_peak_properties" type="boolean" checked="false"
 	           label="Calculate peak properties?"
-	           truevalue="--calc_peak_properties" falsevalue="" />
+	           truevalue="True" falsevalue="False" />
             <param name="match_between_runs" type="boolean" checked="false"
 	           label="Match between runs?"
-	           truevalue="--match_between_runs" falsevalue="" />
+	           truevalue="True" falsevalue="False" />
             <section title="LFQ Options" name="lfq_opts" expanded="false">
 		<param name="separateLfq" type="boolean" checked="false"
 		       label="Separate LFQ in parameter Groups?"
@@ -241,7 +248,7 @@
             </section>
         </section>
         
-        <repeat name="paramGroups" title="Parameter Group">
+        <repeat name="paramGroups" title="Parameter Group" min="1" default="1">
             <param type="data" format="thermo.raw,mzXML" name="files" label="Infiles" multiple="true"
                    help="Only select infiles matching the filetype specified in the input options."/>
             <param type="integer" name="maxMissedCleavages"
@@ -313,7 +320,7 @@
         <section title="Output Options" name="output_opts" expanded="true">
             <param name="write_mztab" type="boolean" checked="false"
 	           label="Write mztab file?"
-	           truevalue="--write_mztab" falsevalue="" />
+	           truevalue="True" falsevalue="False" />
             <param type="select" name="output" label="Select the desired outputs."
                    multiple="true" optional="false">
                 <expand macro="output_option" name="proteinGroups" label="Protein Groups"/>
@@ -333,32 +340,33 @@
                 <expand macro="output_option" name="peptideSection" label="peptide section"/>
                 <expand macro="output_option" name="summary" label="summary"/>
                 <expand macro="output_option" name="output_all" label="complete 'combined/txt/' directory (compressed)"/>
-                <expand macro="output_option" name="log" label="MaxQuant log"/>
+                <expand macro="output_option" name="log" label="MaxQuant and PTXQC log"/>
                 <expand macro="output_option" name="ptxqc_report" label="PTXQC report"/>
             </param>
         </section>
     </inputs>
-<!--
+
     <outputs>
-        <expand macro="output" name="proteinGroups" label="MaxQuant Protein Groups"/>
-        <expand macro="output" name="mqpar" label="mqpar.xml" format="xml"/>
-        <expand macro="output" name="peptides" label="MaxQuant Peptides"/>
-        <expand macro="output" name="evidence" label="MaxQuant Evidence"/>
-        <expand macro="output" name="parameters" label="MaxQuant Tabular Parameters"/>
-        <expand macro="output" name="msms" label="MaxQuant MSMS"/>
-        <expand macro="output" name="mzTab" label="mzTab"/>
-        <expand macro="output" name="allPeptides" label="all peptides"/>
-        <expand macro="output" name="libraryMatch" label="library match"/>
-        <expand macro="output" name="matchedFeatures" label="matched features"/>
-        <expand macro="output" name="modificationSpecificPeptides" label="modification specific peptides"/>
-        <expand macro="output" name="ms3Scans" label="ms3 scans"/>
-        <expand macro="output" name="msmsScans" label="msms Scans"/>
-        <expand macro="output" name="mzRange" label="mz range"/>
-        <expand macro="output" name="peptideSection" label="peptide section"/>
-        <expand macro="output" name="summary" label="MaxQuant summary"/>
+        <expand macro="output_from_wdir" name="proteinGroups" label="MaxQuant Protein Groups"/>
+        <expand macro="output_from_wdir" name="mqpar" label="mqpar.xml" format="xml" ext="xml"/>
+        <expand macro="output_from_wdir" name="peptides" label="MaxQuant Peptides"/>
+        <expand macro="output_from_wdir" name="evidence" label="MaxQuant Evidence"/>
+        <expand macro="output_from_wdir" name="parameters" label="MaxQuant Tabular Parameters"/>
+        <expand macro="output_from_wdir" name="msms" label="MaxQuant MSMS"/>
+        <expand macro="output_from_wdir" name="mzTab" label="mzTab" ext="mzTab"/>
+        <expand macro="output_from_wdir" name="allPeptides" label="all peptides"/>
+        <expand macro="output_from_wdir" name="libraryMatch" label="library match"/>
+        <expand macro="output_from_wdir" name="matchedFeatures" label="matched features"/>
+        <expand macro="output_from_wdir" name="modificationSpecificPeptides" label="modification specific peptides"/>
+        <expand macro="output_from_wdir" name="ms3Scans" label="ms3 scans"/>
+        <expand macro="output_from_wdir" name="msmsScans" label="msms Scans"/>
+        <expand macro="output_from_wdir" name="mzRange" label="mz range"/>
+        <expand macro="output_from_wdir" name="peptideSection" label="peptide section"/>
+        <expand macro="output_from_wdir" name="summary" label="MaxQuant summary"/>
         <expand macro="output" name="output_all" format="tar" label="'combined/txt/' directory"/>
         <expand macro="output" name="log" format="txt" label="log"/>
         <expand macro="output" name="ptxqc_report" format="pdf" label="PTXQC report"/>
+        <data format="txt" name="config"/>
     </outputs>
 
     <tests>
@@ -368,12 +376,14 @@
             <param name="identifier_parse_rule" value="&gt;([^\s]*)" />
             <param name="description_parse_rule" value="&gt;(.*)" />
             <param name="min_unique_pep" value="0" />
-            <param name="fixed_mods" value="Carbamidomethyl (C)" />
-            <param name="var_mods" value="Oxidation (M)" />
-            <param name="proteases" value="Trypsin/P" />
             <param name="write_mztab" value="true" />
-            <param name="msms" value="false" />
-            <param name="output" value="evidence,msms,allPeptides,msmsScans,mzTab,mzRange,parameters,peptides,peptideSection,proteinGroups,summary,modificationSpecificPeptides,ptxqc_report" />
+            <repeat name="paramGroups">
+                <param name="files" value="BSA_min_23.mzXML"/>
+                <param name="fixed_mods" value="Carbamidomethyl (C)" />
+                <param name="var_mods" value="Oxidation (M)" />
+                <param name="proteases" value="Trypsin/P" />
+            </repeat>
+            <param name="output" value="evidence,msms,allPeptides,msmsScans,mzTab,mzRange,parameters,peptides,peptideSection,proteinGroups,summary,modificationSpecificPeptides" />
             <output name="evidence" file="single/combined/txt/evidence.txt" />
             <output name="msms" file="single/combined/txt/msms.txt" />
             <output name="mzTab" file="single/combined/txt/mzTab.mzTab" lines_diff="4"/>
@@ -386,9 +396,10 @@
             <output name="proteinGroups" file="single/combined/txt/proteinGroups.txt" />
             <output name="summary" file="single/combined/txt/summary.txt" />
             <output name="modificationSpecificPeptides" file="single/combined/txt/modificationSpecificPeptides.txt" />
+            <output name="config" file="yaml_conf_test1.yml"/>
         </test>
     </tests>
--->
+
     <help><![CDATA[
 MaxQuant is a quantitative proteomics software package designed for analyzing large mass-spectrometric data sets. 
 
@@ -396,32 +407,9 @@ This tool is a wrapper for MaxQuant v@VERSION@. The current version of the wrapp
 
 **Input files**
 
-- Thermo raw file or mzXML file
-    - The datatype has to be 'thermo.raw' or 'mzXML'. Make sure to specify the correct datatype either during upload to Galaxy or afterwards (edit attributes --> datatypes)
-- Optional files:
-    - Tabular file with experimental design template:
-        - Currently four columns are needed: Name, Fraction, Experiment and PTM. The headers must have this exact naming. Name and Experiment are abitrary strings, Fraction is an integer or emtpy, PTM is either 'True', 'False' or empty. Consider you uploaded files named File1.mzxml, ..., File5.mzxml. This is a (syntactically) correct experimental design template:
-
-                ::
-
-                    Name     Fraction    Experiment   PTM
-                    File1        1          E1       False
-                    File2        2          E1       False
-                    ghost       234        none
-                    File3        3          E1       False
-                    File4                   E2       true
-                    File5                   E1
-
-        - This is the counter-example with one error per line:
-
-                ::
-
-                    Name     Fraction    Experiment   PTM
-                    File1       1           E1        no  (wrong PTM value)
-                    File2.mzxml 1           E2            (filename with extension)
-                    File3       f3          E1            (fraction not an integer)
-                    File4       1                         (missing experiment)
-                                                          (File5 misssing)
+- Thermo raw files or mzXML files (in parameter group section)
+    - The datatype of all files has to be either 'thermo.raw' or 'mzXML'. Make sure to specify the correct datatype either during upload to Galaxy or afterwards (edit attributes --> datatypes)
+- fasta files
 
 **Parameter Options**
 
@@ -432,7 +420,7 @@ This tool is a wrapper for MaxQuant v@VERSION@. The current version of the wrapp
 
 **Output files**
 
-Different output file options are available, most of them are part of the MaxQuant txt directory. 
+Different output file options are available, most of them are part of the MaxQuant txt directory. If ptxqc report ist selected, a quality control report will be created. mzTab output will be empty if the option 'write mzTab' is not ticked.
     ]]></help>
     <citations>
         <citation type="bibtex">
