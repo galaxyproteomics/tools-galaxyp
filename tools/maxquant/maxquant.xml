@@ -9,13 +9,13 @@
         <requirement type="package" version="0.92.6">r-ptxqc</requirement>
     </requirements>
     <command detect_errors="exit_code"><![CDATA[
-    #import os
-
+    #import re
     maxquant -c mqpar.xml 2>/dev/null  ## MQ writes success of creation to stderr
     #set infiles = [$name for $pg in $paramGroups for $name in $pg.files]
-    #set complete_names = [os.path.basename(str($n)) + str($input_opts.ftype) for $n in $infiles]
-    #for $target, $link in zip($infiles, $complete_names)
-      && ln -s $target $link
+    #set names = [re.sub('@SUBSTITUTION_RX@', '_', str($n.element_identifier)) for $n in $infiles]
+    #set names_with_ext = [($name if ($name).lower().endswith(str($input_opts.ftype)) else $name + str($input_opts.ftype)) for $name in $names]
+    #for $target, $link in zip($infiles, $names_with_ext)
+      && ln -s '$target' '$link'
     #end for
     && python3 '$__tool_directory__/create_mqpar.py'
     #if $search_opts.template
@@ -23,19 +23,20 @@
     #end if
     --version=@VERSION@
     --num_threads=\${GALAXY_SLOTS:-1}
-    --yaml=$mq_conf
+    --substitution_rx='@SUBSTITUTION_RX@'
+    --yaml='$mq_conf'
     mqpar.xml
-    && maxquant mqpar.xml
+    && maxquant mqpar.xml ##\$(readlink -f mqpar.xml)
     #if 'log' in $output_opts.output
         > '$log'
     #end if
     && mv mqpar.xml combined/txt/mqpar.xml
-    && cp $mq_conf $config
+    && cp '$mq_conf' '$config'
     #if 'output_all' in $output_opts.output
         && tar -zcf '$output_all' ./combined/txt
     #end if
     #if "ptxqc_report" in $output_opts.output
-    && Rscript $qr $qr_yaml '$ptxqc_report'
+    && Rscript '$qr' '$qr_yaml'
         #if 'log' in $output_opts.output
             >> '$log' 2>>&1
         #end if
@@ -44,6 +45,7 @@
 
     <configfiles>
         <configfile name="mq_conf">
+            #import re
             fastaFiles: [${input_opts.fasta_files}]
             parseRules:
               identifierParseRule: '${input_opts.identifier_parse_rule}'
@@ -64,8 +66,9 @@
             matchBetweenRuns: ${search_opts.match_between_runs}
             paramGroups:
             #for $pg in $paramGroups:
-              #set infile_names = [$__tool_directory__ + os.path.basename(str($n)) + str($input_opts.ftype) for $n in $pg.files]
-              - files: $infile_names
+              #set names = [re.sub('@SUBSTITUTION_RX@', '_', str($n.element_identifier)) for $n in $pg.files]
+              #set names_with_ext = [($name if ($name).lower().endswith(str($input_opts.ftype)) else $name + str($input_opts.ftype)) for $name in $names]
+              - files: $names_with_ext
                 maxMissedCleavages: ${pg.maxMissedCleavages}
                 fixedModifications: [${pg.fixedModifications}]
                 variableModifications: [${pg.variableModifications}]
@@ -81,7 +84,7 @@
                 lfqSkipNorm: ${pg.quant_method.lfqSkipNorm}
                 lfqMinEdgesPerNode: ${pg.quant_method.lfqMinEdgesPerNode}
                 lfqAvEdgesPerNode: ${pg.quant_method.lfqAvEdgesPerNode}
-=               lfqMinRatioCount: ${pg.quant_method.lfqMinRatioCount}
+                lfqMinRatioCount: ${pg.quant_method.lfqMinRatioCount}
                 #end if
             #end for
         </configfile>
@@ -171,7 +174,7 @@
             yaml_config = yaml.load_file(input = args[1])
             r = createReport('./combined/txt', yaml_config)
             cat(paste0("\nReport generated as '", r\$report_file, "'\n\n"))
-            file.copy(r\$report_file, args[2])
+            file.copy(r\$report_file, '$ptxqc_report')
         </configfile>
     </configfiles>
 
@@ -379,9 +382,9 @@
             <param name="write_mztab" value="true" />
             <repeat name="paramGroups">
                 <param name="files" value="BSA_min_23.mzXML"/>
-                <param name="fixed_mods" value="Carbamidomethyl (C)" />
-                <param name="var_mods" value="Oxidation (M)" />
-                <param name="proteases" value="Trypsin/P" />
+                <param name="fixedModifications" value="Carbamidomethyl (C)" />
+                <param name="variableModifications" value="Oxidation (M)" />
+                <param name="enzymes" value="Trypsin/P" />
             </repeat>
             <param name="output" value="evidence,msms,allPeptides,msmsScans,mzTab,mzRange,parameters,peptides,peptideSection,proteinGroups,summary,modificationSpecificPeptides" />
             <output name="evidence" file="single/combined/txt/evidence.txt" />
@@ -396,7 +399,7 @@
             <output name="proteinGroups" file="single/combined/txt/proteinGroups.txt" />
             <output name="summary" file="single/combined/txt/summary.txt" />
             <output name="modificationSpecificPeptides" file="single/combined/txt/modificationSpecificPeptides.txt" />
-            <output name="config" file="yaml_conf_test1.yml"/>
+            <output name="config" file="yaml_conf_test1.yml" />
         </test>
     </tests>
 
@@ -409,7 +412,27 @@ This tool is a wrapper for MaxQuant v@VERSION@. The current version of the wrapp
 
 - Thermo raw files or mzXML files (in parameter group section)
     - The datatype of all files has to be either 'thermo.raw' or 'mzXML'. Make sure to specify the correct datatype either during upload to Galaxy or afterwards (edit attributes --> datatypes)
-- fasta files
+- Fasta files
+
+- Optional files:
+    - Tabular file with experimental design template:
+        - Currently four columns are needed: Name, Fraction, Experiment and PTM. The headers must have this exact naming. Name and Experiment are abitrary strings, Fraction is an integer or emtpy, PTM is either 'True', 'False' or empty. Consider you uploaded files named File1.mzxml, ..., File5.mzxml. This is a (syntactically) correct experimental design template:
+                ::
+                    Name     Fraction    Experiment   PTM
+                    File1        1          E1       False
+                    File2        2          E1       False
+                    ghost       234        none
+                    File3        3          E1       False
+                    File4                   E2       true
+                    File5                   E1
+        - This is the counter-example with one error per line:
+                ::
+                    Name     Fraction    Experiment   PTM
+                    File1       1           E1        no  (wrong PTM value)
+                    File2.mzxml 1           E2            (filename with extension)
+                    File3       f3          E1            (fraction not an integer)
+                    File4       1                         (missing experiment)
+                                                          (File5 misssing)
 
 **Parameter Options**
 

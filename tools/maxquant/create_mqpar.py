@@ -4,6 +4,10 @@ and a template parameter file.
 
 import argparse
 import os
+import sys
+import yaml
+
+from time import sleep
 
 from mqparam import MQParam
 
@@ -26,8 +30,22 @@ match the MaxQuant version of the template. For usage in the Galaxy tool.""")
 
 # in case numThreads is a environment variable, otherwise it can be specified in the yaml file as well 
 parser.add_argument('--num_threads', '-t', help="Number of threads to specify in mqpar.")
-
 args = parser.parse_args()
+
+# edit file names, unable to set working dir in galaxy tool configfile tag
+if args.yaml:
+    with open(args.yaml) as f:
+        conf_dict = yaml.safe_load(f.read())
+
+        for n, pg in enumerate(conf_dict['paramGroups']):
+            for num, fl in enumerate(pg['files']):
+                if not fl.startswith('/'):
+                    conf_dict['paramGroups'][n]['files'][num] = os.path.join(os.getcwd(), fl)
+                print(conf_dict['paramGroups'][n]['files'][num], file=sys.stderr)
+    with open('yaml', 'w') as f:
+        yaml.safe_dump(conf_dict, stream=f)
+        args.yaml = 'yaml'
+
 kwargs = dict(yaml=args.yaml)
 if args.substitution_rx:
     kwargs['substitution_rx'] = args.substitution_rx
