@@ -15,26 +15,31 @@
     #set names = [re.sub('@SUBSTITUTION_RX@', '_', str($n.element_identifier)) for $n in $infiles]
     #set names_with_ext = [($name if ($name).lower().endswith(str($input_opts.ftype)) else $name + str($input_opts.ftype)) for $name in $names]
     #for $target, $link in zip($infiles, $names_with_ext)
-      && ln -s '$target' '$link'
+        && ln -s '$target' '$link'
     #end for
+
     && python3 '$__tool_directory__/create_mqpar.py'
     #if $search_opts.template
-    --exp_design='$search_opts.template'
+        --exp_design='$search_opts.template'
     #end if
     --version=@VERSION@
     --num_threads=\${GALAXY_SLOTS:-1}
     --substitution_rx='@SUBSTITUTION_RX@'
     --yaml='$mq_conf'
     mqpar.xml
+
     && maxquant mqpar.xml ##\$(readlink -f mqpar.xml)
     #if 'log' in $output_opts.output
         > '$log'
     #end if
     && mv mqpar.xml combined/txt/mqpar.xml
-    && cp '$mq_conf' '$config'
+    #if 'config' in $output_opts.output
+        && cp '$mq_conf' '$config'
+    #end if
     #if 'output_all' in $output_opts.output
         && tar -zcf '$output_all' ./combined/txt
     #end if
+
     #if "ptxqc_report" in $output_opts.output
     && Rscript '$qr' '$qr_yaml'
         #if 'log' in $output_opts.output
@@ -274,6 +279,7 @@
                     <option value="">None</option>
                     <option value="lfq">label free quantification</option>
                     <option value="silac">label based quantification (SILAC)</option>
+                    <option value="reporter_ion_ms2">reporter ion MS2</option>
                 </param>
                 <when value=""></when>
                 <when value="silac">
@@ -300,6 +306,44 @@
 		    <param type="boolean" name="lfqSkipNorm" checked="false"
 			   label="Skip normalization?"
 			   truevalue="True" falsevalue="False" />
+                </when>
+                <when value="reporter_ion_ms2">
+                    <conditional name="select">
+                        <param name="iso_labeling" type="select" label="isobaric labeling"
+                               help="Select one of the standard labelings (correction factors are zero) or create a custom labeling.">
+                            <option value="tmt2plex">TMT2plex</option>
+                            <option value="tmt6plex">TMT6plex</option>
+                            <option value="tmt8plex">TMT8plex</option>
+                            <option value="tmt10plex">TMT10plex</option>
+                            <option value="tmt11plex">TMT11plex</option>
+                            <option value="itraq4plex">iTRAQ4plex</option>
+                            <option value="itraq8plex">iTRAQ8plex</option>
+                            <option value="iodotmt6plex">iodoTMT6plex</option>
+                            <option value="custom">custom</option>
+                        </param>
+                        <when value="tmt2plex"></when>
+                        <when value="tmt6plex"></when>
+                        <when value="tmt8plex"></when>
+                        <when value="tmt10plex"></when>
+                        <when value="tmt11plex"></when>
+                        <when value="itraq4plex"></when>
+                        <when value="itraq8plex"></when>
+                        <when value="iodotmt6plex"></when>
+                        <when value="custom">
+                            <repeat name="iso_label" title="Isobaric Label" min="1" default="1">
+                                <param name="label" type="select" label="label">
+	                            <expand macro="iso_labels"/>
+	                        </param>
+                                <param name="cm2" type="integer" label="correction factor -2%" value="0"/>
+                                <param name="cm1" type="integer" label="correction factor -1%" value="0"/>
+                                <param name="cp1" type="integer" label="correction factor +1%" value="0"/>
+                                <param name="cp2" type="integer" label="correction factor +2%" value="0"/>
+		                <param type="boolean" name="tmtlike" checked="false"
+			               label="TMT-like"
+			               truevalue="True" falsevalue="False" />
+                            </repeat>
+                        </when>
+                    </conditional>
                 </when>
             </conditional>
         </repeat>
@@ -345,6 +389,7 @@
                 <expand macro="output_option" name="output_all" label="complete 'combined/txt/' directory (compressed)"/>
                 <expand macro="output_option" name="log" label="MaxQuant and PTXQC log"/>
                 <expand macro="output_option" name="ptxqc_report" label="PTXQC report"/>
+                <expand macro="output_option" name="config" label="yaml config file"/>
             </param>
         </section>
     </inputs>
@@ -369,7 +414,7 @@
         <expand macro="output" name="output_all" format="tar" label="'combined/txt/' directory"/>
         <expand macro="output" name="log" format="txt" label="log"/>
         <expand macro="output" name="ptxqc_report" format="pdf" label="PTXQC report"/>
-        <data format="txt" name="config"/>
+        <expand macro="output" name="config" format="txt" label="yaml config file"/>
     </outputs>
 
     <tests>
@@ -399,7 +444,7 @@
             <output name="proteinGroups" file="single/combined/txt/proteinGroups.txt" />
             <output name="summary" file="single/combined/txt/summary.txt" />
             <output name="modificationSpecificPeptides" file="single/combined/txt/modificationSpecificPeptides.txt" />
-            <output name="config" file="yaml_conf_test1.yml" />
+            <output name="config" file="yaml_conf_test1.yml" lines_diff="2"/>
         </test>
     </tests>
 
@@ -410,9 +455,10 @@ This tool is a wrapper for MaxQuant v@VERSION@. The current version of the wrapp
 
 **Input files**
 
-- Thermo raw files or mzXML files (in parameter group section)
+- Thermo raw files or mzXML files (in parameter group section):
     - The datatype of all files has to be either 'thermo.raw' or 'mzXML'. Make sure to specify the correct datatype either during upload to Galaxy or afterwards (edit attributes --> datatypes)
-- Fasta files
+
+- Fasta files:
 
 - Optional files:
     - Tabular file with experimental design template:

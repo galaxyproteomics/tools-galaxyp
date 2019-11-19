@@ -41,7 +41,6 @@ if args.yaml:
             for num, fl in enumerate(pg['files']):
                 if not fl.startswith('/'):
                     conf_dict['paramGroups'][n]['files'][num] = os.path.join(os.getcwd(), fl)
-                print(conf_dict['paramGroups'][n]['files'][num], file=sys.stderr)
     with open('yaml', 'w') as f:
         yaml.safe_dump(conf_dict, stream=f)
         args.yaml = 'yaml'
