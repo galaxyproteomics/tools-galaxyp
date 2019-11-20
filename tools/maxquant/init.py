@@ -51,7 +51,6 @@ if args.modifications:
 
 if args.enzymes:
     enzymes_root = ET.parse(args.enzymes).getroot()
-
     enzymes = enzymes_root.findall('enzyme')
     enzymes_list = [e.get('title') for e in enzymes]
 
