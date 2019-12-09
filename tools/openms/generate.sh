@@ -4,100 +4,243 @@
 # CONDAPKG=https://anaconda.org/bioconda/openms/2.3.0/download/linux-64/openms-2.3.0-py27h932d754_3.tar.bz2
 VERSION=2.4
 CONDAPKG=https://anaconda.org/bioconda/openms/2.4.0/download/linux-64/openms-2.4.0-py27h574aadf_1.tar.bz2
-
 # ini to test
 # some of the tests specify parameters in an ini file 
 # for the auto generated tests these need to be transformed to galaxy test xml
+# - values might contain html entities (e.g. &lt;) which are converted -> therefore values are in CDATA
+# TODO this might be better to generate w CTDConverter using something similar to --testtest (just that only the test is generated)
+# parameters ini file, test generated so far
 function ini2test {
 	ini=$1
-	
-	hcregexp='name="'$(grep -v "^#" hardcoded_params.txt | grep -v "^$" | cut -f1 | tr '\n' '|' | sed 's/|$//')'"'
-	egrep "ITEM|ITEMLIST|LISTITEM" $ini | sed 's/^\s*//; s/\s*$//' | while read line
-	do
-		type=$(echo "$line" | cut -d" " -f1)
-		if [[ "$type" == "<ITEM" ]]; then
-			name=$(echo "$line" | sed 's/.*name="\([^\"]\+\)".*/\1/' | sed 's/:/_/')
-			value=$(echo "$line" | sed 's/.*value="\([^\"]*\)".*/\1/')
-			if [[ "$value" != "" ]]; then
-				echo '    <param name="'$name'" value="'$value'"/>'
-			fi
-		elif [[ "$type" == "<ITEMLIST" ]]; then
-			name=$(echo "$line" | sed 's/.*name="\([^\"]\+\)".*/\1/'| sed 's/:/_/')
-			value=""
-		elif [[ "$type" == "<LISTITEM" ]]; then
-			if [[ "$value" == "" ]]; then
-				value=$(echo "$line" | sed 's/.*value="\([^\"]*\)".*/\1/')
-			else	
-				value=$value","$(echo "$line" | sed 's/.*value="\([^\"]*\)".*/\1/')
-			fi
-		elif [[ "$type" == "</ITEMLIST" ]]; then
-			if [[ "$value" != "" ]]; then
-				echo '    <param name="'$name'" value="'$value'"/>'
+	tes=$2
+	tool_id=$3
+	nodecn=0
+	path=""
+	LOOP=$(egrep "NODE|ITEM|ITEMLIST|LISTITEM" "$ini" | sed 's/^\s*//; s/\s*$//')
+     	while read -r ini_line; do
+		type=$(echo "$ini_line" | cut -d" " -f1)
+# 		>&2 echo "$ini_line"
+		#get the name from ITEM and ITEMLIST
+		if [[ "$type" =~ \<ITEM|\<ITEMLIST|\<NODE ]]; then
+			name=$(echo "$path" | sed 's/[:-]/_/g')$(echo "$ini_line" | sed 's/.*name="\([^\"]\+\)".*/\1/' | sed 's/[:-]/_/g; ')
+
+			adv_re="\\\$adv_opts_cond.param_(out_)?$name"
+			if grep -Eq ''$adv_re'[:)"'"'"'"]|'$adv_re'$' "./$tool_id.xml"; then
+				adv='adv_opts_cond|'
+			else
+				adv=''
 			fi
 		fi
-	done | egrep -v "$hcregexp"
+		# skip hard coded params and params that are already in the test
+		if [[ "$type" =~ \<ITEM|\</ITEMLIST ]]; then
+			if grep -lq '<param name="param_'"$name"'"' <<< "$tes"; then
+				continue
+			fi
+# 			>&2 echo 1 jq -e ".$name | .[]? | .value" hardcoded_params.json 
+			if jq -e ".$name | .[]? | .value" hardcoded_params.json > /dev/null; then 
+				continue
+			fi
+		fi
+		if [[ "$type" == "<ITEM" ]]; then
+			value=$(echo "$ini_line" | sed 's/.*value="\([^"]*\)".*/\1/')
+			if [[ "$value" != "" ]]; then
+				echo '   <param name="'"$adv"'param_'"$name"'" value="'"$value"'"/>'
+#  				echo '    <param name="'"$adv"'param_'"$name"'"><value><![CDATA['"$(echo "$value" | recode html..ascii)"']]></value></param>'
+			fi
+		elif [[ "$type" == "<ITEMLIST" ]]; then
+			value=""
+		elif [[ "$type" == "<LISTITEM" ]]; then
+			value=$value" "$(echo "$ini_line" | sed 's/.*value="\([^"]*\)".*/\1/')
+		elif [[ "$type" == "</ITEMLIST>" ]]; then
+			if [[ "$value" != "" ]]; then
+				echo '   <param name="'"$adv"'param_'"$name"'" value="'"$( sed 's/^ //' <<<"$value")"'"/>'
+# 				echo '    <param name="'"$adv"'param_'"$name"'"><value><![CDATA['"$(echo "$value" | recode html..ascii)"']]></value></param>'
+			fi
+		elif [[ "$type" == "<NODE" ]]; then
+			# at least one ini file (see https://github.com/OpenMS/OpenMS/issues/4386)
+			# contained two sets of parameters, since OpenMS seems to ignore the 2nd 
+			# we do the same
+			if [[ "$name" == "2" ]]; then
+				break
+			fi
 
+			name=$(echo "$ini_line" | sed 's/.*name="\([^"]\+\)".*/\1/' | sed 's/:/_/')
+			let nodecnt=nodecnt+1
+			if [[ $nodecnt -gt 2 ]]; then
+				path=$path$name:
+			fi
+		elif [[ "$type" == "</NODE>" ]]; then
+			path=$(echo $path | sed 's/[^:]\+:$//')
+			let nodecnt=nodecnt-1
+		fi
+	done <<< "$LOOP"
+}
+
+#some tests use the same file twice which does not work in planemo tests
+#hence we create symlinks for each file used twice
+function unique_files {
+	if [[ $# -eq 0 ]]; then
+		echo ""
+		exit 0
+	fi
+	if [[ ! -f "test-data/$1" ]]; then
+		echo "$@"
+		exit 0
+	fi
+
+	while read -r line 
+	do
+		c=$(echo "$line" | cut -d" " -f 1)
+		f=$(echo "$line" | cut -d" " -f 2)
+		echo -n "$f "
+		for i in $(seq 2 "$c")
+		do
+			if [[ ! -f test-data/$f-$i ]]; then
+				ln -fs "$f" "test-data/$f-$i"
+			fi
+			echo -n "$f-$i"
+		done
+	done <<< $(echo "$@" | tr ' ' '\n' | uniq -c )
+	echo
 }
 
 
 # parse test definitions from OpenMS sources for a tool with a given id
 function get_tests {
 	id=$1
-	echo '<xml name="autotest_'$id'">'
+	>&2 echo "generate $id"
+	echo '<xml name="autotest_'"$id"'">'
 
 	# get the tests from the CMakeLists.txt
-        # 1st part is a dirty hack to join lines containing a single function call, e.g.
+        # 1st remove some tests
+	# - Filefilter with empty select_palarity value (empty is not in the list of allowed options)
+	# - MassTraceExtractor with outdated ini file leading to wrong parameters https://github.com/OpenMS/OpenMS/issues/4386
+	# - OpenSwathMzMLFileCacher with -convert_back argumen https://github.com/OpenMS/OpenMS/issues/4399t
+	# some input files are originally in a subdir (degenerated cases/), but not in test-data
+	CMAKE=$(cat OpenMS-git/src/tests/topp/CMakeLists.txt OpenMS-git/src/tests/topp/THIRDPARTY/third_party_tests.cmake  |
+		grep -v 'FileFilter.*-spectra:select_polarity ""' |
+		grep -v 'MassTraceExtractor_2.ini ' |
+		grep -v 'OpenSwathMzMLFileCacher .*-convert_back' | 
+		sed 's@degenerate_cases/@@g')
+		# 1st part is a dirty hack to join lines containing a single function call, e.g.
 	# addtest(....
 	#         ....)
-	cat OpenMS-git/src/tests/topp/CMakeLists.txt | sed 's/^\s*//; s/\s*$//' | grep -v "^#" | grep -v "^$"  | awk '{printf("%s@NEWLINE@", $0)}' | sed 's/)@NEWLINE@/)\n/g' | sed 's/@NEWLINE@/ /g' | 
-		egrep -v "_prep|_convert|WRITEINI|WRITECTD|INVALIDVALUE" | grep " $id\_" | grep add_test | egrep "TOPP|UTILS" | while read line
+	echo "$CMAKE" | sed 's/#.*//; s/^\s*//; s/\s*$//' | grep -v "^#" | grep -v "^$"  | awk '{printf("%s@NEWLINE@", $0)}' | sed 's/)@NEWLINE@/)\n/g' | sed 's/@NEWLINE@/ /g' | 
+		grep -E "add_test\(\"(TOPP|UTILS)_$id\_" | egrep -v "_prep|_convert|WRITEINI|WRITECTD|INVALIDVALUE"  | while read line
 	do
-		line=$(echo $line | sed 's/add_test("//; s/)$//; s/"//g; s/\${TOPP_BIN_PATH}\///g;s/\${DATA_DIR_TOPP}\///g; s/-test//; s#THIRDPARTY/##g')
-		test_id=$(echo $line | cut -d" " -f 1)
-		tool_id=$(echo $line | cut -d" " -f 2)
+		ini=""
+		line=$(sed 's/add_test("//; s/)$//; s/\${TOPP_BIN_PATH}\///g;s/\${DATA_DIR_TOPP}\///g; s/-test//; s#THIRDPARTY/##g' <<< "$line")
+		test_id=$(cut -d" " -f 1 <<< "$line")
+		tool_id=$(cut -d" " -f 2 <<< "$line")
 		if [[ $test_id =~ _out_?[0-9]? ]]; then
 			continue
 		fi
-
 		if [[ $id != $tool_id ]]; then
-			>&2 echo "skip $test_id ($id != $tool_id) "$line
+			>&2 echo "skip $test_id ($id != $tool_id) $line"
 			continue
 		fi
 
-		echo "  <test>"
+		#remove tests with set_tests_properties(....PROPERTIES WILL_FAIL 1)
+		if grep -lq "$test_id"'.* PROPERTIES WILL_FAIL 1' OpenMS-git/src/tests/topp/CMakeLists.txt OpenMS-git/src/tests/topp/THIRDPARTY/third_party_tests.cmake; then
+			>&2 echo "skip failing "$test_id
+			continue
+		fi
+		tes="  <test>\n"
 
-		echo $line | cut -d" " -f3- | sed "s/-/\n/g" | grep -v "^$" | while read param
+		#split parameter value pairs to lines (assuming there is a
+		# space befor each parameter and the parameter does not start with a digit)
+		LOOP=$(cut -d" " -f3- <<< "$line" | sed "s/^-\([^0-9]\)/\n\1/g; s/ -\([^0-9]\)/\n\1/g" | grep -v "^$")
+ 		adv_param=''
+		while read -r param
 		do
-			param_name=$(echo $param | cut -d" " -f1 | sed 's/:/_/g')
-			param_value=$(echo $param | cut -d" " -f 2-)
-			
-			if grep -lq "^$param_name\s" hardcoded_params.txt; then 
+			if [[ -z "$param" ]]; then continue; fi
+			param_name=$(cut -d" " -f1 <<< "$param" | sed 's/[:-]/_/g')
+			param_value=$(cut -d" " -f 2- <<< "$param")
+			# skip hardcoded parameters
+# 			>&2 echo 2 jq -e ".$param_name | .[]? | .value" hardcoded_params.json 
+			if jq -e ".$param_name | .[]? | .value" hardcoded_params.json > /dev/null; then 
 				continue
 			fi
-
+# 			# check if the parameter is advanced
+			adv=''	
+			adv_re="\\\$adv_opts_cond.param_(out_)?$param_name"
+			if grep -Eq ''$adv_re'[:)"'"'"'"]|'$adv_re'$' ./$tool_id.xml; then
+				adv='adv_opts_cond|'
+			fi
 			# treat flag/boolean parameters (param_name and param_value becomes equal for them)
-			if [[ $param_name == $param_value ]]; then
-				param_value="-"$param_value
+			# (note the search and replace of : -> _ in the value which we don't want to to in
+			# general for the value)
+			if [[ "$param_name" == "${param_value//:/_}" ]]; then
+				param_value="true" #"-"$param_value
 			fi
-			
+
+			# solve problems created by tests using the same file multiple times		
+			param_value=$(unique_files $param_value | sed 's/ $//')
 			if [[ $param_value =~ .ini$ ]]; then
-				ini2test test-data/$param_value
-			elif grep -lq '<data name="param_out_'$param_name'"' ./$tool_id.xml
+				ini="test-data/$param_value"
+			elif grep -lq '<data name="param_out_'"$param_name"'"' "./$tool_id.xml"
 			then
-				echo '    <output name="param_out_'$param_name'" value="'$param_value'"/>'
-			elif grep -lq '<collection .* name="param_out_'$param_name'"' ./$tool_id.xml
+				# for optional outputs: add bool parameter that triggers it
+				if grep -lq '<param name="param_'"$param_name"'"' "./$tool_id.xml"
+				then
+					tes="$tes"'    <param name="'"$adv"'param_'"$param_name"'" value="true"/>\n'
+				fi
+				param_value=${param_value//\"/}
+				#TODO maybe make compare more specific (using file ... | grep text)
+				#TODO sim_size should be temporary to detect real tool errors
+				tes="$tes"'    <output name="param_out_'"$param_name"'" value="'"$param_value"'" compare="sim_size"/>\n'
+			elif grep -lq '<collection .* name="param_out_'"$param_name"'"' "./$tool_id.xml"
 			then
-				echo '    <output_collection name="param_out_'$param_name'" type="list">'
-				echo $param_value | sed 's/ /\n/g' | while read elem
-				do
-				echo '        <element name="'$elem'" file="'$elem'" ftype="gff" />'
-				done
-				echo '    </output_collection>'
+				# for optional outputs: add bool parameter that triggers it
+				if grep -lq '<param name="param_'"$param_name"'"' "./$tool_id.xml"
+				then
+					tes="$tes"'    <param name="'"$adv"'param_'"$param_name"'" value="true"/>\n'
+				fi
+				param_value=${param_value//\"/}
+				# since I have no idea on how to determine the element names in a generic way
+				# test just for the correct number of outputs
+				tes="$tes"'    <output_collection name="param_out_'"$param_name"'" type="list" count="'"$(wc -l <<< ${param_value// /$'\n'})"'"/>\n'
+				#tes="$tes"'    <output_collection name="param_out_'$param_name'" type="list">\n'
+				#while read -r elem
+				#do
+				#	tes="$tes"'        <element name="'"$elem"'" file="'"$elem"'" ftype="gff" />\n'
+				#done <<< ${param_value// /$'\n'}
+				#tes="$tes"'    </output_collection>\n'
 			else
-				echo '    <param name="param_'$param_name'" value="'$param_value'"/>'
+				# make input comma separated (A B "C D" -> A,B,"C D")
+				# - for selects with multiple true
+				if grep -lq '<param name="'"$adv"'param_'"$param_name"'".*multiple="true"' "./$tool_id.xml"; then
+					param_value=$(awk 'BEGIN{FPAT = "([^[:space:]]+)|(\"[^\"]+\")"}{for(i=1;i<NF;i++){printf("%s,",$i)} printf("%s", $NF)}' <<<"$param_value")
+				fi
+				param_value=${param_value//\"/}
+				tes="$tes"'    <param name="'"$adv"'param_'"$param_name"'" value="'"$param_value"'"/>\n'
 			fi
-		done
-		echo "  </test>"
+
+		done <<< "$LOOP"
+		if [[ ! -z "$ini" ]]; then
+			tes="$tes"$(ini2test "$ini" "$tes" "$tool_id")
+		fi
+
+		# if out_type is required by the tool and the command line does not set 
+		# then extract it from the extension of the argument to -out
+
+		if jq -e '.out_type | .[]| .tools | index("'"$tool_id"'")' hardcoded_params.json > /dev/null; then
+
+			if ! grep -lq '\-out_type' <<<"$line"; then
+				out_type=$(sed 's/.*-out [^ ]\+\.\([^ \.]\+\).*/\1/' <<<"$line")
+				if [ ! -z "$out_type" ]; then
+					tes="$tes"'    <param name="param_out_type" value="'"$out_type"'"/>\n'
+				fi
+			fi	
+		fi
+
+		if grep -q "adv_opts_cond" <<< "$tes"; then
+			tes="$tes"'\n    <param name="adv_opts_cond|adv_opts_selector" value="advanced"/>'
+		fi
+		tes="$tes  </test>"
+
+		# output final test, but remove all data parameters linking to default files from Openms/share
+		echo -e "$tes" | grep -v 'CHEMISTRY/'
 	done 
 	echo '</xml>'
 }  
@@ -106,15 +249,13 @@ function get_tests {
 function prepare_test_data {
 	id=$1
 
-	cat OpenMS-git/src/tests/topp/CMakeLists.txt | sed 's/#.*$//'| sed 's/^\s*//; s/\s*$//' | grep -v "^$"  | awk '{printf("%s@NEWLINE@", $0)}' | sed 's/)@NEWLINE@/)\n/g' | sed 's/@NEWLINE@/ /g' | 
+	cat OpenMS-git/src/tests/topp/CMakeLists.txt  OpenMS-git/src/tests/topp/THIRDPARTY/third_party_tests.cmake | sed 's/#.*$//'| sed 's/^\s*//; s/\s*$//' | grep -v "^$"  | awk '{printf("%s@NEWLINE@", $0)}' | sed 's/)@NEWLINE@/)\n/g' | sed 's/@NEWLINE@/ /g' | 
 		egrep -v "WRITEINI|WRITECTD|INVALIDVALUE|DIFF" | egrep "$id\_.*[0-9]+(_prep|_convert)?" | grep add_test | egrep "TOPP|UTILS" | while read line
 	do
-		line=$(echo $line | sed 's/add_test("//; s/)[^)]*$//; s/\${TOPP_BIN_PATH}\///g;s/\${DATA_DIR_TOPP}\///g; s/-test//; s#THIRDPARTY/##g' | cut -d" " -f2-)
-		echo $line
+		line=$(echo "$line" | sed 's/add_test("//; s/)[^)]*$//; s/\${TOPP_BIN_PATH}\///g;s/\${DATA_DIR_TOPP}\///g; s/-test//; s#THIRDPARTY/##g' | cut -d" " -f2-)
+		echo "$line" 
 	done 
 }
-
-
 #reset old data
 # rm -rf ctd
 # mkdir -p ctd
@@ -162,10 +303,20 @@ function prepare_test_data {
 # git clone -b topic/cdata https://github.com/bernt-matthias/CTDConverter.git CTDConverter
 # export PYTHONPATH=$(pwd)/CTDOpts
 # 
-# python2 CTDConverter/convert.py galaxy -i ctd/*ctd -o ./ -s tools_blacklist.txt -f filetypes.txt -m macros.xml -t tool.conf  -p hardcoded_params.txt -b version log debug test java_memory java_permgen in_type --test-macros macros_autotest.xml --test-macros-prefix autotest_ --tool-version $VERSION
-#-b version log debug test in_type executable pepnovo_executable param_model_directory rt_concat_trafo_out param_id_pool
+# python2 CTDConverter/convert.py galaxy -i ctd/*ctd -o ./ -s tools_blacklist.txt -f filetypes.txt -m macros.xml -t tool.conf  -p hardcoded_params.txt --test-macros macros_autotest.xml --test-macros-prefix autotest_ --tool-version $VERSION
+# #-b version log debug test in_type executable pepnovo_executable param_model_directory rt_concat_trafo_out param_id_pool
 
+# prepare_test_data OpenSwathMzMLFileCacher
+# 
 # echo "" > prepare_test_data.sh
+# echo 'CRUX_BINARY="crux"' >> prepare_test_data.sh
+# echo 'FIDOCHOOSEPARAMS_BINARY="FidoChooseParameters"' >> prepare_test_data.sh
+# echo 'FIDO_BINARY="Fido"' >> prepare_test_data.sh
+# echo 'COMET_BINARY="comet"' >> prepare_test_data.sh
+# echo 'MSGFPLUS_BINARY="$(msgf_plus -get_jar_path)"' >> prepare_test_data.sh
+# echo 'SIRIUS_BINARY="$(which sirius)"' >> prepare_test_data.sh
+# echo 'XTANDEM_BINARY="xtandem"' >> prepare_test_data.sh
+# echo 'NOVOR_BINARY="/home/berntm/Downloads/novor/lib/novor.jar"' >> prepare_test_data.sh
 # for i in OpenMS$VERSION-pkg/bin/*
 # do
 # 	b=$(basename "$i")
@@ -173,15 +324,17 @@ function prepare_test_data {
 # 	prepare_test_data "$b" >> prepare_test_data.sh
 # done
 # ##copy test data from OpenMS sources
-# rm -rf test-data
-# mkdir test-data
-# ##( ( grep "<param" ./macros_autotest.xml | sed 's/.*value="\([^"]\+\)".*/\1/')  &&  (sed 's/ /\n/g' prepare_test_data.sh )) | grep "\." | grep -v "^-" | grep -v "^[:-]\?[0-9]\+\.[0-9]\+" | sort -u | while read line
-# sed 's/ /\n/g' prepare_test_data.sh | grep "\." | grep -v "^-" | grep -v "^[:-]\?[0-9]\+\.[0-9]\+" | sort -u | while read line
+#rm -rf test-data
+#mkdir test-data
+##( ( grep "<param" ./macros_autotest.xml | sed 's/.*value="\([^"]\+\)".*/\1/')  &&  (sed 's/ /\n/g' prepare_test_data.sh )) | grep "\." | grep -v "^-" | grep -v "^[:-]\?[0-9]\+\.[0-9]\+" | sort -u | while read line
+# sed 's/ /\n/g' prepare_test_data.sh | grep -v "^-" | grep -v "^[:-]\?[0-9]" | grep -v '[",]' | grep -v "'" | sort -u | while read -r line
 # do
 # 	b=$(basename "$line")
 # 	f=$(find OpenMS-git/ -name "$b" | head -n 1)
 # 	if [[ ! -z $f ]]; then
 # 		cp "$f" test-data/
+# 	else
+# 		>&2 echo "could not find $b"
 # 	fi	
 # done
 
@@ -192,17 +345,19 @@ function prepare_test_data {
 # cd - || exit
 # conda deactivate
 
-
+# get_tests SimpleSearchEngine
+# exit
 echo "<macros>" > ./macros_autotest.xml
-for i in OpenMS$VERSION-pkg/bin/*
+for i in [A-Z]*xml
 do
-	b=$(basename "$i")
+	b=$(basename "$i" .xml)
 	get_tests "$b" >> ./macros_autotest.xml
 done
 echo "</macros>" >> ./macros_autotest.xml
 
+# planemo t --no_cleanup --galaxy_source https://github.com/bernt-matthias/galaxy.git --galaxy_branch topic/openms-datatypes
 
-# 
+
 # mods for all xml files
 # - add aggressive error checks
 # - make command and help CDATA
