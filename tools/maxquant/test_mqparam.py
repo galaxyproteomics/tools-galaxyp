@@ -46,7 +46,6 @@ class TestParamGroup:
 
         assert len(t._root.find('isobaricLabels')) == 1
         assert len(t._root.find('isobaricLabels')[0]) == 7
-        # assert len(t._root.find('IsobaricLabelInfo')) == 7
 
         t.set_isobaric_label('iTRAQ4plex-Lys115', 'iTRAQ4plex-Nter115', 0.3, 1, 1.2, 0, True)
 
@@ -59,13 +58,13 @@ class TestParamGroup:
 
         text_list = [el.text for el in t._root.find('isobaricLabels')[1]]
         assert text_list == ['iTRAQ4plex-Lys115', 'iTRAQ4plex-Nter115',
-                             '0.3', '1', '1.2', '0', 'True']
+                             '0.3', '1.0', '1.2', '0.0', 'True']
 
 
 class TestMQParam:
 
     def test_version(self):
-        t = MQParam(TEMPLATE_PATH, None)
+        t = MQParam(TEMPLATE_PATH)
         assert t._root.find('maxQuantVersion').text == '1.6.3.4'
 
     def test_validity_check(self):
@@ -95,7 +94,7 @@ class TestMQParam:
 
     def test_exp_design(self, tmpdir):
         # default experimental design when None is specified
-        t = MQParam(TEMPLATE_PATH, None)
+        t = MQParam(TEMPLATE_PATH)
         design = t._make_exp_design((0, 0), ('./Test1.mzXML', './Test2.mzXML'))
         assert design['Name'] == ('./Test1.mzXML', './Test2.mzXML')
         assert design['Fraction'] == ('32767', '32767')
@@ -123,7 +122,7 @@ class TestMQParam:
             design = t._make_exp_design(('./Test2.mzXML',), (0,))
 
     def test_add_infiles(self):
-        t = MQParam(TEMPLATE_PATH, None)
+        t = MQParam(TEMPLATE_PATH)
         t.add_infiles([('/path/Test1.mzXML', '/path/Test2.mzXML'),
                        ('/path/Test3.mzXML', '/path/Test4.mzXML')])
 
@@ -136,7 +135,7 @@ class TestMQParam:
         assert t[1]
 
     def test_translate(self):
-        t = MQParam(TEMPLATE_PATH, None)
+        t = MQParam(TEMPLATE_PATH)
         t.add_infiles([('/posix/path/to/Test1.mzXML',
                         '/posix/path/to/Test2.mzXML'),
                        ('/path/dummy.mzXML',)])  # mqparam is not designed for windows
@@ -154,7 +153,7 @@ class TestMQParam:
 
 
     def test_fasta_files(self):
-        t = MQParam(TEMPLATE_PATH, None)
+        t = MQParam(TEMPLATE_PATH)
         t.add_fasta_files(('test1', 'test2'),
                           parse_rules={'identifierParseRule': r'>([^\s]*)'})
         assert len(t._root.find('fastaFiles')) == 2
@@ -166,7 +165,7 @@ class TestMQParam:
             t.add_fasta_files(('test3', 'test4'))
 
     def test_simple_param(self):
-        t = MQParam(TEMPLATE_PATH, None)
+        t = MQParam(TEMPLATE_PATH)
         t.set_simple_param('minUniquePeptides', 4)
         assert t._root.find('.minUniquePeptides').text == '4'
 
@@ -191,7 +190,7 @@ class TestMQParam:
               - [label1,label2]
         """)
 
-        t = MQParam(TEMPLATE_PATH, None)
+        t = MQParam(TEMPLATE_PATH)
         t._from_yaml(str(conf1))
         assert t['numThreads'] == '4'
         assert [child.text for child in t[1]._root.find('labelMods')] == ['', 'label1;label2']
@@ -212,7 +211,7 @@ class TestMQParam:
         """)
         mqpar_out = tmpdir / "mqpar.xml"
 
-        t = MQParam(TEMPLATE_PATH, None, yaml=str(yaml_conf))
+        t = MQParam(TEMPLATE_PATH, yaml=str(yaml_conf))
         t.write(str(mqpar_out))
 
         test = ET.parse(str(mqpar_out)).getroot()

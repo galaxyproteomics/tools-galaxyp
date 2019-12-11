@@ -105,7 +105,7 @@ class MQParam:
     some of its parameters.
     """
 
-    def __init__(self, mqpar_in, exp_design, yaml=None, substitution_rx=r'[^\s\S]'):  # no sub by default
+    def __init__(self, mqpar_in, exp_design=None, yaml=None, substitution_rx=r'[^\s\S]'):  # no sub by default
         """Initialize MQParam class. mqpar_in can either be a template
         or a already suitable mqpar file.
 
