@@ -138,8 +138,8 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
     files=["idmapping_selected.tab.gz","idmapping.dat.gz"]
 
     #header
-    if human : tab = [["UniProt-AC","UniProt-ID","GeneID","RefSeq","GI","PDB","GO","PIR","MIM","UniGene","Ensembl_Gene","Ensembl_Transcript","Ensembl_Protein","neXtProt","BioGrid","STRING","KEGG"]]
-    else : tab = [["UniProt-AC","UniProt-ID","GeneID","RefSeq","GI","PDB","GO","PIR","MIM","UniGene","Ensembl_Gene","Ensembl_Transcript","Ensembl_Protein","BioGrid","STRING","KEGG"]]
+    if human : tab = [["UniProt-AC","UniProt-AC_reviewed","UniProt-ID","GeneID","RefSeq","GI","PDB","GO","PIR","MIM","UniGene","Ensembl_Gene","Ensembl_Transcript","Ensembl_Protein","neXtProt","BioGrid","STRING","KEGG",'Gene_Name']]
+    else : tab = [["UniProt-AC","UniProt-AC_reviewed","UniProt-ID","GeneID","RefSeq","GI","PDB","GO","PIR","MIM","UniGene","Ensembl_Gene","Ensembl_Transcript","Ensembl_Protein","BioGrid","STRING","KEGG",'Gene_Name']]
 
     #get selected.tab and keep only ids of interest
     selected_tab_file=species_dict[species]+"_"+files[0]
@@ -147,7 +147,7 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
     with gzip.open(tab_path,"rt") as select :
         tab_reader = csv.reader(select,delimiter="\t")
         for line in tab_reader :
-            tab.append([line[i] for i in [0,1,2,3,4,5,6,11,13,14,18,19,20]])
+            tab.append([line[0]]+[line[i] for i in [0,1,2,3,4,5,6,11,13,14,18,19,20]])
     os.remove(tab_path)
 
     #print("selected_tab ok")
@@ -162,9 +162,8 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
         uniprot_reviewed_list = decoded_content.splitlines()
 
     for line in tab[1:]:
-        UniProtAC = line[0]
+        UniProtAC = line[1]
         if UniProtAC not in uniprot_reviewed_list :
-            line[0]=""
             line[1]=""
 
     """
@@ -173,8 +172,8 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
     """
 
     #there's more id type for human
-    if human : ids = ['neXtProt','BioGrid','STRING','KEGG' ]   #ids to get from dat_file
-    else : ids = ['BioGrid','STRING','KEGG' ]
+    if human : ids = ['neXtProt','BioGrid','STRING','KEGG','Gene_Name' ]   #ids to get from dat_file
+    else : ids = ['BioGrid','STRING','KEGG','Gene_Name' ]
     unidict = {}
 
     #keep only ids of interest in dictionaries
@@ -206,15 +205,15 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
                 nextprot = access_dictionary(unidict,uniprotID,'neXtProt')
                 if nextprot != '' : nextprot = clean_nextprot_id(nextprot,line[0])
                 line.extend([nextprot,access_dictionary(unidict,uniprotID,'BioGrid'),access_dictionary(unidict,uniprotID,'STRING'),
-                        access_dictionary(unidict,uniprotID,'KEGG')])
+                        access_dictionary(unidict,uniprotID,'KEGG'),access_dictionary(unidict,uniprotID,'Gene_Name')])
             else :
-                line.extend(["","","",""])
+                line.extend(["","","","",""])
         else :
             if uniprotID in unidict :
                 line.extend([access_dictionary(unidict,uniprotID,'BioGrid'),access_dictionary(unidict,uniprotID,'STRING'),
-                        access_dictionary(unidict,uniprotID,'KEGG')])
+                        access_dictionary(unidict,uniprotID,'KEGG'),access_dictionary(unidict,uniprotID,'Gene_Name')])
             else :
-                line.extend(["","",""])
+                line.extend(["","","",""])
 
     #print ("tab ok")
 
@@ -230,9 +229,9 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
         #add missing nextprot ID
         for line in tab[1:] : 
             uniprotID=line[0]
-            nextprotID=line[13]
+            nextprotID=line[14]
             if uniprotID in next_dict and (nextprotID == '' or (nextprotID != "NX_"+uniprotID and next_dict[uniprotID] == "NX_"+uniprotID)) :
-                line[13]=next_dict[uniprotID]
+                line[14]=next_dict[uniprotID]
 
     output_file = species+"_id_mapping_"+ time.strftime("%d-%m-%Y") + ".tsv"
     path = os.path.join(target_directory,output_file)

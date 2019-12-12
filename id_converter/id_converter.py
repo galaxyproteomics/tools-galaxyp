@@ -173,22 +173,15 @@ def main():
                 if len(ids_dictionary[id][ids_dictionary_index[other_id_type]]) > 1 and '' in ids_dictionary[id][ids_dictionary_index[other_id_type]] : 
                     ids_dictionary[id][ids_dictionary_index[other_id_type]].remove('')
 
-    #print ("dictionary created")
-
     #Get file and/or ids from input 
     if args.input_type == "list" :
         ids = get_input_ids_from_string(args.input)
     elif args.input_type == "file" :
         input_file, ids = get_input_ids_from_file(args.input,args.column_number,header)
 
-    #print ("starting mapping")
-
     #Mapping ids
     result_dict = map_to_dictionary(ids,ids_dictionary,args.id_type,target_ids)
 
-    #print ("mapping done")
-
-    #print ("creating output file")
     #creating output file 
     with open(args.output,"w") as output :
         writer = csv.writer(output,delimiter="\t")
