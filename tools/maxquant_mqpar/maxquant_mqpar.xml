@@ -5,58 +5,49 @@
     <requirements>
         <requirement type="package" version="@VERSION@">maxquant</requirement>
         <requirement type="package" version="3.7">python</requirement>
+        <requirement type="package" version="5.1.2">pyyaml</requirement>
         <requirement type="package" version="0.92.6">r-ptxqc</requirement>
     </requirements>
     <command detect_errors="exit_code"><![CDATA[
+    ## link galaxy datasets to filenams accepted by maxquant
     #import re
+    #set names = [re.sub('@SUBSTITUTION_RX@', '_', str($n.element_identifier)) for $n in $infile.infiles]
+    #set names_with_ext = [($name if ($name).lower().endswith(str($input_opts.ftype)) else $name + str($input_opts.ftype)) for $name in $names]
+    #for $target, $link in zip($infiles, $names_with_ext)
+        && ln -s '$target' '$link'
+    #end for
 
-    python3 '$__tool_directory__/mqwrapper.py'
+    ## create/modify config files
+    #if $conf_input.select == 'yaml':
+        maxquant -c mqpar.xml 2>/dev/null  ## MQ writes success of creation to stderr
+    #else
+        cp $conf_input.mqpar mqpar.xml
+    #end if
+    && python3 '$__tool_directory__/create_mqpar.py'
+    #if $conf_input.template
+        --exp_design='$template'
+    #end if
+    --version=@VERSION@
     --num_threads=\${GALAXY_SLOTS:-1}
     --substitution_rx='@SUBSTITUTION_RX@'
-    #if $infile.select == "mzxml_files"
-        --mzxml_files='$infile.mzxml_files'
-        #set names = ','.join([re.sub('@SUBSTITUTION_RX@', '_', str($name.element_identifier)) for $name in $infile.mzxml_files])
-    #else
-        --raw_files='$infile.raw_files'
-        #set names = ','.join([re.sub('@SUBSTITUTION_RX@', '_', str($name.element_identifier)) for $name in $infile.raw_files])
+    #if $conf_input.yaml
+    --yaml='$conf_input.yaml'
     #end if
-    --infile_names='$names'
-    --version='@VERSION@'
-    --fasta_files='$fasta_files'
-    --identifier_parse_rule='$identifier_parse_rule'
-    --description_parse_rule='$description_parse_rule'
-    --mqpar_in='$mqpar_in'
+    mqpar.xml
 
-    --evidence='$evidence'
-    --msms='$msms'
-    --parameters='$parameters'
-    --peptides='$peptides'
-    --proteinGroups='$proteinGroups'
-    --allPeptides='$allPeptides'
-    --libraryMatch='$libraryMatch'
-    --matchedFeatures='$matchedFeatures'
-    --modificationSpecificPeptides='$modificationSpecificPeptides'
-    --ms3Scans='$ms3Scans'
-    --msmsScans='$msmsScans'
-    --mzRange='$mzRange'
-    --peptideSection='$peptideSection'
-    --summary='$summary'
-    --mzTab='$mzTab'
-    --output_all='$output_all'
-    --mqpar='$mqpar'
-
-    #if 'log' in $output
+    && maxquant mqpar.xml
+    #if 'log' in $output_opts.output:
         > '$log'
     #end if
-    && mv ./mqpar.xml ./combined/txt/mqpar.xml
-    #if 'output_all' in $output
+    && mv mqpar.xml combined/txt/mqpar.xml
+    #if 'output_all' in $output_opts.output:
         && tar -zcf '$output_all' ./combined/txt
     #end if
-
-    #if "ptxqc_report" in $output
-    && Rscript $qr $qr_yaml '$ptxqc_report'
-        #if 'log' in $output
-            >> '$log'
+  
+    #if "ptxqc_report" in $output_opts.output:
+        && Rscript '$qr' '$qr_yaml'
+        #if 'log' in $output_opts.output:
+            >> '$log' 2>&1
         #end if
     #end if
     ]]></command>
@@ -142,29 +133,27 @@
             library(PTXQC)
             library(yaml)
             library(methods)
-
             args = commandArgs(trailingOnly=TRUE)
             yaml_config = yaml.load_file(input = args[1])
             r = createReport('./combined/txt', yaml_config)
             cat(paste0("\nReport generated as '", r\$report_file, "'\n\n"))
-
-            file.copy(r\$report_file, args[2])
+            file.copy(r\$report_file, '$ptxqc_report')
         </configfile>
     </configfiles>
 
     <inputs>
         <conditional name="infile">
             <param name="select" type="select" label="choose the type of your input files">
-                <option value="raw_files">Thermo.raw</option>
-                <option value="mzxml_files">mzXML</option>
+                <option value="raw">Thermo.raw</option>
+                <option value="mzxml">mzXML</option>
             </param>
-            <when value="raw_files"> 
-                <param multiple="true" name="raw_files" type="data"
+            <when value="raw"> 
+                <param multiple="true" name="infiles" type="data"
                        format="thermo.raw" label="RAW Files"
                        help="Specify one or more Thermo RAW files" />
             </when>
-            <when value="mzxml_files">
-                <param multiple="true" name="mzxml_files" type="data"
+            <when value="mzxml">
+                <param multiple="true" name="infiles" type="data"
                        format="mzxml" label="mzXML Files"
                        help="Specify one or more mzXML files" />
             </when>
@@ -189,12 +178,29 @@
                 </valid>
             </sanitizer>
         </param>
-        <param type="data" name="mqpar_in" format="xml"
-               label="mqpar.xml file with your search parameters. RAW file names 
-                      must match the names displayed in galaxy. Their paths 
-                      from the local machine are ignored. E.g. a file named
-                      'test01.raw' in galaxy can either be named 'test01.raw' or
-                      'D:\path\to\test01.raw' in the mqpar.xml."/>
+        <conditional name="conf_input">
+            <param name="select_conf_input" type="select"
+                   label="select whether you want to specify the parameters by a yaml file or an xml file">
+                <option value="mqpar">mqpar.xml</option>
+                <option value="yaml">yaml config file as used by mqparam.py</option>
+            </param>
+            <when value="mqpar">
+                <param type="data" name="mqpar" format="xml"
+                       label="mqpar.xml file with your search parameters. RAW file names 
+                              must match the names displayed in galaxy. Their paths 
+                              from the local machine are ignored. E.g. a file named
+                              'test01.raw' in galaxy can either be named 'test01.raw' or
+                              'D:\path\to\test01.raw' in the mqpar.xml."/>
+            </when>
+            <when value="yaml">
+                <param type="data" name="yaml" format="yml"
+                       label="Yaml config file for mqparam.py. The file names need to match the
+                              names shown in galaxy."/>
+                <param format="tabular" name="template" type="data" optional="true"
+                       label="Specify an experimental design template (if needed). For detailed
+                              instructions see the help text." />
+            </when>
+        </conditional>
 
         <section title="Quality Control Options (only active when PTXQC report is selected as output)"
                  name="qc" expanded="false">
@@ -212,29 +218,29 @@
 	           label="use msmsScans.txt?" truevalue="yes" falsevalue="no" />
         </section>
 
+        
         <param type="select" name="output" label="Select the desired outputs."
                multiple="true" optional="false">
-            <expand macro="output_option" name="proteinGroups" label="Protein Groups"/>
-            <expand macro="output_option" name="mqpar" label="mqpar.xml"/>
-            <expand macro="output_option" name="peptides" label="Peptides"/>
-            <expand macro="output_option" name="evidence" label="Evidence"/>
-            <expand macro="output_option" name="parameters" label="Tabular Paramters"/>
-            <expand macro="output_option" name="msms" label="MSMS"/>
-            <expand macro="output_option" name="mzTab" label="mzTab"/>
-            <expand macro="output_option" name="allPeptides" label="all peptides"/>
-            <expand macro="output_option" name="libraryMatch" label="library match"/>
-            <expand macro="output_option" name="matchedFeatures"
-                    label="matched features"/>
-            <expand macro="output_option" name="modificationSpecificPeptides"
-                    label="modification specific peptides"/>
-            <expand macro="output_option" name="ms3Scans" label="ms3 scans"/>
-            <expand macro="output_option" name="msmsScans" label="msms scans"/>
-            <expand macro="output_option" name="mzRange" label="mz range"/>
-            <expand macro="output_option" name="peptideSection" label="peptide section"/>
-            <expand macro="output_option" name="summary" label="summary"/>
-            <expand macro="output_option" name="output_all" label="complete 'combined/txt/' directory (compressed)"/>
-            <expand macro="output_option" name="log" label="MaxQuant log"/>
-            <expand macro="output_option" name="ptxqc_report" label="PTXQC report"/>
+            <option value="proteinGroups">Protein Groups</option>
+            <option value="mqpar">mqpar.xml</option>
+            <option value="peptides">Peptides</option>
+            <option value="evidence">Evidence</option>
+            <option value="parameters">Tabular Paramters</option>
+            <option value="msms">MSMS</option>
+            <option value="mzTab">mzTab</option>
+            <option value="allPeptides">all peptides</option>
+            <option value="libraryMatch">library match</option>
+            <option value="matchedFeatures">matched features</option>
+            <option value="modificationSpecificPeptides">modification specific peptides</option>
+            <option value="ms3Scans">ms3 scans</option>
+            <option value="msmsScans">msms scans</option>
+            <option value="mzRange">mz range</option>
+            <option value="peptideSection">peptide section</option>
+            <option value="summary">summary</option>
+            <option value="output_all">complete 'combined/txt/' directory (compressed)</option>
+            <option value="log">MaxQuant and PTXQC log</option>
+            <option value="ptxqc_report">PTXQC report</option>
+            <option value="config">yaml config file</option>
         </param>
     </inputs>
 
