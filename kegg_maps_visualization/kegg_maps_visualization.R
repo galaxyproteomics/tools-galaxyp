@@ -85,8 +85,8 @@ get_list_from_cp <-function(list){
 
 get_ref_pathways <- function(species){
   ##all available pathways for the species
-  pathways <-keggLink("pathway", species)
-  tot_path<-unique(pathways)
+  pathways <- keggLink("pathway", species)
+  tot_path <- unique(pathways)
   
   ##formating the dat into a list object
   ##key= pathway ID, value = genes of the pathway in the kegg format
@@ -238,6 +238,7 @@ main <- function(){
     pathways_file = read_file(args$pathways_input,header2)
     ids <- sapply(rapply(strsplit(clean_bad_character(pathways_file[,pathway_col]),","),c), function(x) remove_kegg_prefix(x),USE.NAMES = FALSE)
   }
+  if (args$native_kegg) { ids <- ids[ids != "04215"] }
   pathways_list <- read_file(args$pathways_list,F)
   if (!is.null(args$id_list)) {
     id_list <- get_list_from_cp(args$id_list)
