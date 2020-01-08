@@ -3,7 +3,7 @@
 The purpose of this script is to create source files from different databases to be used in other proteore tools
 """
 
-import os, sys, argparse, requests, time, csv, re, json, shutil, zipfile
+import os, shutil, sys, argparse, requests, time, csv, re, json, shutil, zipfile, subprocess
 from io import BytesIO
 from zipfile import ZipFile
 from galaxy.util.json import from_json_string, to_json_string
@@ -131,11 +131,13 @@ def check_entrez_geneid (id) :
 import ftplib, gzip
 csv.field_size_limit(sys.maxsize) # to handle big files
 
-def id_mapping_sources (data_manager_dict, species, target_directory) :
+def id_mapping_sources (data_manager_dict, species, target_directory, tool_data_path) :
 
     human = species == "Human"
     species_dict = { "Human" : "HUMAN_9606", "Mouse" : "MOUSE_10090", "Rat" : "RAT_10116" }
     files=["idmapping_selected.tab.gz","idmapping.dat.gz"]
+    archive = os.path.join(tool_data_path, "id_mapping/ID_mapping_archive_"+species+"_"+str(time.strftime("%Y%m%d")))
+    if os.path.isdir(archive) is False : os.mkdir(archive)
 
     #header
     if human : tab = [["UniProt-AC","UniProt-AC_reviewed","UniProt-ID","GeneID","RefSeq","GI","PDB","GO","PIR","MIM","UniGene","Ensembl_Gene","Ensembl_Transcript","Ensembl_Protein","neXtProt","BioGrid","STRING","KEGG",'Gene_Name']]
@@ -148,8 +150,8 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
         tab_reader = csv.reader(select,delimiter="\t")
         for line in tab_reader :
             tab.append([line[0]]+[line[i] for i in [0,1,2,3,4,5,6,11,13,14,18,19,20]])
-    os.remove(tab_path)
-
+    if os.path.exists(os.path.join(archive,tab_path.split("/")[-1])) : os.remove(os.path.join(archive,tab_path.split("/")[-1]))
+    shutil.move(tab_path, archive)
     #print("selected_tab ok")
 
     #get uniprot-AC reviewed
@@ -161,6 +163,13 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
         decoded_content = download.content.decode('utf-8')
         uniprot_reviewed_list = decoded_content.splitlines()
 
+    #save reviewed list
+    reviewed_list_path = os.path.join(archive,'uniprot_reviewed_list.txt')
+    with open(reviewed_list_path,'w') as reviewed_list_file:
+        for id in uniprot_reviewed_list:
+            reviewed_list_file.write(id+"\n")
+
+    #remove unreviewed uniprot-AC
     for line in tab[1:]:
         UniProtAC = line[1]
         if UniProtAC not in uniprot_reviewed_list :
@@ -177,7 +186,7 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
     unidict = {}
 
     #keep only ids of interest in dictionaries
-    dat_file=species_dict[species]+"_"+files[1]
+    dat_file = species_dict[species]+"_"+files[1]
     dat_path = download_from_uniprot_ftp(dat_file,target_directory)
     with gzip.open(dat_path,"rt") as dat :
         dat_reader = csv.reader(dat,delimiter="\t")
@@ -193,7 +202,8 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
                         unidict[uniprotID].update({ id_type : cor_id })
                 elif  id_type in ids :
                     unidict[uniprotID]={id_type : cor_id}
-    os.remove(dat_path)
+    if os.path.exists(os.path.join(archive,dat_path.split("/")[-1])) : os.remove(os.path.join(archive,dat_path.split("/")[-1]))
+    shutil.move(dat_path, archive)
 
     #print("dat_file ok")
 
@@ -220,11 +230,15 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
     #add missing nextprot ID for human or replace old ones
     if human : 
         #build next_dict
-        nextprot_ids = id_list_from_nextprot_ftp("nextprot_ac_list_all.txt",target_directory)
+        nextprot_path = id_list_from_nextprot_ftp("nextprot_ac_list_all.txt",target_directory)
+        with open(nextprot_path,'r') as nextprot_ids :
+            nextprot_ids = nextprot_ids.read().splitlines()
+        if os.path.exists(os.path.join(archive,nextprot_path.split("/")[-1])) : os.remove(os.path.join(archive,nextprot_path.split("/")[-1]))
+        shutil.move(nextprot_path,archive)
         next_dict = {}
         for nextid in nextprot_ids : 
             next_dict[nextid.replace("NX_","")] = nextid
-        os.remove(os.path.join(target_directory,"nextprot_ac_list_all.txt"))
+        #os.remove(os.path.join(target_directory,"nextprot_ac_list_all.txt"))
 
         #add missing nextprot ID
         for line in tab[1:] : 
@@ -239,6 +253,9 @@ def id_mapping_sources (data_manager_dict, species, target_directory) :
     with open(path,"w") as out :
         w = csv.writer(out,delimiter='\t')
         w.writerows(tab)
+    
+    subprocess.call(['tar', '-czvf', archive+".tar.gz", archive])
+    shutil.rmtree(archive, ignore_errors=True)
 
     name_dict={"Human" : "Homo sapiens", "Mouse" : "Mus musculus", "Rat" : "Rattus norvegicus"}
     name = species +" (" + name_dict[species]+" "+time.strftime("%d/%m/%Y")+")"
@@ -266,9 +283,8 @@ def id_list_from_nextprot_ftp(file,target_directory) :
     ftp.cwd(ftp_dir)
     ftp.retrbinary("RETR " + file, open(path, 'wb').write)
     ftp.quit()
-    with open(path,'r') as nextprot_ids :
-        nextprot_ids = nextprot_ids.read().splitlines()
-    return (nextprot_ids)
+
+    return (path)
 
 #return '' if there's no value in a dictionary, avoid error
 def access_dictionary (dico,key1,key2) :
@@ -596,6 +612,7 @@ def main():
     parser.add_argument("--date")
     parser.add_argument("-o", "--output")
     parser.add_argument("--database")
+    parser.add_argument("--tool_data_path")
     args = parser.parse_args()
 
     data_manager_dict = {}
@@ -630,13 +647,13 @@ def main():
 
     ## Download ID_mapping source file from Uniprot
     try:
-        id_mapping=args.id_mapping
+        id_mapping = args.id_mapping
     except NameError:
         id_mapping = None
     if id_mapping is not None:
         id_mapping = id_mapping .split(",")
         for species in id_mapping :
-            id_mapping_sources(data_manager_dict, species, target_directory)
+            id_mapping_sources(data_manager_dict, species, target_directory, args.tool_data_path)
 
     ## Download PPI ref files from biogrid/bioplex/humap
     try:
