@@ -130,10 +130,10 @@ def write_text_venn(json_result):
 
     #construct tsv
     for key in result :
-        line = [column_dict[key]]
-        line.extend(result[key])
+        line = result[key]
         if len(line) < nb_lines_max :
             line.extend(['NA']*(nb_lines_max-len(line)))
+        line = [column_dict[key]] + line                #add header
         lines.append(line)  
     #transpose tsv
     lines=zip(*lines)
