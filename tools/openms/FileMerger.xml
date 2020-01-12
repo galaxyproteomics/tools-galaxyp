@@ -1,101 +1,124 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
 <!--Proposed Tool Section: [File Handling]-->
-<tool id="FileMerger" name="FileMerger" version="2.3.0">
+<tool id="FileMerger" name="FileMerger" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@">
   <description>Merges several MS files into one file.</description>
   <macros>
     <token name="@EXECUTABLE@">FileMerger</token>
     <import>macros.xml</import>
+    <import>macros_autotest.xml</import>
+    <import>macros_test.xml</import>
   </macros>
-  <expand macro="references"/>
-  <expand macro="stdio"/>
   <expand macro="requirements"/>
-  <command detect_errors="aggressive"><![CDATA[FileMerger
+  <expand macro="stdio"/>
+  <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
+@EXT_FOO@
+#import re
 
+## Preprocessing
+mkdir in &&
+${ ' '.join(["ln -s '%s' 'in/%s.%s' &&" % (_, re.sub('[^\w\-_]', '_', _.element_identifier), $gxy2omsext(_.ext)) for _ in $in if _]) }
+mkdir out &&
+#if $rt_concat.trafo_out_FLAG:
+  mkdir rt_concat_trafo_out &&
+#end if
+
+## Main program call
+
+set -o pipefail &&
+@EXECUTABLE@ -write_ctd ./ &&
+python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' &&
+@EXECUTABLE@ -ini @EXECUTABLE@.ctd
 -in
-  #for token in $param_in:
-    $token
-  #end for
-#if $param_out:
-  -out $param_out
-#end if
-#if $param_annotate_file_origin:
-  -annotate_file_origin
-#end if
-#if $param_rt_concat_gap:
-  -rt_concat:gap $param_rt_concat_gap
+${' '.join(["'in/%s.%s'"%(re.sub('[^\w\-_]', '_', _.element_identifier), $gxy2omsext(_.ext)) for _ in $in if _])}
+-out
+'out/output.${out_type}'
+#if $rt_concat.trafo_out_FLAG:
+  -rt_concat:trafo_out
+  ${' '.join(["'rt_concat_trafo_out/%s.%s'"%(re.sub('[^\w\-_]', '_', _.element_identifier), $gxy2omsext("trafoxml")) for _ in $in if _])}
 #end if
 
-#if $rep_param_rt_concat_trafo_out:
--rt_concat:trafo_out
-  #for token in $rep_param_rt_concat_trafo_out:
-    #if " " in str(token):
-      "$token.param_rt_concat_trafo_out"
-    #else
-      $token.param_rt_concat_trafo_out
-    #end if
-  #end for
-#end if
-#if $param_raw_rt_auto:
-  -raw:rt_auto
-#end if
-
-#if $rep_param_raw_rt_custom:
--raw:rt_custom
-  #for token in $rep_param_raw_rt_custom:
-    #if " " in str(token):
-      "$token.param_raw_rt_custom"
-    #else
-      $token.param_raw_rt_custom
-    #end if
-  #end for
-#end if
-#if $param_raw_rt_filename:
-  -raw:rt_filename
-#end if
-#if $param_raw_ms_level:
-  -raw:ms_level $param_raw_ms_level
-#end if
-#if $adv_opts.adv_opts_selector=='advanced':
-    #if $adv_opts.param_force:
-  -force
-#end if
-#end if
-]]></command>
+## Postprocessing
+&& mv 'out/output.${out_type}' '$out'
+#if $rt_concat.trafo_out_FLAG:
+  ${' '.join(["&& mv -n 'in/%(id)s.%(gext)s' 'rt_concat_trafo_out/%(id)s'"%{"id": re.sub('[^\w\-_]', '_', _.element_identifier), "gext": $gxy2omsext("trafoxml")} for _ in $rt_concat_trafo_out if _])}
+#end if]]></command>
+  <configfiles>
+    <inputs name="args_json" data_style="paths"/>
+  </configfiles>
   <inputs>
-    <param name="param_in" type="data" format="mzData,mzxml,mzml,dta,dta2d,mgf,featurexml,consensusxml,fid,traml,fasta" multiple="true" optional="False" size="30" label="Input files separated by blank" help="(-in) ">
+    <param name="in" argument="-in" type="data" format="consensusxml,dta,dta2d,fasta,featurexml,mgf,mzdata,mzml,mzxml,traml" multiple="true" optional="false" label="Input files separated by blank" help=" select consensusxml,dta,dta2d,fasta,featurexml,mgf,mzdata,mzml,mzxml,traml data sets(s)"/>
+    <param name="out_type" type="select" optional="false" label="File type of output out (Output file)">
+      <option value="mzML">mzml</option>
+      <option value="featureXML">featurexml</option>
+      <option value="consensusXML">consensusxml</option>
+      <option value="traML">traml</option>
+      <option value="fasta">fasta</option>
+    </param>
+    <param name="annotate_file_origin" argument="-annotate_file_origin" type="boolean" optional="true" truevalue="true" falsevalue="false" checked="false" label="Store the original filename in each feature using meta value &quot;file_origin&quot; (for featureXML and consensusXML only)" help=""/>
+    <param name="append_method" argument="-append_method" display="radio" type="select" optional="false" label="Append consensusMaps rowise or colwise" help="(Please use colwise for the MSstatsConverter)">
+      <option value="append_rows" selected="true">append_rows</option>
+      <option value="append_cols">append_cols</option>
+      <expand macro="list_string_san"/>
+    </param>
+    <param name="threads" argument="-threads" type="hidden" value="${GALAXY_SLOTS:-1}">
       <sanitizer>
-        <valid initial="string.printable">
-          <remove value="'"/>
-          <remove value="&quot;"/>
-        </valid>
+        <valid initial="string.printable"/>
       </sanitizer>
     </param>
-    <param name="param_annotate_file_origin" display="radio" type="boolean" truevalue="-annotate_file_origin" falsevalue="" checked="false" optional="True" label="Store the original filename in each feature using meta value &quot;file_origin&quot; (for featureXML and consensusXML only)" help="(-annotate_file_origin) "/>
-    <param name="param_rt_concat_gap" type="float" value="0.0" label="The amount of gap (in seconds) to insert between the RT ranges of different input files" help="(-gap) RT concatenation is enabled if a value &gt; 0 is set"/>
-    <param name="param_raw_rt_auto" display="radio" type="boolean" truevalue="-raw:rt_auto" falsevalue="" checked="false" optional="True" label="Assign retention times automatically (integers starting at 1)" help="(-rt_auto) "/>
-    <repeat name="rep_param_raw_rt_custom" min="0" title="param_raw_rt_custom">
-      <param name="param_raw_rt_custom" type="text" size="30" value="0" label="List of custom retention times that are assigned to the files" help="(-rt_custom) The number of given retention times must be equal to the number of input files">
+    <section name="rt_concat" title="Options for concatenating files in the retention time (RT) dimension" help="The RT ranges of inputs are adjusted so they don't overlap in the merged file (traML input not supported)" expanded="false">
+      <param name="gap" argument="-rt_concat:gap" type="float" optional="true" value="0.0" label="The amount of gap (in seconds) to insert between the RT ranges of different input files" help="RT concatenation is enabled if a value &gt; 0 is set"/>
+      <param type="boolean" name="trafo_out_FLAG" checked="false" truevalue="true" falsevalue="false" label="Generate output trafo_out (Output of retention time transformations that were applied to the input files to produce non-overlapping RT ranges)" help="If used, one output file per input file is required"/>
+    </section>
+    <section name="raw" title="Options for raw data input/output (primarily for DTA files)" help="" expanded="false">
+      <param name="rt_auto" argument="-raw:rt_auto" type="boolean" optional="true" truevalue="true" falsevalue="false" checked="false" label="Assign retention times automatically (integers starting at 1)" help=""/>
+      <param name="rt_custom" argument="-raw:rt_custom" type="text" optional="true" value="" label="List of custom retention times that are assigned to the files" help="The number of given retention times must be equal to the number of input files (space separated list, in order to allow for spaces in list items surround them by single quotes)">
+        <expand macro="list_float_valsan"/>
+      </param>
+      <param name="rt_filename" argument="-raw:rt_filename" type="boolean" optional="true" truevalue="true" falsevalue="false" checked="false" label="Try to guess the retention time of a file based on the filename" help="This option is useful for merging DTA files, where filenames should contain the string 'rt' directly followed by a floating point number, e.g. 'my_spectrum_rt2795.15.dta'"/>
+      <param name="ms_level" argument="-raw:ms_level" type="integer" optional="true" value="0" label="If 1 or higher, this number is assigned to spectra as the MS level" help="This option is useful for DTA files which do not contain MS level information"/>
+    </section>
+    <expand macro="adv_opts_macro">
+      <param name="log" argument="-log" type="hidden" value="log.txt">
+        <expand macro="list_string_san"/>
         <sanitizer>
-          <valid initial="string.printable">
-            <remove value="'"/>
-            <remove value="&quot;"/>
-          </valid>
+          <valid initial="string.printable"/>
         </sanitizer>
       </param>
-    </repeat>
-    <param name="param_raw_rt_filename" display="radio" type="boolean" truevalue="-raw:rt_filename" falsevalue="" checked="false" optional="True" label="Try to guess the retention time of a file based on the filename. This option is useful for merging DTA files, where filenames should contain the string 'rt' directly followed by a floating point number," help="(-rt_filename) e.g. 'my_spectrum_rt2795.15.dta'"/>
-    <param name="param_raw_ms_level" type="integer" value="0" label="If 1 or higher, this number is assigned to spectra as the MS level" help="(-ms_level) This option is useful for DTA files which do not contain MS level information"/>
-    <expand macro="advanced_options">
-      <param name="param_force" display="radio" type="boolean" truevalue="-force" falsevalue="" checked="false" optional="True" label="Overwrite tool specific checks" help="(-force) "/>
+      <param name="no_progress" argument="-no_progress" type="hidden" value="true">
+        <sanitizer>
+          <valid initial="string.printable"/>
+        </sanitizer>
+      </param>
+      <param name="force" argument="-force" type="boolean" optional="true" truevalue="true" falsevalue="false" checked="false" label="Overwrite tool specific checks" help=""/>
+      <param name="test" argument="-test" type="hidden" value="false">
+        <sanitizer>
+          <valid initial="string.printable"/>
+        </sanitizer>
+      </param>
     </expand>
   </inputs>
   <outputs>
-    <data name="param_out" format="featurexml"/>
-    <data name="param_rt_concat_trafo_out" format="trafoxml"/>
+    <data name="out" label="${tool.name} on ${on_string}: out">
+      <change_format>
+        <when input="out_type" value="consensusXML" format="consensusxml"/>
+        <when input="out_type" value="fasta" format="fasta"/>
+        <when input="out_type" value="featureXML" format="featurexml"/>
+        <when input="out_type" value="mzML" format="mzml"/>
+        <when input="out_type" value="traML" format="traml"/>
+      </change_format>
+    </data>
+    <collection type="list" name="rt_concat_trafo_out" label="${tool.name} on ${on_string}: rt_concat:trafo_out">
+      <discover_datasets directory="rt_concat.trafo_out" format="trafoxml" pattern="__name__"/>
+      <filter>rt_concat["trafo_out_FLAG"]</filter>
+    </collection>
   </outputs>
-  <help>Merges several MS files into one file.
+  <tests>
+    <expand macro="autotest_FileMerger"/>
+    <expand macro="manutest_FileMerger"/>
+  </tests>
+  <help><![CDATA[Merges several MS files into one file.
 
-
-For more information, visit https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Documentation/release/2.3.0/html/TOPP_FileMerger.html</help>
+]]></help>
+  <expand macro="references"/>
 </tool>

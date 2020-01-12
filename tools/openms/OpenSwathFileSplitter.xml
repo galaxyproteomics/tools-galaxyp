@@ -1,57 +1,101 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
 <!--Proposed Tool Section: [Targeted Experiments]-->
-<tool id="OpenSwathFileSplitter" name="OpenSwathFileSplitter" version="2.3.0">
+<tool id="OpenSwathFileSplitter" name="OpenSwathFileSplitter" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@">
   <description>Splits SWATH files into n files, each containing one window.</description>
   <macros>
     <token name="@EXECUTABLE@">OpenSwathFileSplitter</token>
     <import>macros.xml</import>
+    <import>macros_autotest.xml</import>
+    <import>macros_test.xml</import>
   </macros>
-  <expand macro="references"/>
-  <expand macro="stdio"/>
   <expand macro="requirements"/>
-  <command detect_errors="aggressive"><![CDATA[OpenSwathFileSplitter
+  <expand macro="stdio"/>
+  <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
+@EXT_FOO@
+#import re
 
+## Preprocessing
+mkdir in &&
+ln -s '$in' 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)' &&
+#if $adv_opts_cond.adv_opts_selector=='advanced':
+  #if $adv_opts_cond.out_qc_FLAG:
+    mkdir out_qc &&
+  #end if
+#end if
+
+## Main program call
+
+set -o pipefail &&
+@EXECUTABLE@ -write_ctd ./ &&
+python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' &&
+@EXECUTABLE@ -ini @EXECUTABLE@.ctd
 -in
-  #for token in $param_in:
-    $token
-  #end for
-#if $adv_opts.adv_opts_selector=='advanced':
-    #if $adv_opts.param_outputDirectory:
-  -outputDirectory     "$adv_opts.param_outputDirectory"
+'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
+#if $adv_opts_cond.adv_opts_selector=='advanced':
+  #if $adv_opts_cond.out_qc_FLAG:
+    -out_qc
+    'out_qc/output.${gxy2omsext("json")}'
+  #end if
 #end if
-    #if $adv_opts.param_force:
-  -force
+#if not($adv_opts_cond.out_qc_FLAG):
+  | tee '$stdout'
 #end if
-#end if
-&gt; $param_stdout
-]]></command>
+
+## Postprocessing
+#if $adv_opts_cond.adv_opts_selector=='advanced':
+  #if $adv_opts_cond.out_qc_FLAG:
+    && mv 'out_qc/output.${gxy2omsext("json")}' '$out_qc'
+  #end if
+#end if]]></command>
+  <configfiles>
+    <inputs name="args_json" data_style="paths"/>
+  </configfiles>
   <inputs>
-    <param name="param_in" type="data" format="mzml,mzxml" multiple="true" optional="False" size="30" label="Input file (SWATH/DIA file)" help="(-in) ">
+    <param name="in" argument="-in" type="data" format="mzml,mzxml" optional="false" label="Input file (SWATH/DIA file)" help=" select mzml,mzxml data sets(s)"/>
+    <param name="threads" argument="-threads" type="hidden" value="${GALAXY_SLOTS:-1}">
       <sanitizer>
-        <valid initial="string.printable">
-          <remove value="'"/>
-          <remove value="&quot;"/>
-        </valid>
+        <valid initial="string.printable"/>
       </sanitizer>
     </param>
-    <expand macro="advanced_options">
-      <param name="param_outputDirectory" type="text" size="30" value="./" label="Output path to store the split files" help="(-outputDirectory) ">
+    <expand macro="adv_opts_macro">
+      <param name="outputDirectory" argument="-outputDirectory" type="text" optional="true" value="./" label="Output path to store the split files" help="">
+        <expand macro="list_string_san"/>
+      </param>
+      <param type="boolean" name="out_qc_FLAG" checked="false" truevalue="true" falsevalue="false" label="Generate output out_qc (Optional QC meta data (charge distribution in MS1))" help="Only works with mzML input files"/>
+      <param name="log" argument="-log" type="hidden" value="log.txt">
+        <expand macro="list_string_san"/>
         <sanitizer>
-          <valid initial="string.printable">
-            <remove value="'"/>
-            <remove value="&quot;"/>
-          </valid>
+          <valid initial="string.printable"/>
         </sanitizer>
       </param>
-      <param name="param_force" display="radio" type="boolean" truevalue="-force" falsevalue="" checked="false" optional="True" label="Overwrite tool specific checks" help="(-force) "/>
+      <param name="no_progress" argument="-no_progress" type="hidden" value="true">
+        <sanitizer>
+          <valid initial="string.printable"/>
+        </sanitizer>
+      </param>
+      <param name="force" argument="-force" type="boolean" optional="true" truevalue="true" falsevalue="false" checked="false" label="Overwrite tool specific checks" help=""/>
+      <param name="test" argument="-test" type="hidden" value="false">
+        <sanitizer>
+          <valid initial="string.printable"/>
+        </sanitizer>
+      </param>
     </expand>
   </inputs>
   <outputs>
-    <data name="param_stdout" format="txt" label="Output from stdout"/>
+    <data name="out_qc" label="${tool.name} on ${on_string}: out_qc" format="json">
+      <filter>adv_opts_cond['adv_opts_selector'] == 'advanced' and adv_opts_cond['out_qc_FLAG']</filter>
+    </data>
+    <data name="stdout" format="txt" label="${tool.name} on ${on_string}: stdout">
+      <filter>not (adv_opts_cond['adv_opts_selector'] == 'advanced' and adv_opts_cond['out_qc_FLAG'])</filter>
+    </data>
   </outputs>
-  <help>Splits SWATH files into n files, each containing one window.
+  <tests>
+    <expand macro="autotest_OpenSwathFileSplitter"/>
+    <expand macro="manutest_OpenSwathFileSplitter"/>
+  </tests>
+  <help><![CDATA[Splits SWATH files into n files, each containing one window.
 
-
-For more information, visit https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Documentation/release/2.3.0/html/UTILS_OpenSwathFileSplitter.html</help>
+]]></help>
+  <expand macro="references"/>
 </tool>
