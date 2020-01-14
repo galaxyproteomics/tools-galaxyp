@@ -125,8 +125,9 @@ class MQParam:
         self.version = self._root.find('maxQuantVersion').text
         # regex for substitution of certain file name characters
         self.substitution_rx = substitution_rx
+        self.pg_node = copy.deepcopy(self._root.find('parameterGroups')[0])
         self._paramGroups = []
-        self.once = False  # for add_fasta_files. should only be called once
+        self.fasta_file_node = copy.deepcopy(self._root.find('fastaFiles')[0])
         if yaml:
             self._from_yaml(yaml)
 
@@ -244,8 +245,7 @@ class MQParam:
         """
 
         groups, files = zip(*[(num, f) for num, l in enumerate(infiles) for f in l])
-        pg_node = self._root.find('parameterGroups')[0]
-        self._paramGroups = [ParamGroup(pg_node) for i in range(len(infiles))]
+        self._paramGroups = [ParamGroup(self.pg_node) for i in range(len(infiles))]
 
         nodenames = ('filePaths', 'experiments', 'fractions',
                      'ptms', 'paramGroupIndices', 'referenceChannel')
@@ -318,18 +318,13 @@ class MQParam:
         Returns:
             None
         """
-        if self.once:
-            raise Exception("Don't use add_fasta_files twice on the same object.")
-        self.once = True
-
-        fasta_node = self._root.find("fastaFiles")
-        for f in range(len(files) - 1):
-            fasta_node.append(copy.deepcopy(fasta_node[0]))
-
-        for i, f in enumerate(files):
-            fasta_node[i].find('fastaFilePath').text = f
+        fasta_node = self._root.find('fastaFiles')
+        fasta_node.clear()
+        for f in files:
+            fasta_node.append(copy.deepcopy(self.fasta_file_node))
+            fasta_node[-1].find('fastaFilePath').text = f
             for rule in parse_rules:
-                fasta_node[i].find(rule).text = parse_rules[rule]
+                fasta_node[-1].find(rule).text = parse_rules[rule]            
 
     def set_simple_param(self, key, value):
         """Set a simple parameter.

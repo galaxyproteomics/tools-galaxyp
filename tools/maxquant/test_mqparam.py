@@ -65,7 +65,7 @@ class TestMQParam:
 
     def test_version(self):
         t = MQParam(TEMPLATE_PATH)
-        assert t._root.find('maxQuantVersion').text == '1.6.3.4'
+        assert t._root.find('maxQuantVersion').text == '1.6.10.43'
 
     def test_validity_check(self):
         design = {'Name': ['Test1','Test2'],
@@ -159,10 +159,6 @@ class TestMQParam:
         assert len(t._root.find('fastaFiles')) == 2
         assert t._root.find('fastaFiles')[0].find("fastaFilePath").text == 'test1'
         assert t._root.find('fastaFiles')[0].find("identifierParseRule").text == '>([^\\s]*)'
-
-        
-        with pytest.raises(Exception):
-            t.add_fasta_files(('test3', 'test4'))
 
     def test_simple_param(self):
         t = MQParam(TEMPLATE_PATH)
