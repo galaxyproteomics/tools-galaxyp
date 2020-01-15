@@ -1,6 +1,6 @@
 <tool id="maxquant_mqpar" name="MaxQuant (using mqpar.xml)" version="@VERSION@">
     <macros>
-        <import>macros.xml</import>
+        <import>../maxquant/macros.xml</import>
     </macros>
     <requirements>
         <requirement type="package" version="@VERSION@">maxquant</requirement>
@@ -11,35 +11,27 @@
     <command detect_errors="exit_code"><![CDATA[
     ## link galaxy datasets to filenams accepted by maxquant
     #import re
-    #set names = [re.sub('@SUBSTITUTION_RX@', '_', str($n.element_identifier)) for $n in $infile.infiles]
-    #set names_with_ext = [($name if ($name).lower().endswith(str($input_opts.ftype)) else $name + str($input_opts.ftype)) for $name in $names]
+    #set names = [re.sub('@SUBSTITUTION_RX@', '_', str($n.element_identifier)) for $n in $inpute.infiles]
+    #set names_with_ext = [($name if ($name).lower().endswith(str($input.ftype)) else $name + str($input.ftype)) for $name in $names]
     #for $target, $link in zip($infiles, $names_with_ext)
         && ln -s '$target' '$link'
     #end for
 
-    ## create/modify config files
-    #if $conf_input.select == 'yaml':
-        maxquant -c mqpar.xml 2>/dev/null  ## MQ writes success of creation to stderr
-    #else
-        cp $conf_input.mqpar mqpar.xml
-    #end if
-    && python3 '$__tool_directory__/create_mqpar.py'
-    #if $conf_input.template
-        --exp_design='$template'
-    #end if
+    && python3 '$__tool_directory__/modify_mqpar.py'
+    --infiles='$infiles'
     --version=@VERSION@
     --num_threads=\${GALAXY_SLOTS:-1}
     --substitution_rx='@SUBSTITUTION_RX@'
-    #if $conf_input.yaml
-    --yaml='$conf_input.yaml'
-    #end if
-    mqpar.xml
+    --fasta_files='$fasta_files'
+    --description_parse_rule='$description_parse_rule'
+    --identifier_parse_rule='$identifier_parse_rule'
+    '$mqpar'
 
     && maxquant mqpar.xml
     #if 'log' in $output_opts.output:
         > '$log'
     #end if
-    && mv mqpar.xml combined/txt/mqpar.xml
+    && mv '$mqpar' combined/txt/mqpar.xml
     #if 'output_all' in $output_opts.output:
         && tar -zcf '$output_all' ./combined/txt
     #end if
@@ -142,17 +134,17 @@
     </configfiles>
 
     <inputs>
-        <conditional name="infile">
-            <param name="select" type="select" label="choose the type of your input files">
-                <option value="raw">Thermo.raw</option>
-                <option value="mzxml">mzXML</option>
+        <conditional name="input">
+            <param name="ftype" type="select" label="choose the type of your input files">
+                <option value=".thermo.raw">thermo.raw</option>
+                <option value=".mzxml">mzxml</option>
             </param>
-            <when value="raw"> 
+            <when value=".thermo.raw"> 
                 <param multiple="true" name="infiles" type="data"
                        format="thermo.raw" label="RAW Files"
                        help="Specify one or more Thermo RAW files" />
             </when>
-            <when value="mzxml">
+            <when value=".mzxml">
                 <param multiple="true" name="infiles" type="data"
                        format="mzxml" label="mzXML Files"
                        help="Specify one or more mzXML files" />
@@ -178,29 +170,12 @@
                 </valid>
             </sanitizer>
         </param>
-        <conditional name="conf_input">
-            <param name="select_conf_input" type="select"
-                   label="select whether you want to specify the parameters by a yaml file or an xml file">
-                <option value="mqpar">mqpar.xml</option>
-                <option value="yaml">yaml config file as used by mqparam.py</option>
-            </param>
-            <when value="mqpar">
-                <param type="data" name="mqpar" format="xml"
-                       label="mqpar.xml file with your search parameters. RAW file names 
-                              must match the names displayed in galaxy. Their paths 
-                              from the local machine are ignored. E.g. a file named
-                              'test01.raw' in galaxy can either be named 'test01.raw' or
-                              'D:\path\to\test01.raw' in the mqpar.xml."/>
-            </when>
-            <when value="yaml">
-                <param type="data" name="yaml" format="yml"
-                       label="Yaml config file for mqparam.py. The file names need to match the
-                              names shown in galaxy."/>
-                <param format="tabular" name="template" type="data" optional="true"
-                       label="Specify an experimental design template (if needed). For detailed
-                              instructions see the help text." />
-            </when>
-        </conditional>
+        <param type="data" name="mqpar" format="xml"
+               label="mqpar.xml file with your search parameters. RAW file names 
+                      must match the names displayed in galaxy. Their paths 
+                      from the local machine are ignored. E.g. a file named
+                      'test01.raw' in galaxy can either be named 'test01.raw' or
+                      'D:\path\to\test01.raw' in the mqpar.xml."/>
 
         <section title="Quality Control Options (only active when PTXQC report is selected as output)"
                  name="qc" expanded="false">
@@ -245,42 +220,36 @@
     </inputs>
 
     <outputs>
-        <expand macro="output" name="mqpar" label="mqpar.xml" format="xml"/>
-        <expand macro="output" name="proteinGroups" label="MaxQuant Protein Groups"/>
-        <expand macro="output" name="peptides" label="MaxQuant Peptides"/>
-        <expand macro="output" name="evidence" label="MaxQuant Evidence"/>
-        <expand macro="output" name="parameters" label="MaxQuant Tabular Parameters"/>
-        <expand macro="output" name="msms" label="MaxQuant MSMS"/>
-        <expand macro="output" name="mzTab" label="mzTab"/>
-        <expand macro="output" name="allPeptides" label="all peptides"/>
-        <expand macro="output" name="libraryMatch" label="library match"/>
-        <expand macro="output" name="matchedFeatures" label="matched features"/>
-        <expand macro="output" name="modificationSpecificPeptides"
-                label="modification specific peptides"/>
-        <expand macro="output" name="ms3Scans" label="ms3 scans"/>
-        <expand macro="output" name="msmsScans"
-                label="msms Scans"/>
-        <expand macro="output" name="mzRange"
-                label="mz range"/>
-        <expand macro="output" name="peptideSection"
-                label="peptide section"/>
-        <expand macro="output" name="summary"
-                label="MaxQuant summary"/>
-        <expand macro="output" format="tar" name="output_all"
-                label="'combined/txt/' directory"/>
+        <expand macro="output_from_wdir" name="proteinGroups" label="MaxQuant Protein Groups"/>
+        <expand macro="output_from_wdir" name="mqpar" label="mqpar.xml" format="xml" ext="xml"/>
+        <expand macro="output_from_wdir" name="peptides" label="MaxQuant Peptides"/>
+        <expand macro="output_from_wdir" name="evidence" label="MaxQuant Evidence"/>
+        <expand macro="output_from_wdir" name="parameters" label="MaxQuant Tabular Parameters"/>
+        <expand macro="output_from_wdir" name="msms" label="MaxQuant MSMS"/>
+        <expand macro="output_from_wdir" name="mzTab" label="mzTab" ext="mzTab"/>
+        <expand macro="output_from_wdir" name="allPeptides" label="all peptides"/>
+        <expand macro="output_from_wdir" name="libraryMatch" label="library match"/>
+        <expand macro="output_from_wdir" name="matchedFeatures" label="matched features"/>
+        <expand macro="output_from_wdir" name="modificationSpecificPeptides" label="modification specific peptides"/>
+        <expand macro="output_from_wdir" name="ms3Scans" label="ms3 scans"/>
+        <expand macro="output_from_wdir" name="msmsScans" label="msms Scans"/>
+        <expand macro="output_from_wdir" name="mzRange" label="mz range"/>
+        <expand macro="output_from_wdir" name="peptideSection" label="peptide section"/>
+        <expand macro="output_from_wdir" name="summary" label="MaxQuant summary"/>
+        <expand macro="output" name="output_all" format="tar" label="'combined/txt/' directory"/>
         <expand macro="output" name="log" format="txt" label="log"/>
         <expand macro="output" name="ptxqc_report" format="pdf" label="PTXQC report"/>
+        <expand macro="output" name="config" format="txt" label="yaml config file"/>
     </outputs>
 
     <tests>
         <test>
-            <param name="select" value="mzxml_files" />
-            <param name="mzxml_files" value="BSA_min_22,BSA_min_21.mzXML" />
+            <param name="ftype" value=".mzxml" />
+            <param name="infiles" value="BSA_min_22,BSA_min_21.mzXML" />
             <param name="fasta_files" value="bsa.fasta" />
             <param name="identifier_parse_rule" value="&gt;([^\s]*)" />
             <param name="description_parse_rule" value="&gt;(.*)" />
-            <param name="mqpar_in" value="two/mqpar.xml" />
-            <param name="msms" value="false" />
+            <param name="mqpar" value="two/mqpar.xml" />
             <param name="output" value="evidence,msms,mzTab,allPeptides,msmsScans,mzRange,parameters,peptides,peptideSection,proteinGroups,summary,modificationSpecificPeptides,ptxqc_report" />
             <output name="evidence" file="two/combined/txt/evidence.txt" />
             <output name="msms" file="two/combined/txt/msms.txt" />
