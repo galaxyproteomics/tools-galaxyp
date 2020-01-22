@@ -1,0 +1,456 @@
+<tool id="pepquery" name="PepQuery" version="@VERSION@.0">
+    <description>Peptide-centric search engine for novel peptide identification and validation.</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <requirements> 
+        <requirement type="package" version="@VERSION@">pepquery</requirement>
+    </requirements>
+    <stdio>
+        <exit_code range="1:" level="fatal" description="Failed" />
+        <regex match="Exception"
+               source="stderr"
+               level="fatal"
+               description="java Exception" />
+    </stdio>
+    <command><![CDATA[
+            #import re
+            #set $spectrum_file = $re.sub('\s','_',$re.sub('[.][^.]*$','',$req_inputs.spectrum_file.display_name.split('/')[-1])) + ".mgf"
+            #set $db_file = $re.sub('\s','_',$re.sub('[.][^.]*$','',$req_inputs.db_file.display_name.split('/')[-1])) + ".fa"
+            ln -s '$req_inputs.spectrum_file' '$spectrum_file' &&
+            ln -s '$req_inputs.db_file' '$db_file' &&
+            pepquery 
+                -ms '$spectrum_file'
+                -db '$db_file'
+                #if $req_inputs.input_type.input_type_selector == 'peptide'
+                    -pep '$req_inputs.input_type.multiple.input'
+                #else
+                    -t '$req_inputs.input_type.input_type_selector'
+                    #if int(str($req_inputs.input_type.input_type_selector)) == 1
+                        -i '$req_inputs.input_type.multiple.input'
+                    #else
+                        -i '$req_inputs.input_type.input'
+                        #if int(str($req_inputs.input_type.input_type_selector)) == 2
+                            #if $req_inputs.input_type.frame == 'None'
+                                -f '0'
+                            #else
+                                -f '$req_inputs.input_type.frame'
+                            #end if
+                        #else
+                            -anno '$req_inputs.input_type.anno'
+                        #end if
+                    #end if
+                #end if
+                #if $modifications.fixed_mod
+                -fixMod '$modifications.fixed_mod'
+                #end if
+                #if $modifications.var_mod
+                -varMod '$modifications.var_mod'
+                #end if
+                -maxVar '$modifications.max_mods'
+                $modifications.unmodified
+                $modifications.aa
+                -tol '$ms_params.tolerance_params.precursor_tolerance'
+                -tolu '$ms_params.tolerance_params.precursor_unit'
+                -itol '$ms_params.tolerance_params.tolerance'
+                -e '$ms_params.digestion.enzyme'
+                -fragmentMethod '$ms_params.search.frag_method'
+                -m '$ms_params.search.scoring_method'
+                -maxCharge '$ms_params.search.max_charge'
+                -minCharge '$ms_params.search.min_charge'
+                -minPeaks '$ms_params.search.min_peaks'
+                -minScore '$ms_params.search.min_score'
+                -maxLength '$ms_params.search.max_length'
+                -n '$ms_params.search.num_random_peptides'
+            -o pepquery_output
+            | sed 's/No valid peptide/Error: No valid peptide/' | tee >(cat 1>&2)
+            #if $report_spectrum_file:
+                && for f in pepquery_output/psm.txt pepquery_output/psm_annotation.txt pepquery_output/detail.txt pepquery_output/psm_rank.txt; do if [ -e \${f} ]; then cp \${f} \${f}.orig; awk 'BEGIN{FS="\t"; OFS="\t"; stc = 0;}; NR==1{for (i = 1; i <= NF; i++) {if (\$i == "spectrum_title") stc = i;}}; NR==1{if (stc>0){\$stc = "spectrum_file" FS \$stc}; print}; NR>1{if (stc>0){\$stc = "$spectrum_file" FS \$stc}; print}' \${f}.orig > \${f};fi;done
+            #end if
+        ]]>
+    </command>
+    <inputs>
+        <section name="req_inputs" title="Input Data" expanded="true">
+            <conditional name="input_type">
+                <param name="input_type_selector" type="select" label="Input Type" argument="-t" help="" >
+                    <option value="peptide">peptide</option>
+                    <option value="1">protein</option>
+                    <option value="2">DNA (translate to protein sequences)</option>
+                    <!-- these are not working with pepquery version 1.3
+                    <option value="3">VCF (translate to protein sequences)</option>
+                    <option value="4">BED (translate to protein sequences)</option>
+                    <option value="5">GTF (translate to protein sequences)</option>
+                    -->
+                </param>
+                <when value="peptide">
+                    <conditional name="multiple">
+                        <param name="peptide_input_selector" type="select" label="Peptides?">
+                            <option value="multiple">Peptide list from your history</option>
+                            <option value="single">Single peptide entered as text</option>
+                        </param> 
+                        <when value="multiple">
+                            <param name="input" type="data" format="txt" label="Peptide Sequences (.txt)" argument="-pep" help="Peptide sequence file containing peptides which you want to search (no column header, 1 peptide per line)." />
+                        </when>
+                        <when value="single">
+                            <param name="input" type="text" label="Peptide Sequence" argument="-pep" help="Peptide sequence which you want to search">
+                                <validator type="regex" message="Must be AA letters">^[AC-IK-NP-TV-Yac-ik-np-tv-y]+$</validator>
+                            </param>
+                        </when>
+                    </conditional>
+                </when>
+                <when value="1">
+                    <conditional name="multiple">
+                        <param name="protein_input_selector" type="select" label="Proteins?">
+                            <option value="multiple">Protein fasta from your history</option>
+                            <option value="single">Single protein entered as text</option>
+                        </param> 
+                        <when value="multiple">
+                            <param name="input" type="data" format="fasta" label="Protein Sequences (.txt)" argument="-i" help="Protein fasta file containing proteins which you want to search." />
+                        </when>
+                        <when value="single">
+                            <param name="input" type="text" label="Protein Sequence" argument="-i" help="Protein sequence which you want to search">
+                                <validator type="regex" message="Must be AA letters">^[AC-IK-NP-TV-Yac-ik-np-tv-y]+$</validator>
+                            </param>
+                        </when>
+                    </conditional>
+                </when>
+                <when value="2">
+                    <param name="input" type="text" label="DNA Sequence (at least 60 bp)" argument="-i" help="DNA sequence which you want to search">
+                        <validator type="regex" message="Must be at least 60bp">^[acgtuAGCTU]{60}[acgtuAGCTU]*$</validator>
+                    </param> 
+                    <param name="frame" type="select" label="Frame(s) for DNA translation" argument="-f" multiple="true" help="The frame(s) to translate DNA sequence to protein. Selecting nothing (default) keeps the longest frame">
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                    </param>
+                </when>
+                <!-- these are not working with pepquery version 1.3
+                <when value="3">   
+                    <param name="input" type="data" format="vcf" label="VCF File" argument="-i" help="" />
+                    <param name="anno" type="data_collection" label="Annotation Files" argument="-anno" help="Annotation files for the VCF file. Please follow preparation instructions here: http://bioconductor.org/packages/devel/bioc/html/PGA.html" />
+                </when>
+                <when value="4">   
+                    <param name="input" type="data" format="bed" label="BED File" argument="-i" help="" />
+                    <param name="anno" type="data_collection" label="Annotation Files" argument="-anno" help="Annotation files for the BED file. Please follow preparation instructions here: http://bioconductor.org/packages/devel/bioc/html/PGA.html" />
+                </when>
+                <when value="5">   
+                    <param name="input" type="data" format="gtf" label="GTF File" argument="-i" help="" />
+                    <param name="anno" type="data_collection" label="Annotation Files" argument="-anno" help="Annotation files for the GTF file. Please follow preparation instructions here: http://bioconductor.org/packages/devel/bioc/html/PGA.html" />
+                </when>
+                -->
+            </conditional>
+            <param name="db_file" type="data" format="fasta" label="Protein Reference Database File" argument="-db" help="an input sequence that matches a reference will be ignored." />
+            <param name="spectrum_file" type="data" format="mgf" label="Spectrum File" argument="-ms" help="Spectrum file used for identification, mgf format" />
+        </section>
+        <section name="modifications" title="Modifications" expanded="false">
+             <param name="fixed_mod" type="select" label="Fixed modification(s)" multiple="true" argument="-fixMod" help="Fixed modification">
+                <option value="6" selected="true">Carbamidomethylation of C (57.02146372057) modaa</option>
+                <option value="117">Oxidation of M (15.99491461956) modaa</option>
+                <expand macro="modifications" />
+             </param>
+             <param name="var_mod" type="select" label="Variable modification(s)" multiple="true" argument="-varMod" help="Variable modification" >
+                <option value="117" selected="true">Oxidation of M (15.99491461956) modaa</option>
+                <option value="6">Carbamidomethylation of C (57.02146372057) modaa</option>
+                <expand macro="modifications" />
+             </param>
+             <param name="max_mods" type="integer" label="Max Modifications" value="3" argument="-maxVar" help="Max number of variable modifications" />
+             <param name="unmodified" type="boolean" truevalue="-um" falsevalue="" checked="false" label="Unmodified?" argument="-um" help="Validation with unrestricted modification searching" />
+             <param name="aa" type="boolean" truevalue="-aa" falsevalue="" checked="false" label="Consider amino acid substitution modifications?" argument="-aa" help="Whether or not to consider aa substitution modifications when perform modification filtering." />
+        </section>
+        <section name="ms_params" title="Mass spectrometer" expanded="false">
+            <section name="tolerance_params" title="Tolerance" expanded="true">
+                <param name="precursor_tolerance" type="integer" value="10" label="Precursor Tolerance" argument="-tol" help="the error window on experimental peptide mass values. This parameter is usually set according to the mass spectrometer which was used to generate the MS/MS data." />
+                <param name="precursor_unit" type="select" label="Precursor Unit" argument="-tolu" help="The unit of precursor ion m/z tolerance">
+                    <option value="ppm" selected="true">ppm</option>
+                    <option value="Da">Da</option>
+                </param>
+                <param name="tolerance" type="float" value="0.6" label="Tolerance" argument="-itol" help="Error window for MS/MS fragment ion mass values in Da unit." />
+            </section>
+            <section name="digestion" title="Digestion" expanded="false">
+                <param name="enzyme" type="select" label="Enzyme" argument="-e" help="Enzyme used for protein digestion" >
+                    <option value="0">Non enzyme</option>
+                    <option value="1" selected="true">Trypsin</option>
+                    <option value="2">Trypsin (no P rule)</option>
+                    <option value="3">Arg-C</option>
+                    <option value="4">Arg-C (no P rule)</option>
+                    <option value="5">Arg-N</option>
+                    <option value="6">Glu-C</option>
+                    <option value="7">Lys-C</option>
+                </param>
+                <param name="max_missed_cleavages" type="integer" value="2" label="Max Missed Cleavages" argument="-c" help="The max missed cleavages" />
+            </section>
+            <section name="search" title="PSM" expanded="false">
+                <param name="frag_method" type="select" label="Fragmentation Method" argument="-fragmentMethod">
+                    <option value="1" selected="true">CID/HCD</option>
+                    <option value="2">ETD</option>
+                </param>
+                <param name="scoring_method" type="select" label="Scoring Method" argument="-m">
+                    <option value="1" selected="true">HyperScore</option>
+                    <option value="2">MVH</option>
+                </param>
+                <param name="max_charge" type="integer" value="3" label="Max Charge" argument="-maxCharge" help="The maximum charge to consider if the charge state is not available" />
+                <param name="min_charge" type="integer" value="2" label="Minimum Charge" argument="-minCharge" help="The minimum charge to consider if the charge state is not available" />
+                <param name="min_peaks" type="integer" value="10" label="Minimum Peaks" argument="-minPeaks" help="Min peaks in spectrum" />
+                <param name="min_score" type="integer" value="12" label="Minimum Score" argument="-minScore" help="Minimum score to consider for peptide searching" />
+                <param name="max_length" type="integer" value="45" label="Maximum length of peptide" argument="-maxLength" help="The maximum length of peptide to consider." />
+                <param name="num_random_peptides" type="integer" value="1000" label="Number of Random Peptides" argument="-n" help="The number of random peptides" />
+            </section>
+        </section>
+        <param name="report_spectrum_file" type="boolean" truevalue="spectrum_file," falsevalue="" checked="false" label="Add spectrum_file column" help="Add a spectrum_file column before the spectrum_title column.  Useful for combining pepquery outputs." />
+    </inputs>
+    <outputs>
+        <data format="tabular" name="psm_annotation" from_work_dir="pepquery_output/psm_annotation.txt" label="${tool.name} on ${on_string}: PSM Annotation">
+           <actions>
+                <action name="comment_lines" type="metadata" default="1" />
+                <action name="column_names" type="metadata" default="peptide,Query,calc_mr,observed_mz,charge,pepSeq,m_label,m_mz,m_intensity,mz,intensity" />
+            </actions>
+        </data> 
+        <data format="tabular" name="detail" from_work_dir="pepquery_output/detail.txt" label="${tool.name} on ${on_string}: Detail">
+           <actions>
+                <action name="comment_lines" type="metadata" default="1" />
+                <action name="column_names" type="metadata" default="${report_spectrum_file}spectrum_title,peptide,modification,pep_mass,score" />
+            </actions>
+        </data> 
+        <data format="tabular" name="psm" from_work_dir="pepquery_output/psm.txt" label="${tool.name} on ${on_string}: PSM">
+           <actions>
+                <action name="comment_lines" type="metadata" default="1" />
+                <action name="column_names" type="metadata" default="peptide,modification,n,${report_spectrum_file}spectrum_title,charge,exp_mass,ppm,pep_mass,mz,score,n_db,total_db,n_random,total_random,pvalue" />
+            </actions>
+        </data> 
+        <data format="tabular" name="psm_rank_txt" from_work_dir="pepquery_output/psm_rank.txt" label="${tool.name} on ${on_string}: PSM Rank (txt)">
+           <actions>
+                <action name="comment_lines" type="metadata" default="1" />
+                <action name="column_names" type="metadata" default="peptide,modification,n,${report_spectrum_file}spectrum_title,charge,exp_mass,ppm,pep_mass,mz,score,n_db,total_db,n_random,total_random,pvalue,rank,n_ptm" />
+            </actions>
+        </data> 
+        <data format="mgf" name="psm_rank_mgf" from_work_dir="pepquery_output/psm_rank.mgf" label="${tool.name} on ${on_string}: PSM Rank (mgf)"/>
+    </outputs>
+    <tests>
+        <test>
+            <section name="req_inputs">
+                <conditional name="input_type">
+                    <param name="input_type_selector" value="peptide"/>
+                    <conditional name="multiple">
+                        <param name="peptide_input_selector" value="single" />
+                        <param name="input" value="ELGSSDLTAR"/>
+                    </conditional>
+                </conditional>
+                <param name="db_file" ftype="fasta" value="Uniprot.fasta"/>
+                <param name="spectrum_file" ftype="mgf" value="iTRAQ_f4.mgf"/>
+            </section> 
+            <section name="modifications">
+                 <param name="fixed_mod" value="6,103,157"/>
+                 <param name="var_mod" value="117"/>
+                 <param name="max_mods" value="3"/>
+                 <param name="unmodified" value="False"/>
+                 <param name="aa" value="True"/>
+            </section>
+            <section name="ms_params">
+                <section name="tolerance_params">
+                    <param name="precursor_tolerance" value="10"/>
+                    <param name="precursor_unit" value="ppm"/>
+                    <param name="tolerance" value="0.6"/>
+                </section>
+                <section name="digestion">
+                    <param name="enzyme" value="0"/>
+                    <param name="max_missed_cleavages" value="2"/>
+                </section>
+                <section name="search">
+                    <param name="frag_method" value="1"/>
+                    <param name="scoring_method" value="1"/>
+                    <param name="max_charge" value="3"/>
+                    <param name="min_charge" value="2"/>
+                    <param name="min_peaks" value="10"/>
+                    <param name="min_score" value="12"/>
+                    <param name="max_length" value="45"/>
+                    <param name="num_random_peptides" value="1000"/>
+                </section>
+            </section>
+            <param name="report_spectrum_file" value="true"/>
+            <output name="psm_rank_txt">
+                <assert_contents>
+                    <has_text text="ELGSSDLTAR" />
+                </assert_contents>
+            </output>
+        </test>
+
+        <test>
+            <section name="req_inputs">
+                <conditional name="input_type">
+                    <param name="input_type_selector" value="peptide"/>
+                    <conditional name="multiple">
+                        <param name="peptide_input_selector" value="multiple" />
+                        <param name="input" ftype="tabular" value="novel_peptides"/>
+                    </conditional>
+                </conditional>
+                <param name="db_file" ftype="fasta" value="Uniprot.fasta"/>
+                <param name="spectrum_file" ftype="mgf" value="iTRAQ_f4.mgf"/>
+            </section> 
+            <section name="modifications">
+                 <param name="fixed_mod" value="6,103,157"/>
+                 <param name="var_mod" value="117"/>
+                 <param name="max_mods" value="3"/>
+                 <param name="unmodified" value="False"/>
+                 <param name="aa" value="True"/>
+            </section>
+            <section name="ms_params">
+                <section name="tolerance_params">
+                    <param name="precursor_tolerance" value="10"/>
+                    <param name="precursor_unit" value="ppm"/>
+                    <param name="tolerance" value="0.6"/>
+                </section>
+                <section name="digestion">
+                    <param name="enzyme" value="0"/>
+                    <param name="max_missed_cleavages" value="2"/>
+                </section>
+                <section name="search">
+                    <param name="frag_method" value="1"/>
+                    <param name="scoring_method" value="1"/>
+                    <param name="max_charge" value="3"/>
+                    <param name="min_charge" value="2"/>
+                    <param name="min_peaks" value="10"/>
+                    <param name="min_score" value="12"/>
+                    <param name="max_length" value="45"/>
+                    <param name="num_random_peptides" value="1000"/>
+                </section>
+            </section>
+            <param name="report_spectrum_file" value="true"/>
+            <output name="psm_rank_txt">
+                <assert_contents>
+                    <has_text text="ELGSSDLTAR" />
+                    <has_text text="SPYREFTDHLVK" />
+                </assert_contents>
+            </output>
+        </test>
+
+        <test>
+            <section name="req_inputs">
+                <conditional name="input_type">
+                    <param name="input_type_selector" value="1"/>
+                    <conditional name="multiple">
+                        <param name="protein_input_selector" value="multiple" />
+                        <param name="input" ftype="fasta" value="novel_proteins.fa"/>
+                    </conditional>
+                </conditional>
+                <param name="db_file" ftype="fasta" value="Uniprot.fasta"/>
+                <param name="spectrum_file" ftype="mgf" value="iTRAQ_f4.mgf"/>
+            </section> 
+            <section name="modifications">
+                 <param name="fixed_mod" value="6,103,157"/>
+                 <param name="var_mod" value="117"/>
+                 <param name="max_mods" value="3"/>
+                 <param name="unmodified" value="False"/>
+                 <param name="aa" value="True"/>
+            </section>
+            <section name="ms_params">
+                <section name="tolerance_params">
+                    <param name="precursor_tolerance" value="10"/>
+                    <param name="precursor_unit" value="ppm"/>
+                    <param name="tolerance" value="0.6"/>
+                </section>
+                <section name="digestion">
+                    <param name="enzyme" value="0"/>
+                    <param name="max_missed_cleavages" value="2"/>
+                </section>
+                <section name="search">
+                    <param name="frag_method" value="1"/>
+                    <param name="scoring_method" value="1"/>
+                    <param name="max_charge" value="3"/>
+                    <param name="min_charge" value="2"/>
+                    <param name="min_peaks" value="10"/>
+                    <param name="min_score" value="12"/>
+                    <param name="max_length" value="45"/>
+                    <param name="num_random_peptides" value="1000"/>
+                </section>
+            </section>
+            <param name="report_spectrum_file" value="true"/>
+            <output name="psm_rank_txt">
+                <assert_contents>
+                    <has_text text="ELGSSDLTAR" />
+                    <has_text text="SPYREFTDHLVK" />
+                </assert_contents>
+            </output>
+        </test>
+
+        <test>
+            <section name="req_inputs">
+                <conditional name="input_type">
+                    <param name="input_type_selector" value="2"/>
+                    <param name="input" value="gaactgggcagcagcgatctgaccgcgcgcagcccgtatcgcgaatttaccgatcatctggtgaaa"/>
+                </conditional>
+                <param name="db_file" ftype="fasta" value="Uniprot.fasta"/>
+                <param name="spectrum_file" ftype="mgf" value="iTRAQ_f4.mgf"/>
+            </section> 
+            <section name="modifications">
+                 <param name="fixed_mod" value="6,103,157"/>
+                 <param name="var_mod" value="117"/>
+                 <param name="max_mods" value="3"/>
+                 <param name="unmodified" value="False"/>
+                 <param name="aa" value="True"/>
+            </section>
+            <section name="ms_params">
+                <section name="tolerance_params">
+                    <param name="precursor_tolerance" value="10"/>
+                    <param name="precursor_unit" value="ppm"/>
+                    <param name="tolerance" value="0.6"/>
+                </section>
+                <section name="digestion">
+                    <param name="enzyme" value="0"/>
+                    <param name="max_missed_cleavages" value="2"/>
+                </section>
+                <section name="search">
+                    <param name="frag_method" value="1"/>
+                    <param name="scoring_method" value="1"/>
+                    <param name="max_charge" value="3"/>
+                    <param name="min_charge" value="2"/>
+                    <param name="min_peaks" value="10"/>
+                    <param name="min_score" value="12"/>
+                    <param name="max_length" value="45"/>
+                    <param name="num_random_peptides" value="1000"/>
+                </section>
+            </section>
+            <param name="report_spectrum_file" value="true"/>
+            <output name="psm_rank_txt">
+                <assert_contents>
+                    <has_text text="ELGSSDLTAR" />
+                </assert_contents>
+            </output>
+        </test>
+
+    </tests>
+    <help><![CDATA[
+PepQuery is a peptide-centric search engine for novel peptide identification and validation. Cancer genomics studies have identified a large number of genomic alterations that may lead to novel, cancer-specific protein sequences. Proteins resulted from these genomic alterations are attractive candidates for cancer biomarkers and therapeutic targets. The leading approach to proteomic validation of genomic alterations is to analyze tandem mass spectrometry (MS/MS) data using customized proteomics databases created from genomics data. Such analysis is time-consuming and requires thorough training and detailed knowledge in proteomics data analysis, leading to a gap between MS/MS data and the cancer genomics community. PepQuery does not require customized databases and allows quick and easy proteomic validation of genomic alterations.
+
+**Inputs**
+    - A sequence to match, one of the following:
+
+      - A peptide string or a history dataset with a list of peptides 
+      - A protein string or a history dataset with a protein fasta 
+      - A DNA string that is at least 60 base pairs in length
+
+    - A mass spectrometry MGF file 
+    - A reference protein fasta database, peptides matching a reference sequence will be excluded.  
+
+**Outputs**
+    - PSM annotation - tabular with columns: 
+      peptide Query calc_mr observed_mz charge pepSeq m_label m_mz m_intensity mz intensity
+    - Detail - tabular with columns: 
+      *report_spectrum_file* spectrum_title peptide modification pep_mass score
+    - PSM - tabular with columns: 
+      peptide modification n *report_spectrum_file* spectrum_title charge exp_mass ppm pep_mass mz score n_db total_db n_random total_random pvalue
+    - PSM Rank - tabular with columns: 
+      peptide modification n *report_spectrum_file* spectrum_title charge exp_mass ppm pep_mass mz score n_db total_db n_random total_random pvalue rank *n_ptm*
+    - An MGF with the best matching spectrums
+
+    The *report_spectrum_file* is an optional field that can be added.  
+    The *n_ptm* field is added when using unrestricted modification searching (-um).
+    
+
+    ]]></help>
+    <citations>
+        <citation type="doi">10.1101/gr.235028.118</citation>
+    </citations>
+</tool>
