@@ -158,7 +158,7 @@ main = function() {
   args = get_args()
 
   #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/add_expression_data_HPA/args.rda")
-  load("/home/dchristiany/proteore_project/ProteoRE/tools/add_expression_data_HPA/args.rda")
+  #load("/home/dchristiany/proteore_project/ProteoRE/tools/add_expression_data_HPA/args.rda")
   
   inputtype = args$inputtype
   if (inputtype == "copypaste") {
