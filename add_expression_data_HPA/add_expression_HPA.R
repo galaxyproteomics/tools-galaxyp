@@ -146,6 +146,13 @@ is_col_in_file <- function(file,ncol) {
   }
 }
 
+convert_to_previous_header <- function(options){
+    header = c('Gene','description','Evidence','Antibody','RNA tissue specificity','Reliability (IH)','Reliability (IF)','Subcellular location','RNA tissue specific NX')
+    names(header) = c('Gene','description','Evidence','Antibody','RNA tissue category','Reliability (IH)','Reliability (IF)','Subcellular location','RNA TS TPM')
+    options = names(header[which(header %in% options)])
+    return(options)
+}
+
 main = function() {
   
   args = get_args()
@@ -175,12 +182,12 @@ main = function() {
   check_ensembl_geneids(ids)
 
   # Read protein atlas
-  protein_atlas = args$atlas
-  protein_atlas = read_file(protein_atlas, T)
+  protein_atlas = read_file(args$atlas, T)
 
   # Add expression
   output = args$output
   options = strsplit(args$select, ",")[[1]]
+  if (tail(unlist(strsplit(args$atlas,"/")),1) == "HPA_full_atlas_23-10-2018.tsv"){ options = convert_to_previous_header(options)}
   res = add_expression(ids, protein_atlas, options)
   
   # Write output
