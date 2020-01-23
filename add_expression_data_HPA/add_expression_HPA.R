@@ -147,8 +147,8 @@ is_col_in_file <- function(file,ncol) {
 }
 
 convert_to_previous_header <- function(options){
-    header = c('Gene','description','Evidence','Antibody','RNA tissue specificity','Reliability (IH)','Reliability (IF)','Subcellular location','RNA tissue specific NX')
-    names(header) = c('Gene','description','Evidence','Antibody','RNA tissue category','Reliability (IH)','Reliability (IF)','Subcellular location','RNA TS TPM')
+    header = c('Gene','description','Evidence','Antibody','RNA tissue specificity','Reliability (IH)','Reliability (IF)','Subcellular location','RNA tissue specific NX','TPM max in non-specific')
+    names(header) = c('Gene','description','Evidence','Antibody','RNA tissue category','Reliability (IH)','Reliability (IF)','Subcellular location','RNA TS TPM','TPM max in non-specific')
     options = names(header[which(header %in% options)])
     return(options)
 }
@@ -158,7 +158,7 @@ main = function() {
   args = get_args()
 
   #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/add_expression_data_HPA/args.rda")
-  #load("/home/dchristiany/proteore_project/ProteoRE/tools/add_expression_data_HPA/args.rda")
+  load("/home/dchristiany/proteore_project/ProteoRE/tools/add_expression_data_HPA/args.rda")
   
   inputtype = args$inputtype
   if (inputtype == "copypaste") {
@@ -187,7 +187,11 @@ main = function() {
   # Add expression
   output = args$output
   options = strsplit(args$select, ",")[[1]]
-  if (tail(unlist(strsplit(args$atlas,"/")),1) == "HPA_full_atlas_23-10-2018.tsv"){ options = convert_to_previous_header(options)}
+  if (tail(unlist(strsplit(args$atlas,"/")),1) == "HPA_full_atlas_23-10-2018.tsv"){ 
+      options = convert_to_previous_header(options)
+  } else {
+      options = options[which(options != 'TPM max in non-specific')]
+      }
   res = add_expression(ids, protein_atlas, options)
   
   # Write output
