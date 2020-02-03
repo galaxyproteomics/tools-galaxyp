@@ -50,7 +50,7 @@ def HPA_sources(data_manager_dict, tissue, target_directory):
         table = "proteore_protein_full_atlas"
     elif tissue == "HPA_RNA_tissue":
         tissue_name = "HPA RNA tissue"
-        url = "https://www.proteinatlas.org/download/rna_tissue_hpa.tsv.zip"
+        url = "https://www.proteinatlas.org/download/rna_tissue_consensus.tsv.zip"
         table = "proteore_protein_atlas_rna_tissue"
     
     output_file = tissue +"_"+ time.strftime("%d-%m-%Y") + ".tsv"
