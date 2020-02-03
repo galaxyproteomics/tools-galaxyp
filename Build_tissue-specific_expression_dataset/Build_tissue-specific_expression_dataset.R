@@ -2,6 +2,7 @@
 
 select_HPAimmunohisto<-function(hpa_ref, tissue, level, reliability) {
   HPA.normal = read.table(hpa_ref,header=TRUE,sep="\t",stringsAsFactors = FALSE)
+  HPA.normal$Tissue = sapply(HPA.normal$Tissue, function(string) gsub('cervix, uterine','cervix_uterine',string),USE.NAMES = F)
   if (tissue == "tissue") {
     tissue <- unique(HPA.normal$Tissue) 
   }
@@ -18,6 +19,7 @@ select_HPAimmunohisto<-function(hpa_ref, tissue, level, reliability) {
 select_HPARNAseq<-function(hpa_ref, sample) {
   HPA.rnaTissue = read.table(hpa_ref,header=TRUE,sep="\t",stringsAsFactors = FALSE)
   names(HPA.rnaTissue) = sapply(names(HPA.rnaTissue), function(string) gsub('Sample','Tissue',string),USE.NAMES = F)
+  HPA.rnaTissue$Tissue = sapply(HPA.rnaTissue$Tissue, function(string) gsub('cervix, uterine','cervix_uterine',string),USE.NAMES = F)
   res.rna <- subset(HPA.rnaTissue, Tissue%in%sample)
   if ("Unit" %in% names(res.rna)){
       res.rna = subset(res.rna, select = -Unit)
