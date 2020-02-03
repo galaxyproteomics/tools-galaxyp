@@ -17,8 +17,12 @@ select_HPAimmunohisto<-function(hpa_ref, tissue, level, reliability) {
 
 select_HPARNAseq<-function(hpa_ref, sample) {
   HPA.rnaTissue = read.table(hpa_ref,header=TRUE,sep="\t",stringsAsFactors = FALSE)
-  res.rna <- subset(HPA.rnaTissue, Sample%in%sample, select = -c(Unit))
-  colnames(res.rna)[which(colnames(res.rna) == 'Value')] <- 'Value (TPM unit)'
+  res.rna <- subset(HPA.rnaTissue, Tissue%in%sample)
+  if ("Unit" %in% names(res.rna)){
+      res.rna = subset(res.rna, select = -Unit)
+      colnames(res.rna)[which(colnames(res.rna) == 'Value')] <- 'Value (TPM unit)'
+  }
+  
   return(res.rna)
 }
 
@@ -52,6 +56,7 @@ main <- function() {
 
   # Extract options
   data_source = args$data_source
+  names(data_source) = sapply(names(data_source), function(string) gsub('Sample','Tissue',string),USE.NAMES = F)
   hpa_ref = args$hpa_ref
   if (data_source == "IHC") {
     tissue = strsplit(args$tissue, ",")[[1]]
