@@ -25,8 +25,8 @@ def __main__():
     parser.add_option('-c', '--column', dest='column', type='int', default=0, help='The column (zero-based) in the tabular file that contains Taxon IDs' )
     parser.add_option('-t', '--taxon', dest='taxon', action='append', default=[], help='NCBI taxon ID to download')
     parser.add_option('-r', '--reviewed', dest='reviewed', help='Only uniprot reviewed entries')
-    parser.add_option('-f', '--format', dest='format', choices=['xml', 'fasta'], default='xml',help='output format')
-    parser.add_option('-o', '--output', dest='output', help='file path for th downloaed uniprot xml')
+    parser.add_option('-f', '--format', dest='format', choices=['xml', 'fasta'], default='xml', help='output format')
+    parser.add_option('-o', '--output', dest='output', help='file path for the downloaded uniprot xml')
     parser.add_option('-v', '--verbose', dest='verbose', action='store_true', default=False, help='Print UniProt Info')
     parser.add_option('-d', '--debug', dest='debug', action='store_true', default=False, help='Turn on wrapper debugging to stderr')
     (options, args) = parser.parse_args()
@@ -51,7 +51,7 @@ def __main__():
     try:
         def reporthook(n1,n2,n3):
             pass   
-        url = 'http://www.uniprot.org/uniprot/'
+        url = 'https://www.uniprot.org/uniprot/'
         query = "%s%s" % (taxon_query, reviewed)
         params = {'query' : query, 'force' : 'yes' , 'format' : options.format}
         if options.debug:

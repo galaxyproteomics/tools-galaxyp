@@ -1,7 +1,7 @@
-<tool id="flashlfq" name="FlashLFQ" version="0.1.111">
+<tool id="flashlfq" name="FlashLFQ" version="1.0.3.0">
     <description>ultrafast label-free quantification for mass-spectrometry proteomics</description>
     <requirements>
-        <requirement type="package" version="0.1.111">flashlfq</requirement>
+        <requirement type="package" version="1.0.3">flashlfq</requirement>
     </requirements>
     <command><![CDATA[
         #import re
@@ -9,76 +9,107 @@
         ln -s '${idt}' '${idt_path}' &&
         mkdir spectrum_dir &&
         #for $peak_list in $peak_lists:
-            #set $input_name = $re.sub('[.][^.]*$','',$peak_list.display_name.split('/')[-1]) + ".mzML"
+            #set $ext = '.mzML'
+            #if $peak_list.extension.endswith('raw')
+                #set $ext = '.RAW'
+            #end if
+            #set $input_name = $re.sub('[.][^.]*$','',$peak_list.display_name.split('/')[-1]) + $ext
             ln -s '${peak_list}' 'spectrum_dir/${input_name}' &&
         #end for
-        #if $normalize.nor == 'true':
-          #set $input_name = $re.sub('[.][^.]*$','',$experimental_design.display_name.split('/')[-1]) + ".tsv"
-          ln -s '${experimental_design}' 'spectrum_dir/${input_name}' &&
+        #if $experiment.use_design == 'true':
+          ln -s '${experiment.experimental_design}' 'spectrum_dir/ExperimentalDesign.tsv' &&
         #end if
+        echo 'y' | 
         FlashLFQ 
         --idt '$idt_path'
         --rep "./spectrum_dir"
         --ppm $ppm
         --iso $iso
         --nis $nis
-        #if $normalize.nor == 'true':
-        --nor true
+        $int
+        $chg
+        $mbr
+        #if $experiment.use_design == 'true':
+            $experiment.nor
+            #if $experiment.bayesian.calculate == 'true':
+                --bay true
+                --ctr '$experiment.bayesian.ctr'
+                #if str($experiment.bayesian.fcc):
+                    --fcc $experiment.bayesian.fcc
+                #end if
+                $experiment.bayesian.sha
+                $experiment.bayesian.rmc
+                --mcm $experiment.bayesian.mcm
+                #if str($experiment.bayesian.rns):
+                    --rns $experiment.bayesian.rns
+                #end if
+            #end if
         #end if
-        #if $intensity == 'integrate':
-            --int true
-        #end if
-        #if $charge == 'precursor':
-            --chg true
-        #end if
-        $rmm $mbr $pro
-        --out . > logfile.txt
-        && cat logfile.txt | sed 's/\(Analysis summary for:\).*working./\1 /' > '$log'
-        && cp *_FlashLFQ_QuantifiedProteins.tsv '$quantifiedProteins'
-        && cp *_FlashLFQ_QuantifiedPeptides.tsv '$quantifiedPeptides'
-        && cp *_FlashLFQ_QuantifiedPeaks.tsv '$quantifiedPeaks'
+        --out out > logfile.txt
     ]]></command>
-
     <inputs>
-        <param name="idt" type="data" format="tabular" label="identification file"
+        <param argument="--idt" type="data" format="tabular" label="identification file"
              help="MetaMorpheus,Morpheus,PeptideShaker PSM Report,MaxQuant"/>
-        <param name="peak_lists" type="data" format="mzml" multiple="true" label="spectrum files"/>
-        <param name="ppm" type="float" value="10" min="1" max="20" label="monoisotopic ppm tolerance"/>
-        <param name="iso" type="float" value="5" min="1" max="10" label="isotopic distribution tolerance in ppm"/>
-        <param name="nis" type="integer" value="2" min="1" max="30" label="number of isotopes required to be observed"/>
-        <param name="intensity" type="select" label="intensity">
-            <option value="apex" selected="true">use the apex intensity</option>
-            <option value="integrate">integrate chromatographic peak intensity</option>
-        </param>
-        <param name="charge" type="select" label="charge">
-            <option value="all" selected="true">use all identification detected charge states</option>
-            <option value="precursor">use precursor charge</option>
-        </param>
-        <param name="rmm" type="boolean" truevalue="--rmm true" falsevalue="--rmm false" checked="true"
-            label="require observed monoisotopic mass peak"/>
-        <conditional name="normalize">
-            <param name="nor" type="select" label="normalize intensity results">
+        <param name="peak_lists" type="data" format="mzml,raw,thermo.raw" multiple="true" label="spectrum files"/>
+        <param argument="--ppm" type="float" value="10" min="1" max="20" label="monoisotopic ppm tolerance"/>
+        <param argument="--iso" type="float" value="5" min="1" max="10" label="isotopic distribution tolerance in ppm"/>
+        <param argument="--nis" type="integer" value="2" min="2" max="30" label="number of isotopes required to be observed"/>
+        <param argument="--int" type="boolean" truevalue="--int true" falsevalue="" checked="false"
+            label="integrate peak areas (not recommended)"/>
+        <param argument="--chg" type="boolean" truevalue="--chg true" falsevalue="" checked="false"
+            label="use only precursor charge state"/>
+        <param argument="--mbr" type="boolean" truevalue="--mbr true" falsevalue="" checked="false"
+            label="match between runs"/>
+        <param argument="--mrt" type="float" value="2.5" min=".01" max="60" label="maximum MBR window in minutes"/>
+        <conditional name="experiment">
+            <param name="use_design" type="select" label="Use experimnetal design for normalization or protein fold-change analysis">
                 <option value="false">No</option>
                 <option value="true">Yes</option>
             </param>
             <when value="false"/>
             <when value="true">
                 <param name="experimental_design" type="data" format="tabular" label="ExperimentalDesign.tsv"/>
+                <param argument="--nor" type="boolean" truevalue="--nor true" falsevalue="" checked="true"
+                    label="normalize intensity results"/>
+                <conditional name="bayesian">
+                    <param name="calculate" type="select" label="Perform Bayesian protein fold-change analysis">
+                        <option value="false">No</option>
+                        <option value="true">Yes</option>
+                    </param>
+                    <when value="false"/>
+                    <when value="true">
+                        <param argument="--ctr" type="select" value="" label="control condition for Bayesian protein fold-change analysis">
+                            <options from_dataset="experimental_design">
+                                <column name="name" index="1"/>
+                                <column name="value" index="1"/>
+                                <filter type="static_value" name="heading_ctr" column="1" value="Condition" keep="False"/>
+                                <filter type="unique_value" name="unique_ctr" column="1"/>
+                                <filter type="sort_by" name="sorted_ctr" column="1"/>
+                            </options>
+                        </param>
+                        <param argument="--fcc" type="float" value="" min="0.01" label="fold-change cutoff" optional="true" 
+                            help="Leave blank to detemine emperically from data."/>
+                        <param argument="--sha" type="boolean" truevalue="--sha true" falsevalue="" checked="false"
+                            label="use shared peptides for protein quantification"/>
+                        <param argument="--rmc" type="boolean" truevalue="--rmc true" falsevalue="" checked="false"
+                            label="require MS/MS ID in condition"/>
+                        <param argument="--mcm" type="integer" value="500" min="500" label="number of markov-chain monte carlo iterations"/>
+                        <param argument="--rns" type="integer" value="" optional="true" label="random seed"/>
+                    </when>
+                </conditional>
             </when>
         </conditional>
-        <param name="mbr" type="boolean" truevalue="--mbr true" falsevalue="--mbr false" checked="false"
-            label="match between runs"/>
-        <param name="mrt" type="float" value="1.5" min="0" max="30" label="maximum MBR window in minutes"/>
-        <param name="pro" type="boolean" truevalue="--pro true" falsevalue="--pro false" checked="false"
-            label="advanced protein quantification"/>
     </inputs>
 
     <outputs>
-       <data name="log" format="txt" label="${tool.name} on ${on_string}: Log" />
-        <data name="quantifiedPeaks" format="tabular" label="${tool.name} on ${on_string}: QuantifiedPeaks.tsv" />
-        <data name="quantifiedPeptides" format="tabular" label="${tool.name} on ${on_string}: QuantifiedPeptides.tsv" />
-        <data name="quantifiedProteins" format="tabular" label="${tool.name} on ${on_string}: QuantifiedProteins.tsv" />
-
+       <data name="log" format="txt" label="${tool.name} on ${on_string}: Log" from_work_dir="logfile.txt"/>
+        <data name="toml" format="txt" label="${tool.name} on ${on_string}: FlashLfqSettings.toml" from_work_dir="out/FlashLfqSettings.toml"/>
+        <data name="quantifiedPeaks" format="tabular" label="${tool.name} on ${on_string}: QuantifiedPeaks.tsv" from_work_dir="out/QuantifiedPeaks.tsv"/>
+        <data name="quantifiedPeptides" format="tabular" label="${tool.name} on ${on_string}: QuantifiedPeptides.tsv" from_work_dir="out/QuantifiedPeptides.tsv"/>
+        <data name="quantifiedProteins" format="tabular" label="${tool.name} on ${on_string}: QuantifiedProteins.tsv" from_work_dir="out/QuantifiedProteins.tsv"/>
+        <data name="foldChange" format="tabular" label="${tool.name} on ${on_string}: BayesianFoldChangeAnalysis.tsv" from_work_dir="out/BayesianFoldChangeAnalysis.tsv">
+            <filter>'bayesian' in experiment and 'ctr' in experiment['bayesian']</filter>
+        </data>
     </outputs>
     <tests>
         <test>
@@ -94,27 +125,38 @@
         </test>
     </tests>
     <help><![CDATA[
-
 **FlashLFQ** is an ultrafast label-free quantification for mass-spectrometry proteomics.
+https://github.com/smith-chem-wisc/FlashLFQ/wiki
+
 
 **Accepted command-line arguments:**
 
 ::
 
-    --idt [string | identification file path (TSV format)]
-    --raw [string | MS data file (.raw or .mzML)]
-    --rep [string | repository containing MS data files]
-    --ppm [double | monoisotopic ppm tolerance] (default = 10)
-    --iso [double | isotopic distribution tolerance in ppm] (default = 5)
-    --sil [boolean | silent mode; no console output] (default = false)
-    --pau [boolean | pause at end of run] (default = true)
-    --int [boolean | integrate chromatographic peak intensity instead of using 
-          the apex intensity] (default = false)
-    --chg [boolean | use only precursor charge state; when set to false, FlashLFQ looks 
-          for all charge states detected in the MS/MS identification file for each peptide] (default = false)
+    --idt [string|identification file path]
+    --rep [string|directory containing spectral data files]
+    --out [string|output directory]
+    --ppm [double|ppm tolerance]
+    --nor [bool|normalize intensity results]
     --mbr [bool|match between runs]
-    --rmm [bool|require observed monoisotopic mass peak]
+    --sha [bool|use shared peptides for protein quantification]
+    --bay [bool|Bayesian protein fold-change analysis]
+    --ctr [string|control condition for Bayesian protein fold-change analysis]
+    --fcc [double|fold-change cutoff for Bayesian protein fold-change analysis]
+
+**Advanced settings:**
+
+::
+
+    --sil [bool|silent mode]
+    --int [bool|integrate peak areas (not recommended)]
+    --iso [double|isotopic distribution tolerance in ppm]
+    --mrt [double|maximum MBR window in minutes]
+    --chg [bool|use only precursor charge state]
     --nis [int|number of isotopes required to be observed]
+    --rmc [bool|require MS/MS ID in condition]
+    --mcm [int|number of markov-chain monte carlo iterations for the Bayesian protein fold-change analysis]
+    --rns [int|random seed for the Bayesian protein fold-change analysis]
 
 
 **Tab-Delimited Identification Text File**
@@ -131,6 +173,33 @@ The following headers are required in the list of MS/MS identifications:
   - **Precursor Charge** - Charge of the ion selected for MS/MS resulting in the identification
   - **Protein Accession** - Protein accession(s) for the peptide; protein quantification is still preliminary
 
+**ExperimentalDesign File**
+
+The ExperimentalDesign_ File should have 5 columns separated by TAB characters: 
+
+  - SpectrumFileName - Without the file extension
+  - Condition - Cannot be blank
+  - Sample - an integer, at least 1. Each condition must have continuous sample numbers starting at 1. For example, samples 1, 3, and 4 are not valid because sample 2 is missing. In this case you would label the samples as 1, 2, and 3.
+  - Fraction - an integer, at least 1. Each sample must have continuous fraction numbers starting at 1. If your data is not fractionated, just enter 1 for all fractions. It is OK for two samples to have different total numbers of fractions. It is NOT recommended to use a sample if it is missing a fraction with significant peptide intensity (e.g., if sample 2 is missing fraction #5 out of 10 total fractions).
+  - Replicate - an integer, at least 1. Each fraction must have continuous replicate numbers starting at 1.
+
+::
+
+    For example, with spectrum files named:
+
+      - 20130510_EXQ1_IgPa_QC_UPS1_01.mzml
+      - 20130510_EXQ1_IgPa_QC_UPS1_02.mzml
+      - 20130510_EXQ1_IgPa_QC_UPS2_01.mzml
+      - 20130510_EXQ1_IgPa_QC_UPS2_02.mzml
+
+    The ExperimentalDesign File:
+
+        FileName	Condition	Biorep	Fraction	Techrep
+        20130510_EXQ1_IgPa_QC_UPS1_01	S1	1	1	1
+        20130510_EXQ1_IgPa_QC_UPS1_02	S1	2	1	1
+        20130510_EXQ1_IgPa_QC_UPS2_01	S2	1	1	1
+        20130510_EXQ1_IgPa_QC_UPS2_02	S2	2	1	1
+
 
 **Outputs**:
 
@@ -143,6 +212,8 @@ The following headers are required in the list of MS/MS identifications:
   - **Log.txt** - Log of the FlashLFQ run. 
 
 
+.. _FlashLFQ: https://github.com/smith-chem-wisc/FlashLFQ/wiki
+.. _ExperimentalDesign: https://github.com/smith-chem-wisc/FlashLFQ/wiki/Experimental-Design
 
     ]]></help>
     <citations>
