@@ -96,7 +96,8 @@ class ParamGroup:
         et_add_child(label, 'internalLabel', internalLabel)
         et_add_child(label, 'terminalLabel', terminalLabel)
         for num, factor in (('M2', cm2), ('M1', cm1), ('P1', cp1), ('P2', cp2)):
-            et_add_child(label, 'correctionFactor' + num, str(float(factor)))
+            et_add_child(label, 'correctionFactor' + num,
+                         str(float(factor) if factor != 0 else 0))
         et_add_child(label, 'tmtLike', str(tmtLike))
 
 
