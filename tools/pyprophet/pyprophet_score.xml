@@ -1,0 +1,135 @@
+<tool id="gp_pyprophet_score" name="PyProphet_score" version="@VERSION@.0">
+    <description>
+        Error-rate estimation for MS1, MS2 and transition-level data
+    </description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <command detect_errors="aggressive">
+    <![CDATA[
+        pyprophet score
+        --in='$input'
+        --classifier=$conditional_classifier.classifier
+
+        #if str($conditional_classifier.classifier)=='XGBoost':
+            $conditional_classifier.xgb_autotune
+        #end if
+        #if $apply_weights: 
+            --apply_weights
+        #end if
+        --xeval_fraction=$xeval_fraction
+        --xeval_num_iter=$xeval_num_iter
+        --level=$level
+        --ss_initial_fdr=$ss_initial_fdr
+        --ss_iteration_fdr=$ss_iteration_fdr
+        --ss_num_iter=$ss_num_iter
+        --ss_main_score='$ss_main_score'
+        --group_id=$group_id
+        $parametric
+        $pfdr
+        --pi0_lambda=$pi0_lambda_start $pi0_lambda_end $pi0_lambda_steps
+
+        --pi0_method=$pi0_method
+        --pi0_smooth_df=$pi0_smooth_df
+        $pi0_smooth_log
+        $lfdr_truncate
+        $lfdr_monotone
+        --lfdr_transformation=$lfdr_transformation
+        --lfdr_adj=$lfdr_adj
+        --lfdr_eps=$lfdr_eps
+        --ipf_max_peakgroup_rank=$ipf_max_peakgroup_rank
+        --ipf_max_peakgroup_pep=$ipf_max_peakgroup_pep
+        $tric_chromprob
+        $test_mode
+        --out='./output.osw' && mv *_report.pdf report.pdf
+
+
+    ]]>
+    </command>
+    <inputs>
+        <param name="input" type="data" format="osw" label="Input file" help="This file needs to be in OSW format (--in)" />
+        <conditional name="conditional_classifier">
+            <param argument="--classifier" type="select" label="Either a 'LDA' or 'XGBoost' classifier is used for semi-supervised learning" >
+              <option value="LDA" selected="True" >LDA</option>
+              <option value="XGBoost">XGBoost</option>
+            </param>
+            <when value="LDA"/>
+            <when value="XGBoost">
+                <param name="xgb_autotune" type="boolean" truevalue="--xgb_autotune" falsevalue="--no-xgb_autotune" label="XGBoost: Autotune hyperparameters" help="(--xgb_autotune / --no-xgb_autotune)"/>
+            </when>
+        </conditional>
+        <param argument="apply_weights" type="data" format="txt" optional="True" label="Apply PyProphet score weights file instead of semi-supervised learning." />
+        <param argument="--level" type="select" display="radio" label="The data level selected for scoring. 'ms1ms2' integrates both MS1- and MS2-level scores and can be used instead of 'ms2'-level results" >
+          <option value="ms1" >MS1</option>
+          <option value="ms2" >MS2</option>
+          <option value="ms1ms2" selected="True" >MS1MS2</option>
+          <option value="transition">transition</option>
+        </param>
+        <param argument="--xeval_fraction" type="float" value="0.5" label="Data fraction used for cross-validation of semi-supervised learning step" />
+        <param argument="--xeval_num_iter" type="integer" value="10" label="Number of iterations for cross-validation of semi-supervised learning step" />
+        <param argument="--ss_initial_fdr" type="float" value="0.15" label="Initial FDR cutoff for best scoring targets" />
+        <param argument="--ss_iteration_fdr" type="float" value="0.05" label="Iteration FDR cutoff for best scoring targets" />
+        <param argument="--ss_num_iter" type="integer" value="10" label="Number of iterations for semi-supervised learning step" />
+        <param argument="--ss_main_score" type="text" value="var_xcorr_shape" label="Main score to start semi-supervised-learning" />
+        <param argument="--group_id" type="text" value="group_id" label="Group identifier for calculation of statistics" />
+        <param name="parametric" type="boolean" truevalue="--parametric" falsevalue="--no-parametric" label="Do parametric estimation of p-values" help="(--parametric / --no-parametric)"/>
+        <param name="pfdr" type="boolean" truevalue="--pfdr" falsevalue="--no-pfdr" label="Compute positive false discovery rate (pFDR) instead of FDR" help="(--pfdr / --no-pfdr)"/>
+        <param name="pi0_lambda_start" type="float" value="0.1" label="Use non-parametric estimation of p-values. Start value" help="(--pi0_lambda)"/>
+        <param name="pi0_lambda_end" type="float" value="0.5" label="Use non-parametric estimation of p-values. End value" help="(--pi0_lambda)"/>
+        <param name="pi0_lambda_steps" type="float" value="0.05" label="Use non-parametric estimation of p-values. Steps value" help="(--pi0_lambda)"/>
+        <param argument="--pi0_method"  type="select" display="radio" label="Either 'smoother' or 'bootstrap'; the method for automatically choosing tuning parameter in the estimation of pi_0, the proportion of true null hypotheses" >
+          <option value="bootstrap" selected="True" >bootstrap</option>
+          <option value="smoother">smoother</option>
+        </param>
+        <param argument="pi0_smooth_df" type="integer" value="3" label="Number of degrees-of-freedom to use when estimating pi_0 with a smoother" />
+        <param name="pi0_smooth_log" type="boolean" truevalue="--pi0_smooth_log_pi0" falsevalue="--no-pi0_smooth_log_pi0" label="If True and pi0_method = 'smoother', pi0 will be estimated by applying a smoother to a scatterplot of log(pi0) estimates against the tuning parameter lambda" help="(--pi0_smooth_log_pi0 / --no-pi0_smooth_log_pi0)"/>
+        <param name="lfdr_truncate" type="boolean" checked="True" truevalue="--lfdr_truncate" falsevalue="--no-lfdr_truncate" label="If True, local FDR values >1 are set to 1" help="(--lfdr_truncate / --no-lfdr_truncate)"/>
+        <param name="lfdr_monotone" type="boolean" checked="True" truevalue="--lfdr_monotone" falsevallUE="--no-lfdr_monotone" label="If True, local FDR values are non-decreasing with increasing p-values" help="(--lfdr_monotone / --no-lfdr_monotone)"/>
+        <param argument="--lfdr_transformation" type="select" display="radio" label="Either a 'probit' or 'logit' transformation is applied to the p-values so that a local FDR estimate can be formed that does not involve edge effects of the [0,1] interval in which the p-values lie" >
+          <option value="probit" selected="True" >probit</option>
+          <option value="logit">logit</option>
+        </param>
+        <param argument="--lfdr_adj" type="float" value="1.5" label="Numeric value that is applied as a multiple of the smoothing bandwidth used in the density estimation" />
+        <param argument="--lfdr_eps" type="float" value="1e-08" label="Numeric value that is threshold for the tails of the empirical p-value distribution" />
+        <param argument="--ipf_max_peakgroup_rank" type="integer" value="1" label="Assess transitions only for candidate peak groups until maximum peak group rank" />
+        <param argument="--ipf_max_peakgroup_pep" type="float" value="0.7" label="Assess transitions only for candidate peak groups until maximum posterior error probability" />
+        <param argument="--ipf_max_transition_isotope_overlap" type="float" value="0.5" label="Maximum isotope overlap to consider transitions in IPF" />
+        <param argument="--ipf_min_transition_sn" type="float" value="0" label="Minimum log signal-to-noise level to consider transitions in IPF. Set -1 to disable this filter" />
+        <param name="tric_chromprob" type="boolean" truevalue="--tric_chromprob" falsevalue="--no-tric_chromprob" label="Whether chromatogram probabilities for TRIC should be computed" help="( --tric_chromprob / --no-tric_chromprob)"/>
+        <param name="test_mode" type="boolean" truevalue="--test" falsevalue="--no-test" label="Run in test mode with fixed seed" />
+    </inputs>
+    <outputs>
+        <data name="output" format="osw" label="${tool.name} on ${on_string}: score.osw" from_work_dir="output.osw"/>
+        <data name="score_report" format="pdf" label="${tool.name} on ${on_string}: report.pdf" from_work_dir="report.pdf" />
+    </outputs>
+    <tests>
+        <test>
+            <param name="input" value="merged.osw" ftype="osw"/>
+            <param name="level" value="ms2"/>
+            <param name="xeval_num_iter" value="2" />
+            <param name="ss_num_iter" value="2" />
+            <param name="pi0_lambda_start" value="0.1" />
+            <param name="pi0_lambda_end" value="0.3" />
+            <param name="pi0_lambda_steps" value="0.01" />
+            <param name="test_mode" value="--test" />
+            <output name="output" file="score.osw" compare="sim_size" />
+            <output name="score_report" file="score_report.pdf" compare="sim_size" />
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+**What it does**
+
+PyProphet: Semi-supervised learning and scoring of OpenSWATH results.
+
+Conduct semi-supervised learning and error-rate estimation for MS1, MS2 and transition-level data.
+
+PyProphet is a Python re-implementation of the mProphet algorithm (Reiter 2010 Nature Methods) optimized for SWATH-MS data acquired by data-independent acquisition (DIA). The algorithm was originally published in (Telemann 2014 Bioinformatics) and has since been extended to support new data types and analysis modes (Rosenberger 2017, Nature biotechnology and Nature methods).
+
+For more information, visit @link@
+
+]]>
+    </help>
+    <expand macro="citations"/>
+</tool>
