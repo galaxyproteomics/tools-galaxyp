@@ -97,7 +97,7 @@ class ParamGroup:
         et_add_child(label, 'terminalLabel', terminalLabel)
         for num, factor in (('M2', cm2), ('M1', cm1), ('P1', cp1), ('P2', cp2)):
             et_add_child(label, 'correctionFactor' + num,
-                         str(float(factor) if factor != 0 else 0))
+                         str(float(factor) if factor % 1 else int(factor)))
         et_add_child(label, 'tmtLike', str(tmtLike))
 
 
@@ -365,8 +365,8 @@ class MQParam:
                 for l in isobaricLabels:
                     self[i].set_isobaric_label(*l)
             for el in ['fixedModifications', 'variableModifications', 'enzymes']:
-                lst = pg.pop(el, False)
-                if lst:
+                lst = pg.pop(el, None)
+                if lst is not None:
                     self[i].set_list_param(el, lst)
             for key in pg:
                 self[i].set_simple_param(key, pg[key])

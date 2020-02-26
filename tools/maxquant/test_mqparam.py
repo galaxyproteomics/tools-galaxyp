@@ -47,7 +47,7 @@ class TestParamGroup:
         assert len(t._root.find('isobaricLabels')) == 1
         assert len(t._root.find('isobaricLabels')[0]) == 7
 
-        t.set_isobaric_label('iTRAQ4plex-Lys115', 'iTRAQ4plex-Nter115', 0.3, 1, 1.2, 0, True)
+        t.set_isobaric_label('iTRAQ4plex-Lys115', 'iTRAQ4plex-Nter115', 0.3, 1.0, 1.2, 0, True)
 
         assert len(t._root.find('isobaricLabels')) == 2
 
@@ -58,7 +58,7 @@ class TestParamGroup:
 
         text_list = [el.text for el in t._root.find('isobaricLabels')[1]]
         assert text_list == ['iTRAQ4plex-Lys115', 'iTRAQ4plex-Nter115',
-                             '0.3', '1.0', '1.2', '0', 'True']
+                             '0.3', '1', '1.2', '0', 'True']
 
 
 class TestMQParam:
