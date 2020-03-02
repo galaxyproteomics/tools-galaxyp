@@ -177,6 +177,15 @@ get_limit <- function(mat) {
   return(c(min,max))
 }
 
+check_pathway_ids<- function(pathways_ids) {
+  problematic_pathways <- c("04215","04723")
+  to_remove <- intersect(pathways_ids,problematic_pathways)
+  if (length(to_remove) > 0){ print(paste("Pathway(s)",to_remove,"have been remove from input")) }
+  pathways_ids <- pathways_ids[which(!pathways_ids %in% problematic_pathways)]
+  if (length(pathways_ids) == 0){stop("No pathways ids to process")}
+  return (pathways_ids)
+}
+
 get_args <- function(){
   
   ## Collect arguments
@@ -238,7 +247,7 @@ main <- function(){
     pathways_file = read_file(args$pathways_input,header2)
     ids <- sapply(rapply(strsplit(clean_bad_character(pathways_file[,pathway_col]),","),c), function(x) remove_kegg_prefix(x),USE.NAMES = FALSE)
   }
-  if (args$native_kegg) { ids <- ids[ids != "04215"] }
+  if (args$native_kegg) {ids = check_pathway_ids(ids)} #remove problematic pathways
   pathways_list <- read_file(args$pathways_list,F)
   if (!is.null(args$id_list)) {
     id_list <- get_list_from_cp(args$id_list)
