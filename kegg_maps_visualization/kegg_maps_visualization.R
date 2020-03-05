@@ -172,8 +172,8 @@ one_id_one_line <-function(tab,ncol){
 }
 
 get_limit <- function(mat) {
-  min = min(apply(mat,2,min))
-  max = max(apply(mat,2,max))
+  min = min(apply(mat,2,min,na.rm=TRUE))
+  max = max(apply(mat,2,max,na.rm=TRUE))
   return(c(min,max))
 }
 
