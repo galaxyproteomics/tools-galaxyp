@@ -11,7 +11,6 @@ def mk_pg_root():
     mqpar = ET.parse(TEMPLATE_PATH).getroot()
     return mqpar.find('.parameterGroups/parameterGroup')
 
-
 class TestParamGroup:
     def test_list_param(self):
         t = ParamGroup(mk_pg_root())

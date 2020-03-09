@@ -214,7 +214,7 @@ class MQParam:
             # strip path and extension
             for f in files:
                 b = os.path.basename(f)
-                basename = b[:-6] if b.lower().endswith('.mzxml') else b[:-11]
+                basename = b[:-11] if b.lower().endswith('.thermo.raw') else b.rsplit('.', maxsplit=1)[0]
                 names_to_paths[basename] = f
             for name in design['Name']:
                 # same substitution as in maxquant.xml,
