@@ -1,12 +1,14 @@
-<tool id="cardinal_filtering" name="MSI filtering" version="@VERSION@.3">
+<tool id="cardinal_filtering" name="MSI filtering" version="2.4.0.0">
     <description>tool for filtering mass spectrometry imaging data</description>
     <macros>
         <import>macros.xml</import>
     </macros>
-    <expand macro="requirements">
+    <requirements>
+        <requirement type="package" version="2.4.0">bioconductor-cardinal</requirement>
+        <requirement type="package" version="3.6.1">r-base</requirement>
         <requirement type="package" version="2.3">r-gridextra</requirement>
-        <requirement type="package" version="3.0">r-ggplot2</requirement>
-    </expand>
+        <requirement type="package" version="3.2.1">r-ggplot2</requirement>
+    </requirements>
     <expand macro="print_version"/>
     <command detect_errors="exit_code">
     <![CDATA[
@@ -14,12 +16,9 @@
         @INPUT_LINKING@
         cat '${MSI_subsetting}' &&
         Rscript '${MSI_subsetting}' &&
-
-        #if str($imzml_output) == "imzml_format":
-            mkdir $outfile_imzml.files_path &&
-            mv ./out.imzML "${os.path.join($outfile_imzml.files_path, 'imzml')}" | true &&
-            mv ./out.ibd "${os.path.join($outfile_imzml.files_path, 'ibd')}" | true &&
-        #end if
+        mkdir $outfile_imzml.files_path &&
+        mv ./out.imzML "${os.path.join($outfile_imzml.files_path, 'imzml')}" | true &&
+        mv ./out.ibd "${os.path.join($outfile_imzml.files_path, 'ibd')}" | true &&
         echo "imzML file:" > $outfile_imzml &&
         ls -l "$outfile_imzml.files_path" >> $outfile_imzml
     ]]>
@@ -37,29 +36,51 @@ library(Cardinal)
 library(ggplot2)
 library(gridExtra)
 
-@READING_MSIDATA@
+
+
+## function to read RData files independent of filename
+loadRData <- function(fileName){
+load(fileName)
+get(ls()[ls() != "fileName"])
+}
+
+#if $infile.ext == 'imzml'
+    #if str($processed_cond.processed_file) == "processed":
+        msidata <- readImzML('infile', resolution=$processed_cond.accuracy, units = "$processed_cond.units", attach.only=TRUE)
+        centroided(msidata) = $centroids
+    #else
+        msidata <- readImzML('infile', attach.only=TRUE)
+        centroided(msidata) = $centroids
+    #end if
+#elif $infile.ext == 'analyze75'
+    msidata = readAnalyze('infile', attach.only=TRUE)
+    centroided(msidata) = $centroids
+#else
+    msidata = loadRData('infile.RData')
+    msidata = as(msidata, "MSImagingExperiment")
+#end if
 
 
 ########################### QC numbers ########################
 
         ## Number of features (m/z)
-        maxfeatures = length(features(msidata))
+        maxfeatures = nrow(msidata)
         ## Range m/z
         minmz = round(min(mz(msidata)), digits=2)
         maxmz = round(max(mz(msidata)), digits=2)
         ## Number of spectra (pixels)
-        pixelcount = length(pixels(msidata))
+        pixelcount = ncol(msidata)
         ## Range x coordinates
-        minimumx = min(coord(msidata)[,1])
-        maximumx = max(coord(msidata)[,1])
+        minimumx = min(coord(msidata)\$x)
+        maximumx = max(coord(msidata)\$x)
         ## Range y coordinates
-        minimumy = min(coord(msidata)[,2])
-        maximumy = max(coord(msidata)[,2])
+        minimumy = min(coord(msidata)\$y)
+        maximumy = max(coord(msidata)\$y)
         ## Store features for QC plot
         featuresinfile = mz(msidata)
 
-        all_df = cbind(coord(msidata)[,1:2], rep("removed pixels", times=ncol(msidata)))
-        colnames(all_df)[3] = "annotation"
+        all_df = data.frame(coord(msidata)\$x, coord(msidata)\$y, rep("removed pixels", times=ncol(msidata)))
+        colnames(all_df) = c("x", "y", "annotation")
 
 ## Next steps will only run if there are more than 0 pixels/features in the file
 
@@ -92,7 +113,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0)
                 error=function(cond) {
                 ## in case all coordinates were outside the dataset leading to zero pixels, tool is stopped to avoid continuing with wrong data
                     message("Error during pixel filtering")
-                    message("Possible problems: Forgot to set 'Tabular file contains a header line' = Yes, wrong columns selected, columns with coordinates contain empty fields or letters, all coordinates were outside the range of the dataset - this can be checked with the 'MSI qualitycontrol' tool)")
+                    message("Possible problems: Forgot to set 'Tabular file contains a header line' = Yes, wrong columns selected, columns with coordinates contain empty fields or letters, all coordinates were outside the range of the dataset - this can be checked with the 'MSI qualitycontrol' tool")
                     stop(call.=FALSE)
                 }
             )    
@@ -142,9 +163,9 @@ if (ncol(msidata)>0 & nrow(msidata) >0)
 
     ## dataframe for QC of pixel distribution
 
-    remaining_df = cbind(coord(msidata)[,1:2], rep("remaining pixels", times=ncol(msidata)))
-    colnames(remaining_df)[3] = "annotation"
-    position_df = rbind(all_df, remaining_df) 
+    remaining_df = data.frame(as.numeric(coord(msidata)\$x), as.numeric(coord(msidata)\$y), rep("remaining pixels", times=ncol(msidata)))
+    colnames(remaining_df) = c("x", "y", "annotation")
+    position_df = rbind(all_df, remaining_df)
     position_df[row.names(unique(position_df[,c("x", "y")])),]
     position_df\$annotation = factor(position_df\$annotation)
     gc()
@@ -205,7 +226,7 @@ if (ncol(msidata) > 0){
                         ## in case all provided m/z values were outside the m/z range
                         ## tool is stopped to avoid continuing with wrong data
                             message("Error during m/z filtering")
-                            message("Possible problems: Forgot to set 'Tabular file contains a header line' = Yes, wrong columns selected, column with m/z features contains empty fields or letters, all m/z features s were outside the range of the dataset  - this can be checked with the 'MSI qualitycontrol' tool) or did not match any m/z feature of the dataset (see help section for more information on that)")
+                            message("Possible problems: Forgot to set 'Tabular file contains a header line' = Yes, wrong columns selected, column with m/z features contains empty fields or letters, all m/z features s were outside the range of the dataset  (this can be checked with the 'MSI qualitycontrol' tool) or did not match any m/z feature of the dataset (see help section for more information on that)")
                             stop(call.=FALSE)
                         }
                     )    
@@ -262,8 +283,11 @@ if (ncol(msidata) > 0){
                         #end if 
                         current_mass = which(c(mz(msidata) <= masses + plusminus & mz(msidata) >= masses - plusminus))
                         mass_to_remove = append(mass_to_remove, current_mass)}
-                    msidata= msidata[-mass_to_remove, ]
-                    validmz = numberfeatures - nrow(msidata)
+                        mass_to_keep = setdiff(1:nrow(msidata),mass_to_remove)
+
+                    msidata= msidata[mass_to_keep, ]
+                    validmz = maxfeatures - nrow(msidata)
+
                     ## does not throw error when processed file has no features left, therefore create error to avoid continuing with wrong data
                     if (nrow(msidata) == 0)
                         {
@@ -275,7 +299,6 @@ if (ncol(msidata) > 0){
                         stop(call.=FALSE)
                     }
                 )    
-
 
 
 
@@ -304,18 +327,18 @@ gc()
 #################### QC numbers #######################
 
 ## Number of features (m/z)
-maxfeatures2 = length(features(msidata))
+maxfeatures2 = nrow(msidata)
 ## Range m/z
 minmz2 = round(min(mz(msidata)), digits=2)
 maxmz2 = round(max(mz(msidata)), digits=2)
 ## Number of spectra (pixels)
-pixelcount2 = length(pixels(msidata))
+pixelcount2 = ncol(msidata)
 ## Range x coordinates
-minimumx2 = min(coord(msidata)[,1])
-maximumx2 = max(coord(msidata)[,1])
+minimumx2 = min(coord(msidata)\$x)
+maximumx2 = max(coord(msidata)\$x)
 ## Range y coordinates
-minimumy2 = min(coord(msidata)[,2])
-maximumy2 = max(coord(msidata)[,2])
+minimumy2 = min(coord(msidata)\$y)
+maximumy2 = max(coord(msidata)\$y)
 
 properties = c("Number of m/z features",
                "Range of m/z values",
@@ -347,7 +370,7 @@ property_df = data.frame(properties, before, filtered)
 
 pdf("filtertool_QC.pdf", fonts = "Times", pointsize = 12)
 plot(0,type='n',axes=FALSE,ann=FALSE)
-title(main=paste0("Qualitycontrol of filtering tool for file: \n\n", "$infile.display_name"))
+title(main=paste0("Qualitycontrol of filtering tool for file: \n\n", "$infile.element_identifier"))
 grid.table(property_df, rows= NULL)
 
 ## QC report only when pixels/features are left
@@ -362,35 +385,39 @@ if (ncol(msidata)>0 & nrow(msidata) >0)
            ggtitle("Spatial orientation of filtered pixels")+
            theme_bw()+
            theme(plot.title = element_text(hjust = 0.5))+
-           theme(legend.position="bottom",legend.direction="vertical")
+           theme(legend.position="bottom",legend.direction="vertical")+
+           guides(fill=guide_legend(ncol=5,byrow=TRUE))
     print(pixel_image)
 
-    ### plot features which are removed
-    hist(mz(msidata), xlab="m/z", main="Kept m/z values")
-    #if str($features_cond.features_filtering) == "none":
-        print("no difference histogram as no m/z filtering took place")
-    #else:
-        if (isTRUE(all.equal(featuresinfile, mz(msidata)))){
-        print("No difference in m/z values before and after filtering, no histogram drawn")
-        }else{
-        hist(setdiff(featuresinfile, mz(msidata)), xlab="m/z", main="Removed m/z values")}
-    #end if
+
+    ### visual mz feature control
+
+    kept_df = data.frame(mz(msidata), rep("remaining m/z", nrow(msidata)))
+    colnames(kept_df) = c("mz", "legend")
+
+    mz_removed = setdiff(featuresinfile, mz(msidata))
+    removed_df = data.frame(mz_removed, rep("removed m/z", length(mz_removed)))
+    colnames(removed_df) = c("mz", "legend")
+    histogram_df = rbind(removed_df,kept_df)
+
+    histogram_mz= ggplot(histogram_df, aes(x=mz, fill=legend)) +
+        geom_histogram()+ theme_bw()+
+        theme(plot.title = element_text(hjust = 0.5))+
+        theme(legend.position="bottom",legend.direction="vertical")+
+        labs(title="Overview of filtered m/z", x="m/z", y = "count") +
+        guides(fill=guide_legend(ncol=5,byrow=TRUE))
+      print(histogram_mz)
+
 
         dev.off()
 
     ## save msidata as imzML file, will only work if there is at least 1 m/z left
 
-    #if str($imzml_output) == "imzml_format":
         if (maxfeatures2 > 0){
             ## make sure that coordinates are integers
             coord(msidata)\$y = as.integer(coord(msidata)\$y)
             coord(msidata)\$x = as.integer(coord(msidata)\$x)
         writeImzML(msidata, "out")}
-    #elif str($imzml_output) == "rdata_format":
-        ## save msidata as Rfile
-        iData(msidata) = iData(msidata)[]
-        save(msidata, file="$outfile_rdata")
-    #end if
 
 
 }else{
@@ -448,20 +475,10 @@ if (ncol(msidata)>0 & nrow(msidata) >0)
                 </param>
             </when>
         </conditional>
-        <param name="imzml_output" type="select" display = "radio" optional = "False"
-               label="Output format" help= "Choose the output format">
-                <option value="imzml_format" >imzML</option>
-                <option value="rdata_format" selected="True" >RData</option>
-        </param>
     </inputs>
 
     <outputs>
-        <data format="imzml" name="outfile_imzml" label="${tool.name} on ${on_string}: imzML">
-            <filter>imzml_output =='imzml_format'</filter>
-        </data>
-        <data format="rdata" name="outfile_rdata" label="${tool.name} on ${on_string}: RData">
-            <filter>imzml_output == 'rdata_format'</filter>
-        </data>
+        <data format="imzml" name="outfile_imzml" label="${tool.name} on ${on_string}: imzML"/>
         <data format="pdf" name="QC_overview" from_work_dir="filtertool_QC.pdf" label = "${tool.name} on ${on_string}: QC"/>
     </outputs>
     <tests>
@@ -475,10 +492,9 @@ if (ncol(msidata)>0 & nrow(msidata) >0)
             <param name="features_filtering" value="features_range"/>
             <param name="min_mz" value="350"/>
             <param name="max_mz" value="500"/>
-            <param name="imzml_output" value="imzml_format"/>
             <output name="QC_overview" file="imzml_filtered3.pdf" compare="sim_size"/>
             <output name="outfile_imzml" ftype="imzml" file="out3.imzml.txt" compare="sim_size">
-                <extra_files type="file" file="out3.imzml" name="imzml" lines_diff="4"/>
+                <extra_files type="file" file="out3.imzml" name="imzml" lines_diff="6"/>
                 <extra_files type="file" file="out3.ibd" name="ibd" compare="sim_size"/>
             </output>
         </test>
@@ -488,10 +504,9 @@ if (ncol(msidata)>0 & nrow(msidata) >0)
             <param name="annotation_file" ftype="tabular" value="inputpixels_2column.tabular"/>
             <param name="column_x" value="1"/>
             <param name="column_y" value="3"/>
-            <param name="imzml_output" value="imzml_format"/>
             <output name="QC_overview" file="imzml_filtered4.pdf" compare="sim_size"/>
             <output name="outfile_imzml" ftype="imzml" file="out4.imzml.txt" compare="sim_size">
-                <extra_files type="file" file="out4.imzml" name="imzml" lines_diff="4"/>
+                <extra_files type="file" file="out4.imzml" name="imzml" lines_diff="6"/>
                 <extra_files type="file" file="out4.ibd" name="ibd" compare="sim_size"/>
             </output>
         </test>
@@ -506,32 +521,49 @@ if (ncol(msidata)>0 & nrow(msidata) >0)
             <param name="mz_tabular" ftype="tabular" value = "featuresofinterest5.tabular"/>
             <param name="feature_column" value="1"/>
             <param name="feature_header" value="0"/>
-            <param name="imzml_output" value="imzml_format"/>
             <output name="QC_overview" file="imzml_filtered5.pdf" compare="sim_size"/>
             <output name="outfile_imzml" ftype="imzml" file="out5.imzml.txt" compare="sim_size">
-                <extra_files type="file" file="out5.imzml" name="imzml" lines_diff="4"/>
+                <extra_files type="file" file="out5.imzml" name="imzml" lines_diff="6"/>
                 <extra_files type="file" file="out5.ibd" name="ibd" compare="sim_size"/>
             </output>
         </test>
         <test>
             <expand macro="infile_analyze75"/>
-            <param name="imzml_output" value="imzml_format"/>
             <output name="QC_overview" file="analyze75_filtered2.pdf" compare="sim_size"/>
             <output name="outfile_imzml" ftype="imzml" file="out6.imzml.txt" compare="sim_size">
-                <extra_files type="file" file="out6.imzml" name="imzml" lines_diff="4"/>
+                <extra_files type="file" file="out6.imzml" name="imzml" lines_diff="6"/>
                 <extra_files type="file" file="out6.ibd" name="ibd" compare="sim_size"/>
             </output>
         </test>
         <test>
             <param name="infile" value="preprocessed.RData" ftype="rdata"/>
-            <conditional name="outputs">
-                <param name="outputs_select" value="no_quality_control"/>
-            </conditional>
-            <param name="imzml_output" value="imzml_format"/>
             <output name="QC_overview" file="rdata_notfiltered.pdf" compare="sim_size" />
             <output name="outfile_imzml" ftype="imzml" file="out7.imzml.txt" compare="sim_size">
-                <extra_files type="file" file="out7.imzml" name="imzml" lines_diff="4"/>
+                <extra_files type="file" file="out7.imzml" name="imzml" lines_diff="6"/>
                 <extra_files type="file" file="out7.ibd" name="ibd" compare="sim_size"/>
+            </output>
+        </test>
+        <test>
+            <expand macro="processed_infile_imzml"/>
+            <conditional name="processed_cond">
+                <param name="processed_file" value="processed"/>
+                <param name="accuracy" value="100"/>
+                <param name="units" value="ppm"/>
+            </conditional>
+            <param name="pixel_filtering" value="two_columns"/>
+            <param name="annotation_file" ftype="tabular" value="inputpixels_2column.tabular"/>
+            <param name="column_x" value="1"/>
+            <param name="column_y" value="3"/>
+            <param name="features_filtering" value="remove_features"/>
+            <param name="mz_tabular" ftype="tabular" value = "featuresofinterest5.tabular"/>
+            <param name="feature_column" value="1"/>
+            <param name="feature_header" value="0"/>
+            <param name="removal_plusminus" value="100"/>
+            <param name="units_removal" value="ppm"/>
+            <output name="QC_overview" file="imzml_filtered8.pdf" compare="sim_size"/>
+            <output name="outfile_imzml" ftype="imzml" file="out8.imzml.txt" compare="sim_size">
+                <extra_files type="file" file="out8.imzml" name="imzml" lines_diff="6"/>
+                <extra_files type="file" file="out8.ibd" name="ibd" compare="sim_size"/>
             </output>
         </test>
     </tests>
@@ -581,7 +613,7 @@ This tool provides options to filter (subset) pixels and m/z features of mass sp
 
 - m/z feature removing: 
 
-    - Perturbing m/z features such as matrix contaminants can be removed by specifying their m/z value in a tabular file, optionally with a half window size in ppm or m/z for the window in which peaks should be removed
+    - Perturbing m/z features such as matrix contaminants, tryptic peptides and internal calibrants can be removed by specifying their m/z value in a tabular file, optionally with a half window size in ppm or m/z for the window in which peaks should be removed
 
 
 **Tips**
@@ -598,7 +630,7 @@ This tool provides options to filter (subset) pixels and m/z features of mass sp
 
 **Output**
 
-- MSI data as imzML file or .RData (can be read with the Cardinal package in R)
+- MSI data as (continuous) imzML file
 - pdf with heatmap showing the pixels that are removed and kept as well as histograms of kept and removed m/z
 
 
