@@ -1,15 +1,17 @@
-<tool id="cardinal_preprocessing" name="MSI preprocessing" version="@VERSION@.3">
+<tool id="cardinal_preprocessing" name="MSI preprocessing" version="2.4.0.0">
     <description>
         mass spectrometry imaging preprocessing
     </description>
     <macros>
         <import>macros.xml</import>
     </macros>
-    <expand macro="requirements">
+    <requirements>
+        <requirement type="package" version="2.4.0">bioconductor-cardinal</requirement>
+        <requirement type="package" version="3.6.1">r-base</requirement>
         <requirement type="package" version="2.3">r-gridextra</requirement>
-        <requirement type="package" version="3.0">r-ggplot2</requirement>
-        <requirement type="package" version="0.20_35">r-lattice</requirement>
-    </expand>
+        <requirement type="package" version="3.2.1">r-ggplot2</requirement>
+        <requirement type="package" version="0.20_38">r-lattice</requirement>
+    </requirements>
     <command detect_errors="exit_code">
     <![CDATA[
 
@@ -17,11 +19,9 @@
         cat '${cardinal_preprocessing}' &&
         Rscript '${cardinal_preprocessing}' &&
 
-        #if str($imzml_output) == "imzml_format":
         mkdir $outfile_imzml.files_path &&
             mv ./out.imzML "${os.path.join($outfile_imzml.files_path, 'imzml')}" | true &&
             mv ./out.ibd "${os.path.join($outfile_imzml.files_path, 'ibd')}" | true &&
-        #end if
         echo "imzML file:" > $outfile_imzml &&
         ls -l "$outfile_imzml.files_path" >> $outfile_imzml
 
@@ -37,12 +37,37 @@ library(gridExtra)
 library(lattice)
 library(ggplot2)
 
-@READING_MSIDATA@
 
-@READING_MSIDATA_INRAM@  ###change out
+        ## function to read RData files independent of filename
+        loadRData <- function(fileName){
+        load(fileName)
+        get(ls()[ls() != "fileName"])
+        }
+
+        #if $infile.ext == 'imzml'
+            #if str($processed_cond.processed_file) == "processed":
+                msidata <- readImzML('infile', resolution=$processed_cond.accuracy, units = "$processed_cond.units")
+                centroided(msidata) = $centroids
+            #else
+                msidata <- readImzML('infile')
+                centroided(msidata) = $centroids
+            #end if
+        #elif $infile.ext == 'analyze75'
+            msidata = readAnalyze('infile')
+            centroided(msidata) = $centroids
+        #else
+            msidata = loadRData('infile.RData')
+            msidata = as(msidata, "MSImagingExperiment")
+        #end if
+
 
 ## remove duplicated coordinates, otherwise peak picking and log2 transformation will fail
-msidata <- msidata[,!duplicated(coord(msidata)[,1:2])]
+msidata <- msidata[,!duplicated(coord(msidata)[,1:2])] 
+
+## set variable to False
+#set $used_peak_picking = False
+#set $used_peak_alignment = False
+#set $continuous_format = False
 
 
 if (ncol(msidata)>0 & nrow(msidata) >0){                                         
@@ -63,11 +88,9 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
     vectorofactions = "inputdata"
     ## Choose random spectra for QC plots
     random_spectra = sample(pixels(msidata), 4, replace=FALSE)
-    par(mfrow = c(2, 2), oma=c(0,0,2,0))
-    for (random_sample in 1:length(random_spectra)){
-        plot(msidata, pixel=random_spectra[random_sample], main=paste0("spectrum ", names(random_spectra)[random_sample]))}
+    par(oma=c(0,0,2,0))
+    print(plot(msidata, pixel=random_spectra))
     title("Input spectra", outer=TRUE, line=0)
-
 
     ############################### Preprocessing steps ###########################
     ###############################################################################
@@ -80,7 +103,13 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             print('Normalization')
             ##normalization
 
+            if (class(msidata) == "MSProcessedImagingExperiment"){
+                msidata = as(msidata, "MSContinuousImagingExperiment")
+            }
+
             msidata = normalize(msidata, method="tic")
+            msidata <- process(msidata, BPPARAM=MulticoreParam())
+
 
             ############################### QC ###########################
 
@@ -91,9 +120,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             normalized = c(minmz, maxmz,maxfeatures, pixelcount)
             QC_numbers= cbind(QC_numbers, normalized)
             vectorofactions = append(vectorofactions, "normalized")
-            par(mfrow = c(2, 2), oma=c(0,0,2,0))
-            for (random_sample in 1:length(random_spectra)){
-                plot(msidata, pixel=random_spectra[random_sample], main=paste0("spectrum ", names(random_spectra)[random_sample]))}
+            print(plot(msidata, pixel=random_spectra))
             title("Spectra after normalization", outer=TRUE, line=0)
 
     ############################### Baseline reduction ###########################
@@ -102,7 +129,12 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             print('Baseline_reduction')
             ##baseline reduction
 
+            if (class(msidata) == "MSProcessedImagingExperiment"){
+                msidata = as(msidata, "MSContinuousImagingExperiment")
+            }
+
             msidata = reduceBaseline(msidata, method="median", blocks=$method.methods_conditional.blocks_baseline, spar=$method.methods_conditional.spar_baseline)
+            msidata <- process(msidata, BPPARAM=MulticoreParam())
 
             ############################### QC ###########################
 
@@ -113,8 +145,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             baseline = c(minmz, maxmz,maxfeatures, pixelcount)
             QC_numbers= cbind(QC_numbers, baseline)
             vectorofactions = append(vectorofactions, "baseline red.")
-            for (random_sample in 1:length(random_spectra)){
-                plot(msidata, pixel=random_spectra[random_sample], main=paste0("spectrum ", names(random_spectra)[random_sample]))}
+            print(plot(msidata, pixel=random_spectra))
             title("Spectra after baseline reduction", outer=TRUE, line=0)
 
     ############################### Smoothing ###########################
@@ -122,6 +153,11 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
         #elif str( $method.methods_conditional.preprocessing_method ) == 'Smoothing':
             print('Smoothing')
             ## Smoothing
+
+            if (class(msidata) == "MSProcessedImagingExperiment"){
+                msidata = as(msidata, "MSContinuousImagingExperiment")
+            }
+
 
             #if str( $method.methods_conditional.methods_for_smoothing.smoothing_method) == 'gaussian':
                 print('gaussian smoothing')
@@ -144,6 +180,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                 msidata = smoothSignal(msidata, method="$method.methods_conditional.methods_for_smoothing.smoothing_method", window=$method.methods_conditional.window_smoothing, coef = $method.methods_conditional.methods_for_smoothing.coefficients_ma_filter)
 
             #end if
+            msidata <- process(msidata, BPPARAM=MulticoreParam())
 
             ############################### QC ###########################
 
@@ -154,13 +191,13 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             smoothed = c(minmz, maxmz,maxfeatures, pixelcount)
             QC_numbers= cbind(QC_numbers, smoothed)
             vectorofactions = append(vectorofactions, "smoothed")
-            for (random_sample in 1:length(random_spectra)){
-                plot(msidata, pixel=random_spectra[random_sample], main=paste0("spectrum ", names(random_spectra)[random_sample]))}
+            print(plot(msidata, pixel=random_spectra))
             title("Spectra after smoothing", outer=TRUE, line=0)
 
     ############################### Peak picking ###########################
 
         #elif str( $method.methods_conditional.preprocessing_method) == 'Peak_picking':
+            #set $used_peak_picking = True
             print('Peak_picking')
             ## Peakpicking
 
@@ -169,10 +206,10 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
 
                 msidata = peakPick(msidata, window = $method.methods_conditional.window_picking, blocks = $method.methods_conditional.blocks_picking, method='$method.methods_conditional.methods_for_picking.picking_method', SNR=$method.methods_conditional.SNR_picking_method, spar=$method.methods_conditional.methods_for_picking.spar_picking)
 
-            #elif str( $method.methods_conditional.methods_for_picking.picking_method) == 'limpic':
-                print('limpic peakpicking')
+            #elif str( $method.methods_conditional.methods_for_picking.picking_method) == 'mad':
+                print('mad peakpicking')
 
-                msidata = peakPick(msidata, window = $method.methods_conditional.window_picking, blocks = $method.methods_conditional.blocks_picking, method='$method.methods_conditional.methods_for_picking.picking_method', SNR=$method.methods_conditional.SNR_picking_method, thresh=$method.methods_conditional.methods_for_picking.tresh_picking)
+                msidata = peakPick(msidata, window = $method.methods_conditional.window_picking, blocks = $method.methods_conditional.blocks_picking, method='$method.methods_conditional.methods_for_picking.picking_method', SNR=$method.methods_conditional.SNR_picking_method)
 
             #elif str( $method.methods_conditional.methods_for_picking.picking_method) == 'simple':
                 print('simple peakpicking')
@@ -180,6 +217,12 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                 msidata = peakPick(msidata, window = $method.methods_conditional.window_picking, blocks = $method.methods_conditional.blocks_picking, method='$method.methods_conditional.methods_for_picking.picking_method', SNR=$method.methods_conditional.SNR_picking_method)
 
             #end if
+            msidata <- process(msidata, BPPARAM=MulticoreParam())
+
+            #if str($method.methods_conditional.imzml_output) == "cont_format":
+                #set $continuous_format = True
+            #end if
+
 
             ############################### QC ###########################
 
@@ -190,45 +233,40 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             picked = c(minmz, maxmz,maxfeatures, pixelcount)
             QC_numbers= cbind(QC_numbers, picked)
             vectorofactions = append(vectorofactions, "picked")
-            for (random_sample in 1:length(random_spectra)){
-                plot(msidata, pixel=random_spectra[random_sample], main=paste0("spectrum ", names(random_spectra)[random_sample]))}
+            print(plot(msidata, pixel=random_spectra))
             title("Spectra after peak picking", outer=TRUE, line=0)
 
     ############################### Peak alignment ###########################
 
         #elif str( $method.methods_conditional.preprocessing_method ) == 'Peak_alignment':
+            #set $used_peak_alignment = True
             print('Peak_alignment')
             ## Peakalignment
 
-            #if str( $method.methods_conditional.align_ref_type.align_reference_datatype) == 'align_noref':
-
-                align_peak_reference = msidata
-
-            #elif str( $method.methods_conditional.align_ref_type.align_reference_datatype) == 'align_table':
+            #if str( $method.methods_conditional.align_ref_type.align_reference_datatype) == 'align_table':
 
                 align_reference_table = read.delim("$method.methods_conditional.align_ref_type.mz_tabular", header = $method.methods_conditional.align_ref_type.feature_header, stringsAsFactors = FALSE)
+
                 align_reference_column = align_reference_table[,$method.methods_conditional.align_ref_type.feature_column]
-                align_peak_reference = align_reference_column[align_reference_column>=min(mz(msidata)) & align_reference_column<=max(mz(msidata))]
+
+                align_peak_reference = as.numeric(align_reference_column[align_reference_column>=min(mz(msidata)) & align_reference_column<=max(mz(msidata))])
                 if (length(align_peak_reference) == 0)
                     {align_peak_reference = 0}
-           
-            #elif str( $method.methods_conditional.align_ref_type.align_reference_datatype) == 'align_msidata_ref':
 
-                    align_peak_reference = loadRData('$method.methods_conditional.align_ref_type.align_peaks_msidata')
+                msidata = peakAlign(msidata,tolerance =$method.methods_conditional.value_diffalignment, units = "$method.methods_conditional.units_diffalignment", ref=align_peak_reference)
+
+
+            #elif str( $method.methods_conditional.align_ref_type.align_reference_datatype) == 'align_noref':
+
+                msidata = peakAlign(msidata,tolerance =$method.methods_conditional.value_diffalignment, units = "$method.methods_conditional.units_diffalignment")
 
             #end if
 
-            #if str( $method.methods_conditional.methods_for_alignment.alignment_method) == 'diff':
-                print('diff peakalignment')
+            msidata <- process(msidata, BPPARAM=MulticoreParam())
 
-                msidata = peakAlign(msidata, method='$method.methods_conditional.methods_for_alignment.alignment_method',diff.max =$method.methods_conditional.methods_for_alignment.value_diffalignment, units = "$method.methods_conditional.methods_for_alignment.units_diffalignment", ref=align_peak_reference)
-
-           #elif str( $method.methods_conditional.methods_for_alignment.alignment_method) == 'DP':
-                print('DPpeakalignment')
-
-            msidata = peakAlign(msidata, method='$method.methods_conditional.methods_for_alignment.alignment_method',gap = $method.methods_conditional.methods_for_alignment.gap_DPalignment, ref=align_peak_reference)
-
-           #end if
+            #if str($method.methods_conditional.imzml_output) == "cont_format":
+                #set $continuous_format = True
+            #end if
 
             ############################### QC ###########################
 
@@ -239,8 +277,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             aligned = c(minmz, maxmz,maxfeatures, pixelcount)
             QC_numbers= cbind(QC_numbers, aligned)
             vectorofactions = append(vectorofactions, "aligned")
-            for (random_sample in 1:length(random_spectra)){
-                plot(msidata, pixel=random_spectra[random_sample], main=paste0("spectrum ", names(random_spectra)[random_sample]))}
+            print(plot(msidata, pixel=random_spectra))
             title("Spectra after alignment", outer=TRUE, line=0)
 
     ############################### Peak filtering ###########################
@@ -248,7 +285,8 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
         #elif str( $method.methods_conditional.preprocessing_method) == 'Peak_filtering':
             print('Peak_filtering')
 
-            msidata = peakFilter(msidata, method='freq', freq.min = $method.methods_conditional.frequ_filtering)
+            msidata = peakFilter(msidata, freq.min = $method.methods_conditional.frequ_filtering)
+            msidata <- process(msidata, BPPARAM=MulticoreParam())
 
             ############################### QC ###########################
 
@@ -259,14 +297,16 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             filtered = c(minmz, maxmz,maxfeatures, pixelcount)
             QC_numbers= cbind(QC_numbers, filtered)
             vectorofactions = append(vectorofactions, "filtered")
-            for (random_sample in 1:length(random_spectra)){
-                plot(msidata, pixel=random_spectra[random_sample], main=paste0("spectrum ", names(random_spectra)[random_sample]))}
+            print(plot(msidata, pixel=random_spectra))
             title("Spectra after filtering", outer=TRUE, line=0)
 
     ############################### Data reduction ###########################
 
         #elif str( $method.methods_conditional.preprocessing_method) == 'Data_reduction':
             print('Data_reduction')
+
+            ## these functions only work on MSImageSet
+            msidata = as(msidata, "MSImageSet")
 
             #if str( $method.methods_conditional.methods_for_reduction.reduction_method) == 'bin':
                 print('bin reduction')
@@ -302,6 +342,10 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
 
                 msidata = reduceDimension(msidata, method="peaks", ref=peak_reference, type="$method.methods_conditional.methods_for_reduction.peaks_type")
             #end if
+
+            ## coercition into new format
+            msidata = as(msidata, "MSImagingExperiment")
+
             ############################### QC ###########################
 
             maxfeatures =nrow(msidata)
@@ -311,8 +355,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             reduced = c(minmz, maxmz,maxfeatures, pixelcount)
             QC_numbers= cbind(QC_numbers, reduced)
             vectorofactions = append(vectorofactions, "reduced")
-            for (random_sample in 1:length(random_spectra)){
-                plot(msidata, pixel=random_spectra[random_sample], main=paste0("spectrum ", names(random_spectra)[random_sample]))}
+            print(plot(msidata, pixel=random_spectra))
             title("Spectra after data reduction", outer=TRUE, line=0)
 
         ############################### Transformation ###########################
@@ -320,14 +363,15 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
         #elif str( $method.methods_conditional.preprocessing_method) == 'Transformation':
             print('Transformation')
 
-            ## convert data into R matrix what brings it automatically into memory and can take some take but next steps need R matrix
-            ##iData(msidata) <- iData(msidata)[]
+            if (class(msidata) == "MSProcessedImagingExperiment"){
+                msidata = as(msidata, "MSContinuousImagingExperiment")
+            }
 
             #if str( $method.methods_conditional.transf_conditional.trans_type) == 'log2':
                 print('log2 transformation')
 
                 ## replace 0 with NA to prevent Inf
-                spectra_df = spectra(msidata)[] ## convert into R matrix
+                spectra_df = spectra(msidata) ## convert into R matrix
                 spectra_df[spectra_df ==0] = NA
                 print(paste0("Number of 0 which were converted into NA:",sum(is.na(spectra_df))))
                 spectra(msidata) = spectra_df
@@ -341,7 +385,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             #elif str( $method.methods_conditional.transf_conditional.trans_type) == 'sqrt':
                 print('squareroot transformation')
 
-                spectra(msidata) = sqrt(spectra(msidata)[])
+                spectra(msidata) = sqrt(spectra(msidata))
 
            #end if
 
@@ -354,8 +398,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             transformed = c(minmz, maxmz,maxfeatures, pixelcount)
             QC_numbers= cbind(QC_numbers, transformed)
             vectorofactions = append(vectorofactions, "transformed")
-            for (random_sample in 1:length(random_spectra)){
-                plot(msidata, pixel=random_spectra[random_sample], main=paste0("spectrum ", names(random_spectra)[random_sample]))}
+            print(plot(msidata, pixel=random_spectra))
             title("Spectra after transformation", outer=TRUE, line=0)
 
             #end if
@@ -366,22 +409,25 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
 
     ## save msidata as imzML file, will only work if there is at least 1 m/z left
 
-    #if str($imzml_output) == "imzml_format":
         if (nrow(msidata) > 0){
             ## make sure that coordinates are integers
             coord(msidata)\$y = as.integer(coord(msidata)\$y)
             coord(msidata)\$x = as.integer(coord(msidata)\$x)
-            writeImzML(msidata, "out")}
-    #elif str($imzml_output) == "rdata_format":
-        ## save as (.RData)
-        iData(msidata) = iData(msidata)[]
-        save(msidata, file="$outfile_rdata")
-    #end if
+        #if $used_peak_picking:
+            #if $continuous_format:
+                msidata = as(msidata, "MSContinuousImagingExperiment")
+            #end if
+        #elif $used_peak_alignment
+            #if $continuous_format:
+                msidata = as(msidata, "MSContinuousImagingExperiment")
+            #end if
+        #end if
+        writeImzML(msidata, "out")
+        }
 
     plot(0,type='n',axes=FALSE,ann=FALSE)
     rownames(QC_numbers) = c("min m/z", "max mz", "# features", "# spectra")
     grid.table(t(QC_numbers))
-
     dev.off()
 
 }else{
@@ -395,7 +441,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
         <repeat name="methods" title="Preprocessing" min="1" max="50">
             <conditional name="methods_conditional">
                 <param name="preprocessing_method" type="select" label="Preprocessing methods">
-                    <option value="Normalization" selected="True">Intensity Normalization (TIC)</option>
+                    <option value="Normalization" selected="True">Intensity Normalization</option>
                     <option value="Baseline_reduction">Baseline Reduction</option>
                     <option value="Smoothing">Peak smoothing</option>
                     <option value="Peak_picking">Peak picking</option>
@@ -404,7 +450,16 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                     <option value="Data_reduction">Data reduction</option>
                     <option value="Transformation">Transformation</option>
                 </param>
-                <when value="Normalization"/>
+                <when value="Normalization">
+                    <conditional name="methods_for_normalization">
+                        <param name="normalization_method" type="select" label="Normalization method">
+                            <option value="tic" selected="True">TIC</option>
+                            <option value="rms">RMS</option>
+                        </param>
+                        <when value="tic"/>
+                        <when value="rms"/>
+                    </conditional>
+                </when>
                 <when value="Baseline_reduction">
                     <param name="blocks_baseline" type="integer" value="500"
                         label="Blocks"/>
@@ -438,16 +493,16 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                                 label="Window size"/>
                 </when>
                 <when value="Peak_picking">
-                    <param name="SNR_picking_method" type="integer" value="6"
+                    <param name="SNR_picking_method" type="float" value="6"
                         label="Signal to noise ratio"
                         help="The minimal signal to noise ratio for peaks to be considered as a valid peak."/>
                     <param name="blocks_picking" type="integer" value="100" label = "Number of blocks"
                         help="Number of blocks in which to divide mass spectrum to calculate noise"/>
                     <param name="window_picking" type="float" value="5" label= "Window size" help="Window width for seeking local maxima"/>
                     <conditional name="methods_for_picking">
-                        <param name="picking_method" type="select" label="Peak picking method" help="only simple works for processed imzML files">
+                        <param name="picking_method" type="select" label="Peak picking method">
                             <option value="adaptive" selected="True">adaptive</option>
-                            <option value="limpic">limpic</option>
+                            <option value="mad">mad</option>
                             <option value="simple">simple</option>
                         </param>
                         <when value="adaptive">
@@ -457,50 +512,32 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                                   applied to the spectrum in order to decide the cutoffs 
                                   for throwing away false noise spikes that might occur inside peaks"/>
                         </when>
-                        <when value="limpic">
-                            <param name="tresh_picking" type="float" value="0.75"
-                                label="thresh value" help="The thresholding quantile to use when comparing slopes in order to throw away peaks that are too flat"/>
-                        </when> 
+                        <when value="mad"/>
                         <when value="simple"/>
                     </conditional>
+                <param name="imzml_output" type="boolean" label="imzML output in processed format" truevalue="proc_format" falsevalue="cont_format" help= "Processed imzML works only in MALDIquant tools, not yet in MSI tools (Cardinal)"/>
                 </when>
                 <when value="Peak_alignment">
-                    <conditional name="methods_for_alignment">
-                        <param name="alignment_method" type="select" label="Alignment method">
-                            <option value="diff" selected="True">diff</option>
-                            <option value="DP">DP</option>
-                        </param>
-                        <when value="diff">
-                            <param name="value_diffalignment" type="float" value="200"
-                                   label="diff.max" help="Peaks that differ less than this value will be aligned together"/>
-                            <param name="units_diffalignment" type="select" display="radio" optional="False" label="units">
-                                    <option value="ppm" selected="True">ppm</option>
-                                    <option value="mz">m/z</option>
-                            </param>
-                        </when>
-                        <when value="DP">
-                            <param name="gap_DPalignment" type="float" value="0"
-                                   label="Gap" help="The gap penalty for the dynamic programming sequence alignment"/>
-                        </when>
-                    </conditional>
+                    <param name="value_diffalignment" type="float" value="200"
+                           label="tolerance" help="Peaks that differ less than this value will be aligned together"/>
+                    <param name="units_diffalignment" type="select" display="radio" optional="False" label="units">
+                            <option value="ppm" selected="True">ppm</option>
+                            <option value="mz">m/z</option>
+                    </param>
                     <conditional name="align_ref_type">
                         <param name="align_reference_datatype" type="select" label="Choose reference">
                             <option value="align_noref" selected="True">no reference</option>
                             <option value="align_table" >tabular file as reference</option>
-                            <option value="align_msidata_ref">msidata file as reference</option>
                         </param>
                         <when value="align_noref"/>
                         <when value="align_table">
                             <expand macro="reading_1_column_mz_tabular" label="Tabular file with m/z features to use for alignment. Only the m/z values from the tabular file will be kept."/>
                         </when>
-                        <when value="align_msidata_ref">
-                            <param name="align_peaks_msidata" type="data" format="rdata" label="Picked and aligned Cardinal MSImageSet saved as RData"/>
-                        </when>
                     </conditional>
+                <param name="imzml_output" type="boolean" label="imzML output in processed format" truevalue="proc_format" falsevalue="cont_format" help= "Processed imzML works only in MALDIquant tools, not yet in MSI tools (Cardinal)"/>
                 </when>
                 <when value="Peak_filtering">
-                    <param name="frequ_filtering" type="integer" value="1000"
-                        label="Freq.min" help="Peaks that occur in the dataset fewer times than this will be removed. Number should be between 1 (no filtering) and number of spectra (pixel)"/>
+                    <param name="frequ_filtering" type="float" value="0.01" max="1" min="0" label="Minimum frequency" help="Peaks that occur in the dataset in lesser proportion than this will be dropped (0.01 --> filtering for 1% of spectra)"/>
                 </when>
                 <when value="Data_reduction">
                     <conditional name="methods_for_reduction">
@@ -563,19 +600,9 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                 </when>
             </conditional>
         </repeat>
-        <param name="imzml_output" type="select" display = "radio" optional = "False"
-               label="Output format" help= "Choose the output format">
-                <option value="imzml_format" >imzML</option>
-                <option value="rdata_format" selected="True" >RData</option>
-        </param>
     </inputs>
     <outputs>
-        <data format="imzml" name="outfile_imzml" label="${tool.name} on ${on_string}: imzML">
-            <filter>imzml_output=='imzml_format'</filter>
-        </data>
-        <data format="rdata" name="outfile_rdata" label="${tool.name} on ${on_string}: RData">
-            <filter>imzml_output == 'rdata_format'</filter>
-        </data>
+        <data format="imzml" name="outfile_imzml" label="${tool.name} on ${on_string}: imzML"/>
         <data format="pdf" name="QC_overview" from_work_dir="Preprocessing.pdf" label = "${tool.name} on ${on_string}: QC"/>
     </outputs>
     <tests>
@@ -585,7 +612,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                 <conditional name="methods_conditional">
                     <param name="preprocessing_method" value="Normalization"/>
                     <conditional name="methods_for_normalization">
-                        <param name="normalization_method" value="median"/>
+                        <param name="normalization_method" value="tic"/>
                     </conditional>
                 </conditional>
             </repeat>
@@ -613,15 +640,12 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             <repeat name="methods">
                 <conditional name="methods_conditional">
                     <param name="preprocessing_method" value="Peak_alignment"/>
-                    <conditional name="methods_for_alignment">
-                        <param name="alignment_method" value="diff"/>
-                    </conditional>
                 </conditional>
             </repeat>
             <repeat name="methods">
                 <conditional name="methods_conditional">
                     <param name="preprocessing_method" value="Peak_filtering"/>
-                    <param name="frequ_filtering" value="2"/>
+                    <param name="frequ_filtering" value="0.3"/>
                 </conditional>
             </repeat>
             <repeat name="methods">
@@ -632,10 +656,9 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                         </conditional>
                 </conditional>
             </repeat>
-            <param name="imzml_output" value="imzml_format"/>
             <output name="QC_overview" file="preprocessing_results1.pdf" compare="sim_size"/>
             <output name="outfile_imzml" ftype="imzml" file="preprocessing_results1.imzml.txt" compare="sim_size">
-                <extra_files type="file" file="preprocessing_results1.imzml" name="imzml" lines_diff="4"/>
+                <extra_files type="file" file="preprocessing_results1.imzml" name="imzml" lines_diff="6"/>
                 <extra_files type="file" file="preprocessing_results1.ibd" name="ibd" compare="sim_size"/>
             </output>
         </test>
@@ -655,15 +678,11 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             <repeat name="methods">
                 <conditional name="methods_conditional">
                     <param name="preprocessing_method" value="Peak_alignment"/>
-                    <conditional name="methods_for_alignment">
-                        <param name="alignment_method" value="DP"/>
-                    </conditional>
                 </conditional>
             </repeat>
-            <param name="imzml_output" value="imzml_format"/>
             <output name="QC_overview" file="preprocessing_results2.pdf" compare="sim_size"/>
             <output name="outfile_imzml" ftype="imzml" file="preprocessing_results2.imzml.txt" compare="sim_size">
-                <extra_files type="file" file="preprocessing_results2.imzml" name="imzml" lines_diff="4"/>
+                <extra_files type="file" file="preprocessing_results2.imzml" name="imzml" lines_diff="6"/>
                 <extra_files type="file" file="preprocessing_results2.ibd" name="ibd" compare="sim_size"/>
             </output>
         </test>
@@ -673,7 +692,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                 <conditional name="methods_conditional">
                     <param name="preprocessing_method" value="Normalization"/>
                     <conditional name="methods_for_normalization">
-                        <param name="normalization_method" value="median"/>
+                        <param name="normalization_method" value="rms"/>
                     </conditional>
                 </conditional>
             </repeat>
@@ -683,21 +702,29 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                     <param name="blocks_picking" value="100"/>
                     <param name="window_picking" value="5"/>
                     <param name="SNR_picking_method" value="3"/>
-                        <param name="picking_method" value="limpic"/>
+                    <conditional name="methods_for_picking">
+                        <param name="picking_method" value="mad"/>
+                    </conditional>
                 </conditional>
+                <param name="imzml_output" value="proc_format"/>
             </repeat>
             <repeat name="methods">
                 <conditional name="methods_conditional">
                     <param name="preprocessing_method" value="Peak_alignment"/>
-                    <conditional name="methods_for_alignment">
-                        <param name="alignment_method" value="diff"/>
-                    </conditional>
+                </conditional>
+            <param name="imzml_output" value="proc_format"/>
+            </repeat>
+            <repeat name="methods">
+                <conditional name="methods_conditional">
+                    <param name="preprocessing_method" value="Transformation"/>
+                        <conditional name="transf_conditional">
+                            <param name="trans_type" value="log2"/>
+                        </conditional>
                 </conditional>
             </repeat>
-            <param name="imzml_output" value="imzml_format"/>
             <output name="QC_overview" file="preprocessing_results3.pdf" compare="sim_size"/>
             <output name="outfile_imzml" ftype="imzml" file="preprocessing_results3.imzml.txt" compare="sim_size">
-                <extra_files type="file" file="preprocessing_results3.imzml" name="imzml" lines_diff="4"/>
+                <extra_files type="file" file="preprocessing_results3.imzml" name="imzml" lines_diff="6"/>
                 <extra_files type="file" file="preprocessing_results3.ibd" name="ibd" compare="sim_size"/>
             </output>
         </test>
@@ -706,35 +733,49 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             <repeat name="methods">
                 <conditional name="methods_conditional">
                     <param name="preprocessing_method" value="Normalization"/>
+                    <param name="normalization_method" value="tic"/>
                 </conditional>
             </repeat>
             <repeat name="methods">
                 <conditional name="methods_conditional">
                     <param name="preprocessing_method" value="Data_reduction"/>
-                    <param name="bin_width" value="0.1"/>
+                    <conditional name="methods_for_reduction">
+                        <param name="reduction_method" value="bin"/>
+                        <param name="bin_width" value="0.1"/>
+                    </conditional>
                 </conditional>
             </repeat>
-            <param name="imzml_output" value="imzml_format"/>
             <output name="QC_overview" file="preprocessing_results4.pdf" compare="sim_size"/>
             <output name="outfile_imzml" ftype="imzml" file="preprocessing_results4.imzml.txt" compare="sim_size">
-                <extra_files type="file" file="preprocessing_results4.imzml" name="imzml" lines_diff="4"/>
+                <extra_files type="file" file="preprocessing_results4.imzml" name="imzml" lines_diff="6"/>
                 <extra_files type="file" file="preprocessing_results4.ibd" name="ibd" compare="sim_size"/>
             </output>
         </test>
         <test>
-            <expand macro="infile_imzml"/>
+            <expand macro="processed_infile_imzml"/>
+            <conditional name="processed_cond">
+                <param name="processed_file" value="processed"/>
+                <param name="accuracy" value="100"/>
+                <param name="units" value="ppm"/>
+            </conditional>
             <repeat name="methods">
                 <conditional name="methods_conditional">
-                    <param name="preprocessing_method" value="Data_reduction"/>
-                        <conditional name="methods_for_reduction">
-                            <param name="reduction_method" value="resample"/>
-                            <param name="step_width" value="0.1"/>
+                    <param name="preprocessing_method" value="Transformation"/>
+                        <conditional name="transf_conditional">
+                            <param name="trans_type" value="sqrt"/>
                         </conditional>
                 </conditional>
             </repeat>
-            <param name="imzml_output" value="rdata_format"/>
-            <output name="outfile_rdata" file="preprocessing_results5.RData" compare="sim_size"/>
+            <repeat name="methods">
+                <conditional name="methods_conditional">
+                    <param name="preprocessing_method" value="Baseline_reduction"/>
+                </conditional>
+            </repeat>
             <output name="QC_overview" file="preprocessing_results5.pdf" compare="sim_size"/>
+            <output name="outfile_imzml" ftype="imzml" file="preprocessing_results5.imzml.txt" compare="sim_size">
+                <extra_files type="file" file="preprocessing_results5.imzml" name="imzml" lines_diff="6"/>
+                <extra_files type="file" file="preprocessing_results5.ibd" name="ibd" compare="sim_size"/>
+            </output>
         </test>
     </tests>
     <help>
@@ -752,7 +793,7 @@ This tool provides multiple Cardinal functions to preprocess mass spectrometry i
 
 **Options**
 
-- Normalization: Normalization of intensities to total ion current (TIC)
+- Normalization: Normalization of intensities to total ion current (TIC) or to root-mean-square (RMS)
 - Baseline reduction: Baseline  reduction removes background intensity generated by chemical noise (common in MALDI datasets)
 - Smoothing: Smoothing of the peaks reduces noise and improves peak detection
 - Peak picking: relevant peaks are picked while noise-peaks are removed (needs peak alignment afterwards)
@@ -761,14 +802,9 @@ This tool provides multiple Cardinal functions to preprocess mass spectrometry i
 - Data reduction: binning, resampling or peak filtering to reduce data
 - Transformation: log2 or squareroot transformation of all intensities; when using log2 transformation zero intensities will become NA, this can lead to compatibility problems. 
 
-**Tips** 
-
-- Peak alignment works only after peak picking
-- Peak filtering works only on centroided data (peak picking and alignment or Data reduction peaks
-
 **Output**
 
-- MSI data as imzML file or .RData (can be read with the Cardinal package in R)
+- MSI data as continuous imzML file (option to output processed imzML file only after peak picking/peak alignment; but is not yet compatible with other MSI tools) 
 - pdf with key values and four random mass spectra after each processing step
 
         ]]>
