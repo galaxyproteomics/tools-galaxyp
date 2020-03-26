@@ -1,14 +1,15 @@
-<tool id="cardinal_mz_images" name="MSI mz images" version="@VERSION@.2">
+<tool id="cardinal_mz_images" name="MSI mz images" version="2.4.0.0">
     <description>
         mass spectrometry imaging m/z heatmaps
     </description>
     <macros>
         <import>macros.xml</import>
     </macros>
-    <expand macro="requirements">
+    <requirements>
+        <requirement type="package" version="2.4.0">bioconductor-cardinal</requirement>
+        <requirement type="package" version="3.6.1">r-base</requirement>
         <requirement type="package" version="2.3">r-gridextra</requirement>
-        <requirement type="package" version="0.20_35">r-lattice</requirement>
-    </expand>
+    </requirements>
     <command detect_errors="aggressive">
 <![CDATA[
         @INPUT_LINKING@
@@ -23,9 +24,28 @@
 
 library(Cardinal)
 library(gridExtra)
-library(lattice)
+##library(lattice)
 
-@READING_MSIDATA@
+#if $infile.ext == 'imzml'
+    #if str($processed_cond.processed_file) == "processed":
+        msidata <- readImzML('infile', resolution=$processed_cond.accuracy, units = "$processed_cond.units", attach.only=TRUE)
+        centroided(msidata) = $centroids
+    #else
+        msidata <- readImzML('infile', attach.only=TRUE)
+        centroided(msidata) = $centroids
+    #end if
+#elif $infile.ext == 'analyze75'
+    msidata = readAnalyze('infile', attach.only=TRUE)
+    centroided(msidata) = $centroids
+#else
+    ## function to load RData and store with new variable name
+    loadRData <- function(fileName){
+    load(fileName)
+    get(ls()[ls() != "fileName"])
+    }
+    msidata = loadRData('infile.RData')
+    msidata = as(msidata, "MSImagingExperiment")
+#end if
 
 @DATA_PROPERTIES@
 
@@ -64,47 +84,20 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
     if (length(inputmz) != 0){
         for (mass in 1:length(inputmz)){
 
-            ###standard image
+                print(image(msidata, mz=inputmz[mass],plusminus = $plusminus_dalton, normalize.image="$normalize_image", contrast.enhance = "$image_contrast", 
+                smooth.image = "$image_smoothing", strip=$strip, colorkey=$colorkey, colorscale=$colorscale, ylim= c(maximumy,minimumy)))}
 
-            #if str($image_type) == "standard_image":
-                print("standard image")
-
-                print(image(msidata, mz=inputmz[mass],plusminus = $plusminus_dalton, contrast.enhance = "$image_contrast", 
-                smooth.image = "$image_smoothing", strip=$strip, colorkey=$colorkey,ylim= c(maximumy+0.2*maximumy,minimumy-1),
-                main= paste0(inputnames[mass], " (", round(inputmz[mass], digits = 2)," ± ", $plusminus_dalton, " Da)")))}
-
-
-            ###lattice image
-
-            #elif str($image_type) == "lattice_image":
-                print("lattice image")
-
-                #if str($strip) =="TRUE": 
-
-                print(image(msidata, mz=inputmz[mass], strip = strip.custom(bg="lightgrey", par.strip.text=list(col="black", cex=.9)),
-                lattice=TRUE, plusminus = $plusminus_dalton, contrast.enhance = "$image_contrast", smooth.image = "$image_smoothing", 
-                colorkey=$colorkey,ylim=c(maximumy+0.2*maximumy,minimumy-1),
-                main= paste0(inputnames[mass], " (", round(inputmz[mass], digits = 2)," ± ", $plusminus_dalton, " Da)")))}
-
-                #elif str($strip) =="FALSE": 
-
-                print(image(msidata, mz=inputmz[mass], strip = $strip,
-                lattice=TRUE, plusminus = $plusminus_dalton, contrast.enhance = "$image_contrast", smooth.image = "$image_smoothing", 
-                colorkey=$colorkey,
-                main= paste0(inputnames[mass], " (", round(inputmz[mass], digits = 2)," ± ", $plusminus_dalton, " Da)")))}
-
-                #end if
-
-            #end if 
 
         ## optional svg output with original coordinates
         #if $svg_pixelimage:
             print("svg pixel image")
             ## reverse y axis for svg output = correct order and nice svg image
             coord(msidata)\$y <- max(coord(msidata)\$y) - coord(msidata)\$y + 1
+            ## works only with MSImageSet as expected
+            msidata = as(msidata, "MSImageSet")
             svg(file="svg_pixel_output.svg", width=maximumx, height=maximumy)
             par(mar=c(0,0,0,0))
-            image(msidata, mz = inputmz[1],strip=FALSE, plusminus = $plusminus_dalton,colorkey = FALSE,axes=FALSE, xlab=NA, ylab=NA,contrast.enhance = "$image_contrast", smooth.image = "$image_smoothing")
+            print(image(msidata, mz = inputmz[1],strip=FALSE, plusminus = $plusminus_dalton, colorscale=$colorscale, colorkey = FALSE,axes=FALSE, xlab=NA, ylab=NA,contrast.enhance = "$image_contrast", smooth.image = "$image_smoothing", normalize.image="$normalize_image"))
             dev.off()
         #end if
 
@@ -114,18 +107,19 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
         #set $color_string = ','.join(['"%s"' % $color.feature_color for $color in $overlay_cond.colours])
         colourvector = c($color_string)
 
-            image(msidata, mz=inputmz, 
+            print(image(msidata, mz=inputmz, 
                   plusminus = $plusminus_dalton,
                   col=colourvector,
                   contrast.enhance = "$image_contrast", 
-                  normalize.image="linear",
+                  normalize.image="$normalize_image", 
                   smooth.image = "$image_smoothing",
                   superpose=TRUE, main="overlay of all m/z", 
-                  ylim= c(maximumy+0.2*maximumy,minimumy-1))
+                  key=FALSE, 
+                  ylim= c(maximumy,minimumy)))
 
-                legend("topright",
+             legend("$overlay_cond.legend_position",
                        fill=colourvector,
-                       legend=as.numeric(sort(as.character(inputmz))))
+                      legend=as.numeric(sort(as.character(inputmz))))
         #end if
 
     } else {print("The input m/z were invalid")}
@@ -143,7 +137,7 @@ dev.off()
         <expand macro="pdf_filename"/>
         <expand macro="reading_2_column_mz_tabular"/>
 
-
+        <param name="plusminus_dalton" value="0.25" type="float" label="m/z range" help="average of the m/z window will be computed"/>
         <param name="image_contrast" type="select" label="Contrast enhancement" help="The 'histogram' equalization method flatterns the distribution of intensities. The hotspot 'suppression' method uses thresholding to reduce the intensities of hotspots">
             <option value="none" selected="True">none</option>
             <option value="suppression">suppression</option>
@@ -154,11 +148,15 @@ dev.off()
             <option value="gaussian">gaussian</option>
             <option value="adaptive">adaptive</option>
         </param>
-        <param name="plusminus_dalton" value="0.25" type="float" label="M/z range" help="plusminus m/z window"/>
+        <param name="colorscale" type="select" display="radio" label="Colorscale">
+            <option value="viridis" selected="True">viridis</option>
+            <option value="magma">magma</option>
+            <option value="plasma">plasma</option>
+            <option value="inferno">inferno</option>
+        </param>
         <param name="strip" type="boolean" checked="True" truevalue="TRUE" falsevalue="FALSE" label="Display m/z value in plot"/>
         <param name="colorkey" type="boolean" checked="True" truevalue="TRUE" falsevalue="FALSE" label="Display colorkey in plot"/>
-        <param name="image_type" type="boolean" checked="True" truevalue="standard_image" falsevalue="lattice_image"
-            label="Standard image" help="No: lattice function is used to display image"/>
+        <param name="normalize_image" type="boolean" truevalue="linear" falsevalue="none" label="Linear normalization of image"/>
         <param name="svg_pixelimage" type="boolean" label="Export first valid m/z from tabular file as SVG"/>
         <conditional name="overlay_cond">
             <param name="overlay_selection" type="select" label="Overlay image">
@@ -176,6 +174,16 @@ dev.off()
                   </sanitizer>
                 </param>
             </repeat>
+            <param name="legend_position" type="select" display="radio" label="Position of legend">
+                <option value="topright" selected="True">topright</option>
+                <option value="top">top</option>
+                <option value="topleft">topleft</option>
+                <option value="left">left</option>
+                <option value="bottomleft">bottomleft</option>
+                <option value="bottom">bottom</option>
+                <option value="bottomright">bottomright</option>
+                <option value="right">right</option>
+            </param>
             </when>
         </conditional>
     </inputs>
@@ -186,7 +194,7 @@ dev.off()
         </data>
     </outputs>
     <tests>
-        <test>
+        <!--"test>
             <expand macro="infile_imzml"/>
             <param name="calibrant_file" value="inputpeptides.tabular" ftype="tabular"/>
             <param name="mz_column" value="1"/>
@@ -196,7 +204,6 @@ dev.off()
             <param name="image_contrast" value="histogram"/>
             <param name="strip" value="True"/>
             <param name="colorkey" value="True"/>
-            <param name="image_type" value="lattice_image"/>
             <output name="plots" file="Heatmaps_imzml.pdf" ftype="pdf" compare="sim_size"/>
         </test>
         <test>
@@ -206,6 +213,7 @@ dev.off()
             <param name="name_column" value="1"/>
             <param name="plusminus_dalton" value="0.5"/>
             <param name="filename" value="Testfile_analyze75"/>
+            <param name="colorscale" value="magma"/>
             <param name="image_smoothing" value="gaussian"/>
             <param name="strip" value="False"/>
             <param name="colorkey" value="True"/>
@@ -221,7 +229,6 @@ dev.off()
             <param name="plusminus_dalton" value="0.5"/>
             <param name="strip" value="True"/>
             <param name="colorkey" value="True"/>
-            <param name="image_type" value="lattice_image"/>
             <param name="filename" value="Testfile_rdata"/>
             <output name="plots" file="Heatmaps_rdata.pdf" ftype="pdf" compare="sim_size"/>
         </test>
@@ -231,10 +238,36 @@ dev.off()
             <param name="mz_column" value="1"/>
             <param name="name_column" value="1"/>
             <param name="plusminus_dalton" value="0.5"/>
+            <param name="colorscale" value="plasma"/>
             <param name="strip" value="True"/>
             <param name="colorkey" value="False"/>
             <param name="filename" value="Testfile_rdata"/>
             <output name="plots" file="Heatmaps_LM8_file16.pdf" ftype="pdf" compare="sim_size"/>
+        </test-->
+        <test>
+            <expand macro="processed_infile_imzml"/>
+            <conditional name="processed_cond">
+                <param name="processed_file" value="processed"/>
+                <param name="accuracy" value="100"/>
+                <param name="units" value="ppm"/>
+            </conditional>
+            <param name="calibrant_file" value="inputpeptides.tabular" ftype="tabular"/>
+            <param name="mz_column" value="1"/>
+            <param name="name_column" value="2"/>
+            <conditional name="overlay_cond">
+                <param name="overlay_selection" value="yes_overlay"/>
+                <repeat name="colours">
+                    <param name="feature_color" value="#ff00ff"/>
+                </repeat>
+                <repeat name="colours">
+                    <param name="feature_color" value="#1f497d"/>
+                </repeat>
+                <repeat name="colours">
+                    <param name="feature_color" value="#00b050"/>
+                </repeat>
+                <param name="legend_position" value="topleft"/>
+            </conditional>
+            <output name="plots" file="Heatmaps_processed.pdf" ftype="pdf" compare="sim_size"/>
         </test>
     </tests>
     <help><![CDATA[
@@ -255,7 +288,6 @@ This tool uses the Cardinal image function to plot the intensity distribution of
 - In case tabular file cannot be selected in drop-down menu: Datatype in Galaxy must be tabular otherwise file will not appear in selection window (if Galaxy auto-detection was wrong, datatype can be changed by pressing the pen button (edit attributes))
 - No heatmaps are plotted when the input mass spectrometry imaging file has no intensities > 0 or all chosen m/z features are not present in the MSI dataset
 - The contrast enhance and image smoothing functions require a certain number (about 2%) of m/z features with intensities > 0 across all spectra
-- The standard image function should work for all files while the lattice function works not perfectly on every file
 
 **Output**
 
