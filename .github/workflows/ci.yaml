@@ -1,8 +1,9 @@
-name: Run Galaxy Tool Linting and Tests
-on:
-  schedule:
-    # Run at midnight every monday
-    - cron: '0 * * * 1'
+name: Weekly global Tool Linting and Tests
+on: [push, pull_request]
+# on:
+#   schedule:
+#     # Run at midnight every monday
+#     - cron: '0 * * * 1'
 env:
   GALAXY_RELEASE: release_20.01
 jobs:
@@ -18,7 +19,7 @@ jobs:
         python-version: ${{ matrix.python-version }}
         architecture: 'x64' # (x64 or x86)
     - name: setup planemo
-      run: 'git clone --recursive --depth 1 https://github.com/galaxyproject/planemo && python -m pip install --pre planemo/ && rm -rf planemo'
+      run: 'pip install planemo'
     - name: fake a planemo run to update cache
       run: 'touch tool.xml && PIP_QUIET=1 planemo test --galaxy_python_version ${{ matrix.python-version }} --no_conda_auto_init --galaxy_branch $GALAXY_RELEASE'
     - name: Cache .cache/pip
@@ -63,7 +64,7 @@ jobs:
         path: ~/.cache/pip
         key: pip_cache_${{ matrix.python-version }}_${{ env.GALAXY_RELEASE }}
     - name: setup planemo
-      run: 'git clone --recursive --depth 1 https://github.com/galaxyproject/planemo && python -m pip install --pre planemo/ && rm -rf planemo'
+      run: 'pip install planemo'
     - name: planemo ci_find_tools
       run: 'planemo ci_find_repos --chunk_count 40 --chunk ${{ matrix.chunk  }} --exclude test_repositories --exclude packages --exclude deprecated --exclude_from .tt_skip --exclude_from .tt_biocontainer_skip --output tool.list'
     - name: set tool list
@@ -225,7 +226,9 @@ jobs:
           python-version: '3.7'
           architecture: 'x64'
       - name: setup planemo
-        run: 'git clone --recursive --depth 1 https://github.com/galaxyproject/planemo && python -m pip install --pre planemo/ && rm -rf planemo'
+        run: 'pip install planemo'
+      - name: setup jq
+        run: 'sudo apt-get install jq'
       - name: combine outputs
         run: |
           find . -name tool_test_output.json -exec sh -c 'planemo merge_test_reports "$@" tool_test_output.json' sh {} +
@@ -237,3 +240,10 @@ jobs:
         with:
           name: 'All tool test results'
           path: upload
+      - name: check status of combined status
+        run: |
+             stat=$(jq '.["tests"][]["data"]["status"]' upload/tool_test_output.json | grep -v "success" || true)
+             if [[ "$(echo -n $stat | wc -l)" -gt "0" ]]; then
+                 echo "unsuccessful tests found $(sort <<<$stat | uniq -c)"
+                 exit 1
+             fi
