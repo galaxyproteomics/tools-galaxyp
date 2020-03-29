@@ -23,19 +23,13 @@ args = parser.parse_args()
 
 mqpar_out = os.path.join(os.getcwd(), 'mqpar.xml')
 infiles = [os.path.join(os.getcwd(), f) for f in args.infiles]
-print("preparing mqpar file...")
-mqparam = MQParam(args.mqpar, None, substitution_rx=args['substitution_rx'])
-print("checking version...")
-if mqparam.version != args['version']:
+mqparam = MQParam(args.mqpar, None, substitution_rx=args.substitution_rx)
+if mqparam.version != args.version:
     raise Exception('mqpar version is ' + m.version +
-                    '. Tool uses version {}.'.format(args['version']))
-print("translating infile names...")
+                    '. Tool uses version {}.'.format(args.version))
 mqparam.translate(infiles)
-print("adding fasta files...")
-mqparam.add_fasta_files(args.fasta_files.split(',')
-                  identifier=args['identifier_parse_rule'],
-                  description=args['description_parse_rule'])
-print("setting numThreds parameter...")
+mqparam.add_fasta_files(args.fasta_files.split(','),
+                  identifier=args.identifier_parse_rule,
+                  description=args.description_parse_rule)
 mqparam.set_simple_param('numThreads', args.num_threads)
-print("writing mqpar file...")
 mqparam.write(args.mqpar_out if args.mqpar_out else 'mqpar.xml')
