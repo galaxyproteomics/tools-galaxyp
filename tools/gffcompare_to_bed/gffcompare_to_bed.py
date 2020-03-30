@@ -93,10 +93,9 @@ def __main__():
                      for j in attributes.rstrip(';').split(';')]}
         if feature == 'transcript':
             if args.debug:
-                print >> sys.stderr, "%s\t%s"\
-                    % ('\t'.join([seqname, source, feature,
-                                  start, end, score, strand, frame]),
-                        attribute)
+                sys.stderr.write("%s\t%s\n" % ('\t'.join([seqname, source,
+                                 feature, start, end, score, strand, frame]),
+                                 attribute))
             if bed is not None:
                 write_bed_entry(bed)
                 bed = None
