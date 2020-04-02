@@ -1,4 +1,4 @@
-<tool id="pyprophet_score" name="PyProphet score" version="@VERSION@.0">
+<tool id="pyprophet_score" name="PyProphet score" version="@VERSION@.1">
     <description>
         Error-rate estimation for MS1, MS2 and transition-level data
     </description>
@@ -10,13 +10,13 @@
     <![CDATA[
         pyprophet score
         --in='$input'
-        --classifier=$conditional_classifier.classifier
-
         #if str($conditional_classifier.classifier)=='XGBoost':
+            --classifier=$conditional_classifier.classifier
             $conditional_classifier.xgb_autotune
-        #end if
-        #if $apply_weights: 
-            --apply_weights
+        #elif str($conditional_classifier.classifier)=='LDA':
+            --classifier=$conditional_classifier.classifier
+        #elif str($conditional_classifier.classifier)=='prev_weights':
+            --apply_weights=$conditional_classifier.apply_weights
         #end if
         --xeval_fraction=$xeval_fraction
         --xeval_num_iter=$xeval_num_iter
@@ -50,16 +50,19 @@
     <inputs>
         <param name="input" type="data" format="osw" label="Input file" help="This file needs to be in OSW format (--in)" />
         <conditional name="conditional_classifier">
-            <param argument="--classifier" type="select" label="Either a 'LDA' or 'XGBoost' classifier is used for semi-supervised learning" >
+            <param name="classifier" type="select" label="Either a 'LDA' or 'XGBoost' classifier is used for semi-supervised learning or previously calculated Pyprophet score weights can be loaded" help="(--classifier)">
               <option value="LDA" selected="True" >LDA</option>
               <option value="XGBoost">XGBoost</option>
+              <option value="prev_weights">Apply previously calculated weights</option>
             </param>
             <when value="LDA"/>
             <when value="XGBoost">
                 <param name="xgb_autotune" type="boolean" truevalue="--xgb_autotune" falsevalue="--no-xgb_autotune" label="XGBoost: Autotune hyperparameters" help="(--xgb_autotune / --no-xgb_autotune)"/>
             </when>
+            <when value="prev_weights">
+                <param name="apply_weights" type="data" format="osw" label="Apply PyProphet score weights file instead of semi-supervised learning." help="(--apply_weights)" />
+            </when>
         </conditional>
-        <param argument="apply_weights" type="data" format="txt" optional="True" label="Apply PyProphet score weights file instead of semi-supervised learning." />
         <param argument="--level" type="select" display="radio" label="The data level selected for scoring. 'ms1ms2' integrates both MS1- and MS2-level scores and can be used instead of 'ms2'-level results" >
           <option value="ms1" >MS1</option>
           <option value="ms2" >MS2</option>
@@ -85,7 +88,7 @@
         <param argument="pi0_smooth_df" type="integer" value="3" label="Number of degrees-of-freedom to use when estimating pi_0 with a smoother" />
         <param name="pi0_smooth_log" type="boolean" truevalue="--pi0_smooth_log_pi0" falsevalue="--no-pi0_smooth_log_pi0" label="If True and pi0_method = 'smoother', pi0 will be estimated by applying a smoother to a scatterplot of log(pi0) estimates against the tuning parameter lambda" help="(--pi0_smooth_log_pi0 / --no-pi0_smooth_log_pi0)"/>
         <param name="lfdr_truncate" type="boolean" checked="True" truevalue="--lfdr_truncate" falsevalue="--no-lfdr_truncate" label="If True, local FDR values >1 are set to 1" help="(--lfdr_truncate / --no-lfdr_truncate)"/>
-        <param name="lfdr_monotone" type="boolean" checked="True" truevalue="--lfdr_monotone" falsevallUE="--no-lfdr_monotone" label="If True, local FDR values are non-decreasing with increasing p-values" help="(--lfdr_monotone / --no-lfdr_monotone)"/>
+        <param name="lfdr_monotone" type="boolean" checked="True" truevalue="--lfdr_monotone" falsevalue="--no-lfdr_monotone" label="If True, local FDR values are non-decreasing with increasing p-values" help="(--lfdr_monotone / --no-lfdr_monotone)"/>
         <param argument="--lfdr_transformation" type="select" display="radio" label="Either a 'probit' or 'logit' transformation is applied to the p-values so that a local FDR estimate can be formed that does not involve edge effects of the [0,1] interval in which the p-values lie" >
           <option value="probit" selected="True" >probit</option>
           <option value="logit">logit</option>
@@ -115,6 +118,22 @@
             <param name="test_mode" value="True" />
             <output name="output" file="score.osw" compare="sim_size" />
             <output name="score_report" file="score_report.pdf" compare="sim_size" />
+        </test>
+        <test>
+            <param name="input" value="merged.osw" ftype="osw"/>
+            <conditional name="conditional_classifier">
+                <param name="classifier" value="prev_weights"/>
+                <param name="apply_weights" value="score.osw" ftype="osw"/>
+            </conditional>
+            <param name="level" value="ms2"/>
+            <param name="xeval_num_iter" value="2" />
+            <param name="ss_num_iter" value="2" />
+            <param name="pi0_lambda_start" value="0.1" />
+            <param name="pi0_lambda_end" value="0.3" />
+            <param name="pi0_lambda_steps" value="0.01" />
+            <param name="test_mode" value="True" />
+            <output name="output" file="score2.osw" compare="sim_size" />
+            <output name="score_report" file="score_report2.pdf" compare="sim_size" />
         </test>
     </tests>
     <help>
