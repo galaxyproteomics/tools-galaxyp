@@ -1,9 +1,5 @@
 from optparse import OptionParser
-import os
 import re
-import string
-import sys
-from tempfile import NamedTemporaryFile
 
 
 def main():
