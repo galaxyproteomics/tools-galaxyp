@@ -147,8 +147,8 @@ is_col_in_file <- function(file,ncol) {
 }
 
 convert_to_previous_header <- function(options){
-    header = c('Gene','description','Evidence','Antibody','RNA tissue specificity','Reliability (IH)','Reliability (IF)','Subcellular location','RNA tissue specific NX','TPM max in non-specific')
-    names(header) = c('Gene','description','Evidence','Antibody','RNA tissue category','Reliability (IH)','Reliability (IF)','Subcellular location','RNA TS TPM','TPM max in non-specific')
+    header = c('Gene','Gene description','Evidence','Antibody','RNA tissue specificity','Reliability (IH)','Reliability (IF)','Subcellular location','RNA tissue specific NX','TPM max in non-specific')
+    names(header) = c('Gene','Gene description','Evidence','Antibody','RNA tissue category','Reliability (IH)','Reliability (IF)','Subcellular location','RNA TS TPM','TPM max in non-specific')
     options = names(header[which(header %in% options)])
     return(options)
 }
