@@ -13,7 +13,7 @@ extension_lookup = {
     'mzml': 'mzML',
     'mzxml': 'mzXML',
     'ms1': 'MS1',
-    }
+}
 
 # input:
 ms1_ext = sys.argv[1]
@@ -53,7 +53,7 @@ config_to_dump = config_str.format(
     maxfeat=options['maxfeat'],
     inputfile=ms1_file,
     outputfile=output_file,
-    )
+)
 with open(CONFIG_FILE, 'w') as fp:
     fp.write(config_to_dump)
 
