@@ -17,11 +17,13 @@ Output: Fasta of 3-frame translations of the spliced sequence
 
 import optparse
 import os.path
-import re
 import sys
 import tempfile
 
-from Bio.Seq import reverse_complement, transcribe, back_transcribe, translate
+from Bio.Seq import (
+    reverse_complement, 
+    translate
+)
 
 
 class BedEntry(object):
