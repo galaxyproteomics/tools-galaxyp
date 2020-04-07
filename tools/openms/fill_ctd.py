@@ -11,7 +11,6 @@ from CTDopts.CTDopts import (
     _Choices,
     _Null,
     _InFile,
-    _OutFile,
     _NumericRange
 )
 

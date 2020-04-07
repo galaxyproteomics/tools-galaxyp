@@ -28,7 +28,7 @@ if __name__ == "__main__":
         model = Parameters(from_file=args.ctd)
     except ModelTypeError:
         pass
-    assert model is not None, "Could not parse %s, seems to be no CTD/PARAMS" % (input_ctd)
+    assert model is not None, "Could not parse %s, seems to be no CTD/PARAMS" % (args.ctd)
 
     # get a dictionary of the ctd arguments where the values of the parameters
     # given on the command line are overwritten
