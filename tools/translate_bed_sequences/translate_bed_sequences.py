@@ -21,7 +21,7 @@ import sys
 import tempfile
 
 from Bio.Seq import (
-    reverse_complement, 
+    reverse_complement,
     translate
 )
 
