@@ -27,6 +27,10 @@ jobs:
         echo 'base_ref: ${{ github.base_ref }}'
         echo 'event.before: ${{ github.event.before }}'
         echo 'event.after: ${{ github.event.after }}'
+    - name: ulimit
+      run: |
+        ulimit -a
+        df -h
     - uses: actions/setup-python@v1
       with:
         python-version: ${{ matrix.python-version }}
@@ -127,7 +131,7 @@ jobs:
       run: |
         set -e
         while read -r DIR; do
-            planemo shed_lint --tools --ensure_metadata --urls --report_level warn --fail_level error --recursive "$DIR";
+            planemo shed_lint --tools --ensure_metadata --report_level warn --fail_level error --recursive "$DIR";
         done < ../workflow_artifacts/changed_repositories.list
 
   # flake8 of Python scripts in the changed repositories
@@ -233,7 +237,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        chunk: [0, 1, 2, 3]
+        chunk: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
         python-version: [3.7]
     services:
       postgres:
@@ -278,17 +282,35 @@ jobs:
         touch changed_repositories_chunk.list changed_tools_chunk.list
         if [ -s ../workflow_artifacts/changed_repositories.list ]; then
             if [ $(wc -l < ../workflow_artifacts/changed_repositories.list) -eq 1 ]; then
-                planemo ci_find_tools --chunk_count 4 --chunk ${{ matrix.chunk }} \
+                planemo ci_find_tools --chunk_count 10 --chunk ${{ matrix.chunk }} \
                                --output changed_tools_chunk.list \
                                $(cat ../workflow_artifacts/changed_repositories.list)
             else
-                planemo ci_find_repos --chunk_count 4 --chunk ${{ matrix.chunk }} \
+                planemo ci_find_repos --chunk_count 10 --chunk ${{ matrix.chunk }} \
                                --output changed_repositories_chunk.list \
                                $(cat ../workflow_artifacts/changed_repositories.list)
             fi
         fi
     - name: Show changed tools/repositories chunk list
       run: cat changed_tools_chunk.list changed_repositories_chunk.list
+    # TODO this is only temporary and only for OpenMS
+    - name: create test data
+      run: |
+           while read repo
+           do
+               if [ -x $repo/test-data.sh ]; then
+                   cd $repo
+                   ./test-data.sh
+                   ls -la test-data
+                   cd -
+               fi
+           done < ../workflow_artifacts/changed_repositories.list
+    # TODO without this planemo task aborts with `System.IO.IOException: No space left on device` 
+    - name: free disk space
+      run: |
+        sudo swapoff -a
+        sudo rm -f /swapfile
+        sudo apt clean
     - name: Planemo test tools
       run: |
         if [ -s changed_tools_chunk.list ]; then
