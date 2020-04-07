@@ -19,14 +19,10 @@ Filter: Must cross splice boundary
 
 import optparse
 import os.path
-import re
 import sys
-import tempfile
 
 from Bio.Seq import (
     reverse_complement,
-    transcribe,
-    back_transcribe,
     translate
 )
 
@@ -309,10 +305,6 @@ def __main__():
         exit(1)
     # Output files
     bed_fh = None
-    # gff_fh = None
-    # gff_fa_file = None
-    gff_fa = None
-    outFile = None
     if options.bed:
         bed_fh = open(options.bed, 'w')
         bed_fh.write('track name="%s" type=bedDetail description="%s" \n' % ('novel_junction_peptides', 'test'))

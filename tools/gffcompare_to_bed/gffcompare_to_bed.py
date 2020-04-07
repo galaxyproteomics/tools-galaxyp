@@ -31,13 +31,13 @@ class BedEntry(object):
         self.thickEnd = int(thickEnd) if thickEnd else self.chromEnd
         self.itemRgb = str(itemRgb) if itemRgb is not None else r'100,100,100'
         self.blockCount = int(blockCount)
-        if isinstance(blockSizes, str) or isinstance(blockSizes, unicode):
+        if isinstance(blockSizes, str):
             self.blockSizes = [int(x) for x in blockSizes.split(',')]
         elif isinstance(blockSizes, list):
             self.blockSizes = [int(x) for x in blockSizes]
         else:
             self.blockSizes = blockSizes
-        if isinstance(blockStarts, str) or isinstance(blockSizes, unicode):
+        if isinstance(blockStarts, str):
             self.blockStarts = [int(x) for x in blockStarts.split(',')]
         elif isinstance(blockStarts, list):
             self.blockStarts = [int(x) for x in blockStarts]
