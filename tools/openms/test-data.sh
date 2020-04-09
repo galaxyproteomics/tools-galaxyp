@@ -4,8 +4,6 @@ VERSION=2.5
 FILETYPES="filetypes.txt"
 CONDAPKG="https://anaconda.org/bioconda/openms/2.5.0/download/linux-64/openms-2.5.0-h463af6b_1.tar.bz2"
 
-
-
 # import the magic
 . ./generate-foo.sh
 
@@ -29,9 +27,9 @@ fi
 eval "$(conda shell.bash hook)"
 
 if [[ -z "$1" ]]; then
-		autotests="/dev/null"
+	autotests="/dev/null"
 else
-		autotests="$1"
+	autotests="$1"
 fi
 
 ###############################################################################
@@ -41,27 +39,39 @@ fi
 ###############################################################################
 
 echo "Clone OpenMS $VERSION sources"
-git clone -b release/$VERSION.0 https://github.com/OpenMS/OpenMS.git $OPENMSGIT
-cd $OPENMSGIT
-git submodule init
-git submodule update
-cd -
+if [[ ! -d $OPENMSGIT ]]; then
+	git clone -b release/$VERSION.0 https://github.com/OpenMS/OpenMS.git $OPENMSGIT
+	cd $OPENMSGIT
+	git submodule init
+	git submodule update
+	cd -
+else
+	cd $OPENMSGIT
+		git pull origin release/$VERSION.0
+	cd -
+fi
 
 echo "Create OpenMS $VERSION conda env"
 # TODO currently add lxml (needed by CTDConverter)
 # TODO for some reason a to recent openjdk is used
-conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults -p $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION openjdk=8.0.192 ctdopts=1.3 lxml
+if conda env list | grep "$OPENMSENV"; then
+	true
+else
+	conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults -p $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION openjdk=8.0.192 ctdopts=1.3 lxml
 # chmod -R u-w $OPENMSENV 
-
+fi
 ###############################################################################
 ## get the 
 ## - conda package (for easy access and listing of the OpenMS binaries), 
 ###############################################################################
 echo "Download OpenMS $VERSION package $CONDAPKG"
-mkdir $OPENMSPKG
-wget -P $OPENMSPKG/ "$CONDAPKG"
-tar -xf $OPENMSPKG/"$(basename $CONDAPKG)" -C $OPENMSPKG/
-rm $OPENMSPKG/"$(basename $CONDAPKG)"
+
+if [[ ! -d $OPENMSPKG ]]; then
+	mkdir $OPENMSPKG
+	wget -P $OPENMSPKG/ "$CONDAPKG"
+	tar -xf $OPENMSPKG/"$(basename $CONDAPKG)" -C $OPENMSPKG/
+	rm $OPENMSPKG/"$(basename $CONDAPKG)"
+fi
 
 ###############################################################################
 ## Get python libaries for CTD -> Galaxy conversion
@@ -71,6 +81,10 @@ echo "Clone CTDConverter"
 if [[ ! -d $CTDCONVERTER ]]; then
 	#git clone https://github.com/WorkflowConversion/CTDConverter.git CTDConverter
 	git clone -b topic/cdata https://github.com/bernt-matthias/CTDConverter.git $CTDCONVERTER
+else
+	cd $CTDCONVERTER
+	git pull origin topic/cdata
+	cd -
 fi
 # export PYTHONPATH=$(pwd)/CTDopts
 
@@ -155,9 +169,9 @@ prepare_test_data >> prepare_test_data.sh
 
 echo "Execute test shell script"
 chmod u+x prepare_test_data.sh
-cd ./test-data || exit
-../prepare_test_data.sh
-cd - || exit
+# cd ./test-data || exit
+# ../prepare_test_data.sh
+# cd - || exit
 
 ###############################################################################
 ## create/update test data for the manually generated tests
@@ -166,9 +180,9 @@ cd - || exit
 ###############################################################################
 echo "Execute test shell script for manually curated tests"
 chmod u+x prepare_test_data_manual.sh
-cd ./test-data || exit
-../prepare_test_data_manual.sh
-cd - || exit
+# cd ./test-data || exit
+# ../prepare_test_data_manual.sh
+# cd - || exit
 
 # link_tmp_files
 # # exit
@@ -176,7 +190,7 @@ cd - || exit
 ###############################################################################
 ## auto generate tests
 ###############################################################################
-# get_tests2 HighResPrecursorMassCorrector
+# get_tests2 AccurateMassSearch 
 # exit
 
 echo "Write test macros to "$autotests
@@ -192,7 +206,6 @@ conda deactivate
 
 ## remove broken symlinks in test-data
 find test-data/ -xtype l -delete
-
 
 if [ ! -z "$created" ]; then
 	rm -rf "$tmp"

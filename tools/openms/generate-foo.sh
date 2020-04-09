@@ -74,7 +74,7 @@ function get_tests2 {
 		cli=$(echo $line |cut -d" " -f3- | sed 's/-ini [^ ]\+//')
 		
 		ctdtmp=$(mktemp)
-		echo 	python3 fill_ctd_clargs.py --ctd $ini $cli
+		#echo python3 fill_ctd_clargs.py --ctd $ini $cli
 		# using eval: otherwise for some reason quoted values are not used properly ('A B' -> ["'A", "B'"])
 		eval "python3 fill_ctd_clargs.py --ctd $ini $cli" > $ctdtmp
 		# echo $ctdtmp
