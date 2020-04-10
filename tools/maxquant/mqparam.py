@@ -1,7 +1,5 @@
 """
 Create a project-specific MaxQuant parameter file.
-
-TODO:
 """
 
 import copy
@@ -295,6 +293,8 @@ class MQParam:
         files_from_mqpar = [e.text for e in filesNode]
         filesNode.clear()
         filesNode.tag = 'filePaths'
+        print("infiles: " + str(infiles))
+        print("infilenames: " + str(infilenames))
         for f in files_from_mqpar:
             # either windows or posix path
             win = ntpath.basename(f)
@@ -304,6 +304,7 @@ class MQParam:
                                        basename.split('.')[0])
             # match infiles to their names in mqpar.xml,
             # ignore files missing in mqpar.xml
+            print("basename with substitution from mqpar: " + basename_with_sub)
             if basename_with_sub in infilenames:
                 i = infilenames.index(basename_with_sub)
                 et_add_child(filesNode, 'string', infiles[i])
