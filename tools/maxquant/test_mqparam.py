@@ -1,4 +1,4 @@
-"""Tests for mqparam class. If testing a new MaxQuant version, 
+"""Tests for mqparam class. If testing a new MaxQuant version,
 create a new parameter file using '<MAXQUANT_CMD> -c ./mqpar.xml'
 """
 
@@ -7,9 +7,12 @@ import xml.etree.ElementTree as ET
 from mqparam import MQParam, ParamGroup
 
 TEMPLATE_PATH = './test-data/template.xml'
+
+
 def mk_pg_root():
     mqpar = ET.parse(TEMPLATE_PATH).getroot()
     return mqpar.find('.parameterGroups/parameterGroup')
+
 
 class TestParamGroup:
     def test_list_param(self):
@@ -67,12 +70,11 @@ class TestMQParam:
         assert t._root.find('maxQuantVersion').text == '1.6.10.43'
 
     def test_validity_check(self):
-        design = {'Name': ['Test1','Test2'],
+        design = {'Name': ['Test1', 'Test2'],
                   'Fraction': ['2', 32767],
                   'PTM': ['False', 'False'],
                   'Experiment': ['e1', 'e1'],
                   'paramGroup': [0, 0]}
-        
 
         assert MQParam._check_validity(design, 2) is None
 
@@ -80,13 +82,12 @@ class TestMQParam:
         with pytest.raises(Exception):
             MQParam._check_validity(design, 2)
         design['Name'][0] = 'Test1'
-        
+
         design['Experiment'][0] = ''
         with pytest.raises(ValueError):
             MQParam._check_validity(design, 2)
         design['Experiment'][0] = 'e1'
 
-        
         design['Fraction'][0] = 'foo'
         with pytest.raises(ValueError):
             MQParam._check_validity(design, 2)
@@ -100,9 +101,7 @@ class TestMQParam:
 
         # valid experimental design
         e1 = tmpdir / "e1.txt"
-        e1.write('Name\tExperiment\tFraction\tPTM\n' +
-                'Test1\te1\n' +
-                'Test2\te1\t\tfalse')
+        e1.write('Name\tExperiment\tFraction\tPTM\nTest1\te1\nTest2\te1\t\tfalse')
         t.exp_design = str(e1)
         design = t._make_exp_design((0, 0), ('./Test1.mzXML', './Test2.mzXML'))
 
@@ -150,7 +149,6 @@ class TestMQParam:
                                                                '/galaxy/working/Test2.mzXML',
                                                                '/galaxy/working/Test3.mzXML']
 
-
     def test_fasta_files(self):
         t = MQParam(TEMPLATE_PATH)
         t.add_fasta_files(('test1', 'test2'),
@@ -189,7 +187,6 @@ class TestMQParam:
         t._from_yaml(str(conf1))
         assert t['numThreads'] == '4'
         assert [child.text for child in t[1]._root.find('labelMods')] == ['', 'label1;label2']
-
 
     def test_write(self, tmpdir):
         yaml_conf = tmpdir / "conf.yml"

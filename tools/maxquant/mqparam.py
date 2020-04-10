@@ -16,7 +16,6 @@ def et_add_child(el, name, text, attrib=None):
     "Add a child element to an xml.etree.ElementTree.Element"
     child = ET.SubElement(el, name, attrib=attrib if attrib else {})
     child.text = str(text)
-
     return child
 
 
@@ -32,7 +31,6 @@ class ParamGroup:
     def set_list_param(self, key, vals):
         """Set a list parameter.
         """
-
         node = self._root.find(key)
         if node is None:
             raise ValueError('Element {} not found in parameter file'
@@ -54,18 +52,14 @@ class ParamGroup:
     def set_silac(self, light_labels, medium_labels, heavy_labels):
         """Set label modifications.
         """
-
         if medium_labels and not (heavy_labels or light_labels):  # medium omly with heavy and light
-            raise Exception("Incorrect SILAC specification." +
-                            " Use medium only together with light and heavy labels.")
-
+            raise Exception("Incorrect SILAC specification. Use medium only together with light and heavy labels.")
         multiplicity = 3 if medium_labels else 2 if heavy_labels else 1
         max_label = str(max(len(light_labels) if light_labels else 0,
                             len(medium_labels) if medium_labels else 0,
                             len(heavy_labels) if heavy_labels else 0))
         self._root.find('multiplicity').text = str(multiplicity)
         self._root.find('maxLabeledAa').text = max_label
-
         node = self._root.find('labelMods')
         node[0].text = ';'.join(light_labels) if light_labels else ''
         if multiplicity == 3:
@@ -88,7 +82,6 @@ class ParamGroup:
         Returns:
             None
         """
-
         iso_labels_node = self._root.find('isobaricLabels')
         label = et_add_child(iso_labels_node, 'IsobaricLabelInfo', '')
         et_add_child(label, 'internalLabel', internalLabel)
@@ -107,17 +100,13 @@ class MQParam:
     def __init__(self, mqpar_in, exp_design=None, yaml=None, substitution_rx=r'[^\s\S]'):  # no sub by default
         """Initialize MQParam class. mqpar_in can either be a template
         or a already suitable mqpar file.
-
         Args:
             mqpar_in: a template parameter file
-
             exp_design: a experimental design template (see MaxQuant documentation),
             can be None
-
             substitution_rx: a regular expression for replacements in the file names.
             It is applied before comparing input file names (e.g. from the exp. design)
         """
-
         self.orig_mqpar = mqpar_in
         self.exp_design = exp_design
         self._root = ET.parse(mqpar_in).getroot()
@@ -134,7 +123,6 @@ class MQParam:
         """Return paramGroup if indexed with integer, else try to find
         matching Element in XML root and return its text or None.
         """
-
         try:
             return self._paramGroups[index]
         except TypeError:
@@ -148,16 +136,15 @@ class MQParam:
         # 'Name' can be None, we need at least len_infiles valid entries
         match = len(list(filter(lambda x: bool(x), design['Name'])))
         if match < len_infiles:
-            raise Exception("Error parsing experimental design template: " +
-                            "Found only {} matching entries ".format(match) +
-                            "for {} input files".format(len_infiles))
+            raise Exception(' '.join(["Error parsing experimental design template:",
+                                      "Found only {} matching entries".format(match),
+                                      "for {} input files".format(len_infiles)]))
         for i in range(0, design_len):
             msg = "(in line " + str(i + 2) + " of experimental design) "
             if not design['Experiment'][i]:
                 raise ValueError(msg + " Experiment is empty.")
             if design['PTM'][i].lower() not in ('true', 'false'):
-                raise ValueError(msg + "Defines invalid PTM value, " +
-                                 "should be 'True' or 'False'.")
+                raise ValueError(msg + "Defines invalid PTM value, should be 'True' or 'False'.")
             try:
                 int(design['Fraction'][i])
             except ValueError as e:
@@ -169,16 +156,12 @@ class MQParam:
         If the experimental design template is None, create a default
         design with one experiment for each input file and no fractions
         for all files.
-
         Args:
             files: list of input file paths
-
             groups: list of parameter group indices
-
         Returns:
             dict: The (complete) experimental design template
         """
-
         design = {s: [] for s in ("Name", "PTM", "Fraction", "Experiment", "paramGroup")}
         if not self.exp_design:
             design["Name"] = files
@@ -194,9 +177,7 @@ class MQParam:
                     if i in design:
                         index.append(i)
                     else:
-                        raise Exception("Invalid column index in experimental"
-                                        + " design template: {}".format(i))
-
+                        raise Exception("Invalid column index in experimental design template: {}".format(i))
                 for line in design_file:
                     row = line.strip().split('\t')
                     for e, i in zip_longest(row, index):
@@ -205,7 +186,6 @@ class MQParam:
                         elif i == "PTM" and not e:
                             e = 'False'
                         design[i].append(e)
-
             # map files to names in exp. design template
             names = []
             names_to_paths = {}
@@ -224,7 +204,6 @@ class MQParam:
             design['Name'] = names
             design['paramGroup'] = groups
             MQParam._check_validity(design, len(files))
-
         return design
 
     def add_infiles(self, infiles):
@@ -234,22 +213,17 @@ class MQParam:
         The files must be specified as absolute paths
         for maxquant to find them.
         Also add parameter Groups.
-
         Args:
             infiles: a list of infile lists. first dimension denotes the
             parameter group.
-
         Returns:
             None
         """
-
         groups, files = zip(*[(num, f) for num, l in enumerate(infiles) for f in l])
         self._paramGroups = [ParamGroup(self.pg_node) for i in range(len(infiles))]
-
         nodenames = ('filePaths', 'experiments', 'fractions',
                      'ptms', 'paramGroupIndices', 'referenceChannel')
         design = self._make_exp_design(groups, files)
-
         # Get parent nodes from document
         nodes = dict()
         for nodename in nodenames:
@@ -260,7 +234,6 @@ class MQParam:
             nodes[nodename] = node
             node.clear()
             node.tag = nodename
-
         # Append sub-elements to nodes (one per file)
         for i, name in enumerate(design['Name']):
             if name:
@@ -279,22 +252,17 @@ class MQParam:
         """Map a list of given infiles to the files specified in the parameter file.
         Needed for the mqpar upload in galaxy. Removes the path and then tries
         to match the files.
-
         Args:
-            infiles: list or tuple of the input files
-
+            infiles: list or tuple of the input
         Returns:
             None
         """
-
         # kind of a BUG: fails if filename starts with '.'
         infilenames = [os.path.basename(f).split('.')[0] for f in infiles]
         filesNode = self._root.find('filePaths')
         files_from_mqpar = [e.text for e in filesNode]
         filesNode.clear()
         filesNode.tag = 'filePaths'
-        print("infiles: " + str(infiles))
-        print("infilenames: " + str(infilenames))
         for f in files_from_mqpar:
             # either windows or posix path
             win = ntpath.basename(f)
@@ -304,7 +272,6 @@ class MQParam:
                                        basename.split('.')[0])
             # match infiles to their names in mqpar.xml,
             # ignore files missing in mqpar.xml
-            print("basename with substitution from mqpar: " + basename_with_sub)
             if basename_with_sub in infilenames:
                 i = infilenames.index(basename_with_sub)
                 et_add_child(filesNode, 'string', infiles[i])
@@ -316,7 +283,6 @@ class MQParam:
         Args:
             files: (list) of fasta file paths
             parseRules: (dict) the parse rules as (tag, text)-pairs
-
         Returns:
             None
         """
@@ -326,14 +292,13 @@ class MQParam:
             fasta_node.append(copy.deepcopy(self.fasta_file_node))
             fasta_node[-1].find('fastaFilePath').text = f
             for rule in parse_rules:
-                fasta_node[-1].find(rule).text = parse_rules[rule]            
+                fasta_node[-1].find(rule).text = parse_rules[rule]
 
     def set_simple_param(self, key, value):
         """Set a simple parameter.
         Args:
             key: (string) XML tag of the parameter
             value: the text of the parameter XML node
-
         Returns:
             None
         """
@@ -347,14 +312,11 @@ class MQParam:
         """Read a yaml config file.
         Args:
             conf: (string) path to the yaml conf file
-
         Returns:
             None
         """
-
         with open(conf) as f:
             conf_dict = yaml.safe_load(f.read())
-
         paramGroups = conf_dict.pop('paramGroups')
         self.add_infiles([pg.pop('files') for pg in paramGroups])
         for i, pg in enumerate(paramGroups):
@@ -371,13 +333,11 @@ class MQParam:
                     self[i].set_list_param(el, lst)
             for key in pg:
                 self[i].set_simple_param(key, pg[key])
-
         fastafiles = conf_dict.pop('fastaFiles', False)
         if fastafiles:
             self.add_fasta_files(fastafiles, parse_rules=conf_dict.pop('parseRules', {}))
         else:
             raise Exception('No fasta files provided.')
-
         for key in conf_dict:
             self.set_simple_param(key, conf_dict[key])
 
@@ -390,7 +350,6 @@ class MQParam:
             pg_node.remove(pg_node[0])
             for group in self._paramGroups:
                 pg_node.append(group._root)
-
         rough_string = ET.tostring(self._root, 'utf-8', short_empty_elements=False)
         reparsed = minidom.parseString(rough_string)
         pretty = reparsed.toprettyxml(indent="\t")

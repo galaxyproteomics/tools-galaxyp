@@ -28,6 +28,7 @@ def build_list(node, name, mod_list, append=False):
         ET.SubElement(node, 'expand', attrib={'macro': 'mod_option',
                                               'value': m})
 
+
 parser = argparse.ArgumentParser()
 parser.add_argument("-m", "--modifications",
                     help="modifications.xml of maxquant")
