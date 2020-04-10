@@ -10,7 +10,7 @@ CONDAPKG="https://anaconda.org/bioconda/openms/2.5.0/download/linux-64/openms-2.
 # install conda
 if [ -z "$tmp" ]; then
 	tmp=$(mktemp -d)
-	created="yed"
+	created="yes"
 fi
 
 export OPENMSGIT="$tmp/OpenMS$VERSION.0-git"
@@ -68,7 +68,7 @@ echo "Download OpenMS $VERSION package $CONDAPKG"
 
 if [[ ! -d $OPENMSPKG ]]; then
 	mkdir $OPENMSPKG
-	wget -P $OPENMSPKG/ "$CONDAPKG"
+	wget -q -P $OPENMSPKG/ "$CONDAPKG"
 	tar -xf $OPENMSPKG/"$(basename $CONDAPKG)" -C $OPENMSPKG/
 	rm $OPENMSPKG/"$(basename $CONDAPKG)"
 fi
@@ -99,7 +99,7 @@ cp -r $OPENMSGIT/share/OpenMS/MAPPING/ test-data/
 cp -r $OPENMSGIT/share/OpenMS/CHEMISTRY test-data/
 cp -r $OPENMSGIT/share/OpenMS/examples/ test-data/
 if [[ ! -f test-data/MetaboliteSpectralDB.mzML ]]; then 
-	wget https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Tutorials/Data/latest/Example_Data/Metabolomics/databases/MetaboliteSpectralDB.mzML && mv MetaboliteSpectralDB.mzML test-data/
+	wget -q https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Tutorials/Data/latest/Example_Data/Metabolomics/databases/MetaboliteSpectralDB.mzML && mv MetaboliteSpectralDB.mzML test-data/
 fi
 ln -fs TOFCalibration_ref_masses test-data/TOFCalibration_ref_masses.txt
 ln -fs TOFCalibration_const test-data/TOFCalibration_const.csv
@@ -169,9 +169,9 @@ prepare_test_data >> prepare_test_data.sh
 
 echo "Execute test shell script"
 chmod u+x prepare_test_data.sh
-# cd ./test-data || exit
-# ../prepare_test_data.sh
-# cd - || exit
+cd ./test-data || exit
+../prepare_test_data.sh
+cd - || exit
 
 ###############################################################################
 ## create/update test data for the manually generated tests
@@ -180,9 +180,9 @@ chmod u+x prepare_test_data.sh
 ###############################################################################
 echo "Execute test shell script for manually curated tests"
 chmod u+x prepare_test_data_manual.sh
-# cd ./test-data || exit
-# ../prepare_test_data_manual.sh
-# cd - || exit
+cd ./test-data || exit
+../prepare_test_data_manual.sh
+cd - || exit
 
 # link_tmp_files
 # # exit
@@ -208,5 +208,6 @@ conda deactivate
 find test-data/ -xtype l -delete
 
 if [ ! -z "$created" ]; then
+	echo "Removing temporary directory"
 	rm -rf "$tmp"
 fi

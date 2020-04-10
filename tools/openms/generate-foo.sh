@@ -630,5 +630,4 @@ function prepare_test_data {
 		echo "if [[ \"\$?\" -ne \"0\" ]]; then >&2 echo '$test_id failed'; >&2 echo -e \"stderr:\n\$(cat $test_id.stderr | sed 's/^/    /')\"; echo -e \"stdout:\n\$(cat $test_id.stdout)\";fi"	
 		# echo "$(fix_tmp_files $line)"
     done
-
 }
