@@ -5,9 +5,7 @@ modifications/enzymes.xml.
 TODO: Append function: only add modifications that are not
 already present, add modification entries to conda maxquant
 
-Authors: Damian Glaetzer <d.glaetzer@mailbox.org>
-
-Usage: init.py [-a] [-m MODS_FILE] [-e ENZYMES_FILE]
+Usage: init.py [-m MODS_FILE] [-e ENZYMES_FILE]
 FILES are the modifications/enzymes.xml of MaxQuant, located at
 <ANACONDA_DIR>/pkgs/maxquant-<VERSION>/bin/conf/.
 (for conda installations)
@@ -40,19 +38,20 @@ args = parser.parse_args()
 
 if args.modifications:
     mods_root = ET.parse(args.modifications).getroot()
-
     mods = mods_root.findall('modification')
     standard_mods = []
     label_mods = []
+    iso_labels = []
     for m in mods:
         if (m.findtext('type') == 'Standard' or m.findtext('type') == 'AaSubstitution'):
             standard_mods.append(m.get('title'))
         elif m.findtext('type') == 'Label':
             label_mods.append(m.get('title'))
+        elif m.findtext('type') == 'IsobaricLabel':
+            iso_labels.append(m.get('title'))
 
 if args.enzymes:
     enzymes_root = ET.parse(args.enzymes).getroot()
-
     enzymes = enzymes_root.findall('enzyme')
     enzymes_list = [e.get('title') for e in enzymes]
 
@@ -62,6 +61,8 @@ for child in macros_root:
         build_list(child, 'modification', standard_mods)
     elif child.get('name') == 'label' and args.modifications:
         build_list(child, 'label', label_mods)
+    elif child.get('name') == 'iso_labels' and args.modifications:
+        build_list(child, 'iso_labels', iso_labels)
     elif child.get('name') == 'proteases' and args.enzymes:
         build_list(child, 'proteases', enzymes_list)
 
