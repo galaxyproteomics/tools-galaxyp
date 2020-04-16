@@ -3,10 +3,11 @@
     <macros>
         <import>macros.xml</import>
     </macros>
-    <expand macro="requirements">
+    <requirements>
+        <requirement type="package" version="2.4.0">bioconductor-cardinal</requirement>
+        <requirement type="package" version="3.6.1">r-base</requirement>
         <requirement type="package" version="2.3">r-gridextra</requirement>
-        <requirement type="package" version="0.20_35">r-lattice</requirement>
-    </expand>
+    </requirements>
     <command detect_errors="exit_code">
     <![CDATA[
 
@@ -24,11 +25,34 @@
 
 library(Cardinal)
 library(gridExtra)
-library(lattice)
 
 
 
-@READING_MSIDATA_INRAM@
+        #if $infile.ext == 'imzml'
+            #if str($processed_cond.processed_file) == "processed":
+                msidata <- readImzML('infile', resolution=$processed_cond.accuracy, units = "$processed_cond.units")##TODO , as="MSImageSet"
+print(class(msidata))
+                msidata = collect(msidata, as.matrix=TRUE)
+                ##msidata = as(msidata, "MSImageSet")
+print(class(msidata))
+                centroided(msidata) = $centroids
+            #else
+                msidata <- readImzML('infile')## TODO , as="MSImageSet"
+                centroided(msidata) = $centroids
+            #end if
+        #elif $infile.ext == 'analyze75'
+            msidata = readAnalyze('infile') ##TODO: , as="MSImageSet"
+            centroided(msidata) = $centroids
+        #else
+            ## function to read RData files independent of filename
+            loadRData <- function(fileName){
+            load(fileName)
+            get(ls()[ls() != "fileName"])
+            }
+            msidata = loadRData('infile.RData')
+            msidata = as(msidata, "MSImagingExperiment")
+            run(msidata)="infile"
+        #end if
 
 
 ## remove duplicated coordinates
@@ -36,7 +60,6 @@ msidata <- msidata[,!duplicated(coord(msidata))]
 
 
 @DATA_PROPERTIES_INRAM@
-
 
 ######################################## PDF ###################################
 ################################################################################
@@ -53,28 +76,13 @@ title(main=paste0("Spatial segmentation for file: \n\n", "$infile.display_name")
 #############################################################################
 grid.table(property_df, rows= NULL)
 
-if (npeaks > 0 && sum(is.na(spectra(msidata)))==0)
+if (npeaks > 0 && sum(is.na(spectra(msidata)))==0) ##TODO: scheint nicht wirklich zu klappen?
 {
 
 ######################## II) segmentation tools #############################
 #############################################################################
         #set $color_string = ','.join(['"%s"' % $color.feature_color for $color in $colours])
         colourvector = c($color_string)
-
-        ### preparation for images and plots:
-        #if str($image_type) == "standard_image":
-            print("standard image")
-
-            strip_input = FALSE
-            lattice_input = FALSE
-
-        #elif str($image_type) == "lattice_image":
-            print("lattice image")
-
-            strip_input = strip.custom(bg="lightgrey", par.strip.text=list(col="black", cex=.9))
-            lattice_input = TRUE
-
-        #end if
 
         ## set seed to make analysis reproducible
         set.seed($setseed)
@@ -91,46 +99,35 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)))==0)
             method = "$segm_cond.pca_method", scale = $segm_cond.pca_scale, layout = c(ncomp, 1))
 
             ## remove msidata to clean up RAM space
-            rm(msidata)
             gc()
 
             ### table in pdf file
             plot(0,type='n',axes=FALSE,ann=FALSE)
-            sd_table = as.data.frame(round(pca_result@resultData\$ncomp\$sdev, digits=2))
-            colnames(sd_table) = "Standard deviation"
-            PC_vector = character()
-            for (PCs in 1:$segm_cond.pca_ncomp){
-                PC_vector[[PCs]] = c(paste0("PC",PCs))}
-            sd_table = cbind(PC_vector, sd_table)
-            colnames(sd_table)[1] = "Principal components"
+            sd_table = data.frame(summary(pca_result))
             grid.table(sd_table, rows=NULL)
+
             ### images in pdf file
-            print(image(pca_result, main="PCA image", lattice=lattice_input, strip = strip_input, col=colourvector, ylim=c(maximumy+2, minimumy-2)))
+            print(image(pca_result, main="PCA image", strip = FALSE, col=colourvector, ylim=c(maximumy+2, minimumy-2)))
             for (PCs in 1:$segm_cond.pca_ncomp){
-                print(image(pca_result, column = c(paste0("PC",PCs)), lattice=lattice_input,strip = strip_input, superpose = FALSE, main=paste0("PC", PCs), col.regions = risk.colors(100), ylim=c(maximumy+2, minimumy-2)))}
+                print(image(pca_result, column = c(paste0("PC",PCs)), strip = FALSE, superpose = FALSE, main=paste0("PC", PCs), col.regions = risk.colors(100), ylim=c(maximumy+2, minimumy-2)))}
             ### plots in pdf file
-            print(plot(pca_result, main="PCA plot", lattice=lattice_input, col= colourvector, strip = strip_input))
+            print(plot(pca_result, main="PCA plot", col= colourvector, strip = FALSE))
             for (PCs in 1:$segm_cond.pca_ncomp){
                 print(plot(pca_result, column = c(paste0("PC",PCs)),main=paste0("PC", PCs),strip = FALSE,superpose = FALSE))}
 
             ### values in tabular files
-            pcaloadings = formatC(pca_result@resultData\$ncomp\$loadings, format = "e", digits = 6)### loading for each m/z value
-            pcaloadings2 = cbind(matrix(unlist(strsplit(rownames(pcaloadings), " = ")), ncol=2, byrow=TRUE)[,2], pcaloadings)
-            colnames(pcaloadings2) = c("mz", colnames(pcaloadings))
-            pcascores = round(pca_result@resultData\$ncomp\$scores, digits=6) ### scores for each pixel
 
-            ## pixel names and coordinates
-            ## to remove potential sample names and z dimension, split at comma and take only x and y 
-            x_coords = unlist(lapply(strsplit(rownames(pcascores), ","), `[[`, 1))
-            y_coords = unlist(lapply(strsplit(rownames(pcascores), ","), `[[`, 2))
-            x_coordinates = gsub("x = ","",x_coords)
-            y_coordinates = gsub(" y = ","",y_coords)
+            pcaloadings = data.frame(paste0("mz_", mz(msidata)),DataFrame(resultData(pca_result, 1, "loadings")))
+            colnames(pcaloadings)[1] = "mz"
 
-            pixel_names = paste0("xy_", x_coordinates, "_", y_coordinates)
-            pcascores2 = data.frame(pixel_names, x_coordinates, y_coordinates, pcascores)
-            colnames(pcascores2) = c("pixel names", "x", "y", colnames(pcascores))
-            write.table(pcaloadings2, file="$mzfeatures", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
-            write.table(pcascores2, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+            pcascores = data.frame(DataFrame(resultData(pca_result, 1, "scores")))
+            colnames_scores = colnames(pcascores)
+            pixel_names = paste0("xy_", coord(msidata)\$x, "_", coord(msidata)\$y)
+            pcascores = data.frame(pixel_names, coord(msidata)\$x, coord(msidata)\$y, pcascores)
+            rownames(pcascores) = pixel_names
+            colnames(pcascores) = c("pixel names", "x", "y", colnames_scores)
+            write.table(pcaloadings, file="$mzfeatures", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+            write.table(pcascores, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
 
             ## optional output as .RData
             #if $output_rdata:
@@ -144,15 +141,24 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)))==0)
             ##k-means
 
             skm = spatialKMeans(msidata, r=c($segm_cond.kmeans_r), k=c($segm_cond.kmeans_k), method="$segm_cond.kmeans_method")
+print(str(skm))
+print(dim(msidata))
 
-            ## remove msidata to clean up RAM space
-            rm(msidata)
-            gc()
+print(summary(skm))
+print(class(data.frame(summary(skm))))
 
-            print(image(skm, key=TRUE, main="K-means clustering", lattice=lattice_input, strip=strip_input, col= colourvector, layout=c(1,1), ylim=c(maximumy+2, minimumy-2)))
-            print(plot(skm, main="K-means plot", lattice=lattice_input, col= colourvector, strip=strip_input, layout=c(1,1)))
+
+            print(image(skm, key=TRUE, main="K-means clustering", strip=FALSE, col= colourvector, layout=c(1,1), ylim=c(maximumy+2, minimumy-2)))
+            print(plot(skm, main="K-means plot", col= colourvector, strip=FALSE, layout=c(1,1)))
+
+print(DataFrame(resultData(skm, 1, "cluster")))
+print(DataFrame(resultData(skm, 1, "centers")))##sieht eher aus wie bei pca
+##topfeatures funktioniert hier nicht???!!! --> report
+
 
             skm_clusters = data.frame(matrix(NA, nrow = pixelcount, ncol = 0))
+
+
             for (iteration in 1:length(skm@resultData)){
                         skm_cluster = ((skm@resultData)[[iteration]]\$cluster)
             skm_clusters = cbind(skm_clusters, skm_cluster) }
@@ -188,28 +194,34 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)))==0)
             ## remove msidata to clean up RAM space
             rm(msidata)
             gc()
-            print(image(ssc, key=TRUE, main="Spatial shrunken centroids", lattice=lattice_input, strip = TRUE, col= colourvector,layout=c(1,1), ylim=c(maximumy+2, minimumy-2)))
-            print(plot(ssc, main="Spatial shrunken centroids plot", lattice=lattice_input, col= colourvector, strip = TRUE,layout=c(1,1)))
-            print(plot(ssc, mode = "tstatistics",key = TRUE, lattice=lattice_input, layout = c(1,1), main="t-statistics", col=colourvector))
+##print(summary(ssc))
+##print(str(ssc))
 
-            plot(summary(ssc), main = "Number of segments")
+            print(image(ssc, values="probability", col= colourvector, layout=c(1,1), ylim=c(maximumy,minimumy)))
+            print(plot(ssc, col= colourvector, layout=c(1,1)))
+            print(plot(ssc, values="statistic", layout=c(1,1), col= colourvector, lwd=2))##TODO s anpassen?
+
+            ### TODO: is there any alternative??? plot(summary(ssc), main = "Number of segments")
 
             ssc_classes = data.frame(matrix(NA, nrow = pixelcount, ncol = 0))
+print(dim(ssc_classes))
             for (iteration in 1:length(ssc@resultData)){
-            ssc_class = ((ssc@resultData)[[iteration]]\$classes)
+print(iteration)
+print(str(ssc@resultData))
+print(length(ssc@resultData))
+            ssc_class = resultData(ssc)[[iteration]]\$class
+print(length(ssc_class))
             ssc_classes = cbind(ssc_classes, ssc_class) }
 
             ## pixel names and coordinates
-            ## to remove potential sample names and z dimension, split at comma and take only x and y 
-            x_coords = unlist(lapply(strsplit(rownames(ssc_classes), ","), `[[`, 1))
-            y_coords = unlist(lapply(strsplit(rownames(ssc_classes), ","), `[[`, 2))
-            x_coordinates = gsub("x = ","",x_coords)
-            y_coordinates = gsub(" y = ","",y_coords)
-            pixel_names = paste0("xy_", x_coordinates, "_", y_coordinates)
-            ssc_classes2 = data.frame(pixel_names, x_coordinates, y_coordinates, ssc_classes)
-            colnames(ssc_classes2) = c("pixel names", "x", "y", names(ssc@resultData))
+            pixel_names = pixel_names = paste0("xy_", coord(msidata)\$x, "_", coord(msidata)\$y)
+print(length(pixel_names))
+            ssc_classes = data.frame(pixel_names, coord(msidata)\$x, coord(msidata)\$y, ssc_classes)
+print(scc_classes)
+print("here were classes")
+            colnames(ssc_classes) = c("pixel names", "x", "y", names(ssc@resultData))
 
-            ssc_toplabels =  topLabels(ssc, n=$segm_cond.centroids_toplabels)
+            ssc_toplabels = topFeatures(ssc, model=list(s=c($segm_cond.centroids_s)),n=$segm_cond.centroids_toplabels)
 
             write.table(ssc_toplabels, file="$mzfeatures", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
             write.table(ssc_classes2, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
@@ -313,8 +325,6 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)))==0)
                        label="Number of toplabels (m/z) which should be written in tabular output"/>
                 </when>
             </conditional>
-            <param name="image_type" type="boolean" checked="True" truevalue="standard_image" falsevalue="lattice_image" 
-            label="Standard image" help="No: lattice function is used to display image"/>
             <param name="svg_pixelimage" type="boolean" label="Export first segmentation image as svg"/>
             <repeat name="colours" title="Colours for the plots" min="1" max="50">
                 <param name="feature_color" type="color" label="Colours" value="#ff00ff" help="Numbers of colours should be the same as number of components">
@@ -343,7 +353,6 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)))==0)
         <test>
             <expand macro="infile_imzml"/>
             <param name="segmentationtool" value="pca"/>
-            <param name="image_type" value="lattice_image"/>
             <repeat name="colours">
                 <param name="feature_color" value="#ff00ff"/>
             </repeat>
