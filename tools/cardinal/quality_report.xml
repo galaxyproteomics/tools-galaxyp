@@ -1,20 +1,18 @@
-<tool id="cardinal_quality_report" name="MSI Qualitycontrol" version="2.4.0.0">
+<tool id="cardinal_quality_report" name="MSI Qualitycontrol" version="@VERSION@.0">
     <description>
         mass spectrometry imaging QC
     </description>
     <macros>
         <import>macros.xml</import>
     </macros>
-    <requirements>
-        <requirement type="package" version="2.4.0">bioconductor-cardinal</requirement>
-        <requirement type="package" version="3.6.1">r-base</requirement>
+    <expand macro="requirements">
         <requirement type="package" version="2.3">r-gridextra</requirement>
         <requirement type="package" version="3.2.1">r-ggplot2</requirement>
         <requirement type="package" version="1.1_2">r-rcolorbrewer</requirement>
         <requirement type="package" version="2.23_16">r-kernsmooth</requirement>
         <requirement type="package" version="1.1.0">r-scales</requirement>
         <requirement type="package" version="1.0.12"> r-pheatmap</requirement>
-    </requirements>
+    </expand>
     <command detect_errors="exit_code">
     <![CDATA[
         @INPUT_LINKING@
@@ -35,29 +33,14 @@ library(KernSmooth)
 library(scales)
 library(pheatmap)
 
-        #if $infile.ext == 'imzml'
-            #if str($processed_cond.processed_file) == "processed":
-                msidata <- readImzML('infile', resolution=$processed_cond.accuracy, units = "$processed_cond.units")
-                msidata = collect(msidata, as.matrix=TRUE)
-                centroided(msidata) = $centroids
-            #else
-                msidata <- readImzML('infile')
-                centroided(msidata) = $centroids
-            #end if
-        #elif $infile.ext == 'analyze75'
-            msidata = readAnalyze('infile')
-            centroided(msidata) = $centroids
-        #else
-            ## function to read RData files independent of filename
-            loadRData <- function(fileName){
-            load(fileName)
-            get(ls()[ls() != "fileName"])
-            }
-            msidata = loadRData('infile.RData')
-            msidata = as(msidata, "MSImagingExperiment")
-            run(msidata)="infile"
-        #end if
+@READING_MSIDATA@
 
+## in case RData input is MSImageSet:
+if (class(msidata) == "MSImageSet"){
+    msidata = as(msidata, "MSImagingExperiment")
+    run(msidata) = "infile"
+    }
+print(class(msidata))
 ## remove duplicated coordinates
 msidata <- msidata[,!duplicated(coord(msidata))]
 
@@ -333,12 +316,12 @@ if (npeaks > 0){
             mzup2 = features(msidata, mz = mass2+3)
 
             ### plot for first m/z 
-            par(mfrow=c(2,1), oma=c(0,0,2,0))
-            print(plot(msidata[mzdown1:mzup1,], pixel = 1:pixelcount, main=paste0("Average spectrum ", mass1, " Da")))
+            par(oma=c(0,0,2,0))
+            print(plot(msidata[mzdown1:mzup1,], run="infile", layout=c(2,1), strip=FALSE, main=paste0("Average spectrum ", mass1, " Da")))
             abline(v=c(mass1-distance1, mass1, mass1+distance1), col="blue",lty=c(3,6,3))
 
             ### plot for second m/z 
-            print(plot(msidata[mzdown2:mzup2,], pixel = 1:pixelcount, main= paste0("Average spectrum ", mass2, " Da")))
+            print(plot(msidata[mzdown2:mzup2,], run="infile", layout=FALSE, strip=FALSE, main= paste0("Average spectrum ", mass2, " Da")))
             abline(v=c(mass2-distance2, mass2, mass2+distance2), col="blue", lty=c(3,6,3))
             title("Control of fold change plot", outer=TRUE)
 
@@ -374,6 +357,7 @@ if (npeaks > 0){
     par(mfrow=c(1,1), mar=c(5.1, 4.1, 4.1, 2.1), mgp=c(3, 1, 0), las=0)
     if (length(inputcalibrants[,1]) != 0){
         for (mass in 1:length(inputcalibrants[,1])){
+            par(oma=c(0,0,0,1))## margin for image legend
 
            tryCatch(
                         {
@@ -506,8 +490,9 @@ if (npeaks > 0){
 
         ## plot overview image and plot and PC1 and 2 images
         print(plot(pca, col=c("black", "darkgrey"), main="PCA for two components", layout=c(2,1), strip=FALSE))
-        print(image(pca, col=c("black", "white"), strip=FALSE,  ylim= c(maximumy+0.2*maximumy,minimumy-1), layout=FALSE))
+        print(image(pca, run="infile", col=c("black", "white"), strip=FALSE,  ylim= c(maximumy+0.2*maximumy,minimumy-1), layout=FALSE))
 
+        par(oma=c(0,0,0,1))## margin for image legend
         print(image(pca, column = "PC1" , strip=FALSE, superpose = FALSE, main="PC1", col.regions = risk.colors(100), layout=c(2,1), ylim= c(maximumy+0.2*maximumy,minimumy-1)))
         print(image(pca, column = "PC2" , strip=FALSE, superpose = FALSE, main="PC2", col.regions = risk.colors(100), layout=FALSE,  ylim= c(maximumy+0.2*maximumy,minimumy-1)))
     ## remove pca to clean up RAM space
@@ -648,7 +633,7 @@ if (npeaks > 0){
     par(mfrow = c(2,1), mar=c(5,6,4,2))
 
     ## 14a) Median intensity over spectra
-    medianint_spectra = apply(as.matrix(spectra(msidata)), 2, median, na.rm=TRUE)
+    medianint_spectra = apply(spectra(msidata), 2, median, na.rm=TRUE) 
     plot(medianint_spectra, main="Median intensity per spectrum",las=1, xlab="Spectra index", ylab="")
     title(ylab="Median spectrum intensity", line=4)
     if (!is.null(levels(msidata\$annotation))){
@@ -702,6 +687,7 @@ if (npeaks > 0){
         corr_matrix = mean_matrix
         corr_matrix[corr_matrix == 0] <- NA
         colnames(corr_matrix) = levels(msidata\$annotation)
+
         ## pearson correlation is only possible if there are at least 2 groups
         if (length(colnames)>1)
         {
@@ -726,7 +712,7 @@ if (npeaks > 0){
     ## find three equal m/z ranges for the average mass spectra plots: 
     third_mz_range = nrow(msidata_no_NA)/3
 
-    par(mfrow = c(2, 2), cex.axis=1, cex.lab=1, mar=c(5.1,4.1,4.1,2.1))
+    par(cex.axis=1, cex.lab=1, mar=c(5.1,4.1,4.1,2.1))
     print(plot(msidata_no_NA, run="infile", layout=c(2,2), strip=FALSE, main= "Average spectrum"))
     print(plot(msidata_no_NA[1:third_mz_range,], run="infile", layout=FALSE, strip=FALSE, main= "Zoomed average spectrum"))
     print(plot(msidata_no_NA[third_mz_range:(2*third_mz_range),], run="infile", layout=FALSE, strip=FALSE, main= "Zoomed average spectrum"))
@@ -793,7 +779,7 @@ if (npeaks > 0){
             differencevector2[mass] = round(ppmdifference2, digits=2)
 
             ## plotting of 4 spectra in one page
-            par(mfrow = c(2, 2), oma=c(0,0,2,0))
+            par(oma=c(0,0,2,0))
             ## average plot
 
             print(plot(msidata_no_NA[minmasspixel1:maxmasspixel1,], run="infile", layout=c(2,2), strip=FALSE, main= "Average spectrum"))
@@ -971,6 +957,7 @@ if (npeaks > 0){
                 <sanitizer invalid_char="">
                     <valid initial="string.ascii_letters,string.digits">
                         <add value="_" />
+                        <add value=" " />
                     </valid>
                 </sanitizer>
             </param>
