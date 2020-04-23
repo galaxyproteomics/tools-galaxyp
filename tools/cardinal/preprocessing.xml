@@ -1,17 +1,14 @@
-<tool id="cardinal_preprocessing" name="MSI preprocessing" version="2.4.0.0">
+<tool id="cardinal_preprocessing" name="MSI preprocessing" version="@VERSION@.1">
     <description>
         mass spectrometry imaging preprocessing
     </description>
     <macros>
         <import>macros.xml</import>
     </macros>
-    <requirements>
-        <requirement type="package" version="2.4.0">bioconductor-cardinal</requirement>
-        <requirement type="package" version="3.6.1">r-base</requirement>
+    <expand macro="requirements">
         <requirement type="package" version="2.3">r-gridextra</requirement>
         <requirement type="package" version="3.2.1">r-ggplot2</requirement>
-        <requirement type="package" version="0.20_38">r-lattice</requirement>
-    </requirements>
+    </expand>
     <command detect_errors="exit_code">
     <![CDATA[
 
@@ -32,33 +29,21 @@
 
 ################################# load libraries and read file #################
 
+## set CPU, default = 1
+
+if (Sys.getenv("GALAXY_SLOTS")!="")
+    {
+        number_cpu = 1 ## default = 1
+    }else{
+        number_cpu = as.numeric(Sys.getenv("GALAXY_SLOTS")) ##cpu set by Galaxy
+    }
+
 library(Cardinal)
 library(gridExtra)
-library(lattice)
 library(ggplot2)
 
 
-        ## function to read RData files independent of filename
-        loadRData <- function(fileName){
-        load(fileName)
-        get(ls()[ls() != "fileName"])
-        }
-
-        #if $infile.ext == 'imzml'
-            #if str($processed_cond.processed_file) == "processed":
-                msidata <- readImzML('infile', resolution=$processed_cond.accuracy, units = "$processed_cond.units")
-                centroided(msidata) = $centroids
-            #else
-                msidata <- readImzML('infile')
-                centroided(msidata) = $centroids
-            #end if
-        #elif $infile.ext == 'analyze75'
-            msidata = readAnalyze('infile')
-            centroided(msidata) = $centroids
-        #else
-            msidata = loadRData('infile.RData')
-            msidata = as(msidata, "MSImagingExperiment")
-        #end if
+@READING_MSIDATA_FULLY_COMPATIBLE@
 
 
 ## remove duplicated coordinates, otherwise peak picking and log2 transformation will fail
@@ -108,7 +93,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             }
 
             msidata = normalize(msidata, method="tic")
-            msidata <- process(msidata, BPPARAM=MulticoreParam())
+            msidata <- process(msidata, BPPARAM=MulticoreParam(workers=number_cpu))
 
 
             ############################### QC ###########################
@@ -134,7 +119,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             }
 
             msidata = reduceBaseline(msidata, method="median", blocks=$method.methods_conditional.blocks_baseline, spar=$method.methods_conditional.spar_baseline)
-            msidata <- process(msidata, BPPARAM=MulticoreParam())
+            msidata <- process(msidata, BPPARAM=MulticoreParam(workers=number_cpu))
 
             ############################### QC ###########################
 
@@ -180,7 +165,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                 msidata = smoothSignal(msidata, method="$method.methods_conditional.methods_for_smoothing.smoothing_method", window=$method.methods_conditional.window_smoothing, coef = $method.methods_conditional.methods_for_smoothing.coefficients_ma_filter)
 
             #end if
-            msidata <- process(msidata, BPPARAM=MulticoreParam())
+            msidata <- process(msidata, BPPARAM=MulticoreParam(workers=number_cpu))
 
             ############################### QC ###########################
 
@@ -217,7 +202,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                 msidata = peakPick(msidata, window = $method.methods_conditional.window_picking, blocks = $method.methods_conditional.blocks_picking, method='$method.methods_conditional.methods_for_picking.picking_method', SNR=$method.methods_conditional.SNR_picking_method)
 
             #end if
-            msidata <- process(msidata, BPPARAM=MulticoreParam())
+            msidata <- process(msidata, BPPARAM=MulticoreParam(workers=number_cpu))
 
             #if str($method.methods_conditional.imzml_output) == "cont_format":
                 #set $continuous_format = True
@@ -262,7 +247,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
 
             #end if
 
-            msidata <- process(msidata, BPPARAM=MulticoreParam())
+            msidata <- process(msidata, BPPARAM=MulticoreParam(workers=number_cpu))
 
             #if str($method.methods_conditional.imzml_output) == "cont_format":
                 #set $continuous_format = True
@@ -286,7 +271,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             print('Peak_filtering')
 
             msidata = peakFilter(msidata, freq.min = $method.methods_conditional.frequ_filtering)
-            msidata <- process(msidata, BPPARAM=MulticoreParam())
+            msidata <- process(msidata, BPPARAM=MulticoreParam(workers=number_cpu))
 
             ############################### QC ###########################
 
@@ -299,6 +284,32 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             vectorofactions = append(vectorofactions, "filtered")
             print(plot(msidata, pixel=random_spectra))
             title("Spectra after filtering", outer=TRUE, line=0)
+
+    ############################### Peak binning ###########################
+
+        #elif str( $method.methods_conditional.preprocessing_method) == 'Peak_binning':
+            print('Peak_binning')
+
+            ## reading reference file
+            reference_table = read.delim("$method.methods_conditional.mz_tabular", header = $method.methods_conditional.feature_header, stringsAsFactors = FALSE)
+            reference_column = reference_table[,$method.methods_conditional.feature_column]
+            peak_reference = reference_column[reference_column>min(mz(msidata)) & reference_column<max(mz(msidata))]
+
+            msidata = peakBin(msidata, ref = peak_reference, tolerance = $method.methods_conditional.peakbin_tol, units = "$method.methods_conditional.peakbin_units", type="$method.methods_conditional.peaks_type")
+            msidata <- process(msidata, BPPARAM=MulticoreParam(workers=number_cpu))
+
+            ############################### QC ###########################
+
+            maxfeatures =nrow(msidata)
+            pixelcount = ncol(msidata)
+            minmz = round(min(mz(msidata)), digits=2)
+            maxmz = round(max(mz(msidata)), digits=2)
+            peak_binned = c(minmz, maxmz,maxfeatures, pixelcount)
+            QC_numbers= cbind(QC_numbers, peak_binned)
+            vectorofactions = append(vectorofactions, "peak binned")
+            print(plot(msidata, pixel=random_spectra))
+            title("Spectra after peak binning", outer=TRUE, line=0)
+
 
     ############################### Data reduction ###########################
 
@@ -324,23 +335,6 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                 print('resample reduction')
 
                 msidata = reduceDimension(msidata, method="resample", step=$method.methods_conditional.methods_for_reduction.resample_step)
-
-            #elif str( $method.methods_conditional.methods_for_reduction.reduction_method) == 'peaks':
-                print('peaks reduction')
-
-                #if str( $method.methods_conditional.methods_for_reduction.ref_type.reference_datatype) == 'table':
-
-                    reference_table = read.delim("$method.methods_conditional.methods_for_reduction.ref_type.mz_tabular", header = $method.methods_conditional.methods_for_reduction.ref_type.feature_header, stringsAsFactors = FALSE)
-                    reference_column = reference_table[,$method.methods_conditional.methods_for_reduction.ref_type.feature_column]
-                    peak_reference = reference_column[reference_column>min(mz(msidata)) & reference_column<max(mz(msidata))]
-
-                #elif str( $method.methods_conditional.methods_for_reduction.ref_type.reference_datatype) == 'msidata_ref':
-
-                        peak_reference = loadRData('$method.methods_conditional.methods_for_reduction.ref_type.peaks_msidata')
-
-                #end if
-
-                msidata = reduceDimension(msidata, method="peaks", ref=peak_reference, type="$method.methods_conditional.methods_for_reduction.peaks_type")
             #end if
 
             ## coercition into new format
@@ -447,6 +441,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                     <option value="Peak_picking">Peak picking</option>
                     <option value="Peak_alignment">Peak alignment</option>
                     <option value="Peak_filtering">Peak filtering</option>
+                    <option value="Peak_binning">Peak binning to reference peaks</option>
                     <option value="Data_reduction">Data reduction</option>
                     <option value="Transformation">Transformation</option>
                 </param>
@@ -464,7 +459,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                     <param name="blocks_baseline" type="integer" value="500"
                         label="Blocks"/>
                     <param name="spar_baseline" type="float" value="1.0" label="Spar value" 
-                           help = "Smoothing parameter for the spline smoothing 
+                           help="Smoothing parameter for the spline smoothing 
                                   applied to the spectrum in order to decide the cutoffs 
                               for throwing away false noise spikes that might occur inside peaks"/>
                 </when>
@@ -515,7 +510,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                         <when value="mad"/>
                         <when value="simple"/>
                     </conditional>
-                <param name="imzml_output" type="boolean" label="imzML output in processed format" truevalue="proc_format" falsevalue="cont_format" help= "Processed imzML works only in MALDIquant tools, not yet in MSI tools (Cardinal)"/>
+                <param name="imzml_output" type="boolean" label="imzML output in processed format" checked="True" truevalue="proc_format" falsevalue="cont_format"/>
                 </when>
                 <when value="Peak_alignment">
                     <param name="value_diffalignment" type="float" value="200"
@@ -534,17 +529,35 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                             <expand macro="reading_1_column_mz_tabular" label="Tabular file with m/z features to use for alignment. Only the m/z values from the tabular file will be kept."/>
                         </when>
                     </conditional>
-                <param name="imzml_output" type="boolean" label="imzML output in processed format" truevalue="proc_format" falsevalue="cont_format" help= "Processed imzML works only in MALDIquant tools, not yet in MSI tools (Cardinal)"/>
+                <param name="imzml_output" type="boolean" label="imzML output in processed format" checked="True" truevalue="proc_format" falsevalue="cont_format" help= "Processed imzML works only in MALDIquant tools, not yet in MSI tools (Cardinal)"/>
                 </when>
                 <when value="Peak_filtering">
                     <param name="frequ_filtering" type="float" value="0.01" max="1" min="0" label="Minimum frequency" help="Peaks that occur in the dataset in lesser proportion than this will be dropped (0.01 --> filtering for 1% of spectra)"/>
+                </when>
+                <when value="Peak_binning">
+                    <expand macro="reading_1_column_mz_tabular" label="A reference to which the peaks are binned." help="Tabular file with m/z features to extract from input file"/>
+                    <param name="peakbin_tol" value="NA" type="text" label="The tolerance to be used when matching the m/z features in the dataset to the reference. If this is NA, then automatically guess a resolution from the data." >
+                        <sanitizer invalid_char="">
+                            <valid initial="string.digits">
+                                <add value="NA" />
+                            </valid>
+                        </sanitizer>
+                    </param>
+                    <param name="peakbin_units" display="radio" type="select" label="The units to use for the tolerance.">
+                        <option value="mz" >mz</option>
+                        <option value="ppm" selected="True" >ppm</option>
+                    </param>
+                    <param name="peaks_type" type="select" display="radio"
+                           label="Should the peak height or area under the curve be taken as the intensity value?">
+                            <option value="height" selected="True">height</option>
+                            <option value="area">area</option>
+                    </param>
                 </when>
                 <when value="Data_reduction">
                     <conditional name="methods_for_reduction">
                         <param name="reduction_method" type="select" label="Reduction method">
                             <option value="bin" selected="True">bin</option>
                             <option value="resample">resample</option>
-                            <option value="peaks">peaks</option>
                         </param>
                         <when value="bin">
                             <param name="bin_width" type="float" value="1"
@@ -564,25 +577,6 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                         <when value="resample">
                             <param name="resample_step" type="float" value="1"
                                    label="The step size in m/z" help="Step size must be greater than range of m/z values divided by number of m/z features"/>
-                        </when>
-                        <when value="peaks">
-                            <param name="peaks_type" type="select" display="radio"
-                                   label="Should the peak height or area under the curve be taken as the intensity value?">
-                                    <option value="height" selected="True">height</option>
-                                    <option value="area">area</option>
-                            </param>                            
-                            <conditional name="ref_type">
-                                <param name="reference_datatype" type="select" label="Choose reference datatype">
-                                    <option value="table" selected="True">tabular file</option>
-                                    <option value="msidata_ref">msidata file</option>
-                                </param>
-                                <when value="table">
-                                    <expand macro="reading_1_column_mz_tabular" label="Tabular file with m/z features to extract from input file"/>
-                                </when>
-                                <when value="msidata_ref">
-                                    <param name="peaks_msidata" type="data" format="rdata" label="Picked and aligned Cardinal MSImageSet saved as RData"/>
-                                </when>
-                            </conditional>
                         </when>
                     </conditional>
                 </when>
@@ -635,11 +629,13 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                     <param name="blocks_picking" value="3"/>
                     <param name="window_picking" value="3"/>
                     <param name="SNR_picking_method" value="3"/>
+                    <param name="imzml_output" value="cont_format"/>
                 </conditional>
             </repeat>
             <repeat name="methods">
                 <conditional name="methods_conditional">
                     <param name="preprocessing_method" value="Peak_alignment"/>
+                    <param name="imzml_output" value="cont_format"/>
                 </conditional>
             </repeat>
             <repeat name="methods">
@@ -673,11 +669,13 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                     <conditional name="methods_for_picking">
                         <param name="picking_method" value="adaptive"/>
                     </conditional>
+                    <param name="imzml_output" value="cont_format"/>
                 </conditional>
             </repeat>
             <repeat name="methods">
                 <conditional name="methods_conditional">
                     <param name="preprocessing_method" value="Peak_alignment"/>
+                    <param name="imzml_output" value="cont_format"/>
                 </conditional>
             </repeat>
             <output name="QC_overview" file="preprocessing_results2.pdf" compare="sim_size"/>
@@ -699,27 +697,19 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             <repeat name="methods">
                 <conditional name="methods_conditional">
                     <param name="preprocessing_method" value="Peak_picking"/>
-                    <param name="blocks_picking" value="100"/>
+                    <param name="blocks_picking" value="20"/>
                     <param name="window_picking" value="5"/>
-                    <param name="SNR_picking_method" value="3"/>
+                    <param name="SNR_picking_method" value="2"/>
                     <conditional name="methods_for_picking">
                         <param name="picking_method" value="mad"/>
                     </conditional>
-                </conditional>
                 <param name="imzml_output" value="proc_format"/>
+                </conditional>
             </repeat>
             <repeat name="methods">
                 <conditional name="methods_conditional">
                     <param name="preprocessing_method" value="Peak_alignment"/>
-                </conditional>
-            <param name="imzml_output" value="proc_format"/>
-            </repeat>
-            <repeat name="methods">
-                <conditional name="methods_conditional">
-                    <param name="preprocessing_method" value="Transformation"/>
-                        <conditional name="transf_conditional">
-                            <param name="trans_type" value="log2"/>
-                        </conditional>
+                    <param name="imzml_output" value="proc_format"/>
                 </conditional>
             </repeat>
             <output name="QC_overview" file="preprocessing_results3.pdf" compare="sim_size"/>
@@ -762,7 +752,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                 <conditional name="methods_conditional">
                     <param name="preprocessing_method" value="Transformation"/>
                         <conditional name="transf_conditional">
-                            <param name="trans_type" value="sqrt"/>
+                            <param name="trans_type" value="log2"/>
                         </conditional>
                 </conditional>
             </repeat>
@@ -799,12 +789,13 @@ This tool provides multiple Cardinal functions to preprocess mass spectrometry i
 - Peak picking: relevant peaks are picked while noise-peaks are removed (needs peak alignment afterwards)
 - Peak alignment: only possible after peak picking, m/z inaccuracies are removed by alignment of same peaks to a common m/z value; if no reference is given the peaks are aligned to the local maxima of the mean spectrum of the current dataset; external reference data can be used from another MSI data file or a tabular file with m/z values, but then only the m/z from the reference will be kept
 - Peak filtering: removes peaks that occur only in a small proportion of pixels. If not sure which cut off to choose run quality control tool first and decide according to the number of peaks per m/z plot
-- Data reduction: binning, resampling or peak filtering to reduce data
+- Peak binning: extracts peaks intensities (from a profile dataset) for a list of m/z (reference) values
+- Data reduction: binning or resampling to reduce data
 - Transformation: log2 or squareroot transformation of all intensities; when using log2 transformation zero intensities will become NA, this can lead to compatibility problems. 
 
 **Output**
 
-- MSI data as continuous imzML file (option to output processed imzML file only after peak picking/peak alignment; but is not yet compatible with other MSI tools) 
+- MSI data as continuous or processed imzML file
 - pdf with key values and four random mass spectra after each processing step
 
         ]]>
