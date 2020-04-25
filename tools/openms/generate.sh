@@ -7,6 +7,7 @@
 
 VERSION=2.5
 FILETYPES="filetypes.txt"
+PROFILE="20.05"
 ## FILETYPES_RE=$(grep -v "^#" $FILETYPES | grep -v "^$" | cut -f 1 -d" " | tr '\n' '|' | sed 's/|$//'| sed 's/|/\\|/g')
 
 export tmp=$(mktemp -d)
@@ -56,7 +57,7 @@ fi
 ## conversion ctd->xml 
 ###############################################################################
 conda activate ./OpenMS$VERSION-env
-python $CTDCONVERTER/convert.py galaxy -i ctd/*ctd -o ./ -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --test-macros macros_autotest.xml --test-macros-prefix autotest_  --test-macros macros_test.xml --test-macros-prefix manutest_ --tool-version $VERSION
+python $CTDCONVERTER/convert.py galaxy -i ctd/*ctd -o ./ -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --test-macros macros_autotest.xml --test-macros-prefix autotest_  --test-macros macros_test.xml --test-macros-prefix manutest_ --tool-version $VERSION --tool-profile $PROFILE
 conda deactivate
 # #-b version log debug test in_type executable pepnovo_executable param_model_directory rt_concat_trafo_out param_id_pool
 

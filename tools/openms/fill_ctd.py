@@ -1,3 +1,4 @@
+import collections
 from functools import reduce  # forward compatibility for Python 3
 import json
 import operator
@@ -23,14 +24,33 @@ def setInDict(dataDict, mapList, value):
     getFromDict(dataDict, mapList[:-1])[mapList[-1]] = value
 
 
-def _json_object_hook(d):
+def mergeDicts(d, e):
+    """
+    insert values from the dict e into dict d
+    no values of d are overwritten
+    """
+    for k, v in e.items():
+        if (k in d and isinstance(d[k], dict) and isinstance(e[k], collections.Mapping)):
+            mergeDicts(d[k], e[k])
+        elif k not in d and not isinstance(e[k], collections.Mapping):
+            d[k] = e[k]
+        else:
+            sys.stderr.write("fill_ctd.py: could not merge key %s for %s in %s" % (k, d, e))
+            sys.exit(1)
+
+
+def _json_object_hook_noenvlookup(d):
+    return _json_object_hook(d, envlookup=False)
+
+
+def _json_object_hook(d, envlookup=True):
     """
     wee helper to transform the json written by galaxy
     while loading
     - True/False (bool objects) -> "true"/"false" (lowercase string)
     - data inputs with multiple and optional true give [None] if no file is given -> []
     - None -> "" (empty string)
-    - replace bash expressions:
+    - replace bash expressions (if envlookup is True):
       - environment variables (need to consist capital letters and _) by their value
       - expressions
     """
@@ -42,7 +62,7 @@ def _json_object_hook(d):
             d[k] = []
         elif d[k] is None:
             d[k] = ""
-        elif type(d[k]) is str and d[k].startswith("$"):
+        elif envlookup and type(d[k]) is str and d[k].startswith("$"):
             m = re.fullmatch(r"\$([A-Z_]+)", d[k])
             if m:
                 d[k] = os.environ.get(m.group(1), "")
@@ -88,8 +108,18 @@ def qstring2list(qs):
 
 
 input_ctd = sys.argv[1]
+
+# load user specified parameters from json
 with open(sys.argv[2]) as fh:
-    args = json.load(fh, object_hook=_json_object_hook)
+    args = json.load(fh, object_hook=_json_object_hook_noenvlookup)
+
+# load hardcoded parameters from json
+with open(sys.argv[3]) as fh:
+    hc_args = json.load(fh, object_hook=_json_object_hook)
+
+# insert the hc_args into the args
+mergeDicts(args, hc_args)
+
 
 if "adv_opts_cond" in args:
     args.update(args["adv_opts_cond"])
@@ -105,18 +135,23 @@ model = CTDModel(from_file=input_ctd)
 #   value is given -> overwritte with the default
 for p in model.get_parameters():
 
-    # few tools use dashes in parameters which are automatically replaced
-    # by underscores by Galaxy. in these cases the dictionary needs to be
-    # updates
-    # TODO might be removed later https://github.com/OpenMS/OpenMS/pull/4529
+    # check if the parameter is in the arguments from the galaxy tool
+    # (from the json file(s)), since advanced parameters are absent
+    # if the conditional is set to basic parameters
     try:
         getFromDict(args, p.get_lineage(name_only=True))
     except KeyError:
+        # few tools use dashes in parameters which are automatically replaced
+        # by underscores by Galaxy. in these cases the dictionary needs to be
+        # updated
+        # TODO might be removed later https://github.com/OpenMS/OpenMS/pull/4529
         try:
-            jl = [_.replace("-", "_") for _ in p.get_lineage(name_only=True)]
-            setInDict(args, p.get_lineage(name_only=True), getFromDict(args, jl))
+            lineage = [_.replace("-", "_") for _ in p.get_lineage(name_only=True)]
+            val = getFromDict(args, lineage)
         except KeyError:
-            pass
+            continue
+        else:
+            setInDict(args, lineage, val)
 
     if p.type is str and type(p.restrictions) is _Choices and set(p.restrictions.choices) == set(["true", "false"]):
         v = getFromDict(args, p.get_lineage(name_only=True))
