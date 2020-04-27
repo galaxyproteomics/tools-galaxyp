@@ -4,7 +4,7 @@ CRUX_BINARY="crux"
 FIDOCHOOSEPARAMS_BINARY="FidoChooseParameters"
 FIDO_BINARY="Fido"
 LUCIPHOR_BINARY="$(dirname $(realpath $(which luciphor2)))/luciphor2.jar"
-MARACLUSTER_BINARY="/tmp//OpenMS2.5.0-git/THIRDPARTY/Linux/64bit/MaRaCluster/maracluster"
+MARACLUSTER_BINARY="/tmp/openms-stuff//OpenMS2.5.0-git/THIRDPARTY/Linux/64bit/MaRaCluster/maracluster"
 MSFRAGGER_BINARY="/home/berntm/Downloads/MSFragger-20171106/MSFragger-20171106.jar"
 MSGFPLUS_BINARY="$(msgf_plus -get_jar_path)"
 MYRIMATCH_BINARY="myrimatch"
@@ -13,7 +13,6 @@ OMSSA_BINARY="$(dirname $(realpath $(which omssacl)))/omssacl"
 PERCOLATOR_BINARY="percolator"
 SIRIUS_BINARY="$(which sirius)"
 SPECTRAST_BINARY="spectrast"
-XTANDEM_BINARY="xtandem"
 XTANDEM_BINARY="xtandem"
 THERMORAWFILEPARSER_BINARY="ThermoRawFileParser.exe"
 FuzzyDiff -test -ini FuzzyDiff.ini -in1 FuzzyDiff_3_in1.featureXML -in2 FuzzyDiff_3_in2.featureXML > UTILS_FuzzyDiff_3.stdout 2> UTILS_FuzzyDiff_3.stderr
@@ -90,6 +89,8 @@ FeatureFinderMultiplex -test -in FeatureFinderMultiplex_11_input.mzML -ini Featu
 if [[ "$?" -ne "0" ]]; then >&2 echo 'TOPP_FeatureFinderMultiplex_11 failed'; >&2 echo -e "stderr:\n$(cat TOPP_FeatureFinderMultiplex_11.stderr | sed 's/^/    /')"; echo -e "stdout:\n$(cat TOPP_FeatureFinderMultiplex_11.stdout)";fi
 FileConverter -test -in FileConverter_1_input.mzData -out FileConverter_1.tmp -out_type mzML > TOPP_FileConverter_1.stdout 2> TOPP_FileConverter_1.stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'TOPP_FileConverter_1 failed'; >&2 echo -e "stderr:\n$(cat TOPP_FileConverter_1.stderr | sed 's/^/    /')"; echo -e "stdout:\n$(cat TOPP_FileConverter_1.stdout)";fi
+FileConverter -test  -in FileConverter_2_input.someInputDTA2D -in_type dta2d -out FileConverter_2.tmp -out_type mzML > TOPP_FileConverter_2.stdout 2> TOPP_FileConverter_2.stderr
+if [[ "$?" -ne "0" ]]; then >&2 echo 'TOPP_FileConverter_2 failed'; >&2 echo -e "stderr:\n$(cat TOPP_FileConverter_2.stderr | sed 's/^/    /')"; echo -e "stdout:\n$(cat TOPP_FileConverter_2.stdout)";fi
 FileConverter -test  -in FileConverter_3_input.featureXML -out FileConverter_3.tmp -out_type mzML > TOPP_FileConverter_3.stdout 2> TOPP_FileConverter_3.stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'TOPP_FileConverter_3 failed'; >&2 echo -e "stderr:\n$(cat TOPP_FileConverter_3.stderr | sed 's/^/    /')"; echo -e "stdout:\n$(cat TOPP_FileConverter_3.stdout)";fi
 FileConverter -test  -in FileConverter_4_input.mzXML -out FileConverter_4.tmp -out_type mzML > TOPP_FileConverter_4.stdout 2> TOPP_FileConverter_4.stderr
@@ -152,6 +153,10 @@ FileConverter -test -in FileConverter_30_output.mzML -change_im_format single -o
 if [[ "$?" -ne "0" ]]; then >&2 echo 'TOPP_FileConverter_31 failed'; >&2 echo -e "stderr:\n$(cat TOPP_FileConverter_31.stderr | sed 's/^/    /')"; echo -e "stdout:\n$(cat TOPP_FileConverter_31.stdout)";fi
 FileFilter -test -in FileFilter_1_input.mzML -out FileFilter_1.tmp -rt :30 -mz :1000 -int :20000 -in_type mzML -out_type mzML > TOPP_FileFilter_1.stdout 2> TOPP_FileFilter_1.stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'TOPP_FileFilter_1 failed'; >&2 echo -e "stderr:\n$(cat TOPP_FileFilter_1.stderr | sed 's/^/    /')"; echo -e "stdout:\n$(cat TOPP_FileFilter_1.stdout)";fi
+FileFilter -test -in FileFilter_1_input.mzML -out FileFilter_2.tmp -rt 30: -mz 1000: -int 100: -in_type mzML -out_type mzML > TOPP_FileFilter_2.stdout 2> TOPP_FileFilter_2.stderr
+if [[ "$?" -ne "0" ]]; then >&2 echo 'TOPP_FileFilter_2 failed'; >&2 echo -e "stderr:\n$(cat TOPP_FileFilter_2.stderr | sed 's/^/    /')"; echo -e "stdout:\n$(cat TOPP_FileFilter_2.stdout)";fi
+FileFilter -test -in FileFilter_1_input.mzML -out FileFilter_3.tmp -peak_options:level 2 -in_type mzML -out_type mzML > TOPP_FileFilter_3.stdout 2> TOPP_FileFilter_3.stderr
+if [[ "$?" -ne "0" ]]; then >&2 echo 'TOPP_FileFilter_3 failed'; >&2 echo -e "stderr:\n$(cat TOPP_FileFilter_3.stderr | sed 's/^/    /')"; echo -e "stdout:\n$(cat TOPP_FileFilter_3.stdout)";fi
 FileFilter -test -in FileFilter_4_input.mzML -out FileFilter_4.tmp -spectra:remove_zoom -in_type mzML -out_type mzML > TOPP_FileFilter_4.stdout 2> TOPP_FileFilter_4.stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'TOPP_FileFilter_4 failed'; >&2 echo -e "stderr:\n$(cat TOPP_FileFilter_4.stderr | sed 's/^/    /')"; echo -e "stdout:\n$(cat TOPP_FileFilter_4.stdout)";fi
 FileFilter -test -in FileFilter_5_input.featureXML -out FileFilter_5.tmp -rt :1000 -mz :480 -int :79000 -f_and_c:charge :3 -feature:q :0.6 -in_type featureXML -out_type featureXML > TOPP_FileFilter_5.stdout 2> TOPP_FileFilter_5.stderr
@@ -242,6 +247,8 @@ FileFilter -test -in FileFilter_47_input.mzML -spectra:blackorwhitelist:file Fil
 if [[ "$?" -ne "0" ]]; then >&2 echo 'TOPP_FileFilter_48 failed'; >&2 echo -e "stderr:\n$(cat TOPP_FileFilter_48.stderr | sed 's/^/    /')"; echo -e "stdout:\n$(cat TOPP_FileFilter_48.stdout)";fi
 FileFilter -test -in FileFilter_49_input.mzML -peak_options:numpress:intensity pic -peak_options:numpress:masstime linear -peak_options:numpress:float_da slof -peak_options:zlib_compression true -out FileFilter_49_1.tmp > TOPP_FileFilter_49.stdout 2> TOPP_FileFilter_49.stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'TOPP_FileFilter_49 failed'; >&2 echo -e "stderr:\n$(cat TOPP_FileFilter_49.stderr | sed 's/^/    /')"; echo -e "stdout:\n$(cat TOPP_FileFilter_49.stdout)";fi
+FileInfo -test -in FileInfo_1_input.dta -in_type dta -no_progress -out FileInfo_1.tmp > TOPP_FileInfo_1.stdout 2> TOPP_FileInfo_1.stderr
+if [[ "$?" -ne "0" ]]; then >&2 echo 'TOPP_FileInfo_1 failed'; >&2 echo -e "stderr:\n$(cat TOPP_FileInfo_1.stderr | sed 's/^/    /')"; echo -e "stdout:\n$(cat TOPP_FileInfo_1.stdout)";fi
 FileInfo -test -in FileInfo_2_input.dta2d -no_progress -out FileInfo_2.tmp > TOPP_FileInfo_2.stdout 2> TOPP_FileInfo_2.stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'TOPP_FileInfo_2 failed'; >&2 echo -e "stderr:\n$(cat TOPP_FileInfo_2.stderr | sed 's/^/    /')"; echo -e "stdout:\n$(cat TOPP_FileInfo_2.stdout)";fi
 FileInfo -test -in FileInfo_3_input.featureXML -m -s -p -no_progress -out FileInfo_3.tmp > TOPP_FileInfo_3.stdout 2> TOPP_FileInfo_3.stderr
@@ -634,6 +641,8 @@ MRMTransitionGroupPicker -in MRMTransitionGroupPicker_1_input.mzML -tr MRMTransi
 if [[ "$?" -ne "0" ]]; then >&2 echo 'UTILS_MRMTransitionGroupPicker_test_1 failed'; >&2 echo -e "stderr:\n$(cat UTILS_MRMTransitionGroupPicker_test_1.stderr | sed 's/^/    /')"; echo -e "stdout:\n$(cat UTILS_MRMTransitionGroupPicker_test_1.stdout)";fi
 MRMTransitionGroupPicker -in MRMTransitionGroupPicker_1_input.mzML -tr MRMTransitionGroupPicker_1_input.TraML -out MRMTransitionGroupPicker_test_2.featureXML.tmp -test -algorithm:PeakPickerMRM:remove_overlapping_peaks true -algorithm:PeakPickerMRM:method legacy -algorithm:PeakPickerMRM:peak_width 40.0 -algorithm:compute_total_mi > UTILS_MRMTransitionGroupPicker_test_2.stdout 2> UTILS_MRMTransitionGroupPicker_test_2.stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'UTILS_MRMTransitionGroupPicker_test_2 failed'; >&2 echo -e "stderr:\n$(cat UTILS_MRMTransitionGroupPicker_test_2.stderr | sed 's/^/    /')"; echo -e "stdout:\n$(cat UTILS_MRMTransitionGroupPicker_test_2.stdout)";fi
+OpenSwathWorkflow -in OpenSwathWorkflow_1_input.mzML -tr OpenSwathWorkflow_1_input.TraML -rt_norm OpenSwathWorkflow_1_input.trafoXML -out_chrom OpenSwathWorkflow_1.chrom.mzML.tmp -out_features OpenSwathWorkflow_1.featureXML.tmp -out_qc OpenSwathWorkflow_1.json.tmp -test > TOPP_OpenSwathWorkflow_1.stdout 2> TOPP_OpenSwathWorkflow_1.stderr
+if [[ "$?" -ne "0" ]]; then >&2 echo 'TOPP_OpenSwathWorkflow_1 failed'; >&2 echo -e "stderr:\n$(cat TOPP_OpenSwathWorkflow_1.stderr | sed 's/^/    /')"; echo -e "stdout:\n$(cat TOPP_OpenSwathWorkflow_1.stdout)";fi
 OpenSwathWorkflow -in OpenSwathWorkflow_2_input.mzXML -tr OpenSwathWorkflow_2_input.TraML -rt_norm OpenSwathWorkflow_2_input.trafoXML -out_chrom OpenSwathWorkflow_2.chrom.mzML.tmp -out_features OpenSwathWorkflow_2.featureXML.tmp -test > TOPP_OpenSwathWorkflow_2.stdout 2> TOPP_OpenSwathWorkflow_2.stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'TOPP_OpenSwathWorkflow_2 failed'; >&2 echo -e "stderr:\n$(cat TOPP_OpenSwathWorkflow_2.stderr | sed 's/^/    /')"; echo -e "stdout:\n$(cat TOPP_OpenSwathWorkflow_2.stdout)";fi
 OpenSwathWorkflow -in OpenSwathWorkflow_1_input.mzML -tr OpenSwathWorkflow_1_input.TraML -rt_norm OpenSwathWorkflow_1_input.trafoXML -out_chrom OpenSwathWorkflow_3.chrom.mzML.tmp -out_features OpenSwathWorkflow_3.featureXML.tmp -test -use_ms1_traces > TOPP_OpenSwathWorkflow_3.stdout 2> TOPP_OpenSwathWorkflow_3.stderr
@@ -956,6 +965,8 @@ InclusionExclusionListCreator -test -exclude InclusionExclusionListCreator.idXML
 if [[ "$?" -ne "0" ]]; then >&2 echo 'TOPP_InclusionExclusionListCreator_5 failed'; >&2 echo -e "stderr:\n$(cat TOPP_InclusionExclusionListCreator_5.stderr | sed 's/^/    /')"; echo -e "stdout:\n$(cat TOPP_InclusionExclusionListCreator_5.stdout)";fi
 InclusionExclusionListCreator -test -exclude InclusionExclusionListCreator.idXML -out InclusionExclusionListCreator_6_output.tmp -exclusion_charges 1 2 -rt_model InclusionExclusionListCreator_rt.model  -ini InclusionExclusionListCreator_6.ini > TOPP_InclusionExclusionListCreator_6.stdout 2> TOPP_InclusionExclusionListCreator_6.stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'TOPP_InclusionExclusionListCreator_6 failed'; >&2 echo -e "stderr:\n$(cat TOPP_InclusionExclusionListCreator_6.stderr | sed 's/^/    /')"; echo -e "stdout:\n$(cat TOPP_InclusionExclusionListCreator_6.stdout)";fi
+PeptideIndexer -test -fasta PeptideIndexer_1.fasta -in PeptideIndexer_1.idXML -out PeptideIndexer_1_out.tmp.idXML -allow_unmatched -enzyme:specificity none -aaa_max 4 > TOPP_PeptideIndexer_1.stdout 2> TOPP_PeptideIndexer_1.stderr
+if [[ "$?" -ne "0" ]]; then >&2 echo 'TOPP_PeptideIndexer_1 failed'; >&2 echo -e "stderr:\n$(cat TOPP_PeptideIndexer_1.stderr | sed 's/^/    /')"; echo -e "stdout:\n$(cat TOPP_PeptideIndexer_1.stdout)";fi
 PeptideIndexer -test -fasta PeptideIndexer_1.fasta -in PeptideIndexer_1.idXML -out PeptideIndexer_2_out.tmp.idXML -allow_unmatched -write_protein_sequence -enzyme:specificity none -aaa_max 4 > TOPP_PeptideIndexer_2.stdout 2> TOPP_PeptideIndexer_2.stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'TOPP_PeptideIndexer_2 failed'; >&2 echo -e "stderr:\n$(cat TOPP_PeptideIndexer_2.stderr | sed 's/^/    /')"; echo -e "stdout:\n$(cat TOPP_PeptideIndexer_2.stdout)";fi
 PeptideIndexer -test -fasta PeptideIndexer_1.fasta -in PeptideIndexer_1.idXML -out PeptideIndexer_3_out.tmp.idXML -allow_unmatched -keep_unreferenced_proteins -enzyme:specificity none -aaa_max 4 > TOPP_PeptideIndexer_3.stdout 2> TOPP_PeptideIndexer_3.stderr

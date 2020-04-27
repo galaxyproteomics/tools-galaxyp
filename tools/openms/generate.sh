@@ -11,6 +11,9 @@ PROFILE="20.05"
 ## FILETYPES_RE=$(grep -v "^#" $FILETYPES | grep -v "^$" | cut -f 1 -d" " | tr '\n' '|' | sed 's/|$//'| sed 's/|/\\|/g')
 
 export tmp=$(mktemp -d)
+export tmp="/tmp/openms-stuff/"
+
+export CTDCONVERTER="$tmp/CTDConverter"
 
 ###############################################################################
 ## reset old data
@@ -33,12 +36,12 @@ bash ./test-data.sh ./macros_autotest.xml
 ## get the 
 ## - conda package (for easy access and listing of the OpenMS binaries), 
 ###############################################################################
-if [ ! -d $OPENMSPKG ]; then
-	mkdir $OPENMSPKG/
-	wget -P $OPENMSPKG/ "$CONDAPKG"
-	tar -xf $OPENMSPKG/"$(basename $CONDAPKG)" -C OpenMS$VERSION-pkg/
-  rm $OPENMSPKG/"$(basename $CONDAPKG)"
-fi
+# if [ ! -d $OPENMSPKG ]; then
+# 	mkdir $OPENMSPKG/
+# 	wget -P $OPENMSPKG/ "$CONDAPKG"
+# 	tar -xf $OPENMSPKG/"$(basename $CONDAPKG)" -C OpenMS$VERSION-pkg/
+#   rm $OPENMSPKG/"$(basename $CONDAPKG)"
+# fi
 
 ###############################################################################
 ## Get python libaries for CTD -> Galaxy conversion
@@ -56,7 +59,8 @@ fi
 ###############################################################################
 ## conversion ctd->xml 
 ###############################################################################
-conda activate ./OpenMS$VERSION-env
+source $(dirname $(which conda))/../etc/profile.d/conda.sh
+conda activate $tmp/OpenMS$VERSION-env
 python $CTDCONVERTER/convert.py galaxy -i ctd/*ctd -o ./ -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --test-macros macros_autotest.xml --test-macros-prefix autotest_  --test-macros macros_test.xml --test-macros-prefix manutest_ --tool-version $VERSION --tool-profile $PROFILE
 conda deactivate
 # #-b version log debug test in_type executable pepnovo_executable param_model_directory rt_concat_trafo_out param_id_pool

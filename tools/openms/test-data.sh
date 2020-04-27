@@ -153,7 +153,7 @@ echo 'FIDOCHOOSEPARAMS_BINARY="FidoChooseParameters"' >> prepare_test_data.sh
 echo 'FIDO_BINARY="Fido"' >> prepare_test_data.sh
 echo 'LUCIPHOR_BINARY="$(dirname $(realpath $(which luciphor2)))/luciphor2.jar"' >> prepare_test_data.sh
 
-echo 'MARACLUSTER_BINARY="'$OPENMSGIT'/THIRDPARTY/Linux/64bit/MaRaCluster/maracluster"'>> prepare_test_data.sh
+echo 'MARACLUSTER_BINARY="'"$OPENMSGIT"'/THIRDPARTY/Linux/64bit/MaRaCluster/maracluster"'>> prepare_test_data.sh
 echo 'MSFRAGGER_BINARY="/home/berntm/Downloads/MSFragger-20171106/MSFragger-20171106.jar"'>> prepare_test_data.sh
 echo 'MSGFPLUS_BINARY="$(msgf_plus -get_jar_path)"' >> prepare_test_data.sh
 echo 'MYRIMATCH_BINARY="myrimatch"'>> prepare_test_data.sh
@@ -163,7 +163,6 @@ echo 'PERCOLATOR_BINARY="percolator"'>> prepare_test_data.sh
 echo 'SIRIUS_BINARY="$(which sirius)"' >> prepare_test_data.sh
 echo 'SPECTRAST_BINARY="spectrast"' >> prepare_test_data.sh
 echo 'XTANDEM_BINARY="xtandem"' >> prepare_test_data.sh
-echo 'XTANDEM_BINARY="xtandem"' >> prepare_test_data.sh
 echo 'THERMORAWFILEPARSER_BINARY="ThermoRawFileParser.exe"' >> prepare_test_data.sh
 prepare_test_data >> prepare_test_data.sh
 
@@ -172,6 +171,7 @@ chmod u+x prepare_test_data.sh
 cd ./test-data || exit
 ../prepare_test_data.sh
 cd - || exit
+
 
 ###############################################################################
 ## create/update test data for the manually generated tests
@@ -190,8 +190,6 @@ cd - || exit
 ###############################################################################
 ## auto generate tests
 ###############################################################################
-# get_tests2 AccurateMassSearch 
-# exit
 
 echo "Write test macros to "$autotests
 echo "<macros>" > $autotests
