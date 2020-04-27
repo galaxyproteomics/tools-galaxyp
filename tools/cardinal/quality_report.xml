@@ -1,4 +1,4 @@
-<tool id="cardinal_quality_report" name="MSI Qualitycontrol" version="@VERSION@.4">
+<tool id="cardinal_quality_report" name="MSI Qualitycontrol" version="@VERSION@.0">
     <description>
         mass spectrometry imaging QC
     </description>
@@ -6,12 +6,12 @@
         <import>macros.xml</import>
     </macros>
     <expand macro="requirements">
-        <requirement type="package" version="1.1_2">r-rcolorbrewer</requirement>
         <requirement type="package" version="2.3">r-gridextra</requirement>
-        <requirement type="package" version="3.0">r-ggplot2</requirement>
-        <requirement type="package" version="2.23_15">r-kernsmooth</requirement>
-        <requirement type="package" version="1.0.0">r-scales</requirement>
-        <requirement type="package" version="1.0.10"> r-pheatmap</requirement>
+        <requirement type="package" version="3.2.1">r-ggplot2</requirement>
+        <requirement type="package" version="1.1_2">r-rcolorbrewer</requirement>
+        <requirement type="package" version="2.23_16">r-kernsmooth</requirement>
+        <requirement type="package" version="1.1.0">r-scales</requirement>
+        <requirement type="package" version="1.0.12"> r-pheatmap</requirement>
     </expand>
     <command detect_errors="exit_code">
     <![CDATA[
@@ -33,9 +33,14 @@ library(KernSmooth)
 library(scales)
 library(pheatmap)
 
+@READING_MSIDATA@
 
-@READING_MSIDATA_INRAM@
-
+## in case RData input is MSImageSet:
+if (class(msidata) == "MSImageSet"){
+    msidata = as(msidata, "MSImagingExperiment")
+    run(msidata) = "infile"
+    }
+print(class(msidata))
 ## remove duplicated coordinates
 msidata <- msidata[,!duplicated(coord(msidata))]
 
@@ -50,8 +55,8 @@ msidata <- msidata[,!duplicated(coord(msidata))]
     colnames(annotation_input) = c("x", "y", "annotation") ## rename annotations header to default name "annotation"
 
     ## merge with coordinate information of msidata
-    msidata_coordinates = cbind(coord(msidata)[,1:2], c(1:ncol(msidata)))
-    colnames(msidata_coordinates)[3] = "pixel_index"
+    msidata_coordinates = data.frame(coord(msidata)\$x, coord(msidata)\$y, c(1:ncol(msidata)))
+    colnames(msidata_coordinates) = c("x", "y", "pixel_index")
     merged_annotation = merge(msidata_coordinates, annotation_input, by=c("x", "y"), all.x=TRUE)
     merged_annotation[is.na(merged_annotation)] = "NA"
     merged_annotation = merged_annotation[order(merged_annotation\$pixel_index),]
@@ -155,6 +160,7 @@ grid.table(property_df, rows= NULL)
 ##############################################################################
 print("x-y images")
 
+
 ## only do plots for file with intensity peaks
 
 if (npeaks > 0){
@@ -181,8 +187,8 @@ if (npeaks > 0){
 
         number_combined = length(levels(msidata\$annotation))
 
-        position_df = cbind(coord(msidata)[,1:2], msidata\$annotation)
-        colnames(position_df)[3] = "annotation"
+        position_df = data.frame(coord(msidata)\$x, coord(msidata)\$y, msidata\$annotation)
+        colnames(position_df) = c("x", "y","annotation")
 
         combine_plot = ggplot(position_df, aes(x=x, y=y, fill=annotation))+
                geom_tile() +
@@ -211,7 +217,8 @@ if (npeaks > 0){
     ################### 1) Pixel order image ###################################
 
     pixelnumber = 1:pixelcount
-    pixelxyarray=cbind(coord(msidata)[,1:2],pixelnumber)
+    pixelxyarray=data.frame(coord(msidata)\$x, coord(msidata)\$y,pixelnumber)
+    colnames(pixelxyarray) = c("x", "y", "pixelnumber")
     gg_title = "Pixel order"
     
     print(ggplot(pixelxyarray, aes(x=x, y=y, fill=pixelnumber))+
@@ -243,15 +250,15 @@ if (npeaks > 0){
 
             filtered_data = msidata[mz(msidata) >= inputcalibrantmasses[mass]-plusminusvalues[mass] & mz(msidata) <= inputcalibrantmasses[mass]+plusminusvalues[mass],]
 
-            if (nrow(filtered_data) > 1 & sum(spectra(filtered_data),na.rm=TRUE) > 0){
+           if (nrow(filtered_data) > 0 & sum(spectra(filtered_data),na.rm=TRUE) > 0){
 
                 ## intensity of all m/z > 0
                 intensity_sum = colSums(spectra(filtered_data), na.rm=TRUE) > 0
 
-            }else if(nrow(filtered_data) == 1 & sum(spectra(filtered_data), na.rm=TRUE) > 0){
+            ###}else if(nrow(filtered_data) == 1 & sum(spectra(filtered_data), na.rm=TRUE) > 0){
 
                 ## intensity of only m/z > 0
-                intensity_sum = spectra(filtered_data) > 0 
+                intensity_sum = colSums(spectra(filtered_data), na.rm=TRUE) > 0
 
             }else{
 
@@ -263,7 +270,8 @@ if (npeaks > 0){
 
         ## for each pixel count TRUE (each calibrant m/z range with intensity > 0 is TRUE)
         countvector= as.factor(colSums(pixelmatrix, na.rm=TRUE))
-        countdf= cbind(coord(msidata)[,1:2], countvector) ## add pixel coordinates to counts
+        countdf= data.frame(coord(msidata)\$x, coord(msidata)\$y, countvector) ## add pixel coordinates to counts
+        colnames(countdf) = c("x", "y", "countvector")
         mycolours = brewer.pal(9, "Set1")
 
         print(ggplot(countdf, aes(x=x, y=y, fill=countvector))+
@@ -308,12 +316,12 @@ if (npeaks > 0){
             mzup2 = features(msidata, mz = mass2+3)
 
             ### plot for first m/z 
-            par(mfrow=c(2,1), oma=c(0,0,2,0))
-            plot(msidata[mzdown1:mzup1,], pixel = 1:pixelcount, main=paste0("Average spectrum ", mass1, " Da"))
+            par(oma=c(0,0,2,0))
+            print(plot(msidata[mzdown1:mzup1,], run="infile", layout=c(2,1), strip=FALSE, main=paste0("Average spectrum ", mass1, " Da")))
             abline(v=c(mass1-distance1, mass1, mass1+distance1), col="blue",lty=c(3,6,3))
 
             ### plot for second m/z 
-            plot(msidata[mzdown2:mzup2,], pixel = 1:pixelcount, main= paste0("Average spectrum ", mass2, " Da"))
+            print(plot(msidata[mzdown2:mzup2,], run="infile", layout=FALSE, strip=FALSE, main= paste0("Average spectrum ", mass2, " Da")))
             abline(v=c(mass2-distance2, mass2, mass2+distance2), col="blue", lty=c(3,6,3))
             title("Control of fold change plot", outer=TRUE)
 
@@ -324,7 +332,8 @@ if (npeaks > 0){
             mass1vector = colMeans(spectra(filtered_data1), na.rm =TRUE)
             mass2vector = colMeans(spectra(filtered_data2), na.rm = TRUE)
             foldchange= log2(mass1vector/mass2vector)
-            fcmatrix = cbind(foldchange, coord(msidata)[,1:2])
+            fcmatrix = data.frame(coord(msidata)\$x, coord(msidata)\$y,foldchange)
+            colnames(fcmatrix) = c("x", "y", "foldchange")
 
             print(ggplot(fcmatrix, aes(x=x, y=y, fill=foldchange))+
              geom_tile() + coord_fixed()+
@@ -345,15 +354,22 @@ if (npeaks > 0){
     #end if
 
     #################### 4) m/z heatmaps #######################################
-
     par(mfrow=c(1,1), mar=c(5.1, 4.1, 4.1, 2.1), mgp=c(3, 1, 0), las=0)
     if (length(inputcalibrants[,1]) != 0){
         for (mass in 1:length(inputcalibrants[,1])){
+            par(oma=c(0,0,0,1))## margin for image legend
 
-
-            image(msidata, mz=inputcalibrants[,1][mass], plusminus=plusminusvalues[mass], 
+           tryCatch(
+                        {
+                        print(image(msidata, mz=inputcalibrants[,1][mass], plusminus=plusminusvalues[mass], 
             main= paste0(inputcalibrants[,2][mass], ": ", round(inputcalibrants[,1][mass], digits = 2)," (±",$plusminus_ppm, " ppm)"),
-            contrast.enhance = "histogram", ylim= c(maximumy+0.2*maximumy,minimumy-1))
+            contrast.enhance = "histogram", strip=FALSE, ylim= c(maximumy,minimumy)))
+                        },
+                        error=function(cond) {
+                        ## if there are not enough intensities in the mz range skip creating an image
+                        print(paste0("Not enough intensities > 0 for m/z ", inputcalibrants[,1][mass]))
+                        }
+                    )    
         }
     } else {print("4) The input peptide and calibrant m/z were not provided or outside the m/z range")}
 
@@ -361,7 +377,8 @@ if (npeaks > 0){
 
     ## here every intensity value > 0 counts as peak
     peaksperpixel = colSums(spectra(msidata)> 0, na.rm=TRUE)
-    peakscoordarray=cbind(coord(msidata)[,1:2], peaksperpixel)
+    peakscoordarray=data.frame(coord(msidata)\$x, coord(msidata)\$y, peaksperpixel)
+    colnames(peakscoordarray) = c("x", "y", "peaksperpixel")
 
     print(ggplot(peakscoordarray, aes(x=x, y=y, fill=peaksperpixel))+
      geom_tile() + coord_fixed() +
@@ -379,7 +396,8 @@ if (npeaks > 0){
 
     ############################### 6) TIC image ###############################
 
-    TICcoordarray=cbind(coord(msidata)[,1:2], TICs)
+    TICcoordarray=data.frame(coord(msidata)\$x, coord(msidata)\$y, TICs)
+    colnames(TICcoordarray) = c("x", "y", "peaksperpixel")
 
     print(ggplot(TICcoordarray, aes(x=x, y=y, fill=TICs))+
      geom_tile() + coord_fixed() +
@@ -396,9 +414,10 @@ if (npeaks > 0){
 
     ############################### 6b) median int image ###############################
 
-    median_int = apply(spectra(msidata),2,median) 
-    median_coordarray=cbind(coord(msidata)[,1:2], median_int)
+    median_int = pixelApply(msidata, median)
 
+    median_coordarray=data.frame(coord(msidata)\$x, coord(msidata)\$y, median_int)
+    colnames(median_coordarray) = c("x", "y", "median_int")
     print(ggplot(median_coordarray, aes(x=x, y=y, fill=median_int))+
      geom_tile() + coord_fixed() +
      ggtitle("Median intensity per spectrum")+
@@ -414,9 +433,10 @@ if (npeaks > 0){
 
     ############################### 6c) max int image ###############################
 
-    max_int = apply(spectra(msidata),2,max) 
-    max_coordarray=cbind(coord(msidata)[,1:2], max_int)
+    max_int = pixelApply(msidata, max)
 
+    max_coordarray=data.frame(coord(msidata)\$x, coord(msidata)\$y, max_int)
+    colnames(max_coordarray) = c("x", "y", "max_int")
     print(ggplot(max_coordarray, aes(x=x, y=y, fill=max_int))+
      geom_tile() + coord_fixed() +
      ggtitle("Maximum intensity per spectrum")+
@@ -433,7 +453,8 @@ if (npeaks > 0){
     ############################### 7) Most abundant m/z image #################
 
     ## for each spectrum find the row (m/z) with the highest intensity
-    highestmz = apply(spectra(msidata),2,which.max)
+    highestmz = pixelApply(msidata, which.max)
+
     ## in case for some spectra max returns integer(0), highestmz is a list and integer(0) have to be replaced with NA and unlisted
     if (class(highestmz) == "list"){
         ##find zero-length values
@@ -443,8 +464,8 @@ if (npeaks > 0){
         ### unlist list to get a vector
         highestmz = unlist(highestmz)}
 
-    highestmz_matrix = cbind(coord(msidata)[,1:2],mz(msidata)[highestmz])
-    colnames(highestmz_matrix)[3] = "highestmzinDa"
+    highestmz_matrix = data.frame(coord(msidata)\$x, coord(msidata)\$y,mz(msidata)[highestmz])
+    colnames(highestmz_matrix) = c("x", "y", "highestmzinDa")
 
     print(ggplot(highestmz_matrix, aes(x=x, y=y, fill=highestmzinDa))+
     geom_tile() + coord_fixed() +
@@ -468,13 +489,12 @@ if (npeaks > 0){
         pca = PCA(msidata, ncomp=2)
 
         ## plot overview image and plot and PC1 and 2 images
-        par(mfrow = c(2,1))
-        plot(pca, col=c("black", "darkgrey"), main="PCA for two components")
-        image(pca, col=c("black", "white"), strip=FALSE, ylim= c(maximumy+0.2*maximumy,minimumy-1))
+        print(plot(pca, col=c("black", "darkgrey"), main="PCA for two components", layout=c(2,1), strip=FALSE))
+        print(image(pca, run="infile", col=c("black", "white"), strip=FALSE,  ylim= c(maximumy+0.2*maximumy,minimumy-1), layout=FALSE))
 
-        for (PCs in 1:2){
-            print(image(pca, column = c(paste0("PC",PCs)) , strip=FALSE, superpose = FALSE, main=paste0("PC", PCs), col.regions = risk.colors(100), ylim=c(maximumy+2, minimumy-2)))}
-
+        par(oma=c(0,0,0,1))## margin for image legend
+        print(image(pca, column = "PC1" , strip=FALSE, superpose = FALSE, main="PC1", col.regions = risk.colors(100), layout=c(2,1), ylim= c(maximumy+0.2*maximumy,minimumy-1)))
+        print(image(pca, column = "PC2" , strip=FALSE, superpose = FALSE, main="PC2", col.regions = risk.colors(100), layout=FALSE,  ylim= c(maximumy+0.2*maximumy,minimumy-1)))
     ## remove pca to clean up RAM space
         rm(pca)
         gc()
@@ -613,19 +633,18 @@ if (npeaks > 0){
     par(mfrow = c(2,1), mar=c(5,6,4,2))
 
     ## 14a) Median intensity over spectra
-
-    medianint_spectra = apply(spectra(msidata), 2, median, na.rm=TRUE)
+    medianint_spectra = apply(spectra(msidata), 2, median, na.rm=TRUE) 
     plot(medianint_spectra, main="Median intensity per spectrum",las=1, xlab="Spectra index", ylab="")
     title(ylab="Median spectrum intensity", line=4)
     if (!is.null(levels(msidata\$annotation))){
         abline(v=abline_vector, lty = 3)}
 
     ## 14b) histogram: 
-    hist(spectra(msidata), main="", xlab = "", ylab="", las=1)
+    hist(as.matrix(spectra(msidata)), main="", xlab = "", ylab="", las=1)
     title(main="Intensity histogram", line=2)
     title(xlab="intensities")
     title(ylab="Frequency", line=4)
-    abline(v=median(spectra(msidata)[(spectra(msidata)>0)], na.rm=TRUE), col="blue")
+    abline(v=median(as.matrix(spectra(msidata))[(as.matrix(spectra(msidata))>0)], na.rm=TRUE), col="blue")
 
 
     ## 14c) histogram to show contribution of annotation groups
@@ -668,6 +687,7 @@ if (npeaks > 0){
         corr_matrix = mean_matrix
         corr_matrix[corr_matrix == 0] <- NA
         colnames(corr_matrix) = levels(msidata\$annotation)
+
         ## pearson correlation is only possible if there are at least 2 groups
         if (length(colnames)>1)
         {
@@ -688,16 +708,15 @@ if (npeaks > 0){
 
     ## replace any NA with 0, otherwise plot function will not work at all
     msidata_no_NA = msidata
-    spectra(msidata_no_NA)[is.na(spectra(msidata_no_NA))] = 0
 
     ## find three equal m/z ranges for the average mass spectra plots: 
     third_mz_range = nrow(msidata_no_NA)/3
 
-    par(mfrow = c(2, 2), cex.axis=1, cex.lab=1, mar=c(5.1,4.1,4.1,2.1))
-    plot(msidata_no_NA, pixel = 1:ncol(msidata_no_NA), main= "Average spectrum")
-    plot(msidata_no_NA[1:third_mz_range,], pixel = 1:ncol(msidata_no_NA), main= "Zoomed average spectrum")
-    plot(msidata_no_NA[third_mz_range:(2*third_mz_range),], pixel = 1:ncol(msidata_no_NA), main= "Zoomed average spectrum")
-    plot(msidata_no_NA[(2*third_mz_range):nrow(msidata_no_NA),], pixel = 1:ncol(msidata_no_NA), main= "Zoomed average spectrum")
+    par(cex.axis=1, cex.lab=1, mar=c(5.1,4.1,4.1,2.1))
+    print(plot(msidata_no_NA, run="infile", layout=c(2,2), strip=FALSE, main= "Average spectrum"))
+    print(plot(msidata_no_NA[1:third_mz_range,], run="infile", layout=FALSE, strip=FALSE, main= "Zoomed average spectrum"))
+    print(plot(msidata_no_NA[third_mz_range:(2*third_mz_range),], run="infile", layout=FALSE, strip=FALSE, main= "Zoomed average spectrum"))
+    print(plot(msidata_no_NA[(2*third_mz_range):nrow(msidata_no_NA),], run="infile", layout=FALSE, strip=FALSE, main= "Zoomed average spectrum"))
 
     ## plot one average mass spectrum for each pixel annotation group
 
@@ -707,21 +726,16 @@ if (npeaks > 0){
             key_legend = TRUE
         }else{key_legend = FALSE}
         par(mfrow = c(1,1), cex.axis=1, cex.lab=1, mar=c(5.1,4.1,4.1,2.1))
-        plot(msidata, pixel=1:ncol(msidata), pixel.groups=msidata\$annotation, key=key_legend, col=hue_pal()(length(levels(msidata\$annotation))),superpose=TRUE, main="Average mass spectra for annotation groups")
+        print(plot(msidata, run="infile", pixel.groups=msidata\$annotation, key=key_legend, col=hue_pal()(length(levels(msidata\$annotation))),superpose=TRUE, main="Average mass spectra for annotation groups"))
     }
 
     ## plot 4 random mass spectra
-    ## find four random pixel to plot their spectra in the following plots:
-    pixel1 = sample(pixelnumber,1)
-    pixel2 = sample(pixelnumber,1)
-    pixel3 = sample(pixelnumber,1)
-    pixel4 = sample(pixelnumber,1)
+    ## find four random, not empty pixel to plot their spectra in the following plots:
+    pixel_vector = sample(which(TICs != 0),4)
 
     par(mfrow = c(2, 2), cex.axis=1, cex.lab=1, mar=c(5.1,4.1,4.1,2.1))
-    plot(msidata_no_NA, pixel = pixel1, main=paste0("Spectrum at ", rownames(coord(msidata_no_NA)[pixel1,1:2])))
-    plot(msidata_no_NA, pixel = pixel2, main=paste0("Spectrum at ", rownames(coord(msidata_no_NA)[pixel2,1:2])))
-    plot(msidata_no_NA, pixel = pixel3, main= paste0("Spectrum at ", rownames(coord(msidata_no_NA)[pixel3,1:2])))
-    plot(msidata_no_NA, pixel = pixel4, main= paste0("Spectrum at ", rownames(coord(msidata_no_NA)[pixel4,1:2])))
+    print(plot(msidata_no_NA, pixel = pixel_vector))
+
 
     ################### 16) Zoomed in mass spectra for calibrants ##############
 
@@ -741,7 +755,7 @@ if (npeaks > 0){
             maxmasspixel1 = features(msidata_no_NA, mz=inputcalibrantmasses[mass]+1.5)
             minmasspixel2 = features(msidata_no_NA, mz=inputcalibrantmasses[mass]-0.25)
             maxmasspixel2 = features(msidata_no_NA, mz=inputcalibrantmasses[mass]+0.5)
-            minmasspixel3 = features(msidata_no_NA, mz=inputcalibrantmasses[mass]-3)
+            minmasspixel3 = features(msidata_no_NA, mz=inputcalibrantmasses[mass]-1.5)
             maxmasspixel3 = features(msidata_no_NA, mz=inputcalibrantmasses[mass]+3)
 
             ### find m/z with the highest mean intensity in m/z range (red line in plot 16) and calculate ppm difference for plot 17
@@ -765,22 +779,23 @@ if (npeaks > 0){
             differencevector2[mass] = round(ppmdifference2, digits=2)
 
             ## plotting of 4 spectra in one page
-            par(mfrow = c(2, 2), oma=c(0,0,2,0))
+            par(oma=c(0,0,2,0))
             ## average plot
-            plot(msidata_no_NA[minmasspixel1:maxmasspixel1,], pixel = 1:length(pixelnumber), main= "Average spectrum")
+
+            print(plot(msidata_no_NA[minmasspixel1:maxmasspixel1,], run="infile", layout=c(2,2), strip=FALSE, main= "Average spectrum"))
             abline(v=c(inputcalibrantmasses[mass] -plusminusvalues[count], inputcalibrantmasses[mass] ,inputcalibrantmasses[mass] +plusminusvalues[count]), col="blue", lty=c(3,5,3))
             abline(v=c(maxvalue), col="red", lty=2)
             abline(v=c(mzvalue), col="green2", lty=4)
             ## average plot including points per data point
-            plot(msidata_no_NA[minmasspixel1:maxmasspixel1,], pixel = 1:length(pixelnumber), main="Average spectrum with data points")
+            print(plot(msidata_no_NA[minmasspixel1:maxmasspixel1,], run="infile", layout=FALSE, strip=FALSE, main="Average spectrum with data points"))
             points(mz(msidata_no_NA[minmasspixel1:maxmasspixel1,]), rowMeans(spectra(msidata_no_NA)[minmasspixel1:maxmasspixel1,,drop=FALSE]), col="blue", pch=20)
             ## plot of third average plot
-            plot(msidata_no_NA[minmasspixel2:maxmasspixel2,], pixel = 1:length(pixelnumber), main= "Average spectrum")
+            print(plot(msidata_no_NA[minmasspixel2:maxmasspixel2,], run="infile", layout=FALSE, strip=FALSE, main= "Average spectrum"))
             abline(v=c(inputcalibrantmasses[mass] -plusminusvalues[count], inputcalibrantmasses[mass] ,inputcalibrantmasses[mass] +plusminusvalues[count]), col="blue", lty=c(3,5,3))
             abline(v=c(maxvalue), col="red", lty=2)
             abline(v=c(mzvalue), col="green2", lty=4)
             ## plot of fourth average plot
-            plot(msidata_no_NA[minmasspixel3:maxmasspixel3,], pixel = 1:length(pixelnumber), main= "Average spectrum")
+            print(plot(msidata_no_NA[minmasspixel3:maxmasspixel3,], run="infile", layout=FALSE, strip=FALSE, main= "Average spectrum"))
             abline(v=c(inputcalibrantmasses[mass] -plusminusvalues[count], inputcalibrantmasses[mass] ,inputcalibrantmasses[mass] +plusminusvalues[count]), col="blue", lty=c(3,5,3))
             abline(v=c(maxvalue), col="red", lty=2)
             abline(v=c(mzvalue), col="green2", lty=4)
@@ -795,8 +810,8 @@ if (npeaks > 0){
                     key_zoomed = TRUE
                 }else{key_zoomed = FALSE}
                 par(mfrow = c(1, 1))
-                plot(msidata_no_NA[minmasspixel1:maxmasspixel1,], pixel=1:ncol(msidata_no_NA),main="Average spectrum per annotation group",
-                pixel.groups=msidata\$annotation, key=key_zoomed, col=hue_pal()(number_combined),superpose=TRUE)
+                print(plot(msidata_no_NA[minmasspixel1:maxmasspixel1,], run="infile", strip=FALSE,main="Average spectrum per annotation group",
+                pixel.groups=msidata\$annotation, key=key_zoomed, col=hue_pal()(number_combined),superpose=TRUE))
                 abline(v=c(inputcalibrantmasses[mass] -plusminusvalues[count], inputcalibrantmasses[mass] ,inputcalibrantmasses[mass] +plusminusvalues[count]), col="black", lty=c(3,1,3))
             }
             count=count+1
@@ -892,7 +907,8 @@ if (npeaks > 0){
 
             ### make x-y-images for mz accuracy
 
-            ppm_dataframe = cbind(coord(msidata)[,1:2], ppm_df)
+            ppm_dataframe = data.frame(coord(msidata)\$x, coord(msidata)\$y, ppm_df)
+            colnames(ppm_dataframe) = c("x", "y", "ppm_df")
 
             for (each_cal in 1:ncol(ppm_df)){
                 tmp_ppm = ppm_dataframe[,c(1,2,each_cal+2)]
@@ -941,6 +957,7 @@ if (npeaks > 0){
                 <sanitizer invalid_char="">
                     <valid initial="string.ascii_letters,string.digits">
                         <add value="_" />
+                        <add value=" " />
                     </valid>
                 </sanitizer>
             </param>
@@ -973,7 +990,7 @@ if (npeaks > 0){
                 <param name="mass1" value="328.9"/>
                 <param name="mass2" value="398.8"/>
                 <param name="distance" value="500"/>
-                <param name="filenameratioplot" value = "Ratio of mass1 (328.9) / mass2 (398.8)"/>
+                <param name="filenameratioplot" value = "Ratio of mz 328.9 and mz 398.8"/>
             </repeat>
             <output name="QC_report" file="QC_imzml.pdf" compare="sim_size"/>
         </test>
@@ -1117,4 +1134,5 @@ This tool uses Cardinal to read files and create a quality control report with d
     </help>
     <expand macro="citations"/>
 </tool>
+
 
