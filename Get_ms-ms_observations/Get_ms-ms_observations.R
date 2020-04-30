@@ -77,12 +77,9 @@ extract_info_from_path <- function(path) {
 }
 
 clean_ids <- function(ids){
-  
-  ids = gsub(" ","",ids)
-  ids = ids[which(ids!="")]
-  ids = ids[which(ids!="NA")]
-  ids = ids[!is.na(ids)]
- 
+  ids = gsub(" ",NA,ids)
+  ids = gsub("^$|^ $", NA, ids)
+  ids = gsub("NA",NA,ids)
   return(ids) 
 }
 
@@ -108,9 +105,6 @@ main = function() {
   argsDF <- as.data.frame(do.call("rbind", parseArgs(args)))
   args <- as.list(as.character(argsDF$V2))
   names(args) <- argsDF$V1
-  
-  #save(args,file="/home/dchristiany/proteore_project/ProteoRE/tools/Get_ms-ms_observations/args.Rda")
-  #load("/home/dchristiany/proteore_project/ProteoRE/tools/Get_ms-ms_observations/args.Rda")
   
   # Extract input
   input_type = args$input_type
