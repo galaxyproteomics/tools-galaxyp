@@ -151,7 +151,7 @@ done
 ###############################################################################
 echo "Create test shell script"
 
-echo "" > prepare_test_data.sh
+echo -n "" > prepare_test_data.sh
 echo 'COMET_BINARY="comet"' >> prepare_test_data.sh
 echo 'CRUX_BINARY="crux"' >> prepare_test_data.sh
 echo 'FIDOCHOOSEPARAMS_BINARY="FidoChooseParameters"' >> prepare_test_data.sh
@@ -169,7 +169,19 @@ echo 'SIRIUS_BINARY="$(which sirius)"' >> prepare_test_data.sh
 echo 'SPECTRAST_BINARY="spectrast"' >> prepare_test_data.sh
 echo 'XTANDEM_BINARY="xtandem"' >> prepare_test_data.sh
 echo 'THERMORAWFILEPARSER_BINARY="ThermoRawFileParser.exe"' >> prepare_test_data.sh
-prepare_test_data >> prepare_test_data.sh
+
+prepare_test_data > tmp_test_data.sh
+
+# remove calls not needed for the tools listed in any .list file
+echo LIST $LIST
+if [ ! -z "$LIST" ]; then
+	REX=$(echo $LIST | sed 's/ /\n/g' | sed 's@.*/\([^/]\+\).xml$@\1@' | tr '\n' '|' | sed 's/|$//')
+else
+	REX=".*"
+fi
+echo REX $REX
+cat tmp_test_data.sh | egrep "($REX)" >> prepare_test_data.sh
+rm tmp_test_data.sh
 
 echo "Execute test shell script"
 chmod u+x prepare_test_data.sh
@@ -185,6 +197,7 @@ cd - || exit
 ###############################################################################
 echo "Execute test shell script for manually curated tests"
 chmod u+x prepare_test_data_manual.sh
+
 cd ./test-data || exit
 ../prepare_test_data_manual.sh
 cd - || exit
