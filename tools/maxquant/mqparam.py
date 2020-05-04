@@ -308,6 +308,23 @@ class MQParam:
                              .format(key))
         node.text = str(value)
 
+    def set_list_param(self, key, values):
+        """Set a list parameter.
+        Args:
+            key: (string) XML tag of the parameter
+            values: the lit of values of the parameter XML node
+        Returns:
+            None
+        """
+        node = self._root.find(key)
+        if node is None:
+            raise ValueError('Element {} not found in parameter file'
+                             .format(key))
+        node.clear()
+        node.tag = key
+        for e in values:
+            et_add_child(node, name='string', text=e)
+
     def _from_yaml(self, conf):
         """Read a yaml config file.
         Args:
@@ -317,6 +334,8 @@ class MQParam:
         """
         with open(conf) as f:
             conf_dict = yaml.safe_load(f.read())
+
+
         paramGroups = conf_dict.pop('paramGroups')
         self.add_infiles([pg.pop('files') for pg in paramGroups])
         for i, pg in enumerate(paramGroups):
@@ -339,7 +358,10 @@ class MQParam:
         else:
             raise Exception('No fasta files provided.')
         for key in conf_dict:
-            self.set_simple_param(key, conf_dict[key])
+            if key in ['restrictMods']:
+                self.set_list_param(key, conf_dict[key])
+            else:
+                self.set_simple_param(key, conf_dict[key])
 
     def write(self, mqpar_out):
         """Write pretty formatted xml parameter file.
