@@ -335,7 +335,6 @@ class MQParam:
         with open(conf) as f:
             conf_dict = yaml.safe_load(f.read())
 
-
         paramGroups = conf_dict.pop('paramGroups')
         self.add_infiles([pg.pop('files') for pg in paramGroups])
         for i, pg in enumerate(paramGroups):
