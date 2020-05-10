@@ -172,16 +172,16 @@ echo 'THERMORAWFILEPARSER_BINARY="ThermoRawFileParser.exe"' >> prepare_test_data
 
 prepare_test_data > tmp_test_data.sh
 
-# remove calls not needed for the tools listed in any .list file
-echo LIST $LIST
-if [ ! -z "$LIST" ]; then
-	REX=$(echo $LIST | sed 's/ /\n/g' | sed 's@.*/\([^/]\+\).xml$@\1@' | tr '\n' '|' | sed 's/|$//')
-else
-	REX=".*"
-fi
-echo REX $REX
-cat tmp_test_data.sh | egrep "($REX)" >> prepare_test_data.sh
-rm tmp_test_data.sh
+# # remove calls not needed for the tools listed in any .list file
+# echo LIST $LIST
+# if [ ! -z "$LIST" ]; then
+# 	REX=$(echo $LIST | sed 's/ /\n/g' | sed 's@.*/\([^/]\+\).xml$@\1@' | tr '\n' '|' | sed 's/|$//')
+# else
+# 	REX=".*"
+# fi
+# echo REX $REX
+# cat tmp_test_data.sh | egrep "($REX)" >> prepare_test_data.sh
+# rm tmp_test_data.sh
 
 echo "Execute test shell script"
 chmod u+x prepare_test_data.sh
