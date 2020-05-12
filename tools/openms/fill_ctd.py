@@ -107,6 +107,21 @@ def qstring2list(qs):
     return lst
 
 
+def fix_underscores(args):
+    if type(args) is dict:
+        for k in list(args.keys()):
+            v = args[k]
+            if type(v) is dict:
+                fix_underscores(args[k])
+            if k.startswith("_"):
+                args[k[1:]] = v
+                del args[k]
+    elif type(args) is list:
+        for i, v in enumerate(args):
+            if type(v) is dict:
+                fix_underscores(args[i])
+
+
 input_ctd = sys.argv[1]
 
 # load user specified parameters from json
@@ -120,10 +135,16 @@ with open(sys.argv[3]) as fh:
 # insert the hc_args into the args
 mergeDicts(args, hc_args)
 
-
 if "adv_opts_cond" in args:
     args.update(args["adv_opts_cond"])
     del args["adv_opts_cond"]
+
+# IDMapper has in and spectra:in params, in is used in out as format_source",
+# which does not work in Galaxy: https://github.com/galaxyproject/galaxy/pull/9493"
+# therefore hardcoded params change the name of spectra:in to spectra:_in
+# which is corrected here again
+# TODO remove once PR is in and adapt profile accordingly
+fix_underscores(args)
 
 model = CTDModel(from_file=input_ctd)
 
