@@ -1,4 +1,4 @@
-<tool id="cardinal_preprocessing" name="MSI preprocessing" version="@VERSION@.1">
+<tool id="cardinal_preprocessing" name="MSI preprocessing" version="@VERSION@.2">
     <description>
         mass spectrometry imaging preprocessing
     </description>
@@ -92,7 +92,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                 msidata = as(msidata, "MSContinuousImagingExperiment")
             }
 
-            msidata = normalize(msidata, method="tic")
+            msidata = normalize(msidata, method="$method.methods_conditional.methods_for_normalization.normalization_method")
             msidata <- process(msidata, BPPARAM=MulticoreParam(workers=number_cpu))
 
 
@@ -178,6 +178,42 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             vectorofactions = append(vectorofactions, "smoothed")
             print(plot(msidata, pixel=random_spectra))
             title("Spectra after smoothing", outer=TRUE, line=0)
+
+
+    ############################### Mz alignment ###########################
+
+        #elif str( $method.methods_conditional.preprocessing_method ) == 'mz_alignment':
+            print('M/z alignment')
+            ## M/z alignment
+
+            #if str( $method.methods_conditional.mzalign_ref_type.align_reference_datatype) == 'align_table':
+
+                reference_mz = read.delim("$method.methods_conditional.mzalign_ref_type.mz_tabular", header = $method.methods_conditional.mzalign_ref_type.feature_header, stringsAsFactors = FALSE)
+                reference_mz = reference_mz[,$method.methods_conditional.mzalign_ref_type.feature_column]
+
+                msidata = mzAlign(msidata, ref=reference_mz, tolerance = $method.methods_conditional.alignment_tol, units = "$method.methods_conditional.alignment_units", quantile = $method.methods_conditional.quantile, span = $method.methods_conditional.span)
+
+
+            #elif str( $method.methods_conditional.mzalign_ref_type.align_reference_datatype) == 'align_noref':
+
+                msidata = mzAlign(msidata,tolerance = $method.methods_conditional.alignment_tol, units = "$method.methods_conditional.alignment_units", , quantile = $method.methods_conditional.quantile, span = $method.methods_conditional.span)
+
+            #end if
+
+            msidata <- process(msidata, BPPARAM=MulticoreParam(workers=number_cpu))
+
+            ############################### QC ###########################
+
+            maxfeatures =nrow(msidata)
+            pixelcount = ncol(msidata)
+            minmz = round(min(mz(msidata)), digits=2)
+            maxmz = round(max(mz(msidata)), digits=2)
+            mz_aligned = c(minmz, maxmz,maxfeatures, pixelcount)
+            QC_numbers= cbind(QC_numbers, mz_aligned)
+            vectorofactions = append(vectorofactions, "mz aligned")
+            print(plot(msidata, pixel=random_spectra))
+            title("Spectra after m/z alignment", outer=TRUE, line=0)
+
 
     ############################### Peak picking ###########################
 
@@ -438,6 +474,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                     <option value="Normalization" selected="True">Intensity Normalization</option>
                     <option value="Baseline_reduction">Baseline Reduction</option>
                     <option value="Smoothing">Peak smoothing</option>
+                    <option value="mz_alignment">m/z alignment</option>
                     <option value="Peak_picking">Peak picking</option>
                     <option value="Peak_alignment">Peak alignment</option>
                     <option value="Peak_filtering">Peak filtering</option>
@@ -487,6 +524,35 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                     <param name="window_smoothing" type="float" value="8"
                                 label="Window size"/>
                 </when>
+                <when value="mz_alignment">
+                    <param name="alignment_tol" type="text" value="NA"
+                           label="tolerance" help="The tolerance to be used when matching the peaks in the unaligned spectra to the reference spectrum. If this is NA, then automatically guess a tolerance from the data.">
+                       <sanitizer>
+                            <valid initial="string.digits">
+                                <add value="N" />
+                                <add value="A" />
+                            </valid>
+                        </sanitizer>
+                    </param>
+                    <param name="alignment_units" type="select" display="radio" optional="False" label="The units to use for the tolerance.">
+                            <option value="ppm" selected="True">ppm</option>
+                            <option value="mz">m/z</option>
+                    </param>
+                    <conditional name="mzalign_ref_type">
+                        <param name="align_reference_datatype" type="select" label="Choose reference">
+                            <option value="align_noref" selected="True">use mean spectrum as reference</option>
+                            <option value="align_table" >m/z values from tabular file as reference</option>
+                        </param>
+                        <when value="align_noref"/>
+                        <when value="align_table">
+                            <expand macro="reading_1_column_mz_tabular" label="Tabular file with m/z features to use for alignment. Only the m/z values from the tabular file will be kept."/>
+                        </when>
+                    </conditional>
+                    <param name="quantile" type="float" value="0.2"
+                        label="quantile" help="The top quantile of reference points (peaks detected via local maxima) to use from the reference spectrum."/>
+                    <param name="span" type="float" value="0.75"
+                        label="span" help="The smoothing parameter for the local polynomial regression used to determine the warping function."/>
+                </when>
                 <when value="Peak_picking">
                     <param name="SNR_picking_method" type="float" value="6"
                         label="Signal to noise ratio"
@@ -522,7 +588,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                     <conditional name="align_ref_type">
                         <param name="align_reference_datatype" type="select" label="Choose reference">
                             <option value="align_noref" selected="True">no reference</option>
-                            <option value="align_table" >tabular file as reference</option>
+                            <option value="align_table" >m/z values from tabular file as reference</option>
                         </param>
                         <when value="align_noref"/>
                         <when value="align_table">
@@ -537,9 +603,10 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                 <when value="Peak_binning">
                     <expand macro="reading_1_column_mz_tabular" label="A reference to which the peaks are binned." help="Tabular file with m/z features to extract from input file"/>
                     <param name="peakbin_tol" value="NA" type="text" label="The tolerance to be used when matching the m/z features in the dataset to the reference. If this is NA, then automatically guess a resolution from the data." >
-                        <sanitizer invalid_char="">
+                        <sanitizer>
                             <valid initial="string.digits">
-                                <add value="NA" />
+                                <add value="N" />
+                                <add value="A" />
                             </valid>
                         </sanitizer>
                     </param>
@@ -724,6 +791,11 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                 <conditional name="methods_conditional">
                     <param name="preprocessing_method" value="Normalization"/>
                     <param name="normalization_method" value="tic"/>
+                </conditional>
+            </repeat>
+            <repeat name="methods">
+                <conditional name="methods_conditional">
+                    <param name="preprocessing_method" value="mz_alignment"/>
                 </conditional>
             </repeat>
             <repeat name="methods">
