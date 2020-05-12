@@ -104,6 +104,11 @@ fi
 ln -fs TOFCalibration_ref_masses test-data/TOFCalibration_ref_masses.txt
 ln -fs TOFCalibration_const test-data/TOFCalibration_const.csv
 
+if [ ! -d test-data/pepnovo_models/ ]; then
+	wget http://proteomics.ucsd.edu/Software/PepNovo/PepNovo.20120423.zip
+	unzip -e PepNovo.20120423.zip -d /tmp/
+	mv /tmp/Models test-data/pepnovo_models/
+fi
 ###############################################################################
 ## generate ctd files using the binaries in the conda package 
 ###############################################################################

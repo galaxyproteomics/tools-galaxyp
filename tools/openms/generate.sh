@@ -63,6 +63,9 @@ source $(dirname $(which conda))/../etc/profile.d/conda.sh
 conda activate $tmp/OpenMS$VERSION-env
 python $CTDCONVERTER/convert.py galaxy -i ctd/*ctd -o ./ -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --test-macros macros_autotest.xml --test-macros-prefix autotest_  --test-macros macros_test.xml --test-macros-prefix manutest_ --tool-version $VERSION --tool-profile $PROFILE
 conda deactivate
+
+patch PepNovoAdapter.xml < PepNovoAdapter.patch
+
 # #-b version log debug test in_type executable pepnovo_executable param_model_directory rt_concat_trafo_out param_id_pool
 
 # for i in A-E F-H I-L M-N O-P Q-Z
