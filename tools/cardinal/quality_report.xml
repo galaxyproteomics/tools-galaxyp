@@ -1,4 +1,4 @@
-<tool id="cardinal_quality_report" name="MSI Qualitycontrol" version="@VERSION@.0">
+<tool id="cardinal_quality_report" name="MSI Qualitycontrol" version="@VERSION@.1">
     <description>
         mass spectrometry imaging QC
     </description>
@@ -40,7 +40,7 @@ if (class(msidata) == "MSImageSet"){
     msidata = as(msidata, "MSImagingExperiment")
     run(msidata) = "infile"
     }
-print(class(msidata))
+
 ## remove duplicated coordinates
 msidata <- msidata[,!duplicated(coord(msidata))]
 
@@ -74,7 +74,7 @@ numpeaks = ncol(msidata)*nrow(msidata)
 ## Percentage of intensities > 0
 percpeaks = round(npeaks/numpeaks*100, digits=2)
 ## Number of empty TICs
-TICs = colSums(spectra(msidata), na.rm=TRUE) 
+TICs = pixelApply(msidata, sum)
 NumemptyTIC = sum(TICs == 0)
 ## Median und sd TIC
 medTIC = round(median(TICs), digits=1)
@@ -329,8 +329,8 @@ if (npeaks > 0){
             ### plot spatial distribution of fold change
 
             ## calculate mean intensity for each m/z over the ppm range; then calculate log2 foldchange
-            mass1vector = colMeans(spectra(filtered_data1), na.rm =TRUE)
-            mass2vector = colMeans(spectra(filtered_data2), na.rm = TRUE)
+            mass1vector = pixelApply(filtered_data1, mean, na.rm =TRUE)
+            mass2vector = pixelApply(filtered_data2, mean, na.rm = TRUE)
             foldchange= log2(mass1vector/mass2vector)
             fcmatrix = data.frame(coord(msidata)\$x, coord(msidata)\$y,foldchange)
             colnames(fcmatrix) = c("x", "y", "foldchange")
@@ -610,7 +610,7 @@ if (npeaks > 0){
     ########################## 13) Sum of intensities per m/z ##################
 
     ## Sum of all intensities for each m/z (like TIC, but for m/z instead of pixel)
-    mzTIC = rowSums(spectra(msidata), na.rm=TRUE) ## calculate intensity sum for each m/z
+    mzTIC = featureApply(msidata, sum, na.rm=TRUE) ## calculate intensity sum for each m/z
 
     par(mfrow = c(2,1), mar=c(5,6,4,2))
     ## 13a) scatterplot
@@ -633,7 +633,7 @@ if (npeaks > 0){
     par(mfrow = c(2,1), mar=c(5,6,4,2))
 
     ## 14a) Median intensity over spectra
-    medianint_spectra = apply(spectra(msidata), 2, median, na.rm=TRUE) 
+    medianint_spectra = pixelApply(msidata, median)
     plot(medianint_spectra, main="Median intensity per spectrum",las=1, xlab="Spectra index", ylab="")
     title(ylab="Median spectrum intensity", line=4)
     if (!is.null(levels(msidata\$annotation))){
@@ -682,22 +682,30 @@ if (npeaks > 0){
         boxplot(log10(mean_matrix), ylab = "Log10 mean intensity per m/z", main="Log10 mean m/z intensities per annotation group", xaxt = "n")
         (axis(1, at = c(1:number_combined), labels=levels(msidata\$annotation), las=2))
 
-        ## 14e) Heatmap of pearson correlation on mean intensities between annotation groups
+        ## 14e) Heatmap of mean intensities of annotation groups
 
-        corr_matrix = mean_matrix
-        corr_matrix[corr_matrix == 0] <- NA
-        colnames(corr_matrix) = levels(msidata\$annotation)
-
-        ## pearson correlation is only possible if there are at least 2 groups
-        if (length(colnames)>1)
-        {
-            corr_matrix = cor(corr_matrix, method= "pearson",use="complete.obs")
-
-            heatmap.parameters <- list(corr_matrix, 
+        colnames(mean_matrix) = levels(msidata\$annotation)
+        mean_matrix[is.na(mean_matrix)] = 0
+            heatmap.parameters <- list(mean_matrix, 
             show_rownames = T, show_colnames = T,
-            main = "Pearson correlation on mean intensities")
-            do.call("pheatmap", heatmap.parameters)
-        }
+            main = "Heatmap of mean intensities per annotation group")
+            par(oma=c(3,0,0,0))
+            print(heatmap(mean_matrix),margins = c(10, 10))
+
+
+        ## 14f) PCA of mean intensities of annotation groups
+
+        ## define annotation by colour
+        annotation_colour = rainbow(length(levels(msidata\$annotation)))[as.factor(levels(msidata\$annotation))]
+        ## transform and scale dataframe
+        pca = prcomp(t(mean_matrix),center=FALSE,scale.=FALSE)
+        ## plot single plot
+        plot(pca\$x[,c(1,2)],col=annotation_colour,pch=19)
+        ## plot pca with colours for max first 5 PCs
+        pc_comp = ifelse(ncol(pca\$x)<5 , ncol(pca\$x), 5)
+        pairs(pca\$x[,1:pc_comp],col=annotation_colour,pch=19)
+        legend("bottom", horiz = TRUE, legend=levels(msidata\$annotation), col=rainbow(length(levels(msidata\$annotation))), pch=19)
+
     }
 
     ################################## VI) Mass spectra and m/z accuracy ########################
@@ -710,13 +718,13 @@ if (npeaks > 0){
     msidata_no_NA = msidata
 
     ## find three equal m/z ranges for the average mass spectra plots: 
-    third_mz_range = nrow(msidata_no_NA)/3
+    third_mz_range = round(nrow(msidata_no_NA)/3,0)
 
     par(cex.axis=1, cex.lab=1, mar=c(5.1,4.1,4.1,2.1))
     print(plot(msidata_no_NA, run="infile", layout=c(2,2), strip=FALSE, main= "Average spectrum"))
-    print(plot(msidata_no_NA[1:third_mz_range,], run="infile", layout=FALSE, strip=FALSE, main= "Zoomed average spectrum"))
-    print(plot(msidata_no_NA[third_mz_range:(2*third_mz_range),], run="infile", layout=FALSE, strip=FALSE, main= "Zoomed average spectrum"))
-    print(plot(msidata_no_NA[(2*third_mz_range):nrow(msidata_no_NA),], run="infile", layout=FALSE, strip=FALSE, main= "Zoomed average spectrum"))
+    print(plot(msidata_no_NA[1:third_mz_range,], layout=FALSE, run="infile", strip=FALSE, main="Zoomed average spectrum"))
+    print(plot(msidata_no_NA[third_mz_range:(2*third_mz_range),], layout=FALSE, run="infile", strip=FALSE, main="Zoomed average spectrum"))
+    print(plot(msidata_no_NA[(2*third_mz_range):nrow(msidata_no_NA),], layout=FALSE, run="infile", strip=FALSE, main="Zoomed average spectrum"))
 
     ## plot one average mass spectrum for each pixel annotation group
 
@@ -762,7 +770,7 @@ if (npeaks > 0){
             filtered_data = msidata_no_NA[mz(msidata_no_NA) >= inputcalibrantmasses[mass]-plusminusvalues[mass] & mz(msidata_no_NA) <= inputcalibrantmasses[mass]+plusminusvalues[mass],]
 
             if (nrow(filtered_data) > 0 & sum(spectra(filtered_data)) > 0){
-                maxmassrow = rowMeans(spectra(filtered_data)) ## for each m/z average intensity is calculated
+                maxmassrow = featureApply(filtered_data, mean) ## for each m/z average intensity is calculated
                 maxvalue = mz(filtered_data)[which.max(maxmassrow)] ### m/z with highest average intensity in m/z range
                 mzdifference = maxvalue - inputcalibrantmasses[mass] ### difference: theoretical value - closest m/z value
             ppmdifference = mzdifference/inputcalibrantmasses[mass]*1000000 ### calculate ppm for accuracy measurement
@@ -1115,7 +1123,8 @@ This tool uses Cardinal to read files and create a quality control report with d
 - Histogram of intensities. 
 - (annot) Intensities per annotation group: Same histogram as before but with colours to show the contribution of each pixel annotation group. 
 - (annot) Log10 mean intensities per m/z and annotation group: For all pixels of an annotation group the log10 mean intensity for each m/z is calculated and shown as boxplot. 
-- (annot) Pearson correlation between annotation groups (needs at least 2 groups) based on mean intensities and shown as heatmap.
+- (annot) Heatmap of mean intensity per m/z
+- (annot) PCA of mean intensity per m/z
 
 **Mass spectra and m/z accuracy**
 
