@@ -175,7 +175,7 @@ echo 'SPECTRAST_BINARY="spectrast"' >> prepare_test_data.sh
 echo 'XTANDEM_BINARY="xtandem"' >> prepare_test_data.sh
 echo 'THERMORAWFILEPARSER_BINARY="ThermoRawFileParser.exe"' >> prepare_test_data.sh
 
-prepare_test_data > tmp_test_data.sh
+prepare_test_data > prepare_test_data.sh #tmp_test_data.sh
 
 # # remove calls not needed for the tools listed in any .list file
 # echo LIST $LIST
