@@ -343,8 +343,8 @@ class MQParam:
                 self[i].set_silac(*silac)
             isobaricLabels = pg.pop('isobaricLabels', False)
             if isobaricLabels:
-                for l in isobaricLabels:
-                    self[i].set_isobaric_label(*l)
+                for ibl in isobaricLabels:
+                    self[i].set_isobaric_label(*ibl)
             for el in ['fixedModifications', 'variableModifications', 'enzymes']:
                 lst = pg.pop(el, None)
                 if lst is not None:
