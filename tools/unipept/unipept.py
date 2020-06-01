@@ -337,7 +337,7 @@ def __main__():
                     ec_numbers.append(ec['ec_number'])
                     protein_counts.append(str(ec['protein_count']))
                     if extra:
-                        ec_names.append(ec['name'] if 'name' in ec else '')
+                        ec_names.append(ec['name'] if 'name' in ec and ec['name'] else '')
             vals = [','.join(ec_numbers), ','.join(protein_counts)]
             if extra:
                 vals.append(','.join(ec_names))
@@ -360,7 +360,7 @@ def __main__():
                         go_terms.append(go['go_term'])
                         protein_counts.append(str(go['protein_count']))
                         if extra:
-                            go_names.append(go['name'] if 'name' in go else '')
+                            go_names.append(go['name'] if 'name' in go and go['name'] else '')
                     else:
                         for go_type in go_types:
                             if go_type in go:
@@ -368,7 +368,7 @@ def __main__():
                                     go_terms.append(_go['go_term'])
                                     protein_counts.append(str(_go['protein_count']))
                                     if extra:
-                                        go_names.append(_go['name'] if 'name' in _go else '')
+                                        go_names.append(_go['name'] if 'name' in _go and _go['name'] else '')
             vals = [','.join(go_terms), ','.join(protein_counts)]
             if extra:
                 vals.append(','.join(go_names))
