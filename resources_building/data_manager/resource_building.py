@@ -132,7 +132,8 @@ def check_entrez_geneid (id) :
 #######################################################################################################
 # 3. ID mapping file
 #######################################################################################################
-import ftplib, gzip
+import ftplib,  gzip
+from io import StringIO
 csv.field_size_limit(sys.maxsize) # to handle big files
 
 def id_mapping_sources (data_manager_dict, species, target_directory, tool_data_path) :
@@ -287,8 +288,9 @@ def id_list_from_nextprot_ftp(file,target_directory) :
     ftp.cwd(ftp_dir)
     ftp.retrbinary("RETR " + file, open(path, 'wb').write)
     ftp.quit()
-
-    return (path)
+    with open(path,'r') as nextprot_ids :
+        nextprot_ids = nextprot_ids.read().splitlines()
+    return (nextprot_ids)
 
 #return '' if there's no value in a dictionary, avoid error
 def access_dictionary (dico,key1,key2) :
@@ -549,8 +551,14 @@ def Build_nextprot_ref_file(data_manager_dict,target_directory):
     writer.writerows(nextprot_file)
     
     for id in ids :
-        #print (id)
         query="https://api.nextprot.org/entry/"+id+".json"
+        try:
+            resp = requests.get(url=query)
+        except :
+            print ("wainting 10 minutes before trying again")
+            time.sleep(600)
+            resp = requests.get(url=query)
+        data = resp.json()
         resp = requests.get(url=query)
         data = resp.json()
 
