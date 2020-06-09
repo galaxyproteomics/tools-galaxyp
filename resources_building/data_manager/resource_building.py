@@ -235,7 +235,7 @@ def id_mapping_sources (data_manager_dict, species, target_directory, tool_data_
     #add missing nextprot ID for human or replace old ones
     if human : 
         #build next_dict
-        nextprot_path = id_list_from_nextprot_ftp("nextprot_ac_list_all.txt",target_directory)
+        nextprot_path = download_from_nextprot_ftp("nextprot_ac_list_all.txt",target_directory)
         with open(nextprot_path,'r') as nextprot_ids :
             nextprot_ids = nextprot_ids.read().splitlines()
         if os.path.exists(os.path.join(archive,nextprot_path.split("/")[-1])) : os.remove(os.path.join(archive,nextprot_path.split("/")[-1]))
@@ -274,6 +274,16 @@ def download_from_uniprot_ftp(file,target_directory) :
     ftp_dir = "pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/"
     path = os.path.join(target_directory, file)
     ftp = ftplib.FTP("ftp.uniprot.org")
+    ftp.login("anonymous", "anonymous") 
+    ftp.cwd(ftp_dir)
+    ftp.retrbinary("RETR " + file, open(path, 'wb').write)
+    ftp.quit()
+    return (path)
+
+def download_from_nextprot_ftp(file,target_directory) :
+    ftp_dir = "pub/current_release/ac_lists/"
+    path = os.path.join(target_directory, file)
+    ftp = ftplib.FTP("ftp.nextprot.org")
     ftp.login("anonymous", "anonymous") 
     ftp.cwd(ftp_dir)
     ftp.retrbinary("RETR " + file, open(path, 'wb').write)
