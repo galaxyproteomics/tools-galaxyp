@@ -1,18 +1,18 @@
 import collections
-from functools import reduce  # forward compatibility for Python 3
 import json
 import operator
 import os
 import re
 import subprocess
 import sys
+from functools import reduce  # forward compatibility for Python 3
 
 from CTDopts.CTDopts import (
-    CTDModel,
     _Choices,
-    _Null,
     _InFile,
-    _NumericRange
+    _Null,
+    _NumericRange,
+    CTDModel
 )
 
 

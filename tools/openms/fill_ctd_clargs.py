@@ -4,8 +4,8 @@ from io import StringIO
 
 from CTDopts.CTDopts import (
     CTDModel,
-    Parameters,
-    ModelTypeError
+    ModelTypeError,
+    Parameters
 )
 
 if __name__ == "__main__":
