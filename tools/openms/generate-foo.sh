@@ -41,7 +41,8 @@ function get_tests2 {
 	echo "$CMAKE" | sed 's/#.*//; s/^\s*//; s/\s*$//' | grep -v "^#" | grep -v "^$"  | awk '{printf("%s@NEWLINE@", $0)}' | sed 's/)@NEWLINE@/)\n/g' | sed 's/@NEWLINE@/ /g' | 
 		grep -iE "add_test\(\"(TOPP|UTILS)_.*/$id " | egrep -v "_prepare\"|_convert|WRITEINI|WRITECTD|INVALIDVALUE"  | while read -r line
 	do
-		line=$(echo "$line" | sed 's/add_test("//; s/)$//; s/\${TOPP_BIN_PATH}\///g;s/\${DATA_DIR_TOPP}\///g; s#THIRDPARTY/##g')
+		line=$(echo "$line" | sed 's/add_test("\([^"]\+\)"/\1/; s/)$//; s/\${TOPP_BIN_PATH}\///g;s/\${DATA_DIR_TOPP}\///g; s#THIRDPARTY/##g')
+		>&2 echo $line
 		test_id=$(echo "$line" | cut -d" " -f 1)
 		tool_id=$(echo "$line" | cut -d" " -f 2)
 		if [[ $test_id =~ _out_?[0-9]? ]]; then
@@ -76,7 +77,8 @@ function get_tests2 {
 		ctdtmp=$(mktemp)
 		#echo python3 fill_ctd_clargs.py --ctd $ini $cli
 		# using eval: otherwise for some reason quoted values are not used properly ('A B' -> ["'A", "B'"])
-		eval "python3 fill_ctd_clargs.py --ctd $ini $cli" > $ctdtmp
+		>&2 echo "python3 fill_ctd_clargs.py --ctd $ini $cli"
+		eval "python3 fill_ctd_clargs.py --ctd $ini $cli" > "$ctdtmp"
 		# echo $ctdtmp
  		# >&2 cat $ctdtmp
   		testtmp=$(mktemp)

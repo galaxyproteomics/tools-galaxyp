@@ -10,6 +10,7 @@ CONDAPKG="https://anaconda.org/bioconda/openms/2.5.0/download/linux-64/openms-2.
 # install conda
 if [ -z "$tmp" ]; then
 	tmp=$(mktemp -d)
+	tmp="/tmp/openms"
 	created="yes"
 fi
 
@@ -157,26 +158,27 @@ done
 echo "Create test shell script"
 
 echo -n "" > prepare_test_data.sh
-echo 'COMET_BINARY="comet"' >> prepare_test_data.sh
-echo 'CRUX_BINARY="crux"' >> prepare_test_data.sh
-echo 'FIDOCHOOSEPARAMS_BINARY="FidoChooseParameters"' >> prepare_test_data.sh
-echo 'FIDO_BINARY="Fido"' >> prepare_test_data.sh
-echo 'LUCIPHOR_BINARY="$(dirname $(realpath $(which luciphor2)))/luciphor2.jar"' >> prepare_test_data.sh
+echo 'export COMET_BINARY="comet"' >> prepare_test_data.sh
+echo 'export CRUX_BINARY="crux"' >> prepare_test_data.sh
+echo 'export FIDOCHOOSEPARAMS_BINARY="FidoChooseParameters"' >> prepare_test_data.sh
+echo 'export FIDO_BINARY="Fido"' >> prepare_test_data.sh
+echo 'export LUCIPHOR_BINARY="$(dirname $(realpath $(which luciphor2)))/luciphor2.jar"' >> prepare_test_data.sh
 
-echo 'MARACLUSTER_BINARY="'"$OPENMSGIT"'/THIRDPARTY/Linux/64bit/MaRaCluster/maracluster"'>> prepare_test_data.sh
-echo 'MSFRAGGER_BINARY="/home/berntm/Downloads/MSFragger-20171106/MSFragger-20171106.jar"'>> prepare_test_data.sh
-echo 'MSGFPLUS_BINARY="$(msgf_plus -get_jar_path)"' >> prepare_test_data.sh
-echo 'MYRIMATCH_BINARY="myrimatch"'>> prepare_test_data.sh
-echo 'NOVOR_BINARY="/home/berntm/Downloads/novor/lib/novor.jar"' >> prepare_test_data.sh
-echo 'OMSSA_BINARY="$(dirname $(realpath $(which omssacl)))/omssacl"'>> prepare_test_data.sh
-echo 'PERCOLATOR_BINARY="percolator"'>> prepare_test_data.sh
-echo 'SIRIUS_BINARY="$(which sirius)"' >> prepare_test_data.sh
-echo 'SPECTRAST_BINARY="spectrast"' >> prepare_test_data.sh
-echo 'XTANDEM_BINARY="xtandem"' >> prepare_test_data.sh
-echo 'THERMORAWFILEPARSER_BINARY="ThermoRawFileParser.exe"' >> prepare_test_data.sh
+echo 'export MARACLUSTER_BINARY="'"$OPENMSGIT"'/THIRDPARTY/Linux/64bit/MaRaCluster/maracluster"'>> prepare_test_data.sh
+echo 'export MSFRAGGER_BINARY="/home/berntm/Downloads/MSFragger-20171106/MSFragger-20171106.jar"'>> prepare_test_data.sh
+echo 'export MSGFPLUS_BINARY="$(msgf_plus -get_jar_path)"' >> prepare_test_data.sh
+echo 'export MYRIMATCH_BINARY="myrimatch"'>> prepare_test_data.sh
+echo 'export NOVOR_BINARY="/home/berntm/Downloads/novor/lib/novor.jar"' >> prepare_test_data.sh
+echo 'export OMSSA_BINARY="$(dirname $(realpath $(which omssacl)))/omssacl"'>> prepare_test_data.sh
+echo 'export PERCOLATOR_BINARY="percolator"'>> prepare_test_data.sh
+echo 'export SIRIUS_BINARY="$(which sirius)"' >> prepare_test_data.sh
+echo 'export SPECTRAST_BINARY="spectrast"' >> prepare_test_data.sh
+echo 'export XTANDEM_BINARY="xtandem"' >> prepare_test_data.sh
+echo 'export THERMORAWFILEPARSER_BINARY="ThermoRawFileParser.exe"' >> prepare_test_data.sh
 
-prepare_test_data > prepare_test_data.sh #tmp_test_data.sh
+prepare_test_data >> prepare_test_data.sh #tmp_test_data.sh
 
+# prepare_test_data > tmp_test_data.sh
 # # remove calls not needed for the tools listed in any .list file
 # echo LIST $LIST
 # if [ ! -z "$LIST" ]; then
@@ -191,7 +193,7 @@ prepare_test_data > prepare_test_data.sh #tmp_test_data.sh
 echo "Execute test shell script"
 chmod u+x prepare_test_data.sh
 cd ./test-data || exit
-../prepare_test_data.sh
+# ../prepare_test_data.sh
 cd - || exit
 
 
@@ -204,7 +206,7 @@ echo "Execute test shell script for manually curated tests"
 chmod u+x prepare_test_data_manual.sh
 
 cd ./test-data || exit
-../prepare_test_data_manual.sh
+# ../prepare_test_data_manual.sh
 cd - || exit
 
 # link_tmp_files
@@ -228,7 +230,7 @@ conda deactivate
 ## remove broken symlinks in test-data
 find test-data/ -xtype l -delete
 
-if [ ! -z "$created" ]; then
-	echo "Removing temporary directory"
-	rm -rf "$tmp"
-fi
+# if [ ! -z "$created" ]; then
+# 	echo "Removing temporary directory"
+# 	rm -rf "$tmp"
+# fi
