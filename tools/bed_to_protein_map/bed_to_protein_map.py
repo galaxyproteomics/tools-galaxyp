@@ -34,14 +34,14 @@ def __main__():
     try:
         for linenum, line in enumerate(input_rdr):
             if args.debug:
-                print >> sys.stderr, "%d: %s\n" % (linenum, line)
+                sys.stderr.write("%d: %s\n" % (linenum, line))
             if line.startswith('#'):
                 continue
             if line.strip() == '':
                 continue
             fields = line.rstrip('\r\n').split('\t')
             if len(fields) < 12:
-                print >> sys.stderr, "%d: %s\n" % (linenum, line)
+                sys.stderr.write("%d: %s\n" % (linenum, line))
                 continue
             (chrom, _chromStart, _chromEnd, name, score, strand,
              _thickStart, _thickEnd, itemRgb,
@@ -91,8 +91,8 @@ def __main__():
                                         strand, cds_start, cds_end))
                     cds_start = cds_end
                 pass
-    except Exception, e:
-        print >> sys.stderr, "failed: %s" % e
+    except Exception as e:
+        sys.stderr.write("failed: %s\n" % e)
         exit(1)
 
 

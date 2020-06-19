@@ -1,0 +1,399 @@
+<tool id="pyprophet_export" name="PyProphet export" version="@VERSION@.1">
+    <description>
+    Export tabular files, optional swath2stats export
+    </description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements">
+        <requirement type="package" version="1.16.0">bioconductor-swath2stats</requirement>
+        <requirement type="package" version="0.8.4">r-dplyr</requirement>
+        <requirement type="package" version="1.12.8">r-data.table</requirement>
+        <requirement type="package" version="2.3">r-gridextra</requirement>
+    </expand>
+    <command detect_errors="aggressive">
+    <![CDATA[
+        ln -s '$input' ./input.osw &&
+        pyprophet export
+        --in=./input.osw
+        --format=$conditional_output.format
+
+        #if $conditional_output.format=='legacy_split':
+            $conditional_output.transition_quant
+            --max_transition_pep=$conditional_output.max_transition_pep
+            --ipf=$conditional_output.ipf
+            --ipf_max_peptidoform_pep=$conditional_output.ipf_max_peptidoform_pep
+            --max_rs_peakgroup_qvalue=$conditional_output.max_rs_peakgroup_qvalue
+            --max_global_peptide_qvalue=$conditional_output.max_global_peptide_qvalue
+            --max_global_protein_qvalue=$conditional_output.max_global_protein_qvalue
+
+        #elif $conditional_output.format=='legacy_merged':
+            $conditional_output.transition_quant
+            --max_transition_pep=$conditional_output.max_transition_pep
+            --ipf=$conditional_output.ipf
+            --ipf_max_peptidoform_pep=$conditional_output.ipf_max_peptidoform_pep
+            --max_rs_peakgroup_qvalue=$conditional_output.max_rs_peakgroup_qvalue
+            --max_global_peptide_qvalue=$conditional_output.max_global_peptide_qvalue
+            --max_global_protein_qvalue=$conditional_output.max_global_protein_qvalue
+
+        #elif $conditional_output.format=='matrix':
+            --ipf=$conditional_output.ipf
+            --ipf_max_peptidoform_pep=$conditional_output.ipf_max_peptidoform_pep
+            --max_rs_peakgroup_qvalue=$conditional_output.max_rs_peakgroup_qvalue
+            --max_global_peptide_qvalue=$conditional_output.max_global_peptide_qvalue
+            --max_global_protein_qvalue=$conditional_output.max_global_protein_qvalue
+        #end if
+        $peptide_error
+        $protein_error
+        --out=./output.tsv
+
+        #if $conditional_swath2stats.swath2stats=='yes_swath2stats':
+            && cat '${swath2stats}'
+            && Rscript '${swath2stats}'
+        #end if
+
+        #if $conditional_output.format=='score_plots':
+            && mv *score_plots.pdf '$score_plots'
+        #else:
+            && mv output.tsv '$export_file'
+        #end if
+
+
+    ]]>
+    </command>
+    <configfiles>
+        <configfile name="swath2stats"><![CDATA[
+
+#if $conditional_swath2stats.swath2stats=='yes_swath2stats':
+
+library("SWATH2stats")
+library("data.table")
+library("dplyr")
+library(gridExtra)
+
+########################### Input ##############################################
+
+## read in pyprophet export file
+data_me <- data.frame(fread('output.tsv', sep='\t', header=TRUE))
+
+## read in study design template
+study_design <- data.frame(fread('$conditional_swath2stats.study_design', sep='\t', header=TRUE))
+
+## merge both files on filename column
+data.annotated <- sample_annotation(data_me, study_design, column.file = "filename")
+
+
+########################### QC plots and tabular files #########################
+
+## remove decoys when generating plots
+data.annotated.nodecoy <- subset(data.annotated, decoy==FALSE)
+
+pdf("summary.pdf", fonts = "Times", pointsize = 8)
+plot(0,type='n',axes=FALSE,ann=FALSE)
+title(main="Summarized plots and tables from pyprophet export file")
+
+## Look at Numbers of peptides and proteins per run
+## for many runs table needs to be split over several pages
+number_samples = nrow(count_analytes(data.annotated.nodecoy))
+
+    ### for more than 20 annotation groups print only 20 samples per page:
+    if (number_samples <= 20){
+        grid.table(count_analytes(data.annotated.nodecoy), rows= NULL)
+    }else{
+        grid.table(count_analytes(data.annotated.nodecoy)[1:20,], rows= NULL)
+        mincount = 21
+        maxcount = 40
+        for (count15 in 1:(ceiling(number_samples/20)-1)){
+            plot(0,type='n',axes=FALSE,ann=FALSE)
+            if (maxcount <= number_samples){
+                grid.table(count_analytes(data.annotated.nodecoy)[mincount:maxcount,], rows= NULL)
+                mincount = mincount+20
+                maxcount = maxcount+20
+            }else{### stop last page with last sample otherwise NA in table
+                grid.table(count_analytes(data.annotated.nodecoy)[mincount:number_samples,], rows= NULL)} 
+        }
+    }
+
+
+## Correlation of the intensities
+correlation_int <- plot_correlation_between_samples(data.annotated.nodecoy, column.values = 'Intensity')
+
+## Plot the correlation of the delta_rt, which is the deviation of the retention time from the expected retention time
+correlation_rt <- plot_correlation_between_samples(data.annotated.nodecoy, column.values = 'delta_rt')
+
+## Plot the variation of the signal across replicates
+variation <- plot_variation(data.annotated.nodecoy) 
+plot(0,type='n',axes=FALSE,ann=FALSE)
+grid.table(variation[[2]])
+
+## Plot the total variation versus variation within replicates
+variation_total <- plot_variation_vs_total(data.annotated.nodecoy)
+
+## Calculate the summed signal per peptide and protein across samples
+peptide_signal <- write_matrix_peptides(data.annotated.nodecoy) 
+protein_signal <- write_matrix_proteins(data.annotated.nodecoy) 
+
+
+#if str($conditional_swath2stats.conditional_fdr_replica.calc_fdr_replica) =="calc_fdr_replica_yes": 
+
+    ## Estimate the overall FDR across runs using a target decoy strategy
+    fdr_target_decoy <- assess_fdr_overall(data.annotated, n.range = $conditional_swath2stats.conditional_fdr_replica.n_range, FFT = $conditional_swath2stats.conditional_fdr_replica.fft, output = 'Rconsole')
+    print(fdr_target_decoy)
+    dev.off()
+#else
+    dev.off()
+#end if
+
+############################# Filtering ########################################
+
+data.filtered = data.annotated
+
+#if str($conditional_swath2stats.conditional_fdr_replica.calc_fdr_replica) =="calc_fdr_replica_yes": 
+
+    ## According to this FDR estimation one can filter the data with a higher mscore threshold to reach an overall protein FDR of 5%.
+    ## Check what m-score cut-off is requiered for Protein FDR of 5 %
+    cutoff_mscore = mscore4protfdr(data_me, FFT = $conditional_swath2stats.conditional_fdr_replica.fft, fdr_target = $conditional_swath2stats.conditional_fdr_replica.fdr_target)
+print(cutoff_mscore)
+    ## Filter data for values that pass the 0.001 mscore criteria in at least two replicates of one condition
+    data.filtered <- filter_mscore_condition(data.filtered, cutoff_mscore, n.replica = $conditional_swath2stats.conditional_fdr_replica.n_replica)
+#end if
+
+#if str($conditional_swath2stats.conditional_max_pep.filter_max_pep) == "filter_max_pep_yes":
+    ## Select only the 10 peptides showing strongest signal per protein
+    data.filtered <- filter_on_max_peptides(data.filtered, n_peptides = $conditional_swath2stats.conditional_max_pep.n_peptides_max)
+#end if
+
+
+#if str($conditional_swath2stats.conditional_min_pep.filter_min_pep) == "filter_min_pep_yes":
+    ## Filter for proteins that are supported by at least two peptides
+    data.filtered <- filter_on_min_peptides(data.filtered, n_peptides = $conditional_swath2stats.conditional_min_pep.n_peptides_min)
+#end if
+
+########################### Output ############################################
+## Convert the data into a transition-level format (one row per transition measured).
+data.transition <- disaggregate(data.filtered)
+
+## Convert the data into the format required by MSstats.
+MSstats.input <- convert4MSstats(data.transition)
+
+### Transitions which were found at different RT / multiple scans are combined by summarizing the Intensities
+Test = MSstats.input %>% group_by(ProteinName, PeptideSequence, PrecursorCharge, FragmentIon, ProductCharge, IsotopeLabelType, BioReplicate, Condition, Run) %>% summarise(Intensity = sum(Intensity))
+
+Test = Test[, c("ProteinName", "PeptideSequence", "PrecursorCharge", "FragmentIon", "ProductCharge", "IsotopeLabelType", "Intensity", "BioReplicate", "Condition", "Run")]
+
+write.table(Test, file="$msstats_input", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+write.table(peptide_signal, file="$peptide_signal", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+write.table(protein_signal, file="$protein_signal", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+
+#end if
+
+    ]]></configfile>
+    </configfiles>
+    <inputs>
+        <param name="input" type="data" format="osw" label="Input file" help="This file needs to be in OSW format (--in)" />
+        <conditional name="conditional_output">
+        <param argument="format" type="select" label="Export format, either matrix, legacy_split, legacy_merged (mProphet/PyProphet) or score_plots format" >
+            <option value="legacy_split" selected="True">legacy_split</option>
+            <option value="legacy_merged">legacy_merged</option>
+            <option value="matrix">matrix</option>
+            <option value="score_plots">score_plots</option>
+        </param>
+            <when value="legacy_split">
+
+                <param name="transition_quant" type="boolean" truevalue="--transition_quantification" falsevalue="--no-transition_quantification" checked="True" label="Report aggregated transition-level quantification" help="(--transition_quantification / --no-transition_quantification)" />
+                <param argument="max_transition_pep" type="float" value="0.7" label="Maximum PEP to retain scored transitions for quantification (requires transition-level scoring)" />
+                <param argument="ipf" type="select" display="radio" label="Should IPF results be reported if present? 'peptidoform': Report results on peptidoform-level, 'augmented': Augment OpenSWATH results with IPF scores, 'disable': Ignore IPF results" >
+                  <option value="peptidoform" selected="True" >peptidoform </option>
+                  <option value="augmented">augmented</option>
+                  <option value="disable">disable</option>
+                </param>
+                <param argument="ipf_max_peptidoform_pep" type="float" value="0.4" label="IPF: Filter results to maximum run-specific peptidoform-level PEP" />
+                <param argument="max_rs_peakgroup_qvalue" type="float" value="0.05" label="Filter results to maximum run-specific peak group-level q-value" />
+                <param argument="max_global_peptide_qvalue" type="float" value="0.01" label="Filter results to maximum global peptide-level q-value" />
+                <param argument="max_global_protein_qvalue" type="float" value="0.01" label="ilter results to maximum global protein-level q-value" />
+            </when>
+            <when value="legacy_merged">
+
+                <param name="transition_quant" type="boolean" truevalue="--transition_quantification" falsevalue="--no-transition_quantification" checked="True" label="Report aggregated transition-level quantification" help="(--transition_quantification / --no-transition_quantification)" />
+                <param argument="max_transition_pep" type="float" value="0.7" label="Maximum PEP to retain scored transitions for quantification (requires transition-level scoring)" />
+                <param argument="ipf" type="select" display="radio" label="Should IPF results be reported if present? 'peptidoform': Report results on peptidoform-level, 'augmented': Augment OpenSWATH results with IPF scores, 'disable': Ignore IPF results" >
+                  <option value="peptidoform" selected="True">peptidoform </option>
+                  <option value="augmented">augmented</option>
+                  <option value="disable">disable</option>
+                </param>
+                <param argument="ipf_max_peptidoform_pep" type="float" value="0.4" label="IPF: Filter results to maximum run-specific peptidoform-level PEP" />
+                <param argument="max_rs_peakgroup_qvalue" type="float" value="0.05" label="Filter results to maximum run-specific peak group-level q-value" />
+                <param argument="max_global_peptide_qvalue" type="float" value="0.01" label="Filter results to maximum global peptide-level q-value" />
+                <param argument="max_global_protein_qvalue" type="float" value="0.01" label="ilter results to maximum global protein-level q-value" />
+            </when>
+            <when value="matrix">
+
+                <param argument="ipf" type="select" display="radio" label="Should IPF results be reported if present? 'peptidoform': Report results on peptidoform-level, 'augmented': Augment OpenSWATH results with IPF scores, 'disable': Ignore IPF results" >
+                  <option value="peptidoform" selected="True">peptidoform </option>
+                  <option value="augmented">augmented</option>
+                  <option value="disable">disable</option>
+                </param>
+                <param argument="ipf_max_peptidoform_pep" type="float" value="0.4" label="IPF: Filter results to maximum run-specific peptidoform-level PEP" />
+                <param argument="max_rs_peakgroup_qvalue" type="float" value="0.05" label="Filter results to maximum run-specific peak group-level q-value" />
+                <param argument="max_global_peptide_qvalue" type="float" value="0.01" label="Filter results to maximum global peptide-level q-value" />
+                <param argument="max_global_protein_qvalue" type="float" value="0.01" label="ilter results to maximum global protein-level q-value" />
+            </when>
+            <when value="score_plots"/>
+        </conditional>
+        <param name="peptide_error" type="boolean" truevalue="--peptide" falsevalue="--no-peptide"  checked="True" label="Append peptide-level error-rate estimates if available" help="(--peptide / --no-peptide)" />
+        <param name="protein_error" type="boolean" truevalue="--protein" falsevalue="--no-protein"  checked="True" label="Append protein-level error-rate estimates if available" help="(--protein / --no-protein)" />
+        <conditional name="conditional_swath2stats">
+            <param name="swath2stats" type="select" label="Use swath2stats to export file for statsics" >
+                <option value="yes_swath2stats" selected="True">yes</option>
+                <option value="no_swath2stats">no</option>
+            </param>
+                <when value="yes_swath2stats">
+                <param name="study_design" type="data" format="tabular" label="Study design tabular file" help="Needs to have columns with Filename, Condition, BioReplicate, Run" />
+                    <conditional name="conditional_fdr_replica">
+                        <param name="calc_fdr_replica" type="select" label="Filter for fdr and number of replicates" >
+                        <option value="calc_fdr_replica_yes" selected="True">Yes</option>
+                        <option value="calc_fdr_replica_no">No</option>
+                    </param>
+                        <when value="calc_fdr_replica_yes">
+                            <param name="fft" type="float" value="0.5" label="FFT. Ratio of false positives to true negatives, q-values from pyProphet stats output" help="As an approximation, the q-values of multiple runs are averaged and supplied as argument FFT. Numeric from 0 to 1."/>
+                            <param name="n_range" type="float" value="10" label="Option to set the number of magnitude for which the m_score threshold is decreased" />
+                            <param name="fdr_target" type="float" value="0.05" label="FDR target." help="An m_score cutoff achieving and FDR smaller fdr_target will be selected. Calculated as FDR = decoys*FFT/targets" />
+                            <param name="n_replica" type="integer" value="2" label="Number Replicates." help="Number of measurements within at least one condition that have to pass the mscore threshold for this transition." />
+                        </when>
+                        <when value="calc_fdr_replica_no"/>
+                    </conditional>
+                    <conditional name="conditional_max_pep">
+                        <param name="filter_max_pep" type="select" label="Filter for a maximum number of peptides per protein" >
+                        <option value="filter_max_pep_yes" selected="True">Yes</option>
+                        <option value="filter_max_pep_no">No</option>
+                    </param>
+                        <when value="filter_max_pep_yes">
+                            <param name="n_peptides_max" type="integer" value="10" label="Maximum number of peptides per protein." help="Maximum number of highest intense peptides to filter the data on." />
+                        </when>
+                        <when value="filter_max_pep_no"/>
+                    </conditional>
+                    <conditional name="conditional_min_pep">
+                        <param name="filter_min_pep" type="select" label="Filter for a proteins that are supported by a minimum number of peptides" >
+                        <option value="filter_min_pep_yes" selected="True">Yes</option>
+                        <option value="filter_min_pep_no">No</option>
+                    </param>
+                        <when value="filter_min_pep_yes">
+                            <param name="n_peptides_min" type="integer" value="2" label="Minimum number of peptides per protein" help="Number of minimal number of peptide IDs associated with a protein ID in order to be kept in the dataset." />
+                        </when>
+                        <when value="filter_min_pep_no"/>
+                    </conditional>
+                </when>
+                <when value="no_swath2stats"/>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="export_file" format="tabular" label="${tool.name} on ${on_string}: export.tabular" >
+            <filter>conditional_output['format'] != 'score_plots'</filter>
+        </data>
+        <data name="score_plots" format="pdf" label="${tool.name} on ${on_string}: score_plots.pdf" >
+            <filter>conditional_output['format'] == 'score_plots'</filter>
+        </data>
+        <data name="summary" format="pdf" from_work_dir="summary.pdf" label = "${tool.name} on ${on_string}: summary.pdf">
+            <filter>conditional_swath2stats['swath2stats'] == 'yes_swath2stats'</filter>
+        </data>
+        <data name="peptide_signal" format="tabular" label="${tool.name} on ${on_string}: peptide_signal.tabular" from_work_dir="peptide_signal.tabular" >
+            <filter>conditional_swath2stats['swath2stats'] == 'yes_swath2stats'</filter>
+        </data>
+        <data name="protein_signal" format="tabular" label="${tool.name} on ${on_string}: protein_signal.tabular" from_work_dir="protein_signal.tabular" >
+            <filter>conditional_swath2stats['swath2stats'] == 'yes_swath2stats'</filter>
+        </data>
+        <data name="msstats_input" format="tabular" label="${tool.name} on ${on_string}: msstats_input.tabular" from_work_dir="msstats_input.tabular" >
+            <filter>conditional_swath2stats['swath2stats'] == 'yes_swath2stats'</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <param name="input" value="protein2.osw" ftype="osw" />
+            <param name="format" value="legacy_merged" />
+            <param name="max_global_peptide_qvalue" value="0.2" />
+            <conditional name="conditional_swath2stats">
+                <param name="swath2stats" value="no_swath2stats"/>
+            </conditional>
+            <output name="export_file" file="output.tabular" />
+        </test>
+        <test expect_num_outputs="1">
+            <param name="input" value="protein2.osw" ftype="osw" />
+            <param name="format" value="score_plots" />
+            <conditional name="conditional_swath2stats">
+                <param name="swath2stats" value="no_swath2stats"/>
+            </conditional>
+            <output name="score_plots" file="score_plots.pdf" compare="sim_size" />
+        </test>
+        <test expect_failure="true">
+            <param name="input" value="protein2.osw" ftype="osw" />
+            <param name="format" value="legacy_merged" />
+            <conditional name="conditional_swath2stats">
+                <param name="study_design" value="study_design.tabular" ftype="tabular" />
+                <conditional name="conditional_fdr_replica">
+                    <param name="calc_fdr_replica" value="calc_fdr_replica_no"/>
+                </conditional>
+                <conditional name="conditional_max_pep">
+                    <param name="filter_max_pep" value="filter_max_pep_no" />
+                </conditional>
+                <conditional name="conditional_min_pep">
+                    <param name="filter_min_pep" value="filter_min_pep_no" />
+                </conditional>
+            </conditional>
+            <assert_stderr>
+                <has_text text="replacement has 1 row, data has 0" />
+            </assert_stderr>
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+**What it does**
+
+PyProphet: Semi-supervised learning and scoring of OpenSWATH results.
+
+Export tabular (tsv) tables. By default, both peptide- and transition-level quantification is reported, which is necessary for requantification or SWATH2stats. If peptide and protein inference in the global context was conducted, the results will be filtered to 1% FDR by default.
+
+Optional SWATH2stats output. SWATH2stats is intended to transform SWATH data from the OpenSWATH software into a format readable by other statistics packages while performing filtering, annotation and FDR estimation.
+
+**Study desing file for SWATH2stats**
+
+    - Tabular file with columns that are named: Filename, Condition, BioReplicate, Run. 
+    - The Filename should be part or the same as the original filenames used in OpenSWATH workflow
+    - The Condition will be used for statistical analysis. In case multiple conditions are of interest for statistical analysis (e.g. diagnosis and age), this tool has to be run multiple times as SWATH2stats can only handle one condition at a time
+    - The BioReplicate is corresponds to the biological replicate
+    - The Run is the number of the MS run in which the sample was measured
+
+    - **Example for one replicate per patient**
+
+        ::
+
+                      Filename       Condition    BioReplicate     Run
+                    healthy1.mzml     healthy         1             1
+                    healthy2.mzml     healthy         2             2
+                    diseased1.mzml    diseased        3             3
+                    diseased2.mzml    diseased        4             4
+                        ...
+                        ...
+
+
+    - **Example for two replicates per patient**
+
+        ::
+
+                      Filename       Condition    BioReplicate     Run
+                    healthy1.mzml     healthy         1             1
+                    healthy2.mzml     healthy         1             2
+                    diseased1.mzml    diseased        2             3
+                    diseased2.mzml    diseased        2             4
+                        ...
+                        ...
+
+PyProphet is a Python re-implementation of the mProphet algorithm (Reiter 2010 Nature Methods) optimized for SWATH-MS data acquired by data-independent acquisition (DIA). The algorithm was originally published in (Telemann 2014 Bioinformatics) and has since been extended to support new data types and analysis modes (Rosenberger 2017, Nature biotechnology and Nature methods).
+
+For more information, visit @link@
+
+]]>
+    </help>
+    <expand macro="citations">
+        <citation type="doi">10.1371/journal.pone.0153160</citation>
+    </expand>
+</tool>

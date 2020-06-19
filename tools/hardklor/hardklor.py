@@ -10,10 +10,10 @@ import subprocess
 
 CONFIG_FILE = 'hk.conf'
 extension_lookup = {
-    'mzml'  :   'mzML',
-    'mzxml' :   'mzXML',
-    'ms1'   :   'MS1',
-    }
+    'mzml': 'mzML',
+    'mzxml': 'mzXML',
+    'ms1': 'MS1',
+}
 
 # input:
 ms1_ext = sys.argv[1]
@@ -33,7 +33,7 @@ if ms1_ext in extension_lookup:
     ms1_ext = extension_lookup[ms1_ext]
     linkname = 'ms1_dsetlink.{0}'.format(ms1_ext)
     os.symlink(ms1_file, linkname)
-    ms1_file = linkname 
+    ms1_file = linkname
 
 # load template and dump to config file
 with open(config_load) as fp:
@@ -53,7 +53,7 @@ config_to_dump = config_str.format(
     maxfeat=options['maxfeat'],
     inputfile=ms1_file,
     outputfile=output_file,
-    )
+)
 with open(CONFIG_FILE, 'w') as fp:
     fp.write(config_to_dump)
 

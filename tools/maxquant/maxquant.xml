@@ -1,119 +1,246 @@
-<tool id="maxquant" name="MaxQuant" version="@VERSION@+galaxy1">
+<tool id="maxquant" name="MaxQuant" version="@VERSION@+galaxy3">
     <macros>
+        <xml name="output" token_format="tabular" token_label="default description" token_name="default">
+            <data format="@FORMAT@" label="@LABEL@ for ${on_string}" name="@NAME@">
+                <filter>'@NAME@' in output_opts['output']</filter>
+            </data>
+        </xml>
+        <xml name="output_from_wdir" token_ext="txt" token_format="tabular" token_label="default description" token_name="default">
+            <data format="@FORMAT@" from_work_dir="combined/txt/@NAME@.@EXT@" label="@LABEL@ for ${on_string}" name="@NAME@">
+                <filter>'@NAME@' in output_opts['output']</filter>
+            </data>
+        </xml>
         <import>macros.xml</import>
     </macros>
-    <requirements>
-        <requirement type="package" version="@VERSION@">maxquant</requirement>
-        <requirement type="package" version="3.7">python</requirement>
-    </requirements>
+    <expand macro="requirements"/>
     <command detect_errors="exit_code"><![CDATA[
     #import re
-
-    python3 '$__tool_directory__/mqwrapper.py'
+    maxquant -c mqpar.xml 2>/dev/null  ## MQ writes success of creation to stderr
+    #if 'config' in $output_opts.output:
+      &&
+      cp '$mq_conf' '$config'
+    #end if
+    #set infiles = [$name for $pg in $paramGroups for $name in $pg.files]
+    #set names = [re.sub('@SUBSTITUTION_RX@', '_', str($n.element_identifier)) for $n in $infiles]
+    #set names_with_ext = [($name if ($name).lower().endswith(str($input_opts.ftype)) else $name + str($input_opts.ftype)) for $name in $names]
+    #for $target, $link in zip($infiles, $names_with_ext)
+        &&
+        ln -s '$target' '$link'
+    #end for
+    &&
+    python3 '$__tool_directory__/create_mqpar.py'
+    #if $search_opts.template
+        --exp_design='$search_opts.template'
+    #end if
+    --version=@VERSION@ 
     --num_threads=\${GALAXY_SLOTS:-1}
     --substitution_rx='@SUBSTITUTION_RX@'
-    #if $input_opts.infile.select == "mzxml_files"
-        --mzxml_files='$input_opts.infile.mzxml_files'
-        #set names = ','.join([re.sub('@SUBSTITUTION_RX@', '_', str($name.element_identifier)) for $name in $input_opts.infile.mzxml_files])
-    #else
-        --raw_files='$input_opts.infile.raw_files'
-        #set names = ','.join([re.sub('@SUBSTITUTION_RX@', '_', str($name.element_identifier)) for $name in $input_opts.infile.raw_files])
-    #end if
-    --infile_names='$names'
-    --version='@VERSION@'
-    --fasta_files='$input_opts.fasta_files'
-    --identifier_parse_rule='$input_opts.identifier_parse_rule'
-    --description_parse_rule='$input_opts.description_parse_rule'
+    --yaml='$mq_conf'
+    mqpar.xml
 
-    --exp_design='$search_opts.template'
-    --missed_cleavages=$search_opts.missed_cleavages
-    --min_peptide_len=$search_opts.min_peptide_len
-    --max_peptide_mass=$search_opts.max_peptide_mass
-    --min_unique_pep=$search_opts.min_unique_pep
-    $search_opts.calc_peak_properties
-    $search_opts.match_between_runs
-    #if $search_opts.fixed_mods
-        --fixed_mods='$search_opts.fixed_mods'
-    #end if
-    #if $search_opts.var_mods
-        --var_mods='$search_opts.var_mods'
-    #end if
-    #if $search_opts.proteases
-        --proteases='$search_opts.proteases'
-    #end if
-    #if $search_opts.silac.light_mods
-        --light_mods='$search_opts.silac.light_mods'
-    #end if
-    #if $search_opts.silac.medium_mods
-        --medium_mods='$search_opts.silac.medium_mods'
-    #end if
-    #if $search_opts.silac.heavy_mods
-       --heavy_mods='$search_opts.silac.heavy_mods'
-    #end if
-    #if $search_opts.lfq.do_lfq == "--lfq_mode=1"
-        $search_opts.lfq.do_lfq.lfq_mode
-        --lfq_min_ratio_count=$search_opts.lfq.do_lfq.lfq_min_ratio_count
-        --lfq_min_edges_per_node=$search_opts.lfq.do_lfq.lfq_min_edges_per_node
-        --lfq_avg_edges_per_node=$search_opts.lfq.do_lfq.lfq_avg_edges_per_node
-        $search_opts.lfq.do_lfq.lfq_skip_norm
-        $search_opts.lfq.do_lfq.separate_lfq
-        $search_opts.lfq.do_lfq.lfq_stabilize_large_ratios
-        $search_opts.lfq.do_lfq.lfq_require_msms
-        #if $search_opts.lfq.do_lfq.do_ibaq == "--ibaq"
-            $search_opts.lfq.do_lfq.do_ibaq.ibaq
-            $search_opts.lfq.do_lfq.do_ibaq.ibaq_log_fit
-        #end if
-        $search_opts.lfq.do_lfq.advanced_site_intensities
-    #end if
-
-    $output_opts.write_mztab
-    --evidence='$evidence'
-    --msms='$msms'
-    --parameters='$parameters'
-    --peptides='$peptides'
-    --proteinGroups='$proteinGroups'
-    --allPeptides='$allPeptides'
-    --libraryMatch='$libraryMatch'
-    --matchedFeatures='$matchedFeatures'
-    --modificationSpecificPeptides='$modificationSpecificPeptides'
-    --ms3Scans='$ms3Scans'
-    --msmsScans='$msmsScans'
-    --mzRange='$mzRange'
-    --peptideSection='$peptideSection'
-    --summary='$summary'
-    --mzTab='$mzTab'
-    --mqpar_out='$mqpar_out'
-
-    #if 'log' in $output_opts.output
-        > '$log'
-    #end if
-    #if 'output_all' in $output_opts.output
-        && tar -zcf '$output_all' ./combined/txt
+    #if $output_opts.dry_run:
+      &&
+      mkdir -p combined/txt
+      &&
+      mv mqpar.xml combined/txt/mqpar.xml
+    #else:
+      && 
+      maxquant mqpar.xml
+      #if 'log' in $output_opts.output:
+          > '$log'
+      #end if
+      &&
+      mv mqpar.xml combined/txt/mqpar.xml
+      #if 'output_all' in $output_opts.output:
+          &&
+          tar -zcf '$output_all' ./combined/txt
+      #end if
+      
+      #if $qc.do_it:
+        &&
+        Rscript '$qr' '$qr_yaml'
+          #if 'log' in $output_opts.output:
+              >> '$log' 2>&1
+          #end if
+        &&
+        cp ./combined/txt/report_v0.92.6_combined.pdf '$ptxqc_report'
+      #end if
     #end if
     ]]></command>
+
+    <configfiles>
+        <configfile name="mq_conf">
+            #import re
+            fastaFiles: [${input_opts.fasta_files}]
+            parseRules:
+              identifierParseRule: '${input_opts.identifier_parse_rule}'
+              descriptionParseRule: '${input_opts.description_parse_rule}'
+            minUniquePeptides: ${search_opts.min_unique_pep}
+            minPepLen: ${search_opts.min_peptide_len}
+            maxPeptideMass: ${search_opts.max_peptide_mass}
+            calcPeakProperties: ${search_opts.calc_peak_properties}
+            #set writeMzTab = "mzTab" in $output_opts.output
+            writeMzTab: $writeMzTab
+            #if $protein_quant.lfq_opts.do_ibaq.ibaq == 'True':
+            ibaq: ${protein_quant.lfq_opts.do_ibaq.ibaq}
+            ibaqLogFit: ${protein_quant.lfq_opts.do_ibaq.ibaqLogFit}
+            #end if
+            separateLfq: ${protein_quant.lfq_opts.separateLfq}
+            lfqStabilizeLargeRatios: ${protein_quant.lfq_opts.lfqStabilizeLargeRatios}
+            lfqRequireMsms: ${protein_quant.lfq_opts.lfqRequireMsms}
+            advancedSiteIntensities: ${protein_quant.lfq_opts.advancedSiteIntensities}
+            matchBetweenRuns: ${search_opts.match_between_runs}
+            includeContaminants: ${search_opts.incl_contaminants}
+            minPeptideLengthForUnspecificSearch: ${search_opts.min_pep_length}
+            maxPeptideLengthForUnspecificSearch: ${search_opts.max_pep_length}
+            decoyMode: ${search_opts.decoy_mode}
+            peptideFdr: ${search_opts.psm_fdr}
+            proteinFdr: ${search_opts.protein_fdr}
+            quantMode: ${protein_quant.peptides_for_quantification}
+            restrictProteinQuantification: ${protein_quant.only_unmod_prot.unmod_prot}
+            #if $protein_quant.only_unmod_prot.unmod_prot == 'True':
+            #if $protein_quant.only_unmod_prot.mods_used_prot_quant:
+            restrictMods: [${protein_quant.only_unmod_prot.mods_used_prot_quant}]
+            #else:
+            restrictMods: []
+            #end if
+            useCounterparts: $protein_quant.only_unmod_prot.discard_unmod_cpart_peptides
+            #end if
+            paramGroups:
+            #for $pg in $paramGroups:
+              #set names = [re.sub('@SUBSTITUTION_RX@', '_', str($n.element_identifier)) for $n in $pg.files]
+              #set names_with_ext = [($name if ($name).lower().endswith(str($input_opts.ftype)) else $name + str($input_opts.ftype)) for $name in $names]
+              - files: $names_with_ext
+                maxMissedCleavages: ${pg.maxMissedCleavages}
+                #if $pg.fixedModifications:
+                fixedModifications: [${pg.fixedModifications}]
+                #else:
+                fixedModifications: []
+                #end if
+                #if $pg.variableModifications:
+                variableModifications: [${pg.variableModifications}]
+                #else:
+                variableModifications: []
+                #end if
+                #if $pg.enzymes:
+                enzymes: [${pg.enzymes}]
+                #else:
+                enzymes: []
+                #end if
+                enzymeMode: ${pg.digestion_mode}
+                #if $pg.quant_method.select_quant_method == 'silac':
+                labelMods:
+                  #if $pg.quant_method.light_labels:
+                  - [${pg.quant_method.light_labels}]
+                  #else:
+                  - []
+                  #end if
+                  #if $pg.quant_method.medium_labels:
+                  - [${pg.quant_method.medium_labels}]
+                  #else:
+                  - []
+                  #end if
+                  #if $pg.quant_method.heavy_labels:
+                  - [${pg.quant_method.heavy_labels}]
+                  #else:
+                  - []
+                  #end if
+                #end if
+                #if $pg.quant_method.select_quant_method == 'lfq':
+                lfqMode: 1
+                lfqSkipNorm: ${pg.quant_method.lfqSkipNorm}
+                lfqMinEdgesPerNode: ${pg.quant_method.lfqMinEdgesPerNode}
+                lfqAvEdgesPerNode: ${pg.quant_method.lfqAvEdgesPerNode}
+                lfqMinRatioCount: ${pg.quant_method.lfqMinRatioCount}
+                #end if
+                #if $pg.quant_method.select_quant_method == 'reporter_ion_ms2':
+                lcmsRunType: 'Reporter ion MS2'
+                reporterMassTolerance: 0.003
+                #if $pg.quant_method.filter_by_pif.filter_pif == 'True':
+                reporterPif: ${pg.quant_method.filter_by_pif.reporter_pif}
+                #else:
+                reporterPif: 0
+                #end if
+                reporterFraction: 0
+                reporterBasePeakRatio: 0
+                filterPif: ${pg.quant_method.filter_by_pif.filter_pif}
+                isobaricLabels:
+                  #if $pg.quant_method.iso_labels.labeling == 'custom':
+                    #for $l in $pg.quant_method.iso_labels.iso_label:
+                      - ['$l.internallabel','$l.terminallabel',$l.cm2,$l.cm1,$l.cp1,$l.cp2,$l.tmtlike]
+                    #end for
+                  #end if
+                  #if $pg.quant_method.iso_labels.labeling == 'tmt2plex':
+                    - [TMT2plex-Lys126,TMT2plex-Nter126,0,0,0,0,True]
+                    - [TMT2plex-Lys127,TMT2plex-Nter127,0,0,0,0,True]
+                  #end if
+                  #if $pg.quant_method.iso_labels.labeling == 'tmt6plex':
+                    - [TMT6plex-Lys126,TMT6plex-Nter126,0,0,0,0,True]
+                    - [TMT6plex-Lys127,TMT6plex-Nter127,0,0,0,0,True]
+                    - [TMT6plex-Lys128,TMT6plex-Nter128,0,0,0,0,True]
+                    - [TMT6plex-Lys129,TMT6plex-Nter129,0,0,0,0,True]
+                    - [TMT6plex-Lys130,TMT6plex-Nter130,0,0,0,0,True]
+                    - [TMT6plex-Lys131,TMT6plex-Nter131,0,0,0,0,True]
+                  #end if
+                  #if $pg.quant_method.iso_labels.labeling == 'tmt8plex':
+                    - [TMT8plex-Lys126C,TMT8plex-Nter126C,0,0,0,0,True]
+                    - [TMT8plex-Lys127N,TMT8plex-Nter127N,0,0,0,0,True]
+                    - [TMT8plex-Lys127C,TMT8plex-Nter127C,0,0,0,0,True]
+                    - [TMT8plex-Lys128C,TMT8plex-Nter128C,0,0,0,0,True]
+                    - [TMT8plex-Lys129N,TMT8plex-Nter129N,0,0,0,0,True]
+                    - [TMT8plex-Lys129C,TMT8plex-Nter129C,0,0,0,0,True]
+                    - [TMT8plex-Lys130C,TMT8plex-Nter130C,0,0,0,0,True]
+                    - [TMT8plex-Lys131N,TMT8plex-Nter131N,0,0,0,0,True]
+                  #end if
+                  #if $pg.quant_method.iso_labels.labeling == 'tmt10plex':
+                    @TMT10PLEX@
+                  #end if
+                  #if $pg.quant_method.iso_labels.labeling == 'tmt11plex':
+                    @TMT10PLEX@
+                    - [TMT11plex-Lys131C,TMT11plex-Nter131C,0,0,0,0,True]
+                  #end if
+                  #if $pg.quant_method.iso_labels.labeling == 'itraq4plex':
+                    - [iTRAQ4plex-Lys114,iTRAQ4plex-Nter114,0,0,0,0,False]
+                    - [iTRAQ4plex-Lys115,iTRAQ4plex-Nter115,0,0,0,0,False]
+                    - [iTRAQ4plex-Lys116,iTRAQ4plex-Nter116,0,0,0,0,False]
+                    - [iTRAQ4plex-Lys117,iTRAQ4plex-Nter117,0,0,0,0,False]
+                  #end if
+                  #if $pg.quant_method.iso_labels.labeling == 'itraq8plex':
+                    - [iTRAQ4plex-Lys113,iTRAQ8plex-Nter113,0,0,0,0,False]
+                    - [iTRAQ4plex-Lys114,iTRAQ8plex-Nter114,0,0,0,0,False]
+                    - [iTRAQ4plex-Lys115,iTRAQ8plex-Nter115,0,0,0,0,False]
+                    - [iTRAQ4plex-Lys116,iTRAQ8plex-Nter116,0,0,0,0,False]
+                    - [iTRAQ4plex-Lys117,iTRAQ8plex-Nter117,0,0,0,0,False]
+                    - [iTRAQ4plex-Lys118,iTRAQ8plex-Nter118,0,0,0,0,False]
+                    - [iTRAQ4plex-Lys119,iTRAQ8plex-Nter119,0,0,0,0,False]
+                    - [iTRAQ4plex-Lys121,iTRAQ8plex-Nter121,0,0,0,0,False]
+                  #end if
+                  #if $pg.quant_method.iso_labels.labeling == 'iodotmt6plex':
+                    - [iodoTMT6plex-Cys126,'',0,0,0,0,True]
+                    - [iodoTMT6plex-Cys127,'',0,0,0,0,True]
+                    - [iodoTMT6plex-Cys128,'',0,0,0,0,True]
+                    - [iodoTMT6plex-Cys129,'',0,0,0,0,True]
+                    - [iodoTMT6plex-Cys130,'',0,0,0,0,True]
+                    - [iodoTMT6plex-Cys131,'',0,0,0,0,True]
+                  #end if
+                #end if  
+            #end for
+        </configfile>
+        <expand macro="ptxqc"/>
+    </configfiles>
+
     <inputs>
         <section name="input_opts" title="Input Options" expanded="True">
-            <conditional name="infile">
-                <param name="select" type="select" label="choose the type of your input files">
-                    <option value="raw_files">Thermo.raw</option>
-                    <option value="mzxml_files">mzXML</option>
-                </param>
-                <when value="raw_files"> 
-                    <param multiple="true" name="raw_files" type="data"
-                           format="thermo.raw" label="RAW Files"
-                           help="Specify one or more Thermo RAW files" />
-                </when>
-                <when value="mzxml_files">
-                    <param multiple="true" name="mzxml_files" type="data"
-                           format="mzxml" label="mzXML Files"
-                           help="Specify one or more mzXML files" />
-                </when>
-            </conditional>
+            <param name="ftype" type="select" label="choose the type of your input files">
+                <option value=".thermo.raw">thermo.raw</option>
+                <option value=".mzxml">mzxml</option>
+                <option value=".mzml">mzml</option>
+            </param>
             <param format="fasta" multiple="true" name="fasta_files"
                    type="data" label="FASTA files"
-                   help="Specify one or more FASTA databases." />
+                   help="Specify one or more FASTA databases."/>
             <param name="identifier_parse_rule" type="text"
-                   label="identifier parse rule" value="^&gt;.*\|(.*)\|.*$">
+                   label="identifier parse rule" value="&gt;([^\s]*)">
                 <sanitizer>
                     <valid initial="string.printable">
                         <remove value="&apos;"/>
@@ -121,8 +248,8 @@
                 </sanitizer>
             </param>
             <param name="description_parse_rule" type="text"
-                   label="description parse rule" value="^&gt;.*\|.*\|[^ ]+ (.*) OS.*$"
-                   help="Modify parse rules if needed">
+                   label="description parse rule" value="&gt;(.*)"
+                   help="Modify parse rules if needed.">
                 <sanitizer>
                     <valid initial="string.printable">
                         <remove value="&apos;"/>
@@ -134,183 +261,457 @@
         <section name="search_opts" title="Search Options" expanded="true">
             <param format="tabular" name="template" type="data" optional="true"
                    label="Specify an experimental design template (if needed). For detailed
-                          instructions see the help text." />
-            <param type="integer" name="missed_cleavages"
-	           label="missed cleavages" value="1"/>
+                          instructions see the help text."/>
             <param type="integer" name="min_peptide_len"
-	           label="minimum peptide length" value="7"/>
+                   label="minimum peptide length" value="7"
+                   help="Peptides shorter than this value will not be reported nor be considered during protein identification and quantification
+short peptides are usually not unique in the protein database and therefore not statistically informative."/>
             <param type="integer" name="max_peptide_mass"
-	           label="maximum peptide mass" value="4600"/>
+                   label="maximum peptide mass [Da]" value="4600"
+                   help="Peptides that are heavier than this mass will be discarded in the Andromeda search."/>
             <param type="integer" name="min_unique_pep"
-	           label="minimum unique peptides" value="1" />
+                   label="minimum unique peptides" value="0"
+                   help="The minimum number of unique peptides a protein group should have to be considered as identified and reported in the final table."/>
             <param name="calc_peak_properties" type="boolean" checked="false"
-	           label="Calculate peak properties?"
-	           truevalue="--calc_peak_properties" falsevalue="" />
+                   label="Calculate peak properties"
+                   truevalue="True" falsevalue="False"
+                   help="If checked, several quantities characterizing peaks and isotopes patterns are calculated. This may lead to a substantial increase in computation time."/>
             <param name="match_between_runs" type="boolean" checked="false"
-	           label="Match between runs?"
-	           truevalue="--match_between_runs" falsevalue="" />
-            <param name="fixed_mods" type="select" label="fixed modifications"
-	           multiple="true" help="select zero or more fixed modifications">
-	        <expand macro="modification"/>
+                   label="Match between runs"
+                   truevalue="True" falsevalue="False"
+                   help="Identifications are transferred to non-sequenced or non-identified MS features in other LC-MS runs."/>
+            <param name="incl_contaminants" type="boolean" checked="true"
+                   label="Include contaminants"
+                   truevalue="True" falsevalue="False"
+                   help="‘Yes’ means that proteins from a contaminant list are automatically added to the list of proteins for in silico digestion (in the fasta file)"/>
+            <param name="decoy_mode" type="select"
+                   label="Decoy mode"
+                   help="The decoy sequences can be generated by reversing or randomizing the original protein sequences. Reversing is recommended.">
+                <option value="revert" selected="true">Revert</option>
+                <option value="randomize">Randomize</option>
             </param>
-            <param name="var_mods" type="select" label="variable modifications"
-	           multiple="true" help="select zero or more variable modifications">
-	        <expand macro="modification"/>
-            </param>
-            <param name="proteases" type="select" label="proteases"
-	           multiple="true" help="select zero or more proteases">
-	        <expand macro="proteases"/>
-            </param>
-            <section title="label based quantitation" name="silac" expanded="false">
-	        <param name="light_mods" type="select" label="light labels"
-		       multiple="true" help="select zero or more light modifications">
-	            <expand macro="label"/>
-	        </param>
-	        <param name="medium_mods" type="select" label="medium labels"
-		       multiple="true" help="select zero or more medium modifications">
-	            <expand macro="label"/>
-	        </param>
-	        <param name="heavy_mods" type="select" label="heavy labels"
-		       multiple="true" help="select zero or more heavy modifications">
-	            <expand macro="label"/>
-	        </param>
-            </section>
-            <section title="label free quantification" name="lfq" expanded="false">
-	        <conditional name="do_lfq">
-                    <param name="lfq_mode" type="select" label="Perform LFQ?">
-                        <option value="">No</option>
-                        <option value="--lfq_mode=1">Yes</option>
-		    </param>
-                    <when value="--lfq_mode=1">
-		        <param type="integer" name="lfq_min_ratio_count"
-		               label="LFQ minimum ratio count" value="2"/>
-		        <param type="integer" name="lfq_min_edges_per_node"
-			       label="LFQ minimum number of neighbours" value="3"/>
-		        <param type="integer" name="lfq_avg_edges_per_node"
-			       label="LFQ average number of neighbours" value="6"/>
-		        <param name="lfq_skip_norm" type="boolean" checked="false"
-			       label="Skip normalization?"
-			       truevalue="--lfq_skip_norm" falsevalue="" />
-		        <param name="separate_lfq" type="boolean" checked="false"
-			       label="Separate LFQ in parameter Groups?"
-			       truevalue="--separate_lfq" falsevalue="" />
-		        <param name="lfq_stabilize_large_ratios" type="boolean" checked="true"
-			       label="Stabilize large LFQ ratios?"
-			       truevalue="--lfq_stabilize_large_ratios" falsevalue="" />
-		        <param name="lfq_require_msms" type="boolean" checked="true"
-			       label="Require MS/MS for LFQ comparisons?"
-			       truevalue="--lfq_require_msms" falsevalue="" />
-		        <conditional name="do_ibaq">
-                            <param name="ibaq" type="select" label="iBAQ?">
-                                <option value="">No</option>
-                                <option value="--ibaq">Yes</option>
-		            </param>
-                            <when value="--ibaq">
-                                <param name="ibaq_log_fit" type="boolean" checked="true"
-                                       label="Logarithmic fit?"
-                                       truevalue="--ibaq_log_fit" falsevalue="" />
-                            </when>
-                            <when value="">
-                            </when>
-		        </conditional>
-		        <param name="advanced_site_intensities" type="boolean" checked="true"
-			       label="Advanced site intensities?"
-			       truevalue="--advanced_site_intensities" falsevalue="" />
-		    </when>
-		    <when value="">
-	            </when>
-	        </conditional>    
-            </section>
+            <param name="psm_fdr" type="float" label="PSM FDR" min="0" value="0.01"
+                   help="Specify the desired false discovery rate (FDR) at the peptide spectrum match (PSM) level. It is determined by the target-decoy approach. A value of 0.01 stands for 1% FDR."/>
+            <param name="protein_fdr" type="float" label="Protein FDR" min="0" value="0.01"
+                   help="Specify the desired false discovery rate (FDR) at the protein level. It is determined by the target-decoy approach. A value of 0.01 stands for 1% FDR."/>
+            <param name="min_pep_length" type="integer" label="Minimum peptide length for unspecific searches" min="1" value="8"
+                   help="During unspecific searches peptides that have fewer amino acids than this value will be discarded. This applies also to semi-specific (e.g. semi tryptic) searches"/>
+            <param name="max_pep_length" type="integer" label="Maximum peptide length for unspecific searches" min="1" value="25"
+                   help="During unspecific searches peptides that have more amino acids than this value will be discarded. This applies also to semi-specific (e.g. semi tryptic) searches"/>
         </section>
 
+        <section name="protein_quant" title="Protein quantification" expanded="true">
+
+            <param name="peptides_for_quantification" type="select" label="Peptides for quantification"
+                   help="Specify how the protein ratios will be calculated. When ‘All’ is selected the quantification is done on all peptides. With ‘Unique’, only the peptides unique for that specific protein group are used for quantification. The ‘unique + razor’ mode calculates protein ratios from the unique and razor peptides. Razor peptides are non-unique peptides assigned to the protein group with the most other peptides (Occam’s razor principle).">
+                <option value="0">All</option>
+                <option value="1" selected="true">Unique + razor</option>
+                <option value="2">Unique</option>
+            </param>
+
+            <conditional name="only_unmod_prot">
+                <param name="unmod_prot" type="select"
+                       label="Use only unmodified peptides"
+                       help="Indicate here which kind of peptides should be used for protein quantification. If ‘No’, all peptides are used irrespective of their modification state. If ‘Yes’, all unmodified peptides are used plus those peptides that have only the modifications specified in the field below.">
+                    <option value="False">No</option>
+                    <option value="True" selected="true">Yes</option>
+                </param>
+                <when value="True">
+                    <param name="mods_used_prot_quant" type="select" multiple="true"
+                           label="Modifications used in protein quantification"
+                           help="Peptides containing only these modifications will be used for the quantification of proteins in addition to unmodified peptides. This includes ratio and intensity calculations including iBAQ">
+                        <expand macro="default_mod_option" value="Oxidation (M)"/>
+                        <expand macro="default_mod_option" value="Acetyl (Protein N-term)"/>
+                        <expand macro="modification"/>
+                    </param>
+                    <!-- note: the following default is different to the mquant default -->
+                    <param name="discard_unmod_cpart_peptides" type="boolean" label="Discard unmodified counterpart peptides" checked="true"
+                           truevalue="True" falsevalue="False"
+                           help="If selected, also unmodified peptides will be discarded for which a modified counterpart has been identified with a modification that is not specified in the field above."/>
+                </when>
+                <when value="False">
+                </when>
+            </conditional>
+
+            <section name="lfq_opts" title="LFQ Options" expanded="false">
+                <param name="separateLfq" type="boolean" checked="false"
+                       label="Separate LFQ in parameter Groups"
+                       truevalue="True" falsevalue="False"
+                       help="The MaxLFQ algorithm will be applied independently to samples in different parameter groups."/>
+                <param name="lfqStabilizeLargeRatios" type="boolean" checked="true"
+                       label="Stabilize large LFQ ratios"
+                       truevalue="True" falsevalue="False"
+                       help="Large protein ratios will get an admixture of the total protein intensity ratio as described in the MaxLFQ paper"/>
+                <param name="lfqRequireMsms" type="boolean" checked="true"
+                       label="Require MS/MS for LFQ comparisons"
+                       truevalue="True" falsevalue="False"
+                       help="Requires for each pari-wise peptide intensity comparison that at least one of two peptides has been identified by MS/MS"/>
+                <conditional name="do_ibaq">
+                    <param name="ibaq" type="select"
+                           label="iBAQ (calculates absolute protein abundances by normalizing to copy number and not protein mass)">
+                        <option value="False">No</option>
+                        <option value="True">Yes</option>
+                    </param>
+                    <when value="True">
+                        <param name="ibaqLogFit" type="boolean" checked="true"
+                               label="Logarithmic fit"
+                               truevalue="True" falsevalue="False"/>
+                    </when>
+                    <when value="False">
+                    </when>
+                </conditional>
+                <param name="advancedSiteIntensities" type="boolean" checked="true"
+                       label="Advanced site intensities"
+                       truevalue="True" falsevalue="False"/>
+            </section>
+
+        </section>
+
+
+        <repeat name="paramGroups" title="Parameter Group" min="1" default="1">
+            <param type="data" format="thermo.raw,mzXML,mzML" name="files" label="Infiles" multiple="true"
+                   help="Only select infiles matching the filetype specified in the input options."/>
+            <param type="integer" name="maxMissedCleavages"
+                   label="missed cleavages" value="2"
+                   help="The number of missed cleavages that are maximally tolerated in the in-silico digestion of the protien sequences."/>
+            <param name="fixedModifications" type="select" label="fixed modifications"
+                   multiple="true"
+                   help="Select zero or more fixed modifications. They will always be attached to any occurence of the respective amino acid.">
+                <expand macro="modification"/>
+                <expand macro="default_mod_option" value="Carbamidomethyl (C)"/>
+            </param>
+            <param name="variableModifications" type="select" label="variable modifications"
+                   multiple="true"
+                   help="Select zero or more variable modifications. Do not specify label modifications here, neither ms1 level labels, like SILAC, nor isobaric labels.">
+                <expand macro="default_mod_option" value="Oxidation (M)"/>
+                <expand macro="default_mod_option" value="Acetyl (Protein N-term)"/>
+                <expand macro="modification"/>
+            </param>
+            <param name="enzymes" type="select" label="enzyme"
+                   multiple="true"
+                   help="Select zero or more enzymes. The enzymes used for generating the in silico peptides for the Andromeda search.">
+                <expand macro="default_mod_option" value="Trypsin/P"/>
+                <expand macro="proteases"/>
+            </param>
+            <param name="digestion_mode" type="select" label="Digestion mode"
+                   help="'Unspecific means that no cleavage rule is applied but instead all peptides up to a maximal length are considered">
+                <option value="0" selected="true">Specific</option>
+                <option value="1">Semi-specific free N-terminus</option>
+                <option value="2">Semi-specific free C-terminus</option>
+                <option value="3">Semi-specific</option>
+                <option value="4">Unspecific</option>
+                <option value="5">No digestion</option>
+            </param>
+
+            <conditional name="quant_method">
+                <param name="select_quant_method" type="select" label="Quantitation Methods"
+                       help="Select a method if needed.">
+                    <option value="">None</option>
+                    <option value="lfq">label free quantification</option>
+                    <option value="silac">label based quantification</option>
+                    <option value="reporter_ion_ms2">reporter ion MS2</option>
+                </param>
+                <when value=""/>
+                <when value="silac">
+                    <param name="light_labels" type="select" label="light labels"
+                           multiple="true" help="Select zero or more light modifications.">
+                        <expand macro="label"/>
+                    </param>
+                    <param name="medium_labels" type="select" label="medium labels"
+                           multiple="true"
+                           help="Select zero modifications if you have two labels. Select a medium modification if you have three labels.">
+                        <expand macro="label"/>
+                    </param>
+                    <param name="heavy_labels" type="select" label="heavy labels"
+                           multiple="true" help="Select zero or more heavy modifications.">
+                        <expand macro="label"/>
+                    </param>
+                </when>
+                <when value="lfq">
+                    <param type="integer" name="lfqMinRatioCount"
+                           label="LFQ minimum ratio count" value="2"
+                           help="Minimum number of peptides that has to be available in pair-wise comparisons between two samples for a protein."/>
+                    <param type="integer" name="lfqMinEdgesPerNode"
+                           label="LFQ minimum number of neighbours" value="3"
+                           help="Defines the network to normalize the samples in the fast LFQ mode."/>
+                    <param type="integer" name="lfqAvEdgesPerNode"
+                           label="LFQ average number of neighbours" value="6"
+                           help="Defines the network to normalize the samples in the fast LFQ mode."/>
+                    <param type="boolean" name="lfqSkipNorm" checked="true"
+                           label="Skip normalization"
+                           truevalue="True" falsevalue="False"
+                           help="If checked the high-speed version of MaxLFQ is used. This is recommended for large numbers of samples (Experiments). For less than 10 samples the original MaxLFQ normalization algorithm is used."/>
+                </when>
+                <when value="reporter_ion_ms2">
+                    <conditional name="iso_labels">
+                        <param name="labeling" type="select" label="isobaric labeling"
+                               help="Select one of the standard labelings (correction factors are zero) or create a custom labeling.">
+                            <option value="custom">custom</option>
+                            <option value="tmt2plex">TMT2plex</option>
+                            <option value="tmt6plex">TMT6plex</option>
+                            <option value="tmt8plex">TMT8plex</option>
+                            <option value="tmt10plex">TMT10plex</option>
+                            <option value="tmt11plex">TMT11plex</option>
+                            <option value="itraq4plex">iTRAQ4plex</option>
+                            <option value="itraq8plex">iTRAQ8plex</option>
+                            <option value="iodotmt6plex">iodoTMT6plex</option>
+                        </param>
+
+                        <when value="tmt2plex"></when>
+                        <when value="tmt6plex"></when>
+                        <when value="tmt8plex"></when>
+                        <when value="tmt10plex"></when>
+                        <when value="tmt11plex"></when>
+                        <when value="itraq4plex"></when>
+                        <when value="itraq8plex"></when>
+                        <when value="iodotmt6plex"></when>
+                        <when value="custom">
+                            <repeat name="iso_label" title="Isobaric Label" min="1" default="1">
+                                <param name="internallabel" type="select" label="internal label" help="contains Lys">
+                                    <expand macro="iso_labels"/>
+                                </param>
+                                <param name="terminallabel" type="select" label="terminal label" help="contains Nter">
+                                    <option value="">None</option>
+                                    <expand macro="iso_labels"/>
+                                </param>
+                                <param name="cm2" type="float" label="correction factor -2%" value="0.0"/>
+                                <param name="cm1" type="float" label="correction factor -1%" value="0.0"/>
+                                <param name="cp1" type="float" label="correction factor +1%" value="0.0"/>
+                                <param name="cp2" type="float" label="correction factor +2%" value="0.0"/>
+                                <param type="boolean" name="tmtlike" checked="false"
+                                       label="TMT-like"
+                                       truevalue="True" falsevalue="False"/>
+                            </repeat>
+                        </when>
+                    </conditional>
+                    <conditional name="filter_by_pif">
+                        <param name="filter_pif" type="boolean" checked="false" label="Filter by PIF"
+                               truevalue="True" falsevalue="False"
+                               help="If checked, quantified PSMs will be filtered by their precursor intensity fraction to avoid using peptides that clearly suffer from co-fragmentation with other peptide species."/>
+                        <when value="True">
+                            <param name="reporter_pif" type="float" label="Minimum reporter PIF" value="0.75" min="0"
+                                   max="1"
+                                   help="MS/MS spectra with a lower value for the PIF will be discarded for isobaric label quantification."/>
+                        </when>
+                        <when value="False"></when>
+                    </conditional>
+                </when>
+            </conditional>
+        </repeat>
+
+        <expand macro="ptxqc-opts"/>
+
         <section title="Output Options" name="output_opts" expanded="true">
-            <param name="write_mztab" type="boolean" checked="false"
-	           label="Write mztab file?"
-	           truevalue="--write_mztab" falsevalue="" />
+            <param name="dry_run" type="boolean" checked="false"
+                   label="Only create config files? (i.e. for testing)"
+                   truevalue="True" falsevalue=""/>
             <param type="select" name="output" label="Select the desired outputs."
                    multiple="true" optional="false">
-                <expand macro="output_option" name="proteinGroups" label="Protein Groups"/>
-                <expand macro="output_option" name="mqpar_out" label="mqpar.xml"/>
-                <expand macro="output_option" name="peptides" label="Peptides"/>
-                <expand macro="output_option" name="evidence" label="Evidence"/>
-                <expand macro="output_option" name="parameters" label="Tabular Paramters"/>
-                <expand macro="output_option" name="msms" label="MSMS"/>
-                <expand macro="output_option" name="mzTab" label="mzTab"/>
-                <expand macro="output_option" name="allPeptides" label="all peptides"/>
-                <expand macro="output_option" name="libraryMatch" label="library match"/>
-                <expand macro="output_option" name="matchedFeatures" label="matched features"/>
-                <expand macro="output_option" name="modificationSpecificPeptides" label="modification specific peptides"/>
-                <expand macro="output_option" name="ms3Scans" label="ms3 scans"/>
-                <expand macro="output_option" name="msmsScans" label="msms scans"/>
-                <expand macro="output_option" name="mzRange" label="mz range"/>
-                <expand macro="output_option" name="peptideSection" label="peptide section"/>
-                <expand macro="output_option" name="summary" label="summary"/>
-                <expand macro="output_option" name="output_all" label="complete 'combined/txt/' directory (compressed)"/>
-                <expand macro="output_option" name="log" label="MaxQuant log"/>
+                <option value="proteinGroups">Protein Groups</option>
+                <option value="mqpar">mqpar.xml</option>
+                <option value="peptides">Peptides</option>
+                <option value="evidence">Evidence</option>
+                <option value="parameters">Tabular Paramters</option>
+                <option value="msms">MSMS</option>
+                <option value="mzTab">mzTab</option>
+                <option value="allPeptides">all peptides</option>
+                <option value="libraryMatch">library match</option>
+                <option value="matchedFeatures">matched features</option>
+                <option value="modificationSpecificPeptides">modification specific peptides</option>
+                <option value="ms3Scans">ms3 scans</option>
+                <option value="msmsScans">msms scans</option>
+                <option value="mzRange">mz range</option>
+                <option value="peptideSection">peptide section</option>
+                <option value="summary">summary</option>
+                <option value="output_all">complete 'combined/txt/' directory (compressed)</option>
+                <option value="log">MaxQuant and PTXQC log</option>
+                <option value="config">yaml config file</option>
             </param>
         </section>
     </inputs>
-
-    <outputs>
-        <expand macro="output" name="proteinGroups" label="MaxQuant Protein Groups"/>
-        <expand macro="output" name="mqpar_out" label="mqpar.xml" format="xml"/>
-        <expand macro="output" name="peptides" label="MaxQuant Peptides"/>
-        <expand macro="output" name="evidence" label="MaxQuant Evidence"/>
-        <expand macro="output" name="parameters" label="MaxQuant Tabular Parameters"/>
-        <expand macro="output" name="msms" label="MaxQuant MSMS"/>
-        <expand macro="output" name="mzTab" label="mzTab"/>
-        <expand macro="output" name="allPeptides" label="all peptides"/>
-        <expand macro="output" name="libraryMatch" label="library match"/>
-        <expand macro="output" name="matchedFeatures" label="matched features"/>
-        <expand macro="output" name="modificationSpecificPeptides" label="modification specific peptides"/>
-        <expand macro="output" name="ms3Scans" label="ms3 scans"/>
-        <expand macro="output" name="msmsScans" label="msms Scans"/>
-        <expand macro="output" name="mzRange" label="mz range"/>
-        <expand macro="output" name="peptideSection" label="peptide section"/>
-        <expand macro="output" name="summary" label="MaxQuant summary"/>
-        <expand macro="output" format="tar" name="output_all" label="'combined/txt/' directory"/>
-        <expand macro="output" name="log" format="txt" label="log"/>
-    </outputs>
+    
+    <expand macro="outputs"/>
 
     <tests>
-        <test>
-            <param name="select" value="mzxml_files" />
-            <param name="mzxml_files" value="BSA_min_23.mzXML" />
+        <!-- functional test with small mzXML file, no quantitation methods -->
+        <!-- Disable this test when initally testing as it takes avery long tome to run -->
+        <test expect_num_outputs="15">
+            <param name="ftype" value=".mzxml" />
             <param name="fasta_files" value="bsa.fasta" />
             <param name="identifier_parse_rule" value="&gt;([^\s]*)" />
             <param name="description_parse_rule" value="&gt;(.*)" />
-            <param name="min_unique_pep" value="0" />
-            <param name="fixed_mods" value="Carbamidomethyl (C)" />
-            <param name="var_mods" value="Oxidation (M)" />
-            <param name="proteases" value="Trypsin/P" />
-            <param name="write_mztab" value="true" />
-            <param name="output" value="evidence,msms,allPeptides,msmsScans,mzTab,mzRange,parameters,peptides,peptideSection,proteinGroups,summary,modificationSpecificPeptides" />
-            <output name="evidence" file="single/combined/txt/evidence.txt" />
-            <output name="msms" file="single/combined/txt/msms.txt" />
-            <output name="mzTab" file="single/combined/txt/mzTab.mzTab" lines_diff="4"/>
-            <output name="allPeptides" file="single/combined/txt/allPeptides.txt" />
-            <output name="msmsScans" file="single/combined/txt/msmsScans.txt" />
-            <output name="mzRange" file="single/combined/txt/mzRange.txt" />
-            <output name="parameters" file="single/combined/txt/parameters.txt" lines_diff="10"/>
-            <output name="peptides" file="single/combined/txt/peptides.txt" />
-            <output name="peptideSection" file="single/combined/txt/peptideSection.txt" />
-            <output name="proteinGroups" file="single/combined/txt/proteinGroups.txt" />
-            <output name="summary" file="single/combined/txt/summary.txt" />
-            <output name="modificationSpecificPeptides" file="single/combined/txt/modificationSpecificPeptides.txt" />
+            <repeat name="paramGroups">
+                <param name="files" value="BSA_min_23.mzXML"/>
+                <param name="maxMissedCleavages" value="1"/>
+                <param name="fixedModifications" value="Carbamidomethyl (C)" />
+                <param name="variableModifications" value="Oxidation (M)" />
+                <param name="enzymes" value="Trypsin/P" />
+            </repeat>
+            <param name="output" value="evidence,msms,allPeptides,msmsScans,mzTab,mzRange,parameters,peptides,peptideSection,proteinGroups,summary,modificationSpecificPeptides,output_all,config,mqpar" />
+            <output name="mqpar" file="01/mqpar.xml" lines_diff="6"/>
+            <output name="evidence" file="01/combined/txt/evidence.txt" />
+            <output name="msms" file="01/combined/txt/msms.txt" />
+            <output name="mzTab" file="01/combined/txt/mzTab.mzTab" lines_diff="4"/>
+            <output name="allPeptides" file="01/combined/txt/allPeptides.txt" lines_diff="4"/>
+            <output name="msmsScans" file="01/combined/txt/msmsScans.txt" lines_diff="8"/>
+            <output name="mzRange" file="01/combined/txt/mzRange.txt" />
+            <output name="parameters" file="01/combined/txt/parameters.txt" lines_diff="10"/>
+            <output name="peptides" file="01/combined/txt/peptides.txt" />
+            <output name="peptideSection" file="01/combined/txt/peptideSection.txt" />
+            <output name="proteinGroups" file="01/combined/txt/proteinGroups.txt" />
+            <output name="summary" file="01/combined/txt/summary.txt" />
+            <output name="modificationSpecificPeptides" file="01/combined/txt/modificationSpecificPeptides.txt" />
+            <output name="config" file="01/config.yml" lines_diff="2"/>
+        </test>
+        <!-- reporter ion ms2 + multiple param groups, testing yaml conf file and mqpar.xml only -->
+        <test expect_num_outputs="3">
+            <param name="ftype" value=".mzxml" />
+            <param name="fasta_files" value="bsa.fasta" />
+            <param name="identifier_parse_rule" value="&gt;([^\s]*)" />
+            <param name="description_parse_rule" value="&gt;(.*)" />
+            <param name="incl_contaminants" value="False" /> <!-- non-default value -->
+            <param name="min_pep_length" value="7" /> <!-- non-default value -->
+            <param name="max_pep_length" value="24" /> <!-- non-default value -->
+            <param name="decoy_mode" value="randomize" /> <!-- non-default value -->
+            <param name="psm_fdr" value="0.5" /> <!-- non-default value -->
+            <param name="protein_fdr" value="0.4" /> <!-- non-default value -->
+            <section name="protein_quant">
+                <param name="peptides_for_quantification" value="0"/><!-- non-default value -->
+                <conditional name="only_unmod_prot">
+                    <param name="unmod_prot" value="True"/>
+                    <param name="mods_used_prot_quant" value="Pro5,Pro6"/>
+                </conditional>
+            </section>
+            <repeat name="paramGroups">
+                <param name="files" value="BSA_min_23.mzXML"/>
+                <param name="variableModifications" value="Oxidation (M)" />
+                <param name="fixedModifications" value="" />
+                <conditional name="quant_method">
+                    <param name="select_quant_method" value="reporter_ion_ms2" />
+                    <conditional name="iso_labels">
+                        <param name="labeling" value="custom" />
+                        <repeat name="iso_label">
+                            <param name="internallabel" value="TMT2plex-Lys126" />
+                            <param name="terminallabel" value="TMT2plex-Nter126" />
+                            <param name="tmtlike" value="True" />
+                            <param name="cp1" value="6.7" />
+                            <param name="cp2" value="3" />
+                        </repeat>
+                        <repeat name="iso_label">
+                            <param name="internallabel" value="TMT2plex-Lys127" />
+                            <param name="terminallabel" value="TMT2plex-Nter127" />
+                            <param name="tmtlike" value="True" />
+                        </repeat>
+                    </conditional>
+                    <conditional name="filter_by_pif">
+                        <param name="filter_pif" value="False"/>
+                        <param name="reporter_pif"
+                               value="0.6"/> <!-- as filter_pif is False this value will be ignored and 0 used instead -->
+                    </conditional>
+                </conditional>
+            </repeat>
+            <repeat name="paramGroups">
+                <param name="files" value="BSA_min_22"/>
+                <param name="variableModifications" value="" />
+                <param name="fixedModifications" value="" />
+                <param name="enzymes" value="" />
+                <conditional name="quant_method">
+                    <param name="select_quant_method" value="reporter_ion_ms2"/>
+                    <conditional name="iso_labels">
+                        <param name="labeling" value="itraq4plex"/>
+                    </conditional>
+                    <conditional name="filter_by_pif">
+                        <param name="filter_pif" value="True"/>
+                        <param name="reporter_pif" value="0.8"/> <!-- as filter_pif is True this value is used -->
+                    </conditional>
+                </conditional>
+            </repeat>
+            <param name="dry_run" value="True" />
+            <param name="output" value="config,mqpar,mzTab" />
+            <output name="config" file="02/config.yml" lines_diff="2" />
+            <!-- high difference due to unconsistant xml formatting in MQ -->
+            <output name="mqpar" file="02/mqpar.xml" lines_diff="24" />
+        </test>
+        <!-- lfq, testing yaml conf file and mqpar.xml only -->
+        <test expect_num_outputs="2">
+            <param name="ftype" value=".mzxml" />
+            <param name="fasta_files" value="bsa.fasta" />
+            <param name="identifier_parse_rule" value="^&gt;.*\|(.*)\|.*$" />
+            <param name="description_parse_rule" value="^&gt;.*\|.*\|[^ ]+ (.*) OS.*$" />
+            <param name="min_unique_pep" value="1" />
+            <param name="ibaq" value="True" />
+            <param name="ibaqLogFit" value="False" />
+            <repeat name="paramGroups">
+                <param name="files" value="BSA_min_22"/>
+                <param name="maxMissedCleavages" value="1"/>
+                <param name="variableModifications" value="Oxidation (M)" />
+                <conditional name="quant_method">
+                    <param name="select_quant_method" value="lfq" />
+                </conditional>
+            </repeat>
+            <param name="dry_run" value="True" />
+            <param name="output" value="config,mqpar" />
+            <output name="config" file="03/config.yml" lines_diff="2" />
+            <output name="mqpar" file="03/mqpar.xml" lines_diff="10" />
+        </test>
+        <!-- silac + fractions with experimental design template, testing yaml conf file and mqpar.xml only -->
+        <test expect_num_outputs="2">
+            <param name="ftype" value=".mzxml" />
+            <param name="fasta_files" value="bsa.fasta" />
+            <param name="identifier_parse_rule" value="&gt;([^\s]*)" />
+            <param name="description_parse_rule" value="&gt;(.*)" />
+            <param name="template" value="04/exp_design" />
+            <repeat name="paramGroups">
+                <param name="files" value="BSA_min_23.mzXML,BSA_min_22"/>
+                <param name="fixedModifications" value="Carbamidomethyl (C)" />
+                <param name="variableModifications" value="Oxidation (M)" />
+                <param name="enzymes" value="Trypsin/P" />
+                <conditional name="quant_method">
+                    <param name="select_quant_method" value="silac" />
+                    <param name="light_labels" value="Arg6,Lys4" />
+                    <param name="heavy_labels" value="Arg10,DimethLys8" />
+                </conditional>
+            </repeat>
+            <param name="dry_run" value="True" />
+            <param name="output" value="config,mqpar" />
+            <output name="config" file="04/config.yml" lines_diff="2" />
+            <output name="mqpar" file="04/mqpar.xml" lines_diff="12" />
         </test>
     </tests>
 
     <help><![CDATA[
 MaxQuant is a quantitative proteomics software package designed for analyzing large mass-spectrometric data sets. 
 
-This tool is a wrapper for MaxQuant v@VERSION@. The current version of the wrapper only supports a very reduced set of search parameters, but another version of the tool that gets its parameters directly from a mqpar.xml file is available, too. If possible, this tool should be preferred. 
+This tool is a wrapper for MaxQuant v@VERSION@. The current version of the wrapper only supports a reduced set of parameters, but another version of the tool that gets its parameters directly from a mqpar.xml file is available, too.
 
 **Input files**
 
-- Thermo raw file or mzXML file
-    - The datatype has to be 'thermo.raw' or 'mzXML'. Make sure to specify the correct datatype either during upload to Galaxy or afterwards (edit attributes --> datatypes)
+- Thermo raw, mzML, mzXMLfiles (in parameter group section)
+
+    - The datatype of all files has to be either 'thermo.raw', 'mzML' or 'mzXML'. Make sure to specify the correct datatype either during upload to Galaxy or afterwards (edit attributes --> datatypes)
+- Fasta file: specify parse rules according to your fasta file (header). Some examples for different fasta headers:  
+
+                ::
+
+                                            identifier parse rule     description parse rule
+
+                    Uniprot identifier          >.*\|(.*)\|           >.*\|.*\|[^ ]+ (.*) OS
+
+                    NCBI accession              >(gi\|[0-9]*)
+
+                    IPI accession               >IPI:([^\| .]*)
+
+                    Everything after '>'        >(.*)
+
+                    Up to first space           >([^ ]*)
+
+                    Up to first tab character   >([^\t]*)
+
+
 - Optional files:
+
     - Tabular file with experimental design template:
+
         - Currently four columns are needed: Name, Fraction, Experiment and PTM. The headers must have this exact naming. Name and Experiment are abitrary strings, Fraction is an integer or emtpy, PTM is either 'True', 'False' or empty. Consider you uploaded files named File1.mzxml, ..., File5.mzxml. This is a (syntactically) correct experimental design template:
 
                 ::
@@ -320,7 +721,7 @@ This tool is a wrapper for MaxQuant v@VERSION@. The current version of the wrapp
                     File2        2          E1       False
                     ghost       234        none
                     File3        3          E1       False
-                    File4                   E2       true
+                    File4                   E2       True
                     File5                   E1
 
         - This is the counter-example with one error per line:
@@ -332,45 +733,24 @@ This tool is a wrapper for MaxQuant v@VERSION@. The current version of the wrapp
                     File2.mzxml 1           E2            (filename with extension)
                     File3       f3          E1            (fraction not an integer)
                     File4       1                         (missing experiment)
-                                                          (File5 misssing)
+                                                          (File5 missing)
 
 **Parameter Options**
 
-- Quantification options
-    - label based: 
-        - for two channels: choose options from light and heavy sections, for three channels choose options from light, medium and heavy sections
-    - label-free
+- Quantitation methods (in section parameter groups)
+
+    - label free (LFQ): Protein intensity will be reported as 'LFQ intensity' columns in the proteinGroups table
+    - label based: quantifies MS1 labelled samples ('SILAC', 'Dimethyl', 'ICAT', 'ICPL', 'mTRAQ', '18 O')
+
+        - for two channels: choose options from light and heavy sections
+        - for three channels: choose options from light, medium and heavy sections
+    - reporter ion ms2: quantifies conventional isobaric labelling samples. Either use the pre-defined labellings with correction factors set to 0 or specify a custom labelling
+- PTXQC quality control: quality control software creates an automatic quality control pdf report 
+
 
 **Output files**
 
-Different output file options are available, most of them are part of the MaxQuant txt directory. 
+Different output file options are available, most of them are part of the MaxQuant txt directory.
     ]]></help>
-    <citations>
-        <citation type="bibtex">
-        @article{cox2008maxquant,
-        title={MaxQuant enables high peptide identification rates, individualized
-        ppb-range mass accuracies and proteome-wide protein quantification},
-        author={Cox, J{\"u}rgen and Mann, Matthias},
-        journal={Nature biotechnology},
-        volume={26},
-        number={12},
-        pages={1367},
-        year={2008},
-        publisher={Nature Publishing Group}
-        }
-        </citation>
-        <citation type="bibtex">
-        @article{tyanova2016maxquant,
-        title={The MaxQuant computational platform for mass
-        spectrometry-based shotgun proteomics},
-        author={Tyanova, Stefka and Temu, Tikira and Cox, J{\"u}rgen},
-        journal={Nature protocols},
-        volume={11},
-        number={12},
-        pages={2301},
-        year={2016},
-        publisher={Nature Publishing Group}
-        }
-        </citation>
-    </citations>
+    <expand macro="citations"/>
 </tool>
