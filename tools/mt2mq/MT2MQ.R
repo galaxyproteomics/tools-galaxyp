@@ -35,7 +35,7 @@ if (mode == "f"){
 # Taxonomic mode
 if (mode == "t"){
   files <- dir(path = data)
-  out <- data_frame(filename = files) %>% 
+  out <- tibble(filename = files) %>% 
     mutate(file_contents= map(filename, ~read_delim(file.path(data, .),delim = "\t"))) %>% 
     unnest %>% 
     rename(sample = filename) %>% 
