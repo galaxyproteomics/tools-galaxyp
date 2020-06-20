@@ -1,8 +1,8 @@
 # MT2MQ: prepares metatranscriptomic outputs from ASaiM (HUMAnN2 and metaphlan) for metaquantome
 
 # Load libraries
-library(tidyverse)
-library(readr)
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(readr))
 
 # Set parameters from arguments
 args = commandArgs(trailingOnly = TRUE)
@@ -23,7 +23,7 @@ outfile <- args[4]
 
 # Functional mode
 if (mode == "f"){
-  out <- read_delim(data, "\t", escape_double = FALSE, trim_ws = TRUE) %>% 
+  out <- suppressMessages(read_delim(data, "\t", escape_double = FALSE, trim_ws = TRUE)) %>% 
     filter(!grepl(".+g__.+",`# Gene Family`)) %>% 
     separate(col=`# Gene Family`, into=c("id", "Extra"), sep=": ", fill="left") %>% 
     separate(col=Extra, into = c("namespace", "name"), sep = " ", fill="left", extra="merge") %>% 
@@ -36,8 +36,8 @@ if (mode == "f"){
 if (mode == "t"){
   files <- dir(path = data)
   out <- tibble(filename = files) %>% 
-    mutate(file_contents= map(filename, ~read_delim(file.path(data, .),delim = "\t"))) %>% 
-    unnest %>% 
+    mutate(file_contents= map(filename, ~suppressMessages(read_delim(file.path(data, .),delim = "\t")))) %>% 
+    unnest(cols = c(file_contents)) %>% 
     rename(sample = filename) %>% 
     separate(col = sample, into = c("sample",NA), sep=".tsv") %>% 
     pivot_wider(names_from = sample, values_from = abundance) %>% 
@@ -49,7 +49,7 @@ if (mode == "t"){
 
 # Function-taxonomy mode
 if (mode == "ft"){
-  out <- read_delim(data,"\t", escape_double = FALSE, trim_ws = TRUE) %>% 
+  out <- suppressMessages(read_delim(data,"\t", escape_double = FALSE, trim_ws = TRUE)) %>% 
     filter(grepl(".+g__.+",`# Gene Family`)) %>% 
     separate(col=`# Gene Family`, into=c("id", "Extra"), sep=": ", fill="left") %>% 
     separate(col=Extra, into = c("namespace", "name"), sep = " ", fill="left", extra="merge") %>% 
@@ -63,4 +63,4 @@ if (mode == "ft"){
 }
 
 # Write file
-write_delim(x = out, path = outfile, delim = "\t", quote_escape = FALSE)
+write_delim(x = out, path = outfile, delim = "\t", quote_escape = FALSE);
