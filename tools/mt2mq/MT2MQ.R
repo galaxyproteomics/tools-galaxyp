@@ -2,7 +2,7 @@
 
 # Load libraries
 suppressPackageStartupMessages(library(tidyverse))
-default_locale()
+#default_locale()
 
 # Set parameters from arguments
 args = commandArgs(trailingOnly = TRUE)
