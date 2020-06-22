@@ -23,7 +23,7 @@ outfile <- args[4]
 
 # Functional mode
 if (mode == "f"){
-  out <- suppressMessages(read.delim(file=data, header=TRUE, sep='\t')) %>% 
+  out <- read.delim(file=data, header=TRUE, sep='\t') %>% 
     filter(!grepl(".+g__.+",X..Gene.Family)) %>% 
     separate(col=X..Gene.Family, into=c("id", "Extra"), sep=": ", fill="left") %>% 
     separate(col=Extra, into = c("namespace", "name"), sep = " ", fill="left", extra="merge") %>% 
@@ -36,7 +36,7 @@ if (mode == "f"){
 if (mode == "t"){
   files <- dir(path = data)
   out <- tibble(filename = files) %>% 
-    mutate(file_contents= map(filename, ~suppressMessages(read.delim(file=file.path(data, .), header=TRUE, sep = "\t")))) %>% 
+    mutate(file_contents= map(filename, ~read.delim(file=file.path(data, .), header=TRUE, sep = "\t"))) %>% 
     unnest(cols = c(file_contents)) %>% 
     rename(sample = filename) %>% 
     separate(col = sample, into = c("sample",NA), sep=".tsv") %>% 
@@ -49,7 +49,7 @@ if (mode == "t"){
 
 # Function-taxonomy mode
 if (mode == "ft"){
-  out <- suppressMessages(read.delim(file=data, header=TRUE, sep='\t')) %>% 
+  out <- read.delim(file=data, header=TRUE, sep='\t') %>% 
     filter(grepl(".+g__.+",X..Gene.Family)) %>% 
     separate(col=X..Gene.Family, into=c("id", "Extra"), sep=": ", fill="left") %>% 
     separate(col=Extra, into = c("namespace", "name"), sep = " ", fill="left", extra="merge") %>% 
