@@ -57,5 +57,6 @@ def main():
             print('producing', dsetname)
             os.symlink(args.galaxyfiles[fnindex], dsetname)
 
+
 if __name__ == '__main__':
     main()
