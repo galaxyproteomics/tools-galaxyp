@@ -2,6 +2,7 @@
 
 # Load libraries
 suppressPackageStartupMessages(library(tidyverse))
+default_locale()
 suppressPackageStartupMessages(library(readr))
 
 # Set parameters from arguments
