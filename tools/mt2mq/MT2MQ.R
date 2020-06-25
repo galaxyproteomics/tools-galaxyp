@@ -64,3 +64,4 @@ if (mode == "ft"){
 
 # Write file
 write.table(x = out, file = outfile, quote = FALSE, sep = "\t", row.names = FALSE)
+
