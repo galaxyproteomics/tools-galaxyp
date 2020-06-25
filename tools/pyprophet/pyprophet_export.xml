@@ -1,4 +1,4 @@
-<tool id="pyprophet_export" name="PyProphet export" version="@VERSION@.0">
+<tool id="pyprophet_export" name="PyProphet export" version="@VERSION@.1">
     <description>
     Export tabular files, optional swath2stats export
     </description>
@@ -88,12 +88,32 @@ data.annotated <- sample_annotation(data_me, study_design, column.file = "filena
 ## remove decoys when generating plots
 data.annotated.nodecoy <- subset(data.annotated, decoy==FALSE)
 
-pdf("summary.pdf", fonts = "Times", pointsize = 12)
+pdf("summary.pdf", fonts = "Times", pointsize = 8)
 plot(0,type='n',axes=FALSE,ann=FALSE)
 title(main="Summarized plots and tables from pyprophet export file")
 
 ## Look at Numbers of peptides and proteins per run
-grid.table(count_analytes(data.annotated.nodecoy), rows= NULL)
+## for many runs table needs to be split over several pages
+number_samples = nrow(count_analytes(data.annotated.nodecoy))
+
+    ### for more than 20 annotation groups print only 20 samples per page:
+    if (number_samples <= 20){
+        grid.table(count_analytes(data.annotated.nodecoy), rows= NULL)
+    }else{
+        grid.table(count_analytes(data.annotated.nodecoy)[1:20,], rows= NULL)
+        mincount = 21
+        maxcount = 40
+        for (count15 in 1:(ceiling(number_samples/20)-1)){
+            plot(0,type='n',axes=FALSE,ann=FALSE)
+            if (maxcount <= number_samples){
+                grid.table(count_analytes(data.annotated.nodecoy)[mincount:maxcount,], rows= NULL)
+                mincount = mincount+20
+                maxcount = maxcount+20
+            }else{### stop last page with last sample otherwise NA in table
+                grid.table(count_analytes(data.annotated.nodecoy)[mincount:number_samples,], rows= NULL)} 
+        }
+    }
+
 
 ## Correlation of the intensities
 correlation_int <- plot_correlation_between_samples(data.annotated.nodecoy, column.values = 'Intensity')
@@ -173,7 +193,7 @@ write.table(protein_signal, file="$protein_signal", quote = FALSE, row.names = F
         <param name="input" type="data" format="osw" label="Input file" help="This file needs to be in OSW format (--in)" />
         <conditional name="conditional_output">
         <param argument="format" type="select" label="Export format, either matrix, legacy_split, legacy_merged (mProphet/PyProphet) or score_plots format" >
-            <option value="legacy_split" selected="True">legaxy_split</option>
+            <option value="legacy_split" selected="True">legacy_split</option>
             <option value="legacy_merged">legacy_merged</option>
             <option value="matrix">matrix</option>
             <option value="score_plots">score_plots</option>
@@ -330,7 +350,7 @@ write.table(protein_signal, file="$protein_signal", quote = FALSE, row.names = F
 
 PyProphet: Semi-supervised learning and scoring of OpenSWATH results.
 
-Export tabular (tsv) tables. 
+Export tabular (tsv) tables. By default, both peptide- and transition-level quantification is reported, which is necessary for requantification or SWATH2stats. If peptide and protein inference in the global context was conducted, the results will be filtered to 1% FDR by default.
 
 Optional SWATH2stats output. SWATH2stats is intended to transform SWATH data from the OpenSWATH software into a format readable by other statistics packages while performing filtering, annotation and FDR estimation.
 
@@ -338,9 +358,11 @@ Optional SWATH2stats output. SWATH2stats is intended to transform SWATH data fro
 
     - Tabular file with columns that are named: Filename, Condition, BioReplicate, Run. 
     - The Filename should be part or the same as the original filenames used in OpenSWATH workflow
-    - The Condition should be a 
+    - The Condition will be used for statistical analysis. In case multiple conditions are of interest for statistical analysis (e.g. diagnosis and age), this tool has to be run multiple times as SWATH2stats can only handle one condition at a time
     - The BioReplicate is corresponds to the biological replicate
-    - The Run is the number of the run in which the sample was measured
+    - The Run is the number of the MS run in which the sample was measured
+
+    - **Example for one replicate per patient**
 
         ::
 
@@ -348,9 +370,22 @@ Optional SWATH2stats output. SWATH2stats is intended to transform SWATH data fro
                     healthy1.mzml     healthy         1             1
                     healthy2.mzml     healthy         2             2
                     diseased1.mzml    diseased        3             3
+                    diseased2.mzml    diseased        4             4
                         ...
                         ...
 
+
+    - **Example for two replicates per patient**
+
+        ::
+
+                      Filename       Condition    BioReplicate     Run
+                    healthy1.mzml     healthy         1             1
+                    healthy2.mzml     healthy         1             2
+                    diseased1.mzml    diseased        2             3
+                    diseased2.mzml    diseased        2             4
+                        ...
+                        ...
 
 PyProphet is a Python re-implementation of the mProphet algorithm (Reiter 2010 Nature Methods) optimized for SWATH-MS data acquired by data-independent acquisition (DIA). The algorithm was originally published in (Telemann 2014 Bioinformatics) and has since been extended to support new data types and analysis modes (Rosenberger 2017, Nature biotechnology and Nature methods).
 
