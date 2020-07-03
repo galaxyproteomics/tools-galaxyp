@@ -3,7 +3,7 @@ GalaxyP - PeptideShaker
 
 - Home: <https://github.com/galaxyproteomics/tools-galaxyp/>
 - Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/peptideshaker>
-- Tools ID: `peptide_shaker`, `search_gui`, `ident_params`, `fasta_cli`, `mgf_index`
+- Tools ID: `peptide_shaker`, `search_gui`, `ident_params`, `fasta_cli`
 
 
 Description
@@ -16,8 +16,6 @@ Includes tool wrappers for FastaCLI, IdentificationParametersCLI, SearchGUI and 
 
 
 FastaCLI adds decoy sequences to any fasta file.
-
-The Mgf Index tool generates indexes from MGF (Mascot Generic Format) files.
 
 The Identification Parameters tool allows to create a parameters (par) file which can be (re)used later to parameterize SearchGUI or PeptideShaker.
 
