@@ -2,6 +2,7 @@
 
 # Load libraries
 suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(taxize))
 #default_locale()
 
 # Set parameters from arguments
@@ -18,7 +19,8 @@ mode <- args[2]
 ontology <- unlist(strsplit(args[3], split = ","))
   # ontology: only for function or f-t mode. A string of the GO namespace(s) to include, separated by commas.
   #   ex: to include all: "molecular_function,biological_process,cellular_component"
-outfile <- args[4]
+api_key <- args[4]
+outfile <- args[5]
   # outfile: full path with pathname and extension for output
 
 # Functional mode
@@ -43,7 +45,7 @@ if (mode == "t"){
     pivot_wider(names_from = sample, values_from = abundance) %>% 
     mutate(rank = "genus") %>% 
     rename(name = genus) %>% 
-    mutate(id = row_number(name)) %>% # filler for taxon id but should eventually find a way to get id from ncbi database
+    mutate(id = get_uid(name, key = api_key)) %>%
     select(id, name, rank, 2:ncol(.))
 }
 
