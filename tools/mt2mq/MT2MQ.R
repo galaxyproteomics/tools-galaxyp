@@ -40,7 +40,7 @@ if (mode == "t") {
     mutate(file_contents = map(filename, ~read.delim(file = file.path(data, .), header = TRUE, sep = "\t"))) %>%
     unnest(cols = c(file_contents)) %>%
     rename(sample = filename) %>%
-    separate(col = sample, into = c("sample",NA), sep=".tsv") %>%
+    separate(col = sample, into = c("sample", NA), sep = ".tsv") %>%
     pivot_wider(names_from = sample, values_from = abundance) %>%
     mutate(rank = "genus") %>%
     rename(name = genus) %>%
@@ -55,7 +55,8 @@ if (mode == "ft") {
     separate(col = X..Gene.Family, into = c("id", "Extra"), sep = ": ", fill = "left") %>%
     separate(col = Extra, into = c("namespace", "name"), sep = " ", fill = "left", extra = "merge") %>%
     separate(col = name, into = c("name", "taxa"), sep = "\\|", extra = "merge") %>%
-    separate(col = taxa, into = c("Extra", "genus", "species"), sep = "__") %>% select(-"Extra") %>%
+    separate(col = taxa, into = c("Extra", "genus", "species"), sep = "__") %>%
+    select(-"Extra") %>%
     mutate_if(is.character, str_replace_all, pattern = "\\.s", replacement = "") %>%
     mutate_at(c("species"), str_replace_all, pattern = "_", replacement = " ") %>%
     mutate(namespace = if_else(namespace == "[MF]", true = "molecular_function", false = if_else(namespace == "[BP]", true = "biological_process", false = "cellular_component"))) %>%
