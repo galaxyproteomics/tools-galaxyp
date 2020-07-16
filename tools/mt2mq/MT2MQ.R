@@ -18,7 +18,7 @@ mode <- args[2]
 ontology <- unlist(strsplit(args[3], split = ","))
   # ontology: only for function or f-t mode. A string of the GO namespace(s) to include, separated by commas.
   #   ex: to include all: "molecular_function,biological_process,cellular_component"
-api_key <- args[4]
+api_key <- toString(args[4])
 outfile <- args[5]
   # outfile: full path with pathname and extension for output
 
@@ -44,7 +44,7 @@ if (mode == "t") {
     pivot_wider(names_from = sample, values_from = abundance) %>%
     mutate(rank = "genus") %>%
     rename(name = genus) %>%
-    mutate(id = if_else(is.na(api_key), true = toString(get_uid(name, messages = FALSE)), false = toString(get_uid(name, key = toString(api_key), messages = FALSE)))) %>%
+    mutate(id = if_else(api_key == "NA", true = toString(get_uid(name, messages = FALSE)), false = toString(get_uid(name, key = api_key, messages = FALSE)))) %>%
     select(id, name, rank, 2:ncol(.))
 }
 
