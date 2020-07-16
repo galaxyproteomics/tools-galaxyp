@@ -44,7 +44,7 @@ if (mode == "t") {
     pivot_wider(names_from = sample, values_from = abundance) %>%
     mutate(rank = "genus") %>%
     rename(name = genus) %>%
-    mutate(id = if_else(api_key == "NA", true = get_uid(toString(name), messages = FALSE), false = get_uid(toString(name), key = api_key, messages = FALSE))) %>%
+    mutate(id = if_else(api_key == "NA", true = toString(get_uid(toString(name), messages = FALSE)), false = toString(get_uid(toString(name), key = api_key, messages = FALSE)))) %>%
     select(id, name, rank, 2:ncol(.))
 }
 
