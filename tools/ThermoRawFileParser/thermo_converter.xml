@@ -1,7 +1,7 @@
 <tool id="thermo_raw_file_converter" name="Thermo" version="1.2.3">
     <description>RAW file converter</description>
     <requirements>
-        <requirement type="package" version="1.2.3">thermorawfileparser</requirement>
+        <requirement type="package" version="1.2.3.5">thermorawfileparser</requirement>
     </requirements>
     <command>
 <![CDATA[
@@ -9,13 +9,9 @@
 
 mkdir ./raws_folder &&
 mkdir ./output_folder &&
-#for $input_raw in $input:
-    #if len($input) > 1
-        #set $input_name = re.sub('[^\w\-\.]', '_',$input_raw.element_identifier.split('/')[-1].replace(".raw", "") + ".raw")
-        ln -s -f '${input_raw}' './raws_folder/${input_name}' &&
-    #else:
-        ln -s -f '${input_raw}' './raws_folder/input.raw' &&
-    #end if
+#for $input_raw in $input_files:
+    #set $input_name = re.sub('[^\w\-\.]', '_',$input_raw.element_identifier.split('/')[-1].replace(".raw", "") + ".raw")
+    ln -s -f '${input_raw}' './raws_folder/${input_name}' &&
 #end for
 
 ThermoRawFileParser.sh
@@ -29,27 +25,10 @@ ThermoRawFileParser.sh
     $peakpicking_boolean
     $ignore_instrument_errors_boolean
 
-    #if len($input) == 1:
-        #if $output_format == "0":
-           && mv ./output_folder/input.mgf ./output_file.out
-        #else if $output_format == "1":
-           && mv ./output_folder/input.mzML ./output_file.out
-        #else if $output_format == "2":
-           && mv ./output_folder/input.mzML ./output_file.out
-        #end if
-
-        #if $output_metadata_selector != "off":
-            #if $output_metadata_selector == "0":
-               && mv ./output_folder/input-metadata.json ./input-metadata.txt
-            #else if $output_metadata_selector == "1":
-               && mv ./output_folder/input-metadata.txt ./input-metadata.txt
-            #end if
-        #end if
-    #end if
 ]]>
     </command>
     <inputs>
-        <param name="input" type="data" format="thermo.raw" label="Thermo RAW file" help="" multiple="true"
+        <param name="input_files" type="data" format="thermo.raw" label="Thermo RAW file" help="" multiple="true"
           optional="False" />
 
         <param name="output_format" type="select" label="Output format">
@@ -76,47 +55,23 @@ ThermoRawFileParser.sh
     </inputs>
     <outputs>
 
-        <!-- We use simple data outputs if we just have one file, for backwards compatibility -->
-
-        <data name="output" format="mzml" from_work_dir="output_file.out" label="${tool.name} on ${on_string}">
-            <filter>(str(input)).count(',') == 0</filter> <!-- funny way of counting the number of input files! -->
-            <change_format>
-                <when input="output_format" value="0" format="mgf" />
-                <when input="output_format" value="2" format="txt" />
-            </change_format>
-        </data>
-
-        <data name="output_metadata" format="txt" label="${tool.name} on ${on_string}: Metadata" from_work_dir="input-metadata.txt">
-            <filter>str(output_metadata_selector) != "off"</filter>
-            <filter>(str(input)).count(',') == 0</filter>
-            <change_format>
-                <when input="output_metadata_selector" value="0" format="json" />
-            </change_format>
-        </data>
-
-        <!-- We use collections if we have multiple input files -->
-
-        <collection name="output_mgf_collection" type="list" label="${tool.name} on ${on_string}: MGF">
+        <collection name="output_mgf_collection" type="list" label="${tool.name} on ${on_string}: MGF collection">
             <filter>output_format == "0"</filter>
-            <filter>(str(input)).count(',') > 0</filter>
             <discover_datasets pattern="(?P&lt;designation&gt;.+)\.mgf" directory="output_folder" ext="mgf"/>
         </collection>
 
-        <collection name="output_mzml_collection" type="list" label="${tool.name} on ${on_string}: mzML">
+        <collection name="output_mzml_collection" type="list" label="${tool.name} on ${on_string}: mzML collection">
             <filter>output_format == "1"</filter>
-            <filter>(str(input)).count(',') > 0</filter>
             <discover_datasets pattern="(?P&lt;designation&gt;.+)\.mzML" ext="mzml" directory="output_folder"/>
         </collection>
 
-        <collection name="output_indexedmzml_collection" type="list" label="${tool.name} on ${on_string}: Indexed mzML">
+        <collection name="output_indexedmzml_collection" type="list" label="${tool.name} on ${on_string}: Indexed mzML collection">
             <filter>output_format == "2"</filter>
-            <filter>(str(input)).count(',') > 0</filter>
             <discover_datasets pattern="(?P&lt;designation&gt;.+)\.mzML" ext="mzml" directory="output_folder"/>
         </collection>
 
-        <collection name="output_metadata_collection" type="list" label="${tool.name} on ${on_string}: metadata">
+        <collection name="output_metadata_collection" type="list" label="${tool.name} on ${on_string}: metadata collection">
             <filter>output_metadata_selector != "off"</filter>
-            <filter>(str(input)).count(',') > 0</filter>
             <discover_datasets pattern="(?P&lt;designation&gt;.+)-metadata.txt" ext="txt" directory="output_folder"/>
             <discover_datasets pattern="(?P&lt;designation&gt;.+)-metadata.json" ext="json" directory="output_folder"/>
         </collection>
@@ -124,56 +79,62 @@ ThermoRawFileParser.sh
     </outputs>
 
     <tests>
-        <!-- Basic test -->
+        <!-- Basic mgf test - 1 file -->
         <test expect_num_outputs="1">
-            <param name="input" value="really_small.raw" ftype="thermo.raw"/>
-            <param name="output_format" value="1"/>
-            <output name="output" file="really_small.mzml" ftype="mzml" compare="sim_size" delta="3000" />
-        </test>
-
-        <!-- Testing contents of converted mgf file with txt metadata -->
-        <test expect_num_outputs="2">
-            <param name="input" value="really_small.raw" ftype="thermo.raw"/>
+            <param name="input_files" value="really_small.raw" ftype="thermo.raw"/>
             <param name="output_format" value="0"/>
-            <param name="output_metadata_selector" value="1"/>
-            <output name="output" ftype="mgf">
-                <assert_contents>
-                    <has_text text="SCANS=36"/>
-                    <has_text text="RTINSECONDS=73.863181104"/>
-                    <has_text text="PEPMASS=675.248779296875"/>
-                    <has_text text="CHARGE=2+"/>
-                    <has_text text="121.3116455 920.2367553711"/>
-                    <has_text text="229.2241211 1137.6958007813"/>
-                    <has_text text="1577.8967285 1487.9519042969"/>
-                </assert_contents>
-            </output>
-            <output name="output_metadata" ftype="txt">
-                <assert_contents>
-                    <has_text text="Instrument model=[MS, MS:1000494, Thermo Scientific instrument model, Orbitrap Fusion]"/>
-                    <has_text text="Instrument name=Orbitrap Fusion"/>
-                    <has_text text="Instrument serial number=[MS, MS:1000529, instrument serial number, FSN10188]"/>
-                    <has_text text="Software version=[NCIT, NCIT:C111093, Software Version, 3.1.2412.17]"/>
-                    <has_text text="Mass resolution=[MS, MS:1000011, mass resolution, 0.500]"/>
-                    <has_text text="Number of scans=101"/>
-                    <has_text text="Scan range=1;101"/>
-                    <has_text text="Scan start time=[MS, MS:1000016, scan start time, 0.89]"/>
-                    <has_text text="Time range=0.89;1.59"/>
-                    <has_text text="Mass range=120.0000;2000.0000"/>
-                </assert_contents>
-            </output>
+            <output_collection name="output_mgf_collection" type="list" count="1"/>
 
+            <!--<output name="output" file="really_small.mzml" ftype="mzml" compare="sim_size" delta="3000" />-->
         </test>
 
-        <!-- Basic mzml collection test -->
+
+        <!-- Basic mzml test - 2 files -->
         <test expect_num_outputs="1">
-            <param name="input" value="really_small.raw,really_small_2.raw" ftype="thermo.raw"/>
+            <param name="input_files" value="really_small.raw,really_small_2.raw" ftype="thermo.raw"/>
             <param name="output_format" value="1"/>
             <output_collection name="output_mzml_collection" type="list" count="2"/>
         </test>
 
+        <!-- Testing contents of converted mgf file with txt metadata -->
+        <test expect_num_outputs="2">
+            <param name="input_files" value="really_small.raw" ftype="thermo.raw"/>
+            <param name="output_format" value="0"/>
+            <param name="output_metadata_selector" value="1"/>
+            <output_collection name="output_mgf_collection" type="list" count="1">
+                <element name="really_small" ftype="mgf">
+                    <assert_contents>
+                        <has_text text="SCANS=36"/>
+                        <has_text text="RTINSECONDS=73.863181104"/>
+                        <has_text text="PEPMASS=675.248779296875"/>
+                        <has_text text="CHARGE=2+"/>
+                        <has_text text="121.3116455 920.2367553711"/>
+                        <has_text text="229.2241211 1137.6958007813"/>
+                        <has_text text="1577.8967285 1487.9519042969"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output_collection name="output_metadata_collection" type="list">
+                <element name="really_small" ftype="txt">
+                    <assert_contents>
+                        <has_text text="Instrument model=[MS, MS:1000494, Thermo Scientific instrument model, Orbitrap Fusion]"/>
+                        <has_text text="Instrument name=Orbitrap Fusion"/>
+                        <has_text text="Instrument serial number=[MS, MS:1000529, instrument serial number, FSN10188]"/>
+                        <has_text text="Software version=[NCIT, NCIT:C111093, Software Version, 3.1.2412.17]"/>
+                        <has_text text="Mass resolution=[MS, MS:1000011, mass resolution, 0.500]"/>
+                        <has_text text="Number of scans=101"/>
+                        <has_text text="Scan range=1;101"/>
+                        <has_text text="Scan start time=[MS, MS:1000016, scan start time, 0.89]"/>
+                        <has_text text="Time range=0.89;1.59"/>
+                        <has_text text="Mass range=120.0000;2000.0000"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+
         <!-- mgf collection test with metadata -->
         <test expect_num_outputs="2">
-            <param name="input" value="really_small.raw,really_small_2.raw,really_small_3.raw"/>
+            <param name="input_files" value="really_small.raw,really_small_2.raw,really_small_3.raw"/>
             <param name="output_format" value="0"/>
             <param name="output_metadata_selector" value="0"/>
             <output_collection name="output_mgf_collection" type="list" count="3"/>
