@@ -29,7 +29,6 @@
         cat $msstats_script > '$r_script';
         Rscript $msstats_script
         && cat msstats.log > $log
-        && ls -ltr 
     ]]></command>
     <configfiles>
         <configfile name="msstats_script"><![CDATA[
@@ -145,55 +144,103 @@ goldstandard.proposed <- dataProcess(raw,
                           maxQuantileforCensored=$dp_options.maxQuantileforCensored,
                           clusters=NULL)
   
+#if 'processed_data' in $selected_outputs
 write.table(goldstandard.proposed\$ProcessedData, "ProcessedData.tsv", sep = "\t", quote = F, row.names = F, dec = ".")
+#end if
+#if 'runlevel_data' in $selected_outputs
 write.table(goldstandard.proposed\$RunlevelData, "RunlevelData.tsv", sep = "\t", quote = F, row.names = F, dec = ".")
+#end if
 
-
+#if 'qcplot' in $selected_outputs
 dataProcessPlots(data = goldstandard.proposed, type="QCplot", ylimUp=35,
                  width=5, height=5, address="MSStats_only_")
+#end if
 
+#if 'profile_plot' in $selected_outputs
 dataProcessPlots(data = goldstandard.proposed, type="Profileplot",  ylimUp=35, featureName="NA", width=5, height=5, address="MSStats_only_")
+#end if
 
+#if 'profile_wsum_plot' in $selected_outputs
 dataProcessPlots(data = goldstandard.proposed, type="Conditionplot", width=5, height=5, address="MSStats_only_")
+#end if
 
-#*
+## Quantifiaction
+#if 'quant_sample_matrix' in $selected_outputs
+sampleQuantMatrix <- quantification(goldstandard.proposed,  type="Sample")
+write.table(sampleQuantMatrix, "SampleQuantificationMatrix.tsv", sep = "\t", quote = F, row.names = F, dec = ".")
+#end if
 
-#### Comparison of different groups
-levels(goldstandard.proposed$ProcessedData$GROUP_ORIGINAL)
+#if 'quant_sample_long' in $selected_outputs
+sampleQuantLong <- quantification(goldstandard.proposed,  type="Sample", format="long")
+write.table(sampleQuantLong, "SampleQuantificationLong.tsv", sep = "\t", quote = F, row.names = F, dec = ".")
+#end if
 
-comparison1 <- matrix(c(1,-1,0,0,0),nrow=1)
-comparison2 <- matrix(c(1,0,-1,0,0),nrow=1)
-comparison3 <- matrix(c(0,-1,1,0,0),nrow=1)
-comparison4 <- matrix(c(0,0,0,-1,1),nrow=1)
+#if 'quant_group_matrix' in $selected_outputs
+groupQuantMatrix <- quantification(goldstandard.proposed,  type="Group")
+write.table(groupQuantMatrix, "GroupQuantificationMatrix.tsv", sep = "\t", quote = F, row.names = F, dec = ".")
+#end if
 
+#if 'quant_group_long' in $selected_outputs
+groupQuantLong <- quantification(goldstandard.proposed,  type="Group", format="long")
+write.table(groupQuantLong, "GroupQuantificationLong.tsv", sep = "\t", quote = F, row.names = F, dec = ".")
+#end if
 
-comparison <- rbind(comparison1,comparison2,comparison3,comparison4)
+## Group Comparison
+#if $group.group_comparison == 'yes'
+\# Group Comparison
+  #if $group.comparison_matrix.is_of_type('csv')
+comp_matrix <- read.csv("$group.comparison_matrix", header=TRUE)
+  #else
+comp_matrix <- read.table("$group.comparison_matrix", sep="\t", header=TRUE)
+  #end if
 
-row.names(comparison) <- c("early-late", "early-mid","mid-late", "PC-NPT")
+comparison = as.matrix(comp_matrix[,-1])
+row.names(comparison) = as.character(comp_matrix[,1])
+comparisons = groupComparison(contrast.matrix = comparison, data = goldstandard.proposed)
 
+  #if 'comparison_result' in $group.select_outputs
+write.table(comparisons\$ComparisonResult, "ComparisonResult.tsv", sep = "\t", quote = F, row.names = F, dec = ".")
+  #end if
 
-DIA_MSStats_comparisons = groupComparison(contrast.matrix = comparison, data = goldstandard.proposed)
+  #if 'model_qc' in $group.select_outputs
+write.table(comparisons\$ModelQC, "ModelQC.tsv", sep = "\t", quote = F, row.names = F, dec = ".")
+  #end if
 
-write.table(DIA_MSStats_comparisons[["ComparisonResult"]], "Comparison_Results_MSStats_only.txt", sep = "\t", quote = F, row.names = F, dec = ".")
+## TODO: transform fittedmodel to table 
+##class(DDA2009.comparisons$fittedmodel) # list, probably good to output this somehow
 
+## Visualizations:
 
-# normal quantile-quantile plots
-modelBasedQCPlots(data=DIA_MSStats_comparisons, type="QQPlots",width=5, height=5, address="MSStats_only_")
+  #if 'qqplot' in $group.select_outputs
+\# normal quantile-quantile plots
+modelBasedQCPlots(data=comparisons, type="QQPlots",
+                  width=5, height=5, address="MSStats_group_")
+  #end if
 
-# residual plots
+  #if 'residualplot' in $group.select_outputs
+\# residual plots
+modelBasedQCPlots(data=comparisons, type="ResidualPlots",
+                  width=5, height=5, address="MSStats_group_")
+  #end if
 
-modelBasedQCPlots(data=DIA_MSStats_comparisons, type="ResidualPlots",width=5, height=5, address="MSStats_only_")
+  #if 'volcanoplot' in $group.select_outputs
+\# volcano plot
+groupComparisonPlots(data = comparisons\$ComparisonResult, type = 'VolcanoPlot',
+                     width=5, height=5, address="MSStats_group_")
+  #end if
 
+  #if 'heatmap' in $group.select_outputs
+\# heatmap
+groupComparisonPlots(data = comparisons\$ComparisonResult, type = 'Heatmap', address="MSStats_group_")
+  #end if
 
+  #if 'comparisonplot' in $group.select_outputs
+\#comparison
+groupComparisonPlots(data=comparisons\$ComparisonResult, type="ComparisonPlot",
+                     width=5, height=5, address="MSStats_group_")
+  #end if
 
-groupComparisonPlots(data = DIA_MSStats_comparisons$ComparisonResult, type = 'VolcanoPlot',
-                     width=5, height=5, text.size = 2, x.axis.size = 5, y.axis.size = 5, legend.size = 6, dot.size = 1.0 ,ProteinName = FALSE,  address="MSStats_only_")
-
-
-groupComparisonPlots(data = DIA_MSStats_comparisons$ComparisonResult, type ='Heatmap')
-
-groupComparisonPlots(data=DDIA_MSStats_comparisons$ComparisonResult, type="ComparisonPlot",width=5, height=5, address="MSStats_only_")
-*#
+#end if
         ]]></configfile>
     </configfiles>
     <inputs>
@@ -327,8 +374,33 @@ groupComparisonPlots(data=DDIA_MSStats_comparisons$ComparisonResult, type="Compa
             <option value="qcplot" selected="true">MSstats QCPlot.pdf</option>
             <option value="profile_plot" selected="true">MSstats ProfilePlot.pdf</option>
             <option value="profile_wsum_plot" selected="true">MSstats ProfilePlot_wSummarization.pdf</option>
+            <option value="quant_sample_matrix" selected="true">Sample Quantification Matrix Table</option>
+            <option value="quant_sample_long" selected="false">Sample Quantification Long Table</option>
+            <option value="quant_group_matrix" selected="true">Group Quantification Matrix Table</option>
+            <option value="quant_group_long" selected="false">Group Quantification Long Table</option>
         </param>
+
+        <conditional name="group">
+            <param name="group_comparison" type="select" label="Compare Groups">
+                <option value="no">No</option>
+                <option value="yes">Yes</option>
+            </param>
+            <when value="no"/>
+            <when value="yes">
+                <param name="comparison_matrix" type="data" format="tabular,csv" label="Comparison Matrix"/>.
+                <param name="select_outputs" type="select" multiple="true" label="Select outputs">
+                    <option value="comparison_result" selected="true">MSstats ComparisonResult.tsv</option>
+                    <option value="model_qc" selected="true">MSstats ModelQC.tsv</option>
+                    <option value="qqplot" selected="true">MSstats QQPlot.pdf</option>
+                    <option value="residualplot" selected="true">MSstats ResidualPlot.pdf</option>
+                    <option value="volcanoplot" selected="true">MSstats VolcanoPlot.pdf</option>
+                    <option value="heatmap" selected="true">MSstats Heatmap.pdf</option>
+                    <option value="comparisonplot" selected="true">MSstats ComparisonPlot.pdf</option>
+                </param>
+            </when>
+        </conditional>
     </inputs>
+
     <outputs>
         <data name="log" format="txt" label="MSstats log">
             <filter>'log' in selected_outputs</filter>
@@ -354,18 +426,41 @@ groupComparisonPlots(data=DDIA_MSStats_comparisons$ComparisonResult, type="Compa
         <data name="condition_plot" format="pdf" label="MSstats ConditionPlot.pdf" from_work_dir="MSStats_only_ConditionPlot.pdf">
             <filter>'condition_plot' in selected_outputs</filter>
         </data>
+        <data name="quant_sample_matrix" format="tabular" label="MSstats SampleQuantificationMatrix.tsv" from_work_dir="SampleQuantificationMatrix.tsv">
+            <filter>'quant_sample_matrix' in selected_outputs</filter>
+        </data>
+        <data name="quant_sample_long" format="tabular" label="MSstats SampleQuantificationLong.tsv" from_work_dir="SampleQuantificationLong.tsv">
+            <filter>'quant_sample_long' in selected_outputs</filter>
+        </data>
+        <data name="quant_group_matrix" format="tabular" label="MSstats GroupQuantificationMatrix.tsv" from_work_dir="GroupQuantificationMatrix.tsv">
+            <filter>'quant_group_matrix' in selected_outputs</filter>
+        </data>
+        <data name="quant_group_long" format="tabular" label="MSstats GroupQuantificationLong.tsv" from_work_dir="GroupQuantificationLong.tsv">
+            <filter>'quant_group_long' in selected_outputs</filter>
+        </data>
+        <data name="comparison_result" format="tabular" label="MSstats ComparisonResult.tsv" from_work_dir="ComparisonResult.tsv">
+            <filter> group['group_comparison'] == 'yes' and 'comparison_result' in group['select_outputs']</filter>
+        </data>
+        <data name="model_qc" format="tabular" label="MSstats ModelQC.tsv" from_work_dir="ModelQC.tsv">
+            <filter> group['group_comparison'] == 'yes' and 'model_qc' in group['select_outputs']</filter>
+        </data>
+        <data name="qqplot" format="pdf" label="MSstats ModelQQ.pdf" from_work_dir="MSStats_group_QQPlot.pdf">
+            <filter> group['group_comparison'] == 'yes' and 'qqplot' in group['select_outputs']</filter>
+        </data>
+        <data name="residualplot" format="pdf" label="MSstats ResidualPlot.pdf" from_work_dir="MSStats_group_ResidualPlot.pdf">
+            <filter> group['group_comparison'] == 'yes' and 'residualplot' in group['select_outputs']</filter>
+        </data>
+        <data name="volcanoplot" format="pdf" label="MSstats VolcanoPlot.pdf" from_work_dir="MSStats_group_VolcanoPlot.pdf">
+            <filter> group['group_comparison'] == 'yes' and 'volcanoplot' in group['select_outputs']</filter>
+        </data>
+        <data name="heatmap" format="pdf" label="MSstats Heatmap.pdf" from_work_dir="MSStats_group_Heatmap.pdf">
+            <filter> group['group_comparison'] == 'yes' and 'heatmap' in group['select_outputs']</filter>
+        </data>
+        <data name="comparisonplot" format="pdf" label="MSstats ComparisonPlot.pdf" from_work_dir="MSStats_group_ComparisonPlot.pdf">
+            <filter> group['group_comparison'] == 'yes' and 'comparisonplot' in group['select_outputs']</filter>
+        </data>
 <!--
-TODO: what files are:  "ModelQC" "PredictBySurvival"
-PDF with visualizations: 
-modelbasedQCplots: QQPlots: 1 pdf
-modelbasedQCplots: ResidualPlots: 1 pdf
-groupComparisonPlots: VolcanoPlot: 1 pdf
-groupComparisonPlots: Heatmap: 1 pdf
-groupComparisonPlots: ComparisonPlot: 1 pdf
-Tabular file (from groupcomparison): "ComparisonResult"
-Tabular file (from groupcomparison):  "ModelQC"
 Tabular file (from groupcomparison): "fittedmodel"
-Tabular file (from quantification): 1 tabular (or multiple if repeat will be allowed)
 -->
     </outputs>
     <tests>
@@ -471,7 +566,31 @@ Tabular file (from quantification): 1 tabular (or multiple if repeat will be all
 
     </tests>
     <help><![CDATA[
-        TODO: Fill in help.
+**MSstats**
+
+
+**MaxQuant input**: 
+
+::
+
+  * Contaminants (and reverse and only ID by site) from MaxQuant tool are automatically removed; ! if you use human samples such as blood or skin, it might be better to not use contaminants in Maxquant to prevent removal of albumin/keratins
+  * Dataprocess needs special parameters, e.g. censoredInt="NA", ## !! important for MaxQuant page 39 of manual
+
+
+**OpenSwath**: 
+
+::
+
+  * In dataProcess, users need to use censoredInt='0' for OpenSWATH output.
+
+
+**Structure of Annotation File (input)** datamash on output file helps to get the different file names; cut this column and fill in annotation information. 
+
+
+**Structure of contrast matrix (input)**
+Imputation options for summarization TMP: page 19, which combination does what and which combinations are not valid
+
+
     ]]></help>
     <citations>
         <citation type="doi">10.1093/bioinformatics/btu305</citation>
