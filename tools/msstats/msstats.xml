@@ -26,8 +26,9 @@
         <requirement type="package" version="@VERSION@">bioconductor-msstats</requirement>
     </requirements>
     <command detect_errors="exit_code"><![CDATA[
-        cat $msstats_script > '$r_script';
-        Rscript $msstats_script
+        cat '$msstats_script' > '$r_script' &&
+        cat '$msstats_script' &&
+        Rscript '$msstats_script'
         && cat msstats.log > $log
     ]]></command>
     <configfiles>
@@ -44,9 +45,9 @@ raw <- read.table("$input.msstats_input", sep="\t", header=TRUE)
 
 #elif $input.input_src == 'MaxQuant'
 \# Read in MaxQuant files
-input <- read.table("$input.evidence", sep="\t", header=TRUE)
+mq_evidence <- read.table("$input.evidence", sep="\t", header=TRUE)
 
-proteinGroups <- read.table("$input.proteinGroups", sep="\t", header=TRUE)
+mq_proteinGroups <- read.table("$input.proteinGroups", sep="\t", header=TRUE)
 
 \# Read in annotation including condition and biological replicates per run.
 \# Users should make this annotation file. It is not the output from MaxQuant.
@@ -56,9 +57,10 @@ annot <- read.csv("$input.annotation", header=TRUE)
 annot <- read.table("$input.annotation", sep="\t", header=TRUE)
   #end if
 
-raw <- MaxQtoMSstatsFormat(evidence=input, 
+raw <- MaxQtoMSstatsFormat(evidence=mq_evidence, 
+                           proteinGroups=mq_proteinGroups,
                            annotation=annot, 
-                           proteinGroups=proteinGroups,
+                           proteinID="$input.proteinID",
                            useUniquePeptide=$input.input_options.useUniquePeptide, 
                            summaryforMultipleRows=$input.input_options.summaryforMultipleRows, 
                            fewMeasurements=$input.input_options.fewMeasurements, 
@@ -106,13 +108,13 @@ raw <- OpenSWATHtoMSstatsFormat(input,
                                 useUniquePeptide=$input.input_options.useUniquePeptide,
                                 fewMeasurements="$input.input_options.fewMeasurements",
                                 removeProtein_with1Feature=$input.input_options.removeProtein_with1Feature,
-                                summaryforMultipleRows="$input.input_options.summaryforMultipleRows")
+                                summaryforMultipleRows=$input.input_options.summaryforMultipleRows)
 
 #elif $input.input_src == 'vignette'
 raw <- $input.vignette_data
 #end if
 
-goldstandard.proposed <- dataProcess(raw,
+processed_data <- dataProcess(raw,
                           logTrans=$dp_options.logTrans,
                           normalization="$dp_options.norm.normalization",
                           #if $dp_options.norm.normalization == 'globalStandards'
@@ -145,43 +147,43 @@ goldstandard.proposed <- dataProcess(raw,
                           clusters=NULL)
   
 #if 'processed_data' in $selected_outputs
-write.table(goldstandard.proposed\$ProcessedData, "ProcessedData.tsv", sep = "\t", quote = F, row.names = F, dec = ".")
+write.table(processed_data\$ProcessedData, "ProcessedData.tsv", sep = "\t", quote = F, row.names = F, dec = ".")
 #end if
 #if 'runlevel_data' in $selected_outputs
-write.table(goldstandard.proposed\$RunlevelData, "RunlevelData.tsv", sep = "\t", quote = F, row.names = F, dec = ".")
+write.table(processed_data\$RunlevelData, "RunlevelData.tsv", sep = "\t", quote = F, row.names = F, dec = ".")
 #end if
 
 #if 'qcplot' in $selected_outputs
-dataProcessPlots(data = goldstandard.proposed, type="QCplot", ylimUp=35,
+dataProcessPlots(data = processed_data, type="QCplot", ylimUp=35,
                  width=5, height=5, address="MSStats_only_")
 #end if
 
 #if 'profile_plot' in $selected_outputs
-dataProcessPlots(data = goldstandard.proposed, type="Profileplot",  ylimUp=35, featureName="NA", width=5, height=5, address="MSStats_only_")
+dataProcessPlots(data = processed_data, type="ProfilePlot",  ylimUp=35, featureName="NA", width=5, height=5, address="MSStats_only_")
 #end if
 
-#if 'profile_wsum_plot' in $selected_outputs
-dataProcessPlots(data = goldstandard.proposed, type="Conditionplot", width=5, height=5, address="MSStats_only_")
+#if 'condition_plot' in $selected_outputs
+dataProcessPlots(data = processed_data, type="ConditionPlot", width=5, height=5, address="MSStats_only_")
 #end if
 
 ## Quantifiaction
 #if 'quant_sample_matrix' in $selected_outputs
-sampleQuantMatrix <- quantification(goldstandard.proposed,  type="Sample")
+sampleQuantMatrix <- quantification(processed_data,  type="Sample")
 write.table(sampleQuantMatrix, "SampleQuantificationMatrix.tsv", sep = "\t", quote = F, row.names = F, dec = ".")
 #end if
 
 #if 'quant_sample_long' in $selected_outputs
-sampleQuantLong <- quantification(goldstandard.proposed,  type="Sample", format="long")
+sampleQuantLong <- quantification(processed_data,  type="Sample", format="long")
 write.table(sampleQuantLong, "SampleQuantificationLong.tsv", sep = "\t", quote = F, row.names = F, dec = ".")
 #end if
 
 #if 'quant_group_matrix' in $selected_outputs
-groupQuantMatrix <- quantification(goldstandard.proposed,  type="Group")
+groupQuantMatrix <- quantification(processed_data,  type="Group")
 write.table(groupQuantMatrix, "GroupQuantificationMatrix.tsv", sep = "\t", quote = F, row.names = F, dec = ".")
 #end if
 
 #if 'quant_group_long' in $selected_outputs
-groupQuantLong <- quantification(goldstandard.proposed,  type="Group", format="long")
+groupQuantLong <- quantification(processed_data,  type="Group", format="long")
 write.table(groupQuantLong, "GroupQuantificationLong.tsv", sep = "\t", quote = F, row.names = F, dec = ".")
 #end if
 
@@ -194,9 +196,16 @@ comp_matrix <- read.csv("$group.comparison_matrix", header=TRUE)
 comp_matrix <- read.table("$group.comparison_matrix", sep="\t", header=TRUE)
   #end if
 
-comparison = as.matrix(comp_matrix[,-1])
-row.names(comparison) = as.character(comp_matrix[,1])
-comparisons = groupComparison(contrast.matrix = comparison, data = goldstandard.proposed)
+## first columns contains comparison names, use as row name
+comparison <- comp_matrix[,-1]
+row.names(comparison) <- as.character(comp_matrix[,1])
+## order of conditions has to be the same as they appear in the levels function
+comparison <- as.matrix(comparison[levels(processed_data\$ProcessedData\$GROUP_ORIGINAL)])
+print(comparison)
+
+## perform group comparison
+comparisons <- groupComparison(contrast.matrix = comparison, data = processed_data)
+print(comparisons\$fittedmodel)
 
   #if 'comparison_result' in $group.select_outputs
 write.table(comparisons\$ComparisonResult, "ComparisonResult.tsv", sep = "\t", quote = F, row.names = F, dec = ".")
@@ -230,8 +239,11 @@ groupComparisonPlots(data = comparisons\$ComparisonResult, type = 'VolcanoPlot',
   #end if
 
   #if 'heatmap' in $group.select_outputs
-\# heatmap
-groupComparisonPlots(data = comparisons\$ComparisonResult, type = 'Heatmap', address="MSStats_group_")
+\# heatmap - works only for more than 1 comparison
+if (length(levels(unique(processed_data\$ProcessedData\$GROUP_ORIGINAL)))>1)
+	{
+	groupComparisonPlots(data = comparisons\$ComparisonResult, type = 'Heatmap', address="MSStats_group_")
+	}
   #end if
 
   #if 'comparisonplot' in $group.select_outputs
@@ -253,15 +265,15 @@ groupComparisonPlots(data=comparisons\$ComparisonResult, type="ComparisonPlot",
                 <option value="vignette">MSstats Vignette</option>
             </param>
             <when value="MSstats">
-                <param name="msstats_input" type="data" format="tabular,csv" label="MSstats 10-column input"/>.
+                <param name="msstats_input" type="data" format="tabular,csv" label="MSstats 10-column input"/>
             </when>
             <when value="MaxQuant">
-                <param name="evidence" type="data" format="tabular,csv" label="evidence.txt - feature-level data"/>.
+                <param name="evidence" type="data" format="tabular,csv" label="evidence.txt - feature-level data"/>
                 <param name="annotation" type="data" format="tabular,csv" label="annotation.txt data which includes Raw.file, Condition, BioReplicate, Run, IsotopeLabelType information"/>
                 <param name="proteinGroups" type="data" format="tabular,csv" label="proteinGroups.txt" help="It needs to matching protein group ID. If proteinGroups=NULL, use 'Proteins' column in 'evidence.txt'"/>
-                <param name="proteinID" type="select" label="Select Protein ID in proteinGroups.txt">
-                    <option value="Proteins">Proteins</option>
-                    <option value="proteinGroups">proteinGroups</option>
+                <param name="proteinID" type="select" label="Select Protein ID in evidence.txt">
+                    <option value="Proteins">Protein column</option>
+                    <option value="Leading.razor.protein">Leading razor protein column</option>
                 </param>
                 <section name="input_options" title="MaxQtoMSstatsFormat Options" expanded="false">
                     <expand macro="useUniquePeptide"/>
@@ -273,7 +285,7 @@ groupComparisonPlots(data=comparisons\$ComparisonResult, type="ComparisonPlot",
                 </section>
             </when>
             <when value="OpenMS">
-                <param name="evidence" type="data" format="tabular,csv" label="OpenSWATH_input"/>.
+                <param name="evidence" type="data" format="tabular,csv" label="OpenSWATH_input"/>
                 <param name="annotation" type="data" format="tabular,csv" label="OpenSWATH_annotation"/>
                 <section name="input_options" title="MaxQtoMSstatsFormat Options" expanded="false">
                     <expand macro="useUniquePeptide"/>
@@ -283,14 +295,15 @@ groupComparisonPlots(data=comparisons\$ComparisonResult, type="ComparisonPlot",
                 </section>
             </when>
             <when value="OpenSWATH">
-                <param name="evidence" type="data" format="tabular,csv" label="OpenSWATH_input"/>.
+                <param name="evidence" type="data" format="tabular,csv" label="OpenSWATH_input"/>
                 <param name="annotation" type="data" format="tabular,csv" label="OpenSWATH_annotation"/>
-                <section name="input_options" title="MaxQtoMSstatsFormat Options" expanded="false">
+                <section name="input_options" title="OpenSWATHtoMSstatsFormat Options" expanded="false">
                     <param name="filter_with_mscore" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="true" label="Remove the peptides including 'M' sequence"/>
                     <param name="mscore_cutoff" type="float" value="0.01" min="0" max="1.0" label="mscore_cutoff"/>
                     <expand macro="useUniquePeptide"/>
                     <expand macro="fewMeasurements"/>
                     <expand macro="summaryforMultipleRows"/>
+                    <param name="removeProtein_with1Feature" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="false" label="Remove the proteins which have only 1 peptide and charge"/>
                 </section>
             </when>
             <when value="vignette">
@@ -346,7 +359,7 @@ groupComparisonPlots(data=comparisons\$ComparisonResult, type="ComparisonPlot",
                     <option value="linear" selected="true">linear - linear mixed model</option>
                 </param>
                 <when value="TMP">
-                    <param name="MBimpute" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="true" label="Impute Missing Values 'NA' or '0' (depending on censoredInt option) by Accelated failure model" help="(MBimpute) TRUE - inserts 'NA' or '0' (depending on censoredInt option), . FALSE uses the values assigned by cutoffCensored"/> .
+                    <param name="MBimpute" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="true" label="Impute Missing Values 'NA' or '0' (depending on censoredInt option) by Accelated failure model" help="(MBimpute) TRUE - inserts 'NA' or '0' (depending on censoredInt option), . FALSE uses the values assigned by cutoffCensored"/>
                     <param name="remove50missing" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="false" label="Remove runs which have more than 50% missing values"/>
                 </when>
                 <when value="linear">
@@ -374,6 +387,7 @@ groupComparisonPlots(data=comparisons\$ComparisonResult, type="ComparisonPlot",
             <option value="qcplot" selected="true">MSstats QCPlot.pdf</option>
             <option value="profile_plot" selected="true">MSstats ProfilePlot.pdf</option>
             <option value="profile_wsum_plot" selected="true">MSstats ProfilePlot_wSummarization.pdf</option>
+            <option value="condition_plot" selected="true">MSstats ConditionPlot.pdf</option>
             <option value="quant_sample_matrix" selected="true">Sample Quantification Matrix Table</option>
             <option value="quant_sample_long" selected="false">Sample Quantification Long Table</option>
             <option value="quant_group_matrix" selected="true">Group Quantification Matrix Table</option>
@@ -387,7 +401,7 @@ groupComparisonPlots(data=comparisons\$ComparisonResult, type="ComparisonPlot",
             </param>
             <when value="no"/>
             <when value="yes">
-                <param name="comparison_matrix" type="data" format="tabular,csv" label="Comparison Matrix"/>.
+                <param name="comparison_matrix" type="data" format="tabular,csv" label="Comparison Matrix"/>
                 <param name="select_outputs" type="select" multiple="true" label="Select outputs">
                     <option value="comparison_result" selected="true">MSstats ComparisonResult.tsv</option>
                     <option value="model_qc" selected="true">MSstats ModelQC.tsv</option>
@@ -525,7 +539,7 @@ Tabular file (from groupcomparison): "fittedmodel"
         <test>
             <conditional name="input">
                 <param name="input_src" value="MaxQuant"/>
-                <param name="evidence" ftype="tabular" value="test_MQ_evidence.tabular"/>.
+                <param name="evidence" ftype="tabular" value="test_MQ_evidence.tabular"/>
                 <param name="annotation" ftype="tabular" value="test_MQ_annotation.txt"/>
                 <param name="proteinGroups" ftype="tabular" value="test_MQ_proteingroups.tabular"/>
             </conditional>
@@ -540,7 +554,7 @@ Tabular file (from groupcomparison): "fittedmodel"
         <test>
             <conditional name="input">
                 <param name="input_src" value="OpenMS"/>
-                <param name="evidence" ftype="tabular" value=""/>.
+                <param name="evidence" ftype="tabular" value=""/>
                 <param name="annotation" ftype="tabular" value=""/>
             </conditional>
             <output name="processed_data">
@@ -554,7 +568,7 @@ Tabular file (from groupcomparison): "fittedmodel"
         <test>
             <conditional name="input">
                 <param name="input_src" value="OpenSWATH"/>
-                <param name="evidence" ftype="tabular" value="test_swath_input_data.tabular"/>.
+                <param name="evidence" ftype="tabular" value="test_swath_input_data.tabular"/>
                 <param name="annotation" ftype="tabular" value="test_swath_annotations.tabular"/>
             </conditional>
             <output name="processed_data">
@@ -563,32 +577,132 @@ Tabular file (from groupcomparison): "fittedmodel"
                 </assert_contents>
             </output>
         </test>
-
     </tests>
     <help><![CDATA[
-**MSstats**
+MSstats is an open-source R package for statistical relative quantification of proteins and peptides in global, targeted and data-independent proteomics. `More information on MSstats <http://msstats.org/>`_
+
+The MSstats Galaxy tool (version @VERSION@) allows the detection of differentially abundant proteins for label-free MS experiments with complex designs on data derived from open-source proteomics software available in Galaxy (e.g. MaxQuant, OpenMS, OpenSWATH). Processing functionalities such as log transformation, normalization, feature selection, missing value imputation and quantification are available as well. 
+
+-----
+
+**Input data**
+
+- Data in tabular or csv format, generated by spectral processing tools such as `MaxQuant <http://coxdocs.org/doku.php?id=maxquant:start/>`_, `OpenSWATH <http://openswath.org/en/latest/>`_ will be automatically converted to 10-column MSstats format
+
+    - MaxQuant format: evidence.txt, proteinGroups.txt
+    - OpenSWATH format: pyprophet export file
+    - MSstats format: tabular file with 10 column either manually curated or other sources such as swath2stats tool which is implemented in Pyprophet export in Galaxy. For manual curation: Names of headers are fixed but not case sensitive: 
+    
+        - ProteinName: protein ID or peptide ID for peptide-level modeling and analysis; statistical analysis will be done separately for each unique label in this column
+        - PeptideSequence: Amino acid sequence for each peptides. If the peptide sequences should be distinguished based on post-translational modifications, this column can be renamed to PeptideModifiedSequence.
+        - PrecursorCharge: charge state of precursor. 
+        - FragmentIon: e.g. b4, y3, if unknown use a single value for all entries. 
+        - ProductCharge: charge state of product. If unknown use 0 for all entries.
+        - IsotopeLabelType: This column indicates whether this measurement is based on the endogenous peptides (use “L”) or labeled reference peptides (use “H”).
+        - Condition: For group comparison experiments, this column indicates groups of interest (such as “Disease” or “Control”). For time-course experiments, this column indicates time points (such as “T1”, “T2”, etc). If the experimental design contains both distinct groups of subjects and multiple time points per subject, this column should indicate a combination of these values (such as “Disease_T1”, “Disease_T2”, “Control_T1”, “Control_T2”, etc.).
+        - BioReplicate:  This column should contain a unique identifier for each biological replicate in the experiment. For example, in a clinical proteomic investigation this should be a unique patient id. Patients from distinct groups should have distinct ids. MSstats does not require the presence of technical replicates in the experiment. If the technical replicates are present, all samples or runs from a same biological replicate should have a same id. MSstats automatically detects the presence of technical replicates and accounts for them in the model-based analysis.
+        - Run: This column contains the identifier of a mass spectrometry run. Each mass spectrometry run should have a unique identifier, regardless of the origin of the biological sample. In SRM experiments, if all the transitions of a biological or a technical replicate are split into multiple “methods” due to the technical limitations, each method should have a separate identifier. When processed by Skyline, distinct values of runs correspond to distinct input file names. It is possible to use the actual input file names as values in the column Run.
+        - Intensity: This column should contain the quantified signal of a feature in a run without any transformation (in particular, no logarithm transform). The signals can be quantified as the peak height or the peak of area under curve. Any other quantitative representation of abundance can also be used.
+        - Example file header: 
+          ::
+            
+           proteinname    peptidesequence  precursorcharge  fragmention   productcharge
+             P02768          DLGEENFK            3               y7             0      
+             P02768          DLGEENFK            3               y8             0      
+             P02768         ETYGEMADCCAK         2               b3             0      
+             P02768         ETYGEMADCCAK         2               b4             0      
+              ...              ...              ...              ...           ...     
+
+                 isotopelabeltype    condition     bioreplicate    run    intensity
+                       L                 1             ReplA        1      4298.12
+                       H                 1             ReplA        1      1974.59
+                       L                 1             ReplA        1      7183.22
+                       H                 1             ReplA        1      8467.58
+                      ...               ...             ...        ...      ...
 
 
-**MaxQuant input**: 
+- Annotations as tabular file are needed for all input options except MSstats format
 
-::
+    - 4 columns: Filename, Condition, Bioreplicate, Run; additional 5th column only for MaxQuant: Isotopelabeltype
+    
+        - Filename: the file name has to be exactly as it appears in the other input files (e.g. S1207.raw.thermo; in/AA12_mzML.mzML)
+        - all other columns: see description above for MSstats format columns
 
-  * Contaminants (and reverse and only ID by site) from MaxQuant tool are automatically removed; ! if you use human samples such as blood or skin, it might be better to not use contaminants in Maxquant to prevent removal of albumin/keratins
-  * Dataprocess needs special parameters, e.g. censoredInt="NA", ## !! important for MaxQuant page 39 of manual
+- Comparison matrix as tabular file
+
+    - 1st column: name of comparison
+    - additionally one column for each condition that is present in the tabular file. Use 1 and -1 to indicate the conditions to compare and 0 for conditions that are not compared. Multiple groups can be combined by using 0.5. 
+    - first row contains the names of the groups, they must exactly match the condition name used in the annotation file
+    - each additional row represents one comparison
+    - Example for a two group comparison
+    
+       ::
+
+               names     groupA  groupB
+          groupA-groupB    1      -1 
 
 
-**OpenSwath**: 
+    - Example for an experiment with 5 groups and 4 different comparisons
+    
+       ::
+       
+          names    G1   G2   G3   G4   G5
+          G2-G1    -1    1    0    0    0
+          G4-G5     0    0    0    1   -1
+          G3-G5     0    0   -1    0    1
+        G1+G2-G5    0.5  0.5  0    0   -1
 
-::
+**Options**
 
-  * In dataProcess, users need to use censoredInt='0' for OpenSWATH output.
+- data conversion from MaxQuant and OpenSWATH to MSstats format: 
 
+    - MaxQuant input: + Contaminant, + Reverse, + Only.identified.by.site, proteins are automatically removed during conversion
+    
+- data processing options: 
 
-**Structure of Annotation File (input)** datamash on output file helps to get the different file names; cut this column and fill in annotation information. 
+    - MaxQuant input: Contaminants and reverse and only ID by site) from MaxQuant tool are automatically removed; 
+    - log transformation
+    - normalization of MS runs
+    - Feature selection
+    - Missing value imputation: 
+    
+        - MaxQuant input: All missing values are NA, usecensoredInt must be 'NA'
+        - OpenSWATH input: secensoredInt must be '0'
+        - Summary method: TMP + censoredInt = NULL: It assumes that all intensities are missing at random, therefore no action with MBimpute = FALSE or error with MBimpute = TRUE
+        - censoredInt='NA'or'0'& MBimpute=TRUE: AFT model-based imputation usingcutoffCensoredvalue in the AFT model
+        - censoredInt='NA'or'0'&MBimpute=FALSE: censored intensities (hereNA’s) will be replaced withthe value specified incutoffCensored.
+    - Summarizing intensities per MS run
+- group comparison: automatic detection of differentially abundant proteins between two conditions, conditions have to be specified with the 'comparison matrix'
+- quantification per sample or group
 
+    - sample: relative protein abundance in each biological replicate. If there are technical replicates for biological replicates,sample quantification will be the median among technical replicates. If there is no technical replicate for biological replicate (sample), sample quantification will be the same as run-level summarization.
+    - group: relative protein abundance in each condition, summarized over the biological replicates (median among sample quantification). In presence of completely missing values in a condition, the estimates will be zero
 
-**Structure of contrast matrix (input)**
-Imputation options for summarization TMP: page 19, which combination does what and which combinations are not valid
+**Output options**
+
+- Different outputs available. Especially for studies with many proteins, it is suggested to select only the necessary pdf outputs as many of them generate one plot per protein.
+
+    - MSstats log
+    - MSstats rscript
+    - processed_data - transformed, normalized, imputed intensities (tabular)
+    - runlevel_data - summarized intensities per run (tabular)
+    - qcplot - log2 intensity boxplot for all proteins and run on first page, followed by one boxplot per protein (pdf)
+    - profile_plot - log2 intensity profiles one plot per protein and run (pdf)
+    - profile_wsum_plot - log2 intensity profiles one plot per protein and run with run summarization (pdf)
+    - condition_plot - log2 intensity range for each protein and condition(pdf)
+    - quant_sample_matrix - relative protein abundance in each biological replicate (tabular)
+    - quant_sample_long - relative protein abundance in each biological replicate, long format (tabular)
+    - quant_group_matrix - relative protein abundance in each condition (tabular)
+    - quant_group_long - relative protein abundance in each condition, long format (tabular)
+    - comparison_result - summary of statistical results per protein and comparison (tabular)
+    - model_qc - summary statistics per run (tabular)
+    - qqplot - one QQplot per protein (pdf)
+    - residualplot - one residual plot per protein (pdf)
+    - volcanoplot - one volcano plot per comparison (pdf)
+    - heatmap - needs at least 2 comparisons, one heatmap for all proteins and comparisons (pdf)
+    - comparisonplot - log2 intensity range for each protein and comparison (pdf)    
+
+For additional help please visit the `MSstats documentation <http://msstats.org/msstats-2/>`_
 
 
     ]]></help>
@@ -596,3 +710,4 @@ Imputation options for summarization TMP: page 19, which combination does what a
         <citation type="doi">10.1093/bioinformatics/btu305</citation>
     </citations>
 </tool>
+
