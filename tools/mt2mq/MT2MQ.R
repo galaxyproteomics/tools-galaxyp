@@ -2,7 +2,7 @@
 
 # Load libraries
 suppressPackageStartupMessages(library(tidyverse))
-suppressPackageStartupMessages(library(taxize))
+# suppressPackageStartupMessages(library(taxize))
 
 # Set parameters from arguments
 args <- commandArgs(trailingOnly = TRUE)
@@ -19,24 +19,36 @@ ontology <- unlist(strsplit(args[3], split = ","))
   # ontology: only for function or f-t mode. A string of the GO namespace(s) to include, separated by commas.
   #   ex: to include all: "molecular_function,biological_process,cellular_component"
 
-outfile <- args[4]
-  # outfile: full path with pathname and extension for output
+int_file <- args[4]
+  # int_file: full path and file name and extension to write intensity file
+
+func_file <- args[5]
+  # func_file: full path and file name and extension to write func file
+
+tax_file <- args[6]
+  # tax_file: full path and file name and extension to write tax file
+
 
 # Functional mode
 if (mode == "f") {
-  out <- read.delim(file = data, header = TRUE, sep = "\t") %>%
+  int <- read.delim(file = data, header = TRUE, sep = "\t") %>%
     filter(!grepl(".+g__.+", X..Gene.Family)) %>%
     separate(col = X..Gene.Family, into = c("id", "Extra"), sep = ": ", fill = "left") %>%
     separate(col = Extra, into = c("namespace", "name"), sep = " ", fill = "left", extra = "merge") %>%
     mutate(namespace = if_else(namespace == "[MF]", true = "molecular_function", false = if_else(namespace == "[BP]", true = "biological_process", false = "cellular_component"))) %>%
     filter(namespace %in% ontology) %>%
     select(id, name, namespace, 4:ncol(.))
+  func <- int %>%
+    select(id) %>%
+    mutate(gos = id)
+  write.table(x = int, file = int_file, quote = FALSE, sep = "\t", row.names = FALSE)
+  write.table(x = func, file = func_file, quote = FALSE, sep = "\t", row.names = FALSE)
 }
 
 # Taxonomic mode
 if (mode == "t") {
   files <- dir(path = data)
-  out <- tibble(filename = files) %>%
+  int <- tibble(filename = files) %>%
     mutate(file_contents = map(filename, ~read.delim(file = file.path(data, .), header = TRUE, sep = "\t"))) %>%
     unnest(cols = c(file_contents)) %>%
     rename(sample = filename) %>%
@@ -47,11 +59,16 @@ if (mode == "t") {
     mutate(name = as.character(name)) %>%
     mutate(id = get_uid(name, key = NULL, messages = FALSE)) %>%
     select(id, name, rank, 2:ncol(.))
+  tax <- int %>%
+    select(id) %>%
+    mutate(tax = id)
+  write.table(x = int, file = int_file, quote = FALSE, sep = "\t", row.names = FALSE)
+  write.table(x = tax, file = tax_file, quote = FALSE, sep = "\t", row.names = FALSE)
 }
 
 # Function-taxonomy mode
 if (mode == "ft") {
-  out <- read.delim(file = data, header = TRUE, sep = "\t") %>%
+  ft <- read.delim(file = data, header = TRUE, sep = "\t") %>%
     filter(grepl(".+g__.+", X..Gene.Family)) %>%
     separate(col = X..Gene.Family, into = c("id", "Extra"), sep = ": ", fill = "left") %>%
     separate(col = Extra, into = c("namespace", "name"), sep = " ", fill = "left", extra = "merge") %>%
@@ -63,7 +80,5 @@ if (mode == "ft") {
     mutate(namespace = if_else(namespace == "[MF]", true = "molecular_function", false = if_else(namespace == "[BP]", true = "biological_process", false = "cellular_component"))) %>%
     filter(namespace %in% ontology) %>%
     select(id, name, namespace, 4:ncol(.))
+  write.table(x = ft, file = int_file, quote = FALSE, sep = "\t", row.names = FALSE)
 }
-
-# Write file
-write.table(x = out, file = outfile, quote = FALSE, sep = "\t", row.names = FALSE)
