@@ -554,10 +554,10 @@ def Build_nextprot_ref_file(data_manager_dict,target_directory):
     name = "neXtProt release "+time.strftime("%d-%m-%Y")
     release_id = "nextprot_ref_"+time.strftime("%d-%m-%Y")
     
-    output = open(path, 'w')
+    output = open('test.csv', 'w')
     writer = csv.writer(output,delimiter="\t")
         
-    nextprot_file=[["NextprotID","MW","SeqLength","IsoPoint","Chr","SubcellLocations","Diseases","TMDomains","ProteinExistence"]]
+    nextprot_file=[["NextprotID","MW","SeqLength","IsoPoint","Chr","SubcellLocations","Diseases","TMDomains","ProteinExistence","ProteinName","Function","PostTranslationalModifications","ProteinFamily","Pathway"]]
     writer.writerows(nextprot_file)
     
     for id in ids :
@@ -565,8 +565,8 @@ def Build_nextprot_ref_file(data_manager_dict,target_directory):
         try:
             resp = requests.get(url=query)
         except :
-            print ("wainting 1 hour before trying again")
-            time.sleep(3600)
+            print ("waiting 10 minutes before trying again")
+            time.sleep(600)
             resp = requests.get(url=query)
         data = resp.json()
 
@@ -576,6 +576,38 @@ def Build_nextprot_ref_file(data_manager_dict,target_directory):
         iso_elec_point = data['entry']["isoforms"][0]["isoelectricPointAsString"]
         chr_loc = data['entry']["chromosomalLocations"][0]["chromosome"]        
         protein_existence = "PE"+str(data['entry']["overview"]['proteinExistence']['level'])
+        protein_name = data['entry']["overview"]['proteinNames'][0]['name']
+
+        #get families description
+        if 'families' in data['entry']["overview"] and len(data['entry']["overview"]['families']) > 0:
+            families = data['entry']["overview"]['families']
+            families = [entry['description'] for entry in families]
+            protein_family = ";".join(families)
+        else: 
+            protein_family = 'NA'
+
+        #get Protein function
+        if 'function-info' in data['entry']['annotationsByCategory'].keys():
+            function_info = data['entry']['annotationsByCategory']['function-info']
+            function_info = [entry['description'] for entry in function_info if entry['qualityQualifier'] == 'GOLD']
+            function = ';'.join(function_info)
+        else : 
+            function = 'NA'
+
+        #Get ptm-info
+        post_trans_mod = 'NA'
+        if 'ptm-info' in data['entry']['annotationsByCategory'].keys():
+            ptm_info = data['entry']['annotationsByCategory']['ptm-info']
+            infos = [entry['description'] for entry in ptm_info if entry['qualityQualifier'] == 'GOLD']
+            post_trans_mod = ";".join(infos)
+        
+        #Get pathway(s)
+        if 'pathway' in data['entry']['annotationsByCategory'].keys():
+            pathways = data['entry']['annotationsByCategory']['pathway']
+            pathways = [entry['description'] for entry in pathways if entry['qualityQualifier'] == 'GOLD']
+            pathway = ";".join(pathways)
+        else : 
+            pathway = 'NA'
 
         #put all subcell loc in a set
         if "subcellular-location" in data['entry']["annotationsByCategory"].keys() :
@@ -610,11 +642,12 @@ def Build_nextprot_ref_file(data_manager_dict,target_directory):
                 nb_domains+=1
                 #print "nb domains ++"
                 #print (nb_domains)
+
         nextprot_file[:] = [] 
-        nextprot_file.append([id,mass_mol,str(seq_length),iso_elec_point,chr_loc,all_subcell_locs,all_diseases,str(nb_domains),protein_existence])
+        nextprot_file.append([id,mass_mol,str(seq_length),iso_elec_point,chr_loc,all_subcell_locs,all_diseases,str(nb_domains),protein_existence,protein_name,function,post_trans_mod,protein_family,pathway])
         writer.writerows(nextprot_file)
 
-        id = str(10000000000 - int(time.strftime("%Y%m%d")))
+    id = str(10000000000 - int(time.strftime("%Y%m%d")))
 
     data_table_entry = dict(id=id, release=release_id, name = name, value = path)
     _add_data_table_entry(data_manager_dict, data_table_entry, "proteore_nextprot_ref")
