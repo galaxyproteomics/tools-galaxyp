@@ -122,7 +122,7 @@ one_id_one_line <-function(tab,ncol){
 get_nextprot_info <- function(nextprot,input,pc_features,localization,diseases_info){
   cols = c("NextprotID",pc_features)
   cols=cols[cols!="None"]
-  info = nextprot[match(input,nextprot$NextprotID),cols]
+  info = nextprot[match(input,nextprot$NextprotID),intersect(colnames(nextprot),cols)]
   return(info)
 }
 
