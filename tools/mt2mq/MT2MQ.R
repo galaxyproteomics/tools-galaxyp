@@ -2,7 +2,7 @@
 
 # Load libraries
 suppressPackageStartupMessages(library(tidyverse))
-# suppressPackageStartupMessages(library(taxize))
+suppressPackageStartupMessages(library(taxize))
 
 # Set parameters from arguments
 args <- commandArgs(trailingOnly = TRUE)
