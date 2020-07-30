@@ -565,8 +565,8 @@ def Build_nextprot_ref_file(data_manager_dict,target_directory):
         try:
             resp = requests.get(url=query)
         except :
-            print ("waiting 10 minutes before trying again")
-            time.sleep(600)
+            print ("waiting 15 minutes before trying again")
+            time.sleep(900)
             resp = requests.get(url=query)
         data = resp.json()
 
