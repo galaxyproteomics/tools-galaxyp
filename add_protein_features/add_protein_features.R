@@ -48,9 +48,7 @@ get_args <- function(){
         --column: the column number which you would like to apply...
         --header: true/false if your file contains a header
         --type: the type of input IDs (Uniprot_AC/EntrezID)
-        --pc_features: IsoPoint,SeqLength,MW
-        --localization: Chr,SubcellLocations
-        --diseases_info: Diseases
+        --pc_features: IsoPoint,SeqLength,MW,Chr,SubcellLocations,Diseases,protein_name,function,post_trans_mod,protein_family,pathway
         --output: text output filename \n")
     
     q(save="no")
@@ -122,12 +120,7 @@ one_id_one_line <-function(tab,ncol){
 
 # Get information from neXtProt
 get_nextprot_info <- function(nextprot,input,pc_features,localization,diseases_info){
-  if(diseases_info){
-    cols = c("NextprotID",pc_features,localization,"Diseases")
-  } else {
-    cols = c("NextprotID",pc_features,localization)
-  }
-  
+  cols = c("NextprotID",pc_features)
   cols=cols[cols!="None"]
   info = nextprot[match(input,nextprot$NextprotID),cols]
   return(info)
@@ -172,8 +165,6 @@ protein_features = function() {
   # Parse arguments
   id_type = args$type
   pc_features = strsplit(args$pc_features, ",")[[1]]
-  localization = strsplit(args$localization, ",")[[1]]
-  diseases_info = str2bool(args$diseases_info)
   output = args$output
 
   # Change the sample ids if they are Uniprot_AC ids to be able to match them with
@@ -191,7 +182,7 @@ protein_features = function() {
   if (all(!NextprotID %in% nextprot[,1])){
     write.table("None of the input ids can be found in Nextprot",file=output,sep="\t",quote=FALSE,col.names=TRUE,row.names=FALSE)
   } else {
-    res <- get_nextprot_info(nextprot,NextprotID,pc_features,localization,diseases_info)
+    res <- get_nextprot_info(nextprot,NextprotID,pc_features)
     res = res[!duplicated(res$NextprotID),]
     output_content = merge(file, res,by.x=ncol,by.y="NextprotID",incomparables = NA,all.x=T)
     output_content = order_columns(output_content,ncol,id_type,file)
