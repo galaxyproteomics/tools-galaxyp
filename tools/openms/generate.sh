@@ -11,7 +11,6 @@ PROFILE="20.05"
 ## FILETYPES_RE=$(grep -v "^#" $FILETYPES | grep -v "^$" | cut -f 1 -d" " | tr '\n' '|' | sed 's/|$//'| sed 's/|/\\|/g')
 
 export tmp=$(mktemp -d)
-export tmp="/tmp/openms-stuff/"
 
 export CTDCONVERTER="$tmp/CTDConverter"
 
@@ -65,6 +64,7 @@ python $CTDCONVERTER/convert.py galaxy -i ctd/*ctd -o ./ -s tools_blacklist.txt 
 conda deactivate
 
 patch PepNovoAdapter.xml < PepNovoAdapter.patch
+patch OMSSAAdapter.xml < OMSSAAdapter.patch
 
 # #-b version log debug test in_type executable pepnovo_executable param_model_directory rt_concat_trafo_out param_id_pool
 
