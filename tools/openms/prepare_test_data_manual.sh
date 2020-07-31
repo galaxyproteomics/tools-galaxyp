@@ -60,7 +60,16 @@ if [[ "$?" -ne "0" ]]; then >&2 echo 'MetaboliteSpectralMatcher failed'; >&2 ech
 OpenSwathRewriteToFeatureXML -featureXML OpenSwathFeatureXMLToTSV_input.featureXML -out OpenSwathRewriteToFeatureXML.featureXML > OpenSwathRewriteToFeatureXML.stdout 2> stderr
 # if [[ "$?" -ne "0" ]]; then >&2 echo 'OpenSwathRewriteToFeatureXML failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
-# TODO PepNovoAdapter -test -in spectra.mzML -out PepNovoAdapter.tmp 
+# adapted from the commented tests in OpenMS TODO may be removed later https://github.com/OpenMS/OpenMS/issues/4719
+FileConverter -in PepNovo.mzXML -out PepNovo_1.mzML
+PepNovoAdapter -ini PepNovoAdapter_1_parameters.ini -in PepNovo_1.mzML -out PepNovoAdapter_3_output.idXML -model_directory pepnovo_models/ -pepnovo_executable pepnovo > PepNovo_1.stdout 2> stderr
+if [[ "$?" -ne "0" ]]; then >&2 echo 'PhosphoScoring failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
+
+FileConverter -in PepNovo.mzData -out PepNovo_4.mzML
+PepNovoAdapter -ini PepNovoAdapter_1_parameters.ini -in PepNovo_4.mzML -out PepNovoAdapter_4_output.idXML -model_directory pepnovo_models/ -pepnovo_executable pepnovo > PepNovo_1.stdout 2> stderr
+if [[ "$?" -ne "0" ]]; then >&2 echo 'PhosphoScoring failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
+
+#PepNovoAdapter -ini PepNovoAdapter_5_parameters.ini -in PepNovoAdapter_5_output.pepnovo_out -out PepNovoAdapter_5_output.idXML -model_directory pepnovo_models/ 
 
 # TODO PhosphoScoring 
 PhosphoScoring -in spectra.mzML -id MSGFPlusAdapter_1_out1.tmp -out PhosphoScoring.idxml > PhosphoScoring.stdout 2> stderr
