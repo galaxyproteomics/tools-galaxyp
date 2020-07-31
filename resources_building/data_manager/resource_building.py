@@ -557,7 +557,7 @@ def Build_nextprot_ref_file(data_manager_dict,target_directory):
     output = open('test.csv', 'w')
     writer = csv.writer(output,delimiter="\t")
         
-    nextprot_file=[["NextprotID","MW","SeqLength","IsoPoint","Chr","SubcellLocations","Diseases","TMDomains","ProteinExistence","ProteinName","Function","PostTranslationalModifications","ProteinFamily","Pathway"]]
+    nextprot_file=[["NextprotID","ProteinName","SeqLength","MW","IsoPoint","TMDomains","SubcellLocations","Diseases","Function","PostTranslationalModifications","ProteinFamily","Pathway","ProteinExistence","Chr"]]
     writer.writerows(nextprot_file)
     
     for id in ids :
@@ -644,7 +644,7 @@ def Build_nextprot_ref_file(data_manager_dict,target_directory):
                 #print (nb_domains)
 
         nextprot_file[:] = [] 
-        nextprot_file.append([id,mass_mol,str(seq_length),iso_elec_point,chr_loc,all_subcell_locs,all_diseases,str(nb_domains),protein_existence,protein_name,function,post_trans_mod,protein_family,pathway])
+        nextprot_file.append([id,protein_name,str(seq_length),mass_mol,iso_elec_point,str(nb_domains),all_subcell_locs,all_diseases,function,post_trans_mod,protein_family,pathway,protein_existence,chr_loc])
         writer.writerows(nextprot_file)
 
     id = str(10000000000 - int(time.strftime("%Y%m%d")))
