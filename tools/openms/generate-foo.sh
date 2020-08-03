@@ -20,7 +20,7 @@ function get_tests2 {
 	CMAKE=$(cat $OPENMSGIT/src/tests/topp/CMakeLists.txt $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake  |
 		sed 's@${DATA_DIR_SHARE}/@@g' |
 		grep -v 'OpenSwathMzMLFileCacher .*-convert_back' |
-	    sed 's/${TMP_RIP_PATH}/""/' |
+	    	sed 's/${TMP_RIP_PATH}/""/' |
 		sed 's@TOFCalibration_ref_masses @TOFCalibration_ref_masses.txt @g; s@TOFCalibration_const @TOFCalibration_const.csv @' |
 		grep -v "MaRaClusterAdapter.*-consensus_out"|
  		grep -v "FileMerger_1_input1.dta2d.*FileMerger_1_input2.dta " |
@@ -42,7 +42,7 @@ function get_tests2 {
 		grep -iE "add_test\(\"(TOPP|UTILS)_.*/$id " | egrep -v "_prepare\"|_convert|WRITEINI|WRITECTD|INVALIDVALUE"  | while read -r line
 	do
 		line=$(echo "$line" | sed 's/add_test("\([^"]\+\)"/\1/; s/)$//; s/\${TOPP_BIN_PATH}\///g;s/\${DATA_DIR_TOPP}\///g; s#THIRDPARTY/##g')
-		>&2 echo $line
+		# >&2 echo $line
 		test_id=$(echo "$line" | cut -d" " -f 1)
 		tool_id=$(echo "$line" | cut -d" " -f 2)
 		if [[ $test_id =~ _out_?[0-9]? ]]; then
@@ -60,9 +60,9 @@ function get_tests2 {
 			continue
 		fi
 		tes="  <test>\n"
-
-		line=$(fix_tmp_files "$line")
+		# line=$(fix_tmp_files "$line")
 		line=$(unique_files "$line")
+		>&2 echo $line
 		#if there is an ini file then we use this to generate the test
 		#otherwise the ctd file is used
 		#other command line parameters are inserted later into this xml
@@ -77,7 +77,7 @@ function get_tests2 {
 		ctdtmp=$(mktemp)
 		#echo python3 fill_ctd_clargs.py --ctd $ini $cli
 		# using eval: otherwise for some reason quoted values are not used properly ('A B' -> ["'A", "B'"])
-		>&2 echo "python3 fill_ctd_clargs.py --ctd $ini $cli"
+		# >&2 echo "python3 fill_ctd_clargs.py --ctd $ini $cli"
 		eval "python3 fill_ctd_clargs.py --ctd $ini $cli" > "$ctdtmp"
 		# echo $ctdtmp
  		# >&2 cat $ctdtmp
@@ -578,30 +578,31 @@ function fix_tmp_files {
 }
 
 function link_tmp_files {
-     # note this also considers commented lines (starting with a #)
-	 # because of tests where the diff command is commented and we
-	 # still want to use the extension of these files
-	 cat $OPENMSGIT/src/tests/topp/CMakeLists.txt $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake | sed 's/^\s*//; s/\s*$//' | grep -v "^$"  | awk '{printf("%s@NEWLINE@", $0)}' | sed 's/)@NEWLINE@/)\n/g' | sed 's/@NEWLINE@/ /g' | grep "\${DIFF}" | while read -r line
-	do
-		in1=$(sed 's/.*-in1 \([^ ]\+\).*/\1/' <<<$line)
- 		in1=$(basename $in1 | sed 's/)$//')
-		in2=$(sed 's/.*-in2 \([^ ]\+\).*/\1/' <<<$line)
- 		in2=$(basename $in2 | sed 's/)$//')
-		if [[ "$in1" == "$in2" ]]; then
-			>&2 echo "not linking equal $in1 $in2"
-			continue
-		fi
-		ln -f -s $in1 test-data/$in2
+    # note this also considers commented lines (starting with a #)
+    # because of tests where the diff command is commented and we
+    # still want to use the extension of these files
+    cat $OPENMSGIT/src/tests/topp/CMakeLists.txt $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake | sed 's/^\s*//; s/\s*$//' | grep -v "^$"  | awk '{printf("%s@NEWLINE@", $0)}' | sed 's/)@NEWLINE@/)\n/g' | sed 's/@NEWLINE@/ /g' | grep "\${DIFF}" | while read -r line
+    do
+        echo LINK $line
+        in1=$(sed 's/.*-in1 \([^ ]\+\).*/\1/' <<<$line)
+        in1=$(basename $in1 | sed 's/)$//')
+        in2=$(sed 's/.*-in2 \([^ ]\+\).*/\1/' <<<$line)
+        in2=$(basename $in2 | sed 's/)$//')
+        if [[ "$in1" == "$in2" ]]; then
+            >&2 echo "not linking equal $in1 $in2"
+            continue
+        fi
+        ln -f -s $in1 test-data/$in2
     done
     for i in test-data/*.tmp
-	do
-		if [ ! -e test-data/$(basename $i .tmp) ]; then
-				ln -s $(basename $i) test-data/$(basename $i .tmp)
-				#ln -s $(basename $i) test-data/$(basename $i .tmp)
-		else
-				ln -fs $(basename $i) test-data/$(basename $i .tmp)
-		fi
-	done
+    do
+        if [ ! -e test-data/$(basename $i .tmp) ]; then
+            ln -s $(basename $i) test-data/$(basename $i .tmp)
+            #ln -s $(basename $i) test-data/$(basename $i .tmp)
+        else
+            ln -fs $(basename $i) test-data/$(basename $i .tmp)
+        fi
+    done
 }
 
 
@@ -628,8 +629,8 @@ function prepare_test_data {
 		fi
 
 		line=$(echo "$line" | sed 's/add_test("//; s/)[^)]*$//; s/\${TOPP_BIN_PATH}\///g;s/\${DATA_DIR_TOPP}\///g; s#THIRDPARTY/##g' | cut -d" " -f2-)
+		# line="$(fix_tmp_files $line)"
 		echo "$line > $test_id.stdout 2> $test_id.stderr"
 		echo "if [[ \"\$?\" -ne \"0\" ]]; then >&2 echo '$test_id failed'; >&2 echo -e \"stderr:\n\$(cat $test_id.stderr | sed 's/^/    /')\"; echo -e \"stdout:\n\$(cat $test_id.stdout)\";fi"	
-		# echo "$(fix_tmp_files $line)"
     done
 }

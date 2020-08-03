@@ -88,7 +88,7 @@ else
 	git pull origin topic/cdata
 	cd -
 fi
-# export PYTHONPATH=$(pwd)/CTDopts
+export PYTHONPATH=$(pwd)/CTDopts
 
 ###############################################################################
 ## copy all the test data files to test-data
@@ -194,7 +194,7 @@ prepare_test_data >> prepare_test_data.sh #tmp_test_data.sh
 echo "Execute test shell script"
 chmod u+x prepare_test_data.sh
 cd ./test-data || exit
-# ../prepare_test_data.sh
+../prepare_test_data.sh
 cd - || exit
 
 
@@ -207,11 +207,11 @@ echo "Execute test shell script for manually curated tests"
 chmod u+x prepare_test_data_manual.sh
 
 cd ./test-data || exit
-# ../prepare_test_data_manual.sh
+../prepare_test_data_manual.sh
 cd - || exit
 
-# link_tmp_files
-# # exit
+
+# # # exit
 
 ###############################################################################
 ## auto generate tests
@@ -225,6 +225,9 @@ do
 	get_tests2 "$b" >> $autotests 
 done
 echo "</macros>" >> $autotests
+
+echo "Create test data links"
+link_tmp_files
 
 # tests for tools using output_prefix parameters can not be auto generated
 # hence we output the tests for manual curation in macros_test.xml
