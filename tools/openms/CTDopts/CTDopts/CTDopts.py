@@ -1,6 +1,7 @@
 import argparse
-from collections import OrderedDict, Mapping
 from itertools import chain
+import collections
+import collections.abc
 from xml.etree.ElementTree import Element, SubElement, tostring, parse
 from xml.dom.minidom import parseString
 import warnings
@@ -59,7 +60,7 @@ class _InPrefix(str):
 # module globals for some common operations (python types to CTD-types back and forth)
 TYPE_TO_CTDTYPE = {int: 'int', float: 'double', str: 'string', bool: 'bool',
                    _InFile: 'input-file', _OutFile: 'output-file',
-                   _OutPrefix: 'output-prefix'}
+                   _OutPrefix: 'output-prefix', _InPrefix: 'input-prefix'}
 CTDTYPE_TO_TYPE = {'int': int, 'float': float, 'double': float, 'string': str,
                    'boolean': bool, 'bool': bool,
                    'input-file': _InFile, 'output-file': _OutFile,
@@ -130,7 +131,7 @@ def flatten_dict(arg_dict, as_string=False):
         # recursive closure that accesses and modifies result dict and registers nested elements
         # as it encounters them
         for key, value in subgroup.items():
-            if isinstance(value, Mapping):  # collections.Mapping instead of dict for generality
+            if isinstance(value, collections.abc.Mapping):  # collections.Mapping instead of dict for generality
                 flattener(value, level + [key])
             else:
                 result[tuple(level + [key])] = value
@@ -565,7 +566,7 @@ class Parameter(object):
         # XML attributes to be created (depending on whether they are needed or not):
         # name, value, type, description, tags, restrictions, supported_formats
 
-        attribs = OrderedDict()  # LXML keeps the order, ElemenTree doesn't. We use ElementTree though.
+        attribs = collections.OrderedDict()  # LXML keeps the order, ElemenTree doesn't. We use ElementTree though.
         attribs['name'] = self.name
         if not self.is_list:  # we'll deal with list parameters later, now only normal:
             # TODO: once Param_1_6_3.xsd gets fixed, we won't have to set an empty value='' attrib.
@@ -612,7 +613,7 @@ class Parameter(object):
 
 class ParameterGroup(object):
     def __init__(self, name=None, parent=None, node=None, description=None):
-        self.parameters = OrderedDict()
+        self.parameters = collections.OrderedDict()
         self.name = name
         self.parent = parent
         self.description = description
@@ -1106,7 +1107,7 @@ class CTDModel(object):
             'error': standard error or whatever error log the user wants to store
         `cli`: boolean whether or not cli elements should be generated (needed for GenericKNIMENode for example)
         """
-        tool_attribs = OrderedDict()
+        tool_attribs = collections.OrderedDict()
         tool_attribs['version'] = self.version
         tool_attribs['name'] = self.name
         tool_attribs['xmlns:xsi'] = "http://www.w3.org/2001/XMLSchema-instance"
