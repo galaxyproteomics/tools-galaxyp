@@ -60,9 +60,9 @@ function get_tests2 {
 			continue
 		fi
 		tes="  <test>\n"
-		# line=$(fix_tmp_files "$line")
+		line=$(fix_tmp_files "$line")
 		line=$(unique_files "$line")
-		>&2 echo $line
+		# >&2 echo $line
 		#if there is an ini file then we use this to generate the test
 		#otherwise the ctd file is used
 		#other command line parameters are inserted later into this xml
@@ -558,14 +558,14 @@ function fix_tmp_files {
 		g=$(cat $OPENMSGIT/src/tests/topp/CMakeLists.txt $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake | awk '{printf("%s@NEWLINE@", $0)}' | sed 's/)@NEWLINE@/)\n/g' | sed 's/@NEWLINE@/ /g' | grep '\${DIFF}.*'"$a")
 #		>&2 echo "    g "$g
 		in1=$(sed 's/.*-in1 \([^ ]\+\).*/\1/' <<<$g)
-#		>&2 echo "    in1 "$in1
+		# >&2 echo "    in1 "$in1
 		if [[  "$a" != "$in1" ]]; then
 			ret="$ret $a"
 			continue
 		fi
 		in2=$(sed 's/.*-in2 \([^ ]\+\).*/\1/' <<<$g)
 		in2=$(basename $in2 | sed 's/)$//')
-#		>&2 echo "    in2 "$in2
+		# >&2 echo "    in2 "$in2
 		if [[ -f "test-data/$in2" ]]; then
 			ln -fs "$in1" "test-data/$in2"
 			ret="$ret $in2"
@@ -583,7 +583,6 @@ function link_tmp_files {
     # still want to use the extension of these files
     cat $OPENMSGIT/src/tests/topp/CMakeLists.txt $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake | sed 's/^\s*//; s/\s*$//' | grep -v "^$"  | awk '{printf("%s@NEWLINE@", $0)}' | sed 's/)@NEWLINE@/)\n/g' | sed 's/@NEWLINE@/ /g' | grep "\${DIFF}" | while read -r line
     do
-        echo LINK $line
         in1=$(sed 's/.*-in1 \([^ ]\+\).*/\1/' <<<$line)
         in1=$(basename $in1 | sed 's/)$//')
         in2=$(sed 's/.*-in2 \([^ ]\+\).*/\1/' <<<$line)
