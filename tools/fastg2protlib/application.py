@@ -1,6 +1,7 @@
 import argparse
 import os
 import sys
+
 import fastg2protlib.fastg2protlib as fg
 
 expasy_rules = [
