@@ -10,19 +10,31 @@ More informations are available at:
  * https://github.com/OpenMS/OpenMS
  * https://www.openms.de/
 
-The wrappers for these tools and most of their tests are automatically generated
-using the `generate.sh` script. Note that, due to its size, the test data is
-excluded from this repository. Manual updates should only be done to
+The wrappers for these tools and most of their tests are automatically
+generated using the `generate.sh` script. The generation of the tools is
+based on the CTDConverter (https://github.com/WorkflowConversion/CTDConverter)
+which can be fine tuned via the `hardcoded_params.json` file. This file allows
+to blacklist and hardcode parameters and to modify or set arbitrary
+CTD/XML attributes.
+
+Note that, due to its size, the test data is excluded from this repository. In
+order to generate the test data on call `test-data.sh`.
+
+Manual updates should only be done to
 
 - the `@GALAXY_VERSION@"` token in `macros.xml`
 - and the manually contributed tests in `macros_test.xml` (The goal is that all
   tools that do not have an automatically generated test are covered here)
+- the `hardcoded_params.json` files
+
+In a few cases patches may be acceptable.
 
 Installation
 ============
 
-The Galaxy OpenMS tools can be installed from the toolshed. While most tools will work out of the box
-some need attention since requirements can not be fulfilled via Conda:
+The Galaxy OpenMS tools can be installed from the toolshed. While most tools
+will work out of the box some need attention since requirements can not be
+fulfilled via Conda:
 
 Not yet in Conda are:
 
@@ -51,6 +63,39 @@ There are multiple ways to enable the Galaxy tools to use these binaries.
 - Just copy them to the `bin` path within Galaxy's conda environment
 - Put them in any other path that that is included in PATH
 - Edit the corresponding tools: In the command line part search for the parameters `-executable`, `-maracluster_executable`, or `-mascot_directory` and edit them appropriately.
+
+Working
+=======
+
+The tools work by:
+
+Preprocessing:
+
+- For each input / output data set parameter a directory is crated (named by
+  the parameter)
+- For input data set parameters the links to the actual location of the data
+  sets are created
+
+Main:
+
+- The galaxy wrapper create two json config files: one containing the
+  parameters and the values chosen by the user and the other the values of
+  hardcoded parameters.
+- With `OpenMSTool -write_ctd ./` a CTD (names OpenMSTool.ctd) file is
+  generated that contains the default values.
+- A call to `fill_ctd.py` fills in the values from the json config files into
+  the CTD file
+- The actual tool is called `OpenMSTool -ini OpenMSTool.ctd` and also all input
+  and output parameters are given on the command line.
+
+Postprocessing:
+
+- output data sets are moved to the final locations
+
+Note: The reason for handling data sets on the command line (and not specifying
+them in the CTD file) is mainly that all files in Galaxy have the extension
+`.dat` and OpenMS tools require an appropriate extension. But this may change
+in the future.
 
 Generating OpenMS wrappers
 ==========================
