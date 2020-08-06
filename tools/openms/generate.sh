@@ -14,6 +14,7 @@ export tmp=$(mktemp -d)
 
 export CTDCONVERTER="$tmp/CTDConverter"
 
+export PYTHONPATH="$(pwd)/CTDopts/"
 ###############################################################################
 ## reset old data
 ###############################################################################
@@ -60,7 +61,8 @@ fi
 ###############################################################################
 source $(dirname $(which conda))/../etc/profile.d/conda.sh
 conda activate $tmp/OpenMS$VERSION-env
-python $CTDCONVERTER/convert.py galaxy -i ctd/*ctd -o ./ -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --test-macros macros_autotest.xml --test-macros-prefix autotest_  --test-macros macros_test.xml --test-macros-prefix manutest_ --tool-version $VERSION --tool-profile $PROFILE
+python $CTDCONVERTER/convert.py galaxy -i ctd/*ctd -o ./ -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --test-macros macros_autotest.xml --test-macros-prefix autotest_  --test-macros macros_test.xml --test-macros-prefix manutest_ --tool-version $VERSION --tool-profile $PROFILE > convert.out 2> convert.err
+if [[ "$?" -ne "0" ]]; then >&2 echo 'CTD -> XML conversion failed'; >&2 echo -e "stderr:\n$(cat convert.err)"; fi
 conda deactivate
 
 patch PepNovoAdapter.xml < PepNovoAdapter.patch
@@ -70,7 +72,5 @@ patch OMSSAAdapter.xml < OMSSAAdapter.patch
 
 # for i in A-E F-H I-L M-N O-P Q-Z
 # do
-# 	
-# 	( . .venv/bin/activate && 
-# 		planemo t [$i]*xml --galaxy_source https://github.com/bernt-matthias/galaxy.git --galaxy_branch openms-testing --test_output $i.html --test_output_json $i.json && deactivate ) &
+# 	planemo t [$i]*xml --galaxy_branch release_20.05 --galaxy_python_version 3.7 --test_output $i.html --test_output_json $i.json &
 # done
