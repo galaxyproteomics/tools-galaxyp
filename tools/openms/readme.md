@@ -100,7 +100,10 @@ in the future.
 Generating OpenMS wrappers
 ==========================
 
-Overview:
+1. remove old test data: `rm -rf $(ls -d test-data/* | egrep -v "random|\.loc")`
+2. `./generate.sh`
+
+Whats happening:
 
 1. The binaries of the OpenMS package can generate a CTD file that describes
    the parameters. These CTD files are converted to xml Galaxy tool descriptions
