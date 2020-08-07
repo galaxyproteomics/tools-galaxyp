@@ -18,8 +18,10 @@
 ## Preprocessing
 mkdir in &&
 ln -s '$in' 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)' &&
-mkdir fasta &&
-ln -s '$fasta' 'fasta/${re.sub("[^\w\-_]", "_", $fasta.element_identifier)}.$gxy2omsext($fasta.ext)' &&
+#if $fasta:
+  mkdir fasta &&
+  ln -s '$fasta' 'fasta/${re.sub("[^\w\-_]", "_", $fasta.element_identifier)}.$gxy2omsext($fasta.ext)' &&
+#end if
 mkdir out &&
 
 ## Main program call
@@ -30,8 +32,10 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
 @EXECUTABLE@ -ini @EXECUTABLE@.ctd
 -in
 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
--fasta
-'fasta/${re.sub("[^\w\-_]", "_", $fasta.element_identifier)}.$gxy2omsext($fasta.ext)'
+#if $fasta:
+  -fasta
+  'fasta/${re.sub("[^\w\-_]", "_", $fasta.element_identifier)}.$gxy2omsext($fasta.ext)'
+#end if
 -out
 'out/output.${gxy2omsext("idxml")}'
 
@@ -46,7 +50,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
   </configfiles>
   <inputs>
     <param name="in" argument="-in" type="data" format="idxml" optional="false" label="Input idXML file containing the identifications" help=" select idxml data sets(s)"/>
-    <param name="fasta" argument="-fasta" type="data" format="fasta" optional="false" label="Input sequence database in FASTA format" help="Non-existing relative filenames are looked up via 'OpenMS.ini:id_db_dir' select fasta data sets(s)"/>
+    <param name="fasta" argument="-fasta" type="data" format="fasta" optional="true" label="Input sequence database in FASTA format" help="Leave empty for using the same DB as used for the input idXML (this might fail). Non-existing relative filenames are looked up via 'OpenMS.ini:id_db_dir' select fasta data sets(s)"/>
     <param name="decoy_string" argument="-decoy_string" type="text" optional="true" value="" label="String that was appended (or prefixed - see 'decoy_string_position' flag below) to the accessions in the protein database to indicate decoy proteins" help="If empty (default), it's determined automatically (checking for common terms, both as prefix and suffix)">
       <expand macro="list_string_san"/>
     </param>
@@ -64,26 +68,42 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
     <param name="write_protein_sequence" argument="-write_protein_sequence" type="boolean" truevalue="true" falsevalue="false" checked="false" label="If set, the protein sequences are stored as well" help=""/>
     <param name="write_protein_description" argument="-write_protein_description" type="boolean" truevalue="true" falsevalue="false" checked="false" label="If set, the protein description is stored as well" help=""/>
     <param name="keep_unreferenced_proteins" argument="-keep_unreferenced_proteins" type="boolean" truevalue="true" falsevalue="false" checked="false" label="If set, protein hits which are not referenced by any peptide are kept" help=""/>
-    <param name="allow_unmatched" argument="-allow_unmatched" type="boolean" truevalue="true" falsevalue="false" checked="false" label="If set, unmatched peptide sequences are allowed" help="By default (i.e. if this flag is not set) the program terminates with an error on unmatched peptides"/>
+    <param name="unmatched_action" argument="-unmatched_action" display="radio" type="select" optional="false" label="If peptide sequences cannot be matched to any protein: 1) raise an error; 2) warn (unmatched PepHits will miss target/decoy annotation with downstream problems); 3) remove the hit" help="">
+      <option value="error" selected="true">error</option>
+      <option value="warn">warn</option>
+      <option value="remove">remove</option>
+      <expand macro="list_string_san"/>
+    </param>
     <param name="aaa_max" argument="-aaa_max" type="integer" optional="true" min="0" max="10" value="3" label="Maximal number of ambiguous amino acids (AAAs) allowed when matching to a protein database with AAAs" help="AAAs are B, J, Z and X!"/>
     <param name="mismatches_max" argument="-mismatches_max" type="integer" optional="true" min="0" max="10" value="0" label="Maximal number of mismatched (mm) amino acids allowed when matching to a protein database" help="The required runtime is exponential in the number of mm's; apply with care. MM's are allowed in addition to AAA's"/>
     <param name="IL_equivalent" argument="-IL_equivalent" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Treat the isobaric amino acids isoleucine ('I') and leucine ('L') as equivalent (indistinguishable)" help="Also occurences of 'J' will be treated as 'I' thus avoiding ambiguous matching"/>
     <section name="enzyme" title="" help="" expanded="false">
-      <param name="name" argument="-enzyme:name" type="select" optional="false" label="Enzyme which determines valid cleavage sites -" help="e.g. trypsin cleaves after lysine (K) or arginine (R), but not before proline (P)">
-        <option value="Arg-C">Arg-C</option>
-        <option value="Arg-C/P">Arg-C/P</option>
-        <option value="glutamyl endopeptidase">glutamyl endopeptidase</option>
-        <option value="Alpha-lytic protease">Alpha-lytic protease</option>
+      <param name="name" argument="-enzyme:name" type="select" optional="false" label="Enzyme which determines valid cleavage sites -" help="e.g. trypsin cleaves after lysine (K) or arginine (R), but not before proline (P). Default: deduce from input">
+        <option value="auto" selected="true">auto</option>
         <option value="Asp-N">Asp-N</option>
         <option value="Asp-N/B">Asp-N/B</option>
         <option value="Asp-N_ambic">Asp-N_ambic</option>
-        <option value="Glu-C+P">Glu-C+P</option>
         <option value="PepsinA + P">PepsinA + P</option>
         <option value="cyanogen-bromide">cyanogen-bromide</option>
         <option value="Clostripain/P">Clostripain/P</option>
         <option value="elastase-trypsin-chymotrypsin">elastase-trypsin-chymotrypsin</option>
         <option value="no cleavage">no cleavage</option>
         <option value="unspecific cleavage">unspecific cleavage</option>
+        <option value="TrypChymo">TrypChymo</option>
+        <option value="Trypsin/P">Trypsin/P</option>
+        <option value="V8-DE">V8-DE</option>
+        <option value="V8-E">V8-E</option>
+        <option value="leukocyte elastase">leukocyte elastase</option>
+        <option value="proline endopeptidase">proline endopeptidase</option>
+        <option value="glutamyl endopeptidase">glutamyl endopeptidase</option>
+        <option value="Alpha-lytic protease">Alpha-lytic protease</option>
+        <option value="2-iodobenzoate">2-iodobenzoate</option>
+        <option value="iodosobenzoate">iodosobenzoate</option>
+        <option value="staphylococcal protease/D">staphylococcal protease/D</option>
+        <option value="proline-endopeptidase/HKR">proline-endopeptidase/HKR</option>
+        <option value="Glu-C+P">Glu-C+P</option>
+        <option value="Arg-C">Arg-C</option>
+        <option value="Arg-C/P">Arg-C/P</option>
         <option value="Chymotrypsin">Chymotrypsin</option>
         <option value="Chymotrypsin/P">Chymotrypsin/P</option>
         <option value="CNBr">CNBr</option>
@@ -92,28 +112,19 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <option value="Lys-N">Lys-N</option>
         <option value="Lys-C/P">Lys-C/P</option>
         <option value="PepsinA">PepsinA</option>
-        <option value="TrypChymo">TrypChymo</option>
-        <option value="Trypsin/P">Trypsin/P</option>
-        <option value="V8-DE">V8-DE</option>
-        <option value="V8-E">V8-E</option>
-        <option value="leukocyte elastase">leukocyte elastase</option>
-        <option value="proline endopeptidase">proline endopeptidase</option>
-        <option value="2-iodobenzoate">2-iodobenzoate</option>
-        <option value="iodosobenzoate">iodosobenzoate</option>
-        <option value="staphylococcal protease/D">staphylococcal protease/D</option>
-        <option value="proline-endopeptidase/HKR">proline-endopeptidase/HKR</option>
-        <option value="Trypsin" selected="true">Trypsin</option>
+        <option value="Trypsin">Trypsin</option>
         <expand macro="list_string_san"/>
       </param>
-      <param name="specificity" argument="-enzyme:specificity" display="radio" type="select" optional="false" label="Specificity of the enzyme" help="'full': both internal cleavage sites must match..   'semi': one of two internal cleavage sites must match..   'none': allow all peptide hits no matter their context. Therefore, the enzyme chosen does not play a role here">
-        <option value="full" selected="true">full</option>
+      <param name="specificity" argument="-enzyme:specificity" display="radio" type="select" optional="false" label="Specificity of the enzyme" help="Default: deduce from input..   'full': both internal cleavage sites must match..   'semi': one of two internal cleavage sites must match..   'none': allow all peptide hits no matter their context (enzyme is irrelevant)">
+        <option value="auto" selected="true">auto</option>
+        <option value="full">full</option>
         <option value="semi">semi</option>
         <option value="none">none</option>
         <expand macro="list_string_san"/>
       </param>
     </section>
     <expand macro="adv_opts_macro">
-      <param name="force" argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overwrite tool specific checks" help=""/>
+      <param name="force" argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
       <param name="test" argument="-test" type="hidden" optional="true" value="False" label="Enables the test mode (needed for internal use only)" help="">
         <expand macro="list_string_san"/>
       </param>

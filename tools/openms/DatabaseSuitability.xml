@@ -1,0 +1,99 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
+<!--Proposed Tool Section: []-->
+<tool id="DatabaseSuitability" name="DatabaseSuitability" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@" profile="20.05">
+  <description>Computes a suitability score for a database which was used for a peptide identification search. Also reports the quality of LC-MS spectra.</description>
+  <macros>
+    <token name="@EXECUTABLE@">DatabaseSuitability</token>
+    <import>macros.xml</import>
+    <import>macros_autotest.xml</import>
+    <import>macros_test.xml</import>
+  </macros>
+  <expand macro="requirements"/>
+  <expand macro="stdio"/>
+  <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
+@EXT_FOO@
+#import re
+
+## Preprocessing
+mkdir in_id &&
+ln -s '$in_id' 'in_id/${re.sub("[^\w\-_]", "_", $in_id.element_identifier)}.$gxy2omsext($in_id.ext)' &&
+mkdir in_spec &&
+ln -s '$in_spec' 'in_spec/${re.sub("[^\w\-_]", "_", $in_spec.element_identifier)}.$gxy2omsext($in_spec.ext)' &&
+mkdir in_novo &&
+ln -s '$in_novo' 'in_novo/${re.sub("[^\w\-_]", "_", $in_novo.element_identifier)}.$gxy2omsext($in_novo.ext)' &&
+#if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir out &&
+#end if
+
+## Main program call
+
+set -o pipefail &&
+@EXECUTABLE@ -write_ctd ./ &&
+python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
+@EXECUTABLE@ -ini @EXECUTABLE@.ctd
+-in_id
+'in_id/${re.sub("[^\w\-_]", "_", $in_id.element_identifier)}.$gxy2omsext($in_id.ext)'
+-in_spec
+'in_spec/${re.sub("[^\w\-_]", "_", $in_spec.element_identifier)}.$gxy2omsext($in_spec.ext)'
+-in_novo
+'in_novo/${re.sub("[^\w\-_]", "_", $in_novo.element_identifier)}.$gxy2omsext($in_novo.ext)'
+#if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  -out
+  'out/output.${gxy2omsext("tabular")}'
+#end if
+#if len(str($OPTIONAL_OUTPUTS).split(',')) == 0
+  | tee '$stdout'
+#end if
+
+## Postprocessing
+#if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  && mv 'out/output.${gxy2omsext("tabular")}' '$out'
+#end if
+#if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
+  && mv '@EXECUTABLE@.ctd' '$ctd_out'
+#end if]]></command>
+  <configfiles>
+    <inputs name="args_json" data_style="paths"/>
+    <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
+  </configfiles>
+  <inputs>
+    <param name="in_id" argument="-in_id" type="data" format="idxml" optional="false" label="Input idXML file from peptide search with combined database with added de novo peptide" help="PeptideIndexer is needed, FDR is forbidden select idxml data sets(s)"/>
+    <param name="in_spec" argument="-in_spec" type="data" format="mzml" optional="false" label="Input MzML file used for the peptide identification" help=" select mzml data sets(s)"/>
+    <param name="in_novo" argument="-in_novo" type="data" format="idxml" optional="false" label="Input idXML file containing de novo peptides (unfiltered)" help=" select idxml data sets(s)"/>
+    <section name="algorithm" title="Parameter section for the suitability calculation algorithm" help="" expanded="false">
+      <param name="no_rerank" argument="-algorithm:no_rerank" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Use this flag if you want to disable re-ranking" help="Cases, where a de novo peptide scores just higher than the database peptide, are overlooked and counted as a de novo hit. This might underestimate the database quality"/>
+      <param name="reranking_cutoff_percentile" argument="-algorithm:reranking_cutoff_percentile" type="float" optional="true" min="0.0" max="1.0" value="0.01" label="Swap a top-scoring deNovo hit with a lower scoring DB hit if their xcorr score difference is in the given percentile of all score differences between the first two decoy hits of a PSM" help="The lower the value the lower the decoy cut-off will be. Therefore it will be harder for a lower scoring DB hit to be re-ranked to the top"/>
+      <param name="FDR" argument="-algorithm:FDR" type="float" optional="true" min="0.0" max="1.0" value="0.01" label="Filter peptide hits based on this q-value" help="(e.g., 0.05 = 5 % FDR)"/>
+    </section>
+    <expand macro="adv_opts_macro">
+      <param name="force" argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
+      <param name="test" argument="-test" type="hidden" optional="true" value="False" label="Enables the test mode (needed for internal use only)" help="">
+        <expand macro="list_string_san"/>
+      </param>
+    </expand>
+    <param name="OPTIONAL_OUTPUTS" type="select" multiple="true" label="Optional outputs" optional="false">
+      <option value="out_FLAG">out (Filter peptide hits based on this q-value)</option>
+      <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+    </param>
+  </inputs>
+  <outputs>
+    <data name="out" label="${tool.name} on ${on_string}: out" format="tabular">
+      <filter>OPTIONAL_OUTPUTS is not None and "out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+    <data name="stdout" format="txt" label="${tool.name} on ${on_string}: stdout">
+      <filter>OPTIONAL_OUTPUTS is None</filter>
+    </data>
+    <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
+      <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+  </outputs>
+  <tests>
+    <expand macro="autotest_DatabaseSuitability"/>
+    <expand macro="manutest_DatabaseSuitability"/>
+  </tests>
+  <help><![CDATA[Computes a suitability score for a database which was used for a peptide identification search. Also reports the quality of LC-MS spectra.
+
+]]></help>
+  <expand macro="references"/>
+</tool>

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 
-VERSION=2.5
+VERSION=2.6
 FILETYPES="filetypes.txt"
-CONDAPKG="https://anaconda.org/bioconda/openms/2.5.0/download/linux-64/openms-2.5.0-h463af6b_1.tar.bz2"
+# TODO fix in final
+CONDAPKG="https://anaconda.org/bgruening/openms/2.6.0dev/download/linux-64/openms-2.6.0dev-h0d144df_0.tar.bz2"
 
 # import the magic
 . ./generate-foo.sh
@@ -12,6 +13,10 @@ if [ -z "$tmp" ]; then
 	tmp=$(mktemp -d)
 	created="yes"
 fi
+
+# TODO fix in final
+tmp=/tmp/openms-stuff/
+unset $created
 
 export OPENMSGIT="$tmp/OpenMS$VERSION.0-git"
 export OPENMSPKG="$tmp/OpenMS$VERSION-pkg/"
@@ -49,7 +54,7 @@ if [[ ! -d $OPENMSGIT ]]; then
 	cd -
 else
 	cd $OPENMSGIT
-		git pull origin release/$VERSION.0
+	git pull origin release/$VERSION.0
 	cd -
 fi
 
@@ -59,7 +64,8 @@ echo "Create OpenMS $VERSION conda env"
 if conda env list | grep "$OPENMSENV"; then
 	true
 else
-	conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults -p $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION openjdk=8.0.192 ctdopts=1.4 lxml
+	# TODO conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults -p $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION openjdk=8.0.192 ctdopts=1.4 lxml
+	conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bgruening --channel bioconda --channel defaults -p $OPENMSENV openms=$VERSION openjdk=8.0.192 ctdopts=1.4 lxml
 # chmod -R u-w $OPENMSENV 
 fi
 ###############################################################################
@@ -88,7 +94,6 @@ else
 	git pull origin topic/cdata
 	cd -
 fi
-# export PYTHONPATH=$(pwd)/CTDopts
 
 ###############################################################################
 ## copy all the test data files to test-data

@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2.3
-# CONDAPKG=https://anaconda.org/bioconda/openms/2.3.0/download/linux-64/openms-2.3.0-py27h932d754_3.tar.bz2
-# VERSION=2.4
-# CONDAPKG=https://anaconda.org/bioconda/openms/2.4.0/download/linux-64/openms-2.4.0-py27h574aadf_1.tar.bz2
-
-VERSION=2.5
+VERSION=2.6
 FILETYPES="filetypes.txt"
 PROFILE="20.05"
 ## FILETYPES_RE=$(grep -v "^#" $FILETYPES | grep -v "^$" | cut -f 1 -d" " | tr '\n' '|' | sed 's/|$//'| sed 's/|/\\|/g')
@@ -14,7 +9,6 @@ export tmp=$(mktemp -d)
 
 export CTDCONVERTER="$tmp/CTDConverter"
 
-export PYTHONPATH="$(pwd)/CTDopts/"
 ###############################################################################
 ## reset old data
 ###############################################################################
