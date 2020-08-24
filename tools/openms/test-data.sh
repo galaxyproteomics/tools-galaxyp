@@ -59,7 +59,7 @@ echo "Create OpenMS $VERSION conda env"
 if conda env list | grep "$OPENMSENV"; then
 	true
 else
-	conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults -p $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION openjdk=8.0.192 ctdopts=1.3 lxml
+	conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults -p $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION openjdk=8.0.192 ctdopts=1.4 lxml
 # chmod -R u-w $OPENMSENV 
 fi
 ###############################################################################
