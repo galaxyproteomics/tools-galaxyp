@@ -1,52 +1,82 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
 <!--Proposed Tool Section: [Utilities]-->
-<tool id="RTEvaluation" name="RTEvaluation" version="2.3.0">
+<tool id="RTEvaluation" name="RTEvaluation" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@" profile="20.05">
   <description>Application that evaluates TPs (true positives), TNs, FPs, and FNs for an idXML file with predicted RTs.</description>
   <macros>
     <token name="@EXECUTABLE@">RTEvaluation</token>
     <import>macros.xml</import>
+    <import>macros_autotest.xml</import>
+    <import>macros_test.xml</import>
   </macros>
-  <expand macro="references"/>
-  <expand macro="stdio"/>
   <expand macro="requirements"/>
-  <command detect_errors="aggressive"><![CDATA[RTEvaluation
+  <expand macro="stdio"/>
+  <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
+@EXT_FOO@
+#import re
 
-#if $param_in:
-  -in $param_in
+## Preprocessing
+mkdir in &&
+ln -s '$in' 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)' &&
+#if $sequences_file:
+  mkdir sequences_file &&
+  ln -s '$sequences_file' 'sequences_file/${re.sub("[^\w\-_]", "_", $sequences_file.element_identifier)}.$gxy2omsext($sequences_file.ext)' &&
 #end if
-#if $param_out:
-  -out $param_out
+mkdir out &&
+
+## Main program call
+
+set -o pipefail &&
+@EXECUTABLE@ -write_ctd ./ &&
+python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
+@EXECUTABLE@ -ini @EXECUTABLE@.ctd
+-in
+'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
+#if $sequences_file:
+  -sequences_file
+  'sequences_file/${re.sub("[^\w\-_]", "_", $sequences_file.element_identifier)}.$gxy2omsext($sequences_file.ext)'
 #end if
-#if $param_latex:
-  -latex
-#end if
-#if $param_p_value_dim_1:
-  -p_value_dim_1 $param_p_value_dim_1
-#end if
-#if $param_p_value_dim_2:
-  -p_value_dim_2 $param_p_value_dim_2
-#end if
-#if $adv_opts.adv_opts_selector=='advanced':
-    #if $adv_opts.param_force:
-  -force
-#end if
-#end if
-]]></command>
+-out
+'out/output.${gxy2omsext("csv")}'
+
+## Postprocessing
+&& mv 'out/output.${gxy2omsext("csv")}' '$out'
+#if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
+  && mv '@EXECUTABLE@.ctd' '$ctd_out'
+#end if]]></command>
+  <configfiles>
+    <inputs name="args_json" data_style="paths"/>
+    <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
+  </configfiles>
   <inputs>
-    <param name="param_in" type="data" format="idxml" optional="False" label="Input file" help="(-in) "/>
-    <param name="param_latex" display="radio" type="boolean" truevalue="-latex" falsevalue="" checked="false" optional="True" label="Indicates whether the output file format of the table should be LaTeX or CSV (default)" help="(-latex) "/>
-    <param name="param_p_value_dim_1" type="float" min="0.0" max="1.0" optional="True" value="0.01" label="Significance level of first dimension RT filte" help="(-p_value_dim_1) "/>
-    <param name="param_p_value_dim_2" type="float" min="0.0" max="1.0" optional="True" value="0.05" label="Significance level of second dimension RT filte" help="(-p_value_dim_2) "/>
-    <expand macro="advanced_options">
-      <param name="param_force" display="radio" type="boolean" truevalue="-force" falsevalue="" checked="false" optional="True" label="Overwrite tool specific checks" help="(-force) "/>
+    <param name="in" argument="-in" type="data" format="idxml" optional="false" label="Input file" help=" select idxml data sets(s)"/>
+    <param name="sequences_file" argument="-sequences_file" type="data" format="fasta" optional="true" label="Fasta File" help=" select fasta data sets(s)"/>
+    <param name="latex" argument="-latex" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Indicates whether the output file format of the table should be LaTeX or CSV (default)" help=""/>
+    <param name="p_value_dim_1" argument="-p_value_dim_1" type="float" optional="true" min="0.0" max="1.0" value="0.01" label="Significance level of first dimension RT filte" help=""/>
+    <param name="p_value_dim_2" argument="-p_value_dim_2" type="float" optional="true" min="0.0" max="1.0" value="0.05" label="Significance level of second dimension RT filte" help=""/>
+    <expand macro="adv_opts_macro">
+      <param name="force" argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overwrite tool specific checks" help=""/>
+      <param name="test" argument="-test" type="hidden" optional="true" value="False" label="Enables the test mode (needed for internal use only)" help="">
+        <expand macro="list_string_san"/>
+      </param>
     </expand>
+    <param name="OPTIONAL_OUTPUTS" type="select" multiple="true" label="Optional outputs" optional="true">
+      <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+    </param>
   </inputs>
   <outputs>
-    <data name="param_out" format="tabular"/>
+    <data name="out" label="${tool.name} on ${on_string}: out" format="csv"/>
+    <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
+      <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
   </outputs>
-  <help>Application that evaluates TPs (true positives), TNs, FPs, and FNs for an idXML file with predicted RTs.
+  <tests>
+    <expand macro="autotest_RTEvaluation"/>
+    <expand macro="manutest_RTEvaluation"/>
+  </tests>
+  <help><![CDATA[Application that evaluates TPs (true positives), TNs, FPs, and FNs for an idXML file with predicted RTs.
 
 
-For more information, visit https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Documentation/release/2.3.0/html/UTILS_RTEvaluation.html</help>
+For more information, visit http://www.openms.de/documentation/UTILS_RTEvaluation.html]]></help>
+  <expand macro="references"/>
 </tool>

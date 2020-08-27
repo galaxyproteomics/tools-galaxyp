@@ -1,0 +1,193 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
+<!--Proposed Tool Section: [Utilities]-->
+<tool id="AssayGeneratorMetabo" name="AssayGeneratorMetabo" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@" profile="20.05">
+  <description>Assay library generation from DDA data (Metabolomics)</description>
+  <macros>
+    <token name="@EXECUTABLE@">AssayGeneratorMetabo</token>
+    <import>macros.xml</import>
+    <import>macros_autotest.xml</import>
+    <import>macros_test.xml</import>
+  </macros>
+  <expand macro="requirements"/>
+  <expand macro="stdio"/>
+  <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
+@EXT_FOO@
+#import re
+
+## Preprocessing
+mkdir in &&
+${ ' '.join(["ln -s '%s' 'in/%s.%s' &&" % (_, re.sub('[^\w\-_]', '_', _.element_identifier), $gxy2omsext(_.ext)) for _ in $in if _]) }
+mkdir in_id &&
+${ ' '.join(["ln -s '%s' 'in_id/%s.%s' &&" % (_, re.sub('[^\w\-_]', '_', _.element_identifier), $gxy2omsext(_.ext)) for _ in $in_id if _]) }
+mkdir out &&
+
+## Main program call
+
+set -o pipefail &&
+@EXECUTABLE@ -write_ctd ./ &&
+python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
+@EXECUTABLE@ -ini @EXECUTABLE@.ctd
+-in
+${' '.join(["'in/%s.%s'"%(re.sub('[^\w\-_]', '_', _.element_identifier), $gxy2omsext(_.ext)) for _ in $in if _])}
+-in_id
+${' '.join(["'in_id/%s.%s'"%(re.sub('[^\w\-_]', '_', _.element_identifier), $gxy2omsext(_.ext)) for _ in $in_id if _])}
+-out
+'out/output.${out_type}'
+
+## Postprocessing
+&& mv 'out/output.${out_type}' '$out'
+#if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
+  && mv '@EXECUTABLE@.ctd' '$ctd_out'
+#end if]]></command>
+  <configfiles>
+    <inputs name="args_json" data_style="paths"/>
+    <configfile name="hardcoded_json"><![CDATA[{"executable": "\$(which sirius)", "log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
+  </configfiles>
+  <inputs>
+    <param name="in" argument="-in" type="data" format="mzml" multiple="true" optional="false" label="MzML input file(s) used for assay library generation" help=" select mzml data sets(s)"/>
+    <param name="in_id" argument="-in_id" type="data" format="featurexml" multiple="true" optional="false" label="FeatureXML input file(s) containing identification information" help="(e.g. AccurateMassSearch) select featurexml data sets(s)"/>
+    <param name="out_type" type="select" optional="false" label="File type of output out (Assay library output file)">
+      <option value="tsv">tabular (tsv)</option>
+      <option value="traML">traml</option>
+      <option value="pqp">pqp</option>
+    </param>
+    <param name="fragment_annotation" argument="-fragment_annotation" display="radio" type="select" optional="false" label="Fragment annotation method" help="">
+      <option value="none" selected="true">none</option>
+      <option value="sirius">sirius</option>
+      <expand macro="list_string_san"/>
+    </param>
+    <param name="method" argument="-method" display="radio" type="select" optional="false" label="Spectrum with the highest precursor intensity or a consensus spectrum ist used for assay library construction (if no fragment annotation is used)" help="">
+      <option value="highest_intensity" selected="true">highest_intensity</option>
+      <option value="consensus_spectrum">consensus_spectrum</option>
+      <expand macro="list_string_san"/>
+    </param>
+    <param name="use_exact_mass" argument="-use_exact_mass" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Use exact mass for fragment annotation" help=""/>
+    <param name="exclude_ms2_precursor" argument="-exclude_ms2_precursor" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Excludes precursor in ms2 from transition list" help=""/>
+    <param name="precursor_mz_distance" argument="-precursor_mz_distance" type="float" optional="true" value="0.0001" label="Max m/z distance of the precursor entries of two spectra to be merged in [Da]" help=""/>
+    <param name="precursor_rt_tolerance" argument="-precursor_rt_tolerance" type="float" optional="true" value="5.0" label="Tolerance window (left and right) for precursor selection [seconds]" help=""/>
+    <param name="use_known_unknowns" argument="-use_known_unknowns" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Use features without identification information" help=""/>
+    <param name="min_transitions" argument="-min_transitions" type="integer" optional="true" value="3" label="Minimal number of transitions" help=""/>
+    <param name="max_transitions" argument="-max_transitions" type="integer" optional="true" value="3" label="Maximal number of transitions" help=""/>
+    <param name="cosine_similarity_threshold" argument="-cosine_similarity_threshold" type="float" optional="true" value="0.98" label="Threshold for cosine similarity of MS2 spectra from the same precursor used in consensus spectrum creation" help=""/>
+    <param name="transition_threshold" argument="-transition_threshold" type="float" optional="true" value="5.0" label="Further transitions need at least x% of the maximum intensity (default 5%)" help=""/>
+    <param name="out_workspace_directory" argument="-out_workspace_directory" type="text" optional="true" value="" label="Output directory for SIRIUS workspace" help="">
+      <expand macro="list_string_san"/>
+    </param>
+    <section name="deisotoping" title="deisotoping" help="" expanded="false">
+      <param name="use_deisotoper" argument="-deisotoping:use_deisotoper" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Use Deisotoper (if no fragment annotation is used)" help=""/>
+      <param name="fragment_tolerance" argument="-deisotoping:fragment_tolerance" type="float" optional="true" value="1.0" label="Tolerance used to match isotopic peaks" help=""/>
+      <param name="fragment_unit" argument="-deisotoping:fragment_unit" display="radio" type="select" optional="false" label="Unit of the fragment tolerance" help="">
+        <option value="ppm" selected="true">ppm</option>
+        <option value="Da">Da</option>
+        <expand macro="list_string_san"/>
+      </param>
+      <param name="min_charge" argument="-deisotoping:min_charge" type="integer" optional="true" min="1" value="1" label="The minimum charge considered" help=""/>
+      <param name="max_charge" argument="-deisotoping:max_charge" type="integer" optional="true" min="1" value="1" label="The maximum charge considered" help=""/>
+      <param name="min_isopeaks" argument="-deisotoping:min_isopeaks" type="integer" optional="true" min="2" value="2" label="The minimum number of isotopic peaks (at least 2) required for an isotopic cluste" help=""/>
+      <param name="max_isopeaks" argument="-deisotoping:max_isopeaks" type="integer" optional="true" min="3" value="3" label="The maximum number of isotopic peaks (at least 2) considered for an isotopic cluste" help=""/>
+      <param name="keep_only_deisotoped" argument="-deisotoping:keep_only_deisotoped" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Only monoisotopic peaks of fragments with isotopic pattern are retained" help=""/>
+      <param name="annotate_charge" argument="-deisotoping:annotate_charge" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Annotate the charge to the peaks" help=""/>
+    </section>
+    <section name="preprocessing" title="Preprocessing" help="" expanded="false">
+      <param name="filter_by_num_masstraces" argument="-preprocessing:filter_by_num_masstraces" type="integer" optional="true" min="1" value="1" label="Features have to have at least x MassTraces" help="To use this parameter feature_only is neccessary"/>
+      <param name="precursor_mz_tolerance" argument="-preprocessing:precursor_mz_tolerance" type="float" optional="true" value="0.005" label="Tolerance window for precursor selection (Feature selection in regard to the precursor)" help=""/>
+      <param name="precursor_mz_tolerance_unit" argument="-preprocessing:precursor_mz_tolerance_unit" display="radio" type="select" optional="false" label="Unit of the precursor_mz_tolerance" help="">
+        <option value="Da" selected="true">Da</option>
+        <option value="ppm">ppm</option>
+        <expand macro="list_string_san"/>
+      </param>
+      <param name="precursor_rt_tolerance" argument="-preprocessing:precursor_rt_tolerance" type="integer" optional="true" value="5" label="Tolerance window (left and right) for precursor selection [seconds]" help=""/>
+      <param name="isotope_pattern_iterations" argument="-preprocessing:isotope_pattern_iterations" type="integer" optional="true" value="3" label="Number of iterations that should be performed to extract the C13 isotope pattern" help="If no peak is found (C13 distance) the function will abort. Be careful with noisy data - since this can lead to wrong isotope patterns"/>
+      <param name="feature_only" argument="-preprocessing:feature_only" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Uses the feature information from in_featureinfo to reduce the search space to MS2 associated with a feature" help=""/>
+      <param name="no_masstrace_info_isotope_pattern" argument="-preprocessing:no_masstrace_info_isotope_pattern" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Use this flag if the masstrace information from a feature should be discarded and the isotope_pattern_iterations should be used instead" help=""/>
+    </section>
+    <section name="sirius" title="Parameters for SIRIUS and CSI:FingerID" help="" expanded="false">
+      <param name="profile" argument="-sirius:profile" display="radio" type="select" optional="false" label="Specify the used analysis profile" help="">
+        <option value="qtof" selected="true">qtof</option>
+        <option value="orbitrap">orbitrap</option>
+        <option value="fticr">fticr</option>
+        <expand macro="list_string_san"/>
+      </param>
+      <param name="candidates" argument="-sirius:candidates" type="integer" optional="true" min="1" value="5" label="The number of candidates in the SIRIUS output" help=""/>
+      <param name="database" argument="-sirius:database" type="select" optional="false" label="search formulas in given database" help="">
+        <option value="all" selected="true">all</option>
+        <option value="chebi">chebi</option>
+        <option value="custom">custom</option>
+        <option value="kegg">kegg</option>
+        <option value="bio">bio</option>
+        <option value="natural products">natural products</option>
+        <option value="pubmed">pubmed</option>
+        <option value="hmdb">hmdb</option>
+        <option value="biocyc">biocyc</option>
+        <option value="hsdb">hsdb</option>
+        <option value="knapsack">knapsack</option>
+        <option value="biological">biological</option>
+        <option value="zinc bio">zinc bio</option>
+        <option value="gnps">gnps</option>
+        <option value="pubchem">pubchem</option>
+        <option value="mesh">mesh</option>
+        <option value="maconda">maconda</option>
+        <expand macro="list_string_san"/>
+      </param>
+      <param name="noise" argument="-sirius:noise" type="integer" optional="true" min="0" value="0" label="median intensity of noise peaks" help=""/>
+      <param name="ppm_max" argument="-sirius:ppm_max" type="integer" optional="true" value="10" label="allowed ppm for decomposing masses" help=""/>
+      <param name="isotope" argument="-sirius:isotope" display="radio" type="select" optional="false" label="how to handle isotope pattern data" help="Use 'score' to use them for ranking or 'filter' if you just want to remove candidates with bad isotope pattern. With 'both' you can use isotopes for filtering and scoring. Use 'omit' to ignore isotope pattern">
+        <option value="score">score</option>
+        <option value="filter">filter</option>
+        <option value="both" selected="true">both</option>
+        <option value="omit">omit</option>
+        <expand macro="list_string_san"/>
+      </param>
+      <param name="elements" argument="-sirius:elements" type="text" optional="true" value="CHNOP[5]S[8]Cl[1]" label="The allowed elements" help="Write CHNOPSCl to allow the elements C, H, N, O, P, S and Cl. Add numbers in brackets to restrict the maximal allowed occurrence of these elements: CHNOP[5]S[8]Cl[1]">
+        <expand macro="list_string_san"/>
+      </param>
+      <param name="compound_timeout" argument="-sirius:compound_timeout" type="integer" optional="true" min="0" value="10" label="Time out in seconds per compound" help="To disable the timeout set the value to 0"/>
+      <param name="tree_timeout" argument="-sirius:tree_timeout" type="integer" optional="true" min="0" value="0" label="Time out in seconds per fragmentation tree computation" help=""/>
+      <param name="top_n_hits" argument="-sirius:top_n_hits" type="integer" optional="true" min="1" value="10" label="The number of top hits for each compound written to the CSI:FingerID output" help=""/>
+      <param name="cores" argument="-sirius:cores" type="integer" optional="true" min="1" value="1" label="The number of cores SIRIUS is allowed to use on the system" help=""/>
+      <param name="auto_charge" argument="-sirius:auto_charge" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Use this option if the charge of your compounds is unknown and you do not want to assume [M+H]+ as default" help="With the auto charge option SIRIUS will not care about charges and allow arbitrary adducts for the precursor peak"/>
+      <param name="ion_tree" argument="-sirius:ion_tree" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Print molecular formulas and node labels with the ion formula instead of the neutral formula" help=""/>
+      <param name="no_recalibration" argument="-sirius:no_recalibration" type="boolean" truevalue="true" falsevalue="false" checked="false" label="If this option is set, SIRIUS will not recalibrate the spectrum during the analysis" help=""/>
+      <param name="most_intense_ms2" argument="-sirius:most_intense_ms2" type="boolean" truevalue="true" falsevalue="false" checked="false" label="SIRIUS uses the fragmentation spectrum with the most intense precursor peak (for each spectrum)" help=""/>
+    </section>
+    <expand macro="adv_opts_macro">
+      <param name="precursor_recalibration_window" argument="-precursor_recalibration_window" type="float" optional="true" value="0.1" label="Tolerance window for precursor selection (Annotation of precursor mz and intensity)" help=""/>
+      <param name="precursor_recalibration_window_unit" argument="-precursor_recalibration_window_unit" display="radio" type="select" optional="false" label="Unit of the precursor_mz_tolerance_annotation" help="">
+        <option value="Da" selected="true">Da</option>
+        <option value="ppm">ppm</option>
+        <expand macro="list_string_san"/>
+      </param>
+      <param name="min_fragment_mz" argument="-min_fragment_mz" type="float" optional="true" value="0.0" label="Minimal m/z of a fragment ion choosen as a transition" help=""/>
+      <param name="max_fragment_mz" argument="-max_fragment_mz" type="float" optional="true" value="2000.0" label="Maximal m/z of a fragment ion choosen as a transition" help=""/>
+      <param name="force" argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overwrite tool specific checks" help=""/>
+      <param name="test" argument="-test" type="hidden" optional="true" value="False" label="Enables the test mode (needed for internal use only)" help="">
+        <expand macro="list_string_san"/>
+      </param>
+    </expand>
+    <param name="OPTIONAL_OUTPUTS" type="select" multiple="true" label="Optional outputs" optional="true">
+      <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+    </param>
+  </inputs>
+  <outputs>
+    <data name="out" label="${tool.name} on ${on_string}: out">
+      <change_format>
+        <when input="out_type" value="pqp" format="pqp"/>
+        <when input="out_type" value="traML" format="traml"/>
+        <when input="out_type" value="tsv" format="tabular"/>
+      </change_format>
+    </data>
+    <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
+      <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+  </outputs>
+  <tests>
+    <expand macro="autotest_AssayGeneratorMetabo"/>
+    <expand macro="manutest_AssayGeneratorMetabo"/>
+  </tests>
+  <help><![CDATA[Assay library generation from DDA data (Metabolomics)
+
+
+For more information, visit http://www.openms.de/documentation/UTILS_AssayGeneratorMetabo.html]]></help>
+  <expand macro="references"/>
+</tool>

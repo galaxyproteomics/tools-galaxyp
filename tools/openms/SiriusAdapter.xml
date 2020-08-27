@@ -1,137 +1,188 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
 <!--Proposed Tool Section: [Utilities]-->
-<tool id="SiriusAdapter" name="SiriusAdapter" version="2.3.0">
+<tool id="SiriusAdapter" name="SiriusAdapter" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@" profile="20.05">
   <description>Tool for metabolite identification using single and tandem mass spectrometry</description>
   <macros>
     <token name="@EXECUTABLE@">SiriusAdapter</token>
     <import>macros.xml</import>
+    <import>macros_autotest.xml</import>
+    <import>macros_test.xml</import>
   </macros>
-  <expand macro="references"/>
-  <expand macro="stdio"/>
   <expand macro="requirements"/>
-  <command detect_errors="aggressive"><![CDATA[SiriusAdapter
+  <expand macro="stdio"/>
+  <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
+@EXT_FOO@
+#import re
 
-#if $param_in:
-  -in $param_in
+## Preprocessing
+mkdir in &&
+ln -s '$in' 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)' &&
+#if $in_featureinfo:
+  mkdir in_featureinfo &&
+  ln -s '$in_featureinfo' 'in_featureinfo/${re.sub("[^\w\-_]", "_", $in_featureinfo.element_identifier)}.$gxy2omsext($in_featureinfo.ext)' &&
 #end if
-#if $param_out_sirius:
-  -out_sirius $param_out_sirius
+#if "out_sirius_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir out_sirius &&
 #end if
-#if $param_out_fingerid:
-  -out_fingerid $param_out_fingerid
+#if "out_fingerid_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir out_fingerid &&
 #end if
-#if $param_profile:
-  -profile
-  #if " " in str($param_profile):
-    "$param_profile"
-  #else
-    $param_profile
-  #end if
+#if "out_ms_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir out_ms &&
 #end if
-#if $param_candidates:
-  -candidates $param_candidates
+
+## Main program call
+
+set -o pipefail &&
+@EXECUTABLE@ -write_ctd ./ &&
+python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
+@EXECUTABLE@ -ini @EXECUTABLE@.ctd
+-in
+'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
+#if $in_featureinfo:
+  -in_featureinfo
+  'in_featureinfo/${re.sub("[^\w\-_]", "_", $in_featureinfo.element_identifier)}.$gxy2omsext($in_featureinfo.ext)'
 #end if
-#if $param_database:
-  -database
-  #if " " in str($param_database):
-    "$param_database"
-  #else
-    $param_database
-  #end if
+#if "out_sirius_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  -out_sirius
+  'out_sirius/output.${gxy2omsext("mztab")}'
 #end if
-#if $param_noise:
-  -noise $param_noise
+#if "out_fingerid_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  -out_fingerid
+  'out_fingerid/output.${gxy2omsext("mztab")}'
 #end if
-#if $param_ppm_max:
-  -ppm_max $param_ppm_max
+#if "out_ms_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  -out_ms
+  'out_ms/output.${gxy2omsext("sirius.ms")}'
 #end if
-#if $param_isotope:
-  -isotope
-  #if " " in str($param_isotope):
-    "$param_isotope"
-  #else
-    $param_isotope
-  #end if
+#if len(str($OPTIONAL_OUTPUTS).split(',')) == 0
+  | tee '$stdout'
 #end if
-#if $param_elements:
-  -elements     "$param_elements"
+
+## Postprocessing
+#if "out_sirius_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  && mv 'out_sirius/output.${gxy2omsext("mztab")}' '$out_sirius'
 #end if
-#if $param_number:
-  -number $param_number
+#if "out_fingerid_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  && mv 'out_fingerid/output.${gxy2omsext("mztab")}' '$out_fingerid'
 #end if
-#if $param_auto_charge:
-  -auto_charge
+#if "out_ms_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  && mv 'out_ms/output.${gxy2omsext("sirius.ms")}' '$out_ms'
 #end if
-#if $param_iontree:
-  -iontree
-#end if
-#if $param_no_recalibration:
-  -no_recalibration
-#end if
-#if $adv_opts.adv_opts_selector=='advanced':
-    #if $adv_opts.param_force:
-  -force
-#end if
-#end if
-]]></command>
+#if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
+  && mv '@EXECUTABLE@.ctd' '$ctd_out'
+#end if]]></command>
+  <configfiles>
+    <inputs name="args_json" data_style="paths"/>
+    <configfile name="hardcoded_json"><![CDATA[{"executable": "\$(which sirius)", "log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
+  </configfiles>
   <inputs>
-    <param name="param_in" type="data" format="mzml" optional="False" label="MzML Input file" help="(-in) "/>
-    <param name="param_profile" display="radio" type="select" optional="False" value="qtof" label="Specify the used analysis profile" help="(-profile) ">
-      <option value="qtof" selected="true">qtof</option>
-      <option value="orbitrap">orbitrap</option>
-      <option value="fticr">fticr</option>
+    <param name="in" argument="-in" type="data" format="mzml" optional="false" label="MzML Input file" help=" select mzml data sets(s)"/>
+    <param name="in_featureinfo" argument="-in_featureinfo" type="data" format="featurexml" optional="true" label="FeatureXML input with feature and adduct information" help=" select featurexml data sets(s)"/>
+    <param name="out_workspace_directory" argument="-out_workspace_directory" type="text" optional="true" value="" label="Output directory for SIRIUS workspace" help="">
+      <expand macro="list_string_san"/>
     </param>
-    <param name="param_candidates" type="integer" value="5" label="The number of candidates in the output" help="(-candidates) Default 5 best candidates"/>
-    <param name="param_database" type="select" optional="False" value="all" label="search formulas in given database" help="(-database) ">
-      <option value="all" selected="true">all</option>
-      <option value="chebi">chebi</option>
-      <option value="custom">custom</option>
-      <option value="kegg">kegg</option>
-      <option value="bio">bio</option>
-      <option value="natural products">natural products</option>
-      <option value="pubmed">pubmed</option>
-      <option value="hmdb">hmdb</option>
-      <option value="biocyc">biocyc</option>
-      <option value="hsdb">hsdb</option>
-      <option value="knapsack">knapsack</option>
-      <option value="biological">biological</option>
-      <option value="zinc bio">zinc bio</option>
-      <option value="gnps">gnps</option>
-      <option value="pubchem">pubchem</option>
-      <option value="mesh">mesh</option>
-      <option value="maconda">maconda</option>
-    </param>
-    <param name="param_noise" type="integer" value="0" label="median intensity of noise peaks" help="(-noise) "/>
-    <param name="param_ppm_max" type="integer" value="10" label="allowed ppm for decomposing masses" help="(-ppm_max) "/>
-    <param name="param_isotope" display="radio" type="select" optional="False" value="both" label="how to handle isotope pattern data" help="(-isotope) Use 'score' to use them for ranking or 'filter' if you just want to remove candidates with bad isotope pattern. With 'both' you can use isotopes for filtering and scoring (default). Use 'omit' to ignore isotope pattern">
-      <option value="score">score</option>
-      <option value="filter">filter</option>
-      <option value="both" selected="true">both</option>
-      <option value="omit">omit</option>
-    </param>
-    <param name="param_elements" type="text" size="30" value="CHNOP[5]S" label="The allowed elements" help="(-elements) Write CHNOPSCl to allow the elements C, H, N, O, P, S and Cl. Add numbers in brackets to restrict the maximal allowed occurence of these elements: CHNOP[5]S[8]Cl[1]. By default CHNOP[5]S is used">
-      <sanitizer>
-        <valid initial="string.printable">
-          <remove value="'"/>
-          <remove value="&quot;"/>
-        </valid>
-      </sanitizer>
-    </param>
-    <param name="param_number" type="integer" value="10" label="The number of compounds used in the output" help="(-number) "/>
-    <param name="param_auto_charge" display="radio" type="boolean" truevalue="-auto_charge" falsevalue="" checked="false" optional="True" label="Use this option if the charge of your compounds is unknown and you do not want to assume [M+H]+ as default" help="(-auto_charge) With the auto charge option SIRIUS will not care about charges and allow arbitrary adducts for the precursor peak"/>
-    <param name="param_iontree" display="radio" type="boolean" truevalue="-iontree" falsevalue="" checked="false" optional="True" label="Print molecular formulas and node labels with the ion formula instead of the neutral formula" help="(-iontree) "/>
-    <param name="param_no_recalibration" display="radio" type="boolean" truevalue="-no_recalibration" falsevalue="" checked="false" optional="True" label="If this option is set, SIRIUS will not recalibrate the spectrum during the analysis" help="(-no_recalibration) "/>
-    <expand macro="advanced_options">
-      <param name="param_force" display="radio" type="boolean" truevalue="-force" falsevalue="" checked="false" optional="True" label="Overwrite tool specific checks" help="(-force) "/>
+    <section name="preprocessing" title="Preprocessing" help="" expanded="false">
+      <param name="filter_by_num_masstraces" argument="-preprocessing:filter_by_num_masstraces" type="integer" optional="true" min="1" value="1" label="Features have to have at least x MassTraces" help="To use this parameter feature_only is neccessary"/>
+      <param name="precursor_mz_tolerance" argument="-preprocessing:precursor_mz_tolerance" type="float" optional="true" value="0.005" label="Tolerance window for precursor selection (Feature selection in regard to the precursor)" help=""/>
+      <param name="precursor_mz_tolerance_unit" argument="-preprocessing:precursor_mz_tolerance_unit" display="radio" type="select" optional="false" label="Unit of the precursor_mz_tolerance" help="">
+        <option value="Da" selected="true">Da</option>
+        <option value="ppm">ppm</option>
+        <expand macro="list_string_san"/>
+      </param>
+      <param name="precursor_rt_tolerance" argument="-preprocessing:precursor_rt_tolerance" type="integer" optional="true" value="5" label="Tolerance window (left and right) for precursor selection [seconds]" help=""/>
+      <param name="isotope_pattern_iterations" argument="-preprocessing:isotope_pattern_iterations" type="integer" optional="true" value="3" label="Number of iterations that should be performed to extract the C13 isotope pattern" help="If no peak is found (C13 distance) the function will abort. Be careful with noisy data - since this can lead to wrong isotope patterns"/>
+      <param name="feature_only" argument="-preprocessing:feature_only" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Uses the feature information from in_featureinfo to reduce the search space to MS2 associated with a feature" help=""/>
+      <param name="no_masstrace_info_isotope_pattern" argument="-preprocessing:no_masstrace_info_isotope_pattern" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Use this flag if the masstrace information from a feature should be discarded and the isotope_pattern_iterations should be used instead" help=""/>
+    </section>
+    <section name="sirius" title="Parameters for SIRIUS and CSI:FingerID" help="" expanded="false">
+      <param name="profile" argument="-sirius:profile" display="radio" type="select" optional="false" label="Specify the used analysis profile" help="">
+        <option value="qtof" selected="true">qtof</option>
+        <option value="orbitrap">orbitrap</option>
+        <option value="fticr">fticr</option>
+        <expand macro="list_string_san"/>
+      </param>
+      <param name="candidates" argument="-sirius:candidates" type="integer" optional="true" min="1" value="5" label="The number of candidates in the SIRIUS output" help=""/>
+      <param name="database" argument="-sirius:database" type="select" optional="false" label="search formulas in given database" help="">
+        <option value="all" selected="true">all</option>
+        <option value="chebi">chebi</option>
+        <option value="custom">custom</option>
+        <option value="kegg">kegg</option>
+        <option value="bio">bio</option>
+        <option value="natural products">natural products</option>
+        <option value="pubmed">pubmed</option>
+        <option value="hmdb">hmdb</option>
+        <option value="biocyc">biocyc</option>
+        <option value="hsdb">hsdb</option>
+        <option value="knapsack">knapsack</option>
+        <option value="biological">biological</option>
+        <option value="zinc bio">zinc bio</option>
+        <option value="gnps">gnps</option>
+        <option value="pubchem">pubchem</option>
+        <option value="mesh">mesh</option>
+        <option value="maconda">maconda</option>
+        <expand macro="list_string_san"/>
+      </param>
+      <param name="noise" argument="-sirius:noise" type="integer" optional="true" min="0" value="0" label="median intensity of noise peaks" help=""/>
+      <param name="ppm_max" argument="-sirius:ppm_max" type="integer" optional="true" value="10" label="allowed ppm for decomposing masses" help=""/>
+      <param name="isotope" argument="-sirius:isotope" display="radio" type="select" optional="false" label="how to handle isotope pattern data" help="Use 'score' to use them for ranking or 'filter' if you just want to remove candidates with bad isotope pattern. With 'both' you can use isotopes for filtering and scoring. Use 'omit' to ignore isotope pattern">
+        <option value="score">score</option>
+        <option value="filter">filter</option>
+        <option value="both" selected="true">both</option>
+        <option value="omit">omit</option>
+        <expand macro="list_string_san"/>
+      </param>
+      <param name="elements" argument="-sirius:elements" type="text" optional="true" value="CHNOP[5]S[8]Cl[1]" label="The allowed elements" help="Write CHNOPSCl to allow the elements C, H, N, O, P, S and Cl. Add numbers in brackets to restrict the maximal allowed occurrence of these elements: CHNOP[5]S[8]Cl[1]">
+        <expand macro="list_string_san"/>
+      </param>
+      <param name="compound_timeout" argument="-sirius:compound_timeout" type="integer" optional="true" min="0" value="10" label="Time out in seconds per compound" help="To disable the timeout set the value to 0"/>
+      <param name="tree_timeout" argument="-sirius:tree_timeout" type="integer" optional="true" min="0" value="0" label="Time out in seconds per fragmentation tree computation" help=""/>
+      <param name="top_n_hits" argument="-sirius:top_n_hits" type="integer" optional="true" min="1" value="10" label="The number of top hits for each compound written to the CSI:FingerID output" help=""/>
+      <param name="cores" argument="-sirius:cores" type="integer" optional="true" min="1" value="1" label="The number of cores SIRIUS is allowed to use on the system" help=""/>
+      <param name="auto_charge" argument="-sirius:auto_charge" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Use this option if the charge of your compounds is unknown and you do not want to assume [M+H]+ as default" help="With the auto charge option SIRIUS will not care about charges and allow arbitrary adducts for the precursor peak"/>
+      <param name="ion_tree" argument="-sirius:ion_tree" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Print molecular formulas and node labels with the ion formula instead of the neutral formula" help=""/>
+      <param name="no_recalibration" argument="-sirius:no_recalibration" type="boolean" truevalue="true" falsevalue="false" checked="false" label="If this option is set, SIRIUS will not recalibrate the spectrum during the analysis" help=""/>
+      <param name="most_intense_ms2" argument="-sirius:most_intense_ms2" type="boolean" truevalue="true" falsevalue="false" checked="false" label="SIRIUS uses the fragmentation spectrum with the most intense precursor peak (for each spectrum)" help=""/>
+    </section>
+    <expand macro="adv_opts_macro">
+      <param name="converter_mode" argument="-converter_mode" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Use this flag in combination with the out_ms file to only convert the input mzML and featureXML to an .ms file" help="Without further SIRIUS processing"/>
+      <param name="force" argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overwrite tool specific checks" help=""/>
+      <param name="test" argument="-test" type="hidden" optional="true" value="False" label="Enables the test mode (needed for internal use only)" help="">
+        <expand macro="list_string_san"/>
+      </param>
     </expand>
+    <param name="OPTIONAL_OUTPUTS" type="select" multiple="true" label="Optional outputs" optional="false">
+      <option value="out_sirius_FLAG">out_sirius (SIRIUS uses the fragmentation spectrum with the most intense precursor peak (for each spectrum))</option>
+      <option value="out_fingerid_FLAG">out_fingerid (SIRIUS uses the fragmentation spectrum with the most intense precursor peak (for each spectrum))</option>
+      <option value="out_ms_FLAG">out_ms (SIRIUS uses the fragmentation spectrum with the most intense precursor peak (for each spectrum))</option>
+      <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+    </param>
   </inputs>
   <outputs>
-    <data name="param_out_sirius" format="tabular"/>
-    <data name="param_out_fingerid" format="tabular"/>
+    <data name="out_sirius" label="${tool.name} on ${on_string}: out_sirius" format="mztab">
+      <filter>OPTIONAL_OUTPUTS is not None and "out_sirius_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+    <data name="out_fingerid" label="${tool.name} on ${on_string}: out_fingerid" format="mztab">
+      <filter>OPTIONAL_OUTPUTS is not None and "out_fingerid_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+    <data name="out_ms" label="${tool.name} on ${on_string}: out_ms" format="sirius.ms">
+      <filter>OPTIONAL_OUTPUTS is not None and "out_ms_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+    <data name="stdout" format="txt" label="${tool.name} on ${on_string}: stdout">
+      <filter>OPTIONAL_OUTPUTS is None</filter>
+    </data>
+    <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
+      <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
   </outputs>
-  <help>Tool for metabolite identification using single and tandem mass spectrometry
+  <tests>
+    <expand macro="autotest_SiriusAdapter"/>
+    <expand macro="manutest_SiriusAdapter"/>
+  </tests>
+  <help><![CDATA[Tool for metabolite identification using single and tandem mass spectrometry
 
 
-For more information, visit https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Documentation/release/2.3.0/html/UTILS_SiriusAdapter.html</help>
+For more information, visit http://www.openms.de/documentation/UTILS_SiriusAdapter.html]]></help>
+  <expand macro="references"/>
 </tool>

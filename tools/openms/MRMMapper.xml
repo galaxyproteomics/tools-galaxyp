@@ -1,60 +1,81 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
 <!--Proposed Tool Section: [Targeted Experiments]-->
-<tool id="MRMMapper" name="MRMMapper" version="2.3.0">
+<tool id="MRMMapper" name="MRMMapper" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@" profile="20.05">
   <description>MRMMapper maps measured chromatograms (mzML) and the transitions used (TraML)</description>
   <macros>
     <token name="@EXECUTABLE@">MRMMapper</token>
     <import>macros.xml</import>
+    <import>macros_autotest.xml</import>
+    <import>macros_test.xml</import>
   </macros>
-  <expand macro="references"/>
-  <expand macro="stdio"/>
   <expand macro="requirements"/>
-  <command detect_errors="aggressive"><![CDATA[MRMMapper
+  <expand macro="stdio"/>
+  <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
+@EXT_FOO@
+#import re
 
-#if $param_in:
-  -in $param_in
-#end if
-#if $param_tr:
-  -tr $param_tr
-#end if
-#if $param_out:
-  -out $param_out
-#end if
-#if $param_precursor_tolerance:
-  -precursor_tolerance $param_precursor_tolerance
-#end if
-#if $param_product_tolerance:
-  -product_tolerance $param_product_tolerance
-#end if
-#if $param_no_strict:
-  -no-strict
-#end if
-#if $param_allow_multiple_mappings:
-  -allow_multiple_mappings
-#end if
-#if $adv_opts.adv_opts_selector=='advanced':
-    #if $adv_opts.param_force:
-  -force
-#end if
-#end if
-]]></command>
+## Preprocessing
+mkdir in &&
+ln -s '$in' 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)' &&
+mkdir tr &&
+ln -s '$tr' 'tr/${re.sub("[^\w\-_]", "_", $tr.element_identifier)}.$gxy2omsext($tr.ext)' &&
+mkdir out &&
+
+## Main program call
+
+set -o pipefail &&
+@EXECUTABLE@ -write_ctd ./ &&
+python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
+@EXECUTABLE@ -ini @EXECUTABLE@.ctd
+-in
+'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
+-tr
+'tr/${re.sub("[^\w\-_]", "_", $tr.element_identifier)}.$gxy2omsext($tr.ext)'
+-out
+'out/output.${gxy2omsext("mzml")}'
+
+## Postprocessing
+&& mv 'out/output.${gxy2omsext("mzml")}' '$out'
+#if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
+  && mv '@EXECUTABLE@.ctd' '$ctd_out'
+#end if]]></command>
+  <configfiles>
+    <inputs name="args_json" data_style="paths"/>
+    <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
+  </configfiles>
   <inputs>
-    <param name="param_in" type="data" format="mzml" optional="False" label="Input file containing chromatograms (converted mzXML file)" help="(-in) "/>
-    <param name="param_tr" type="data" format="traml" optional="False" label="transition file" help="(-tr) "/>
-    <param name="param_precursor_tolerance" type="float" value="0.1" label="Precursor tolerance when mapping (in Th)" help="(-precursor_tolerance) "/>
-    <param name="param_product_tolerance" type="float" value="0.1" label="Product tolerance when mapping (in Th)" help="(-product_tolerance) "/>
-    <param name="param_no_strict" display="radio" type="boolean" truevalue="-no-strict" falsevalue="" checked="false" optional="True" label="run in non-strict mode and allow some chromatograms to not be mapped" help="(-no-strict) "/>
-    <param name="param_allow_multiple_mappings" display="radio" type="boolean" truevalue="-allow_multiple_mappings" falsevalue="" checked="false" optional="True" label="Allow multiple mappings (will take the last matching from the TraML)" help="(-allow_multiple_mappings) "/>
-    <expand macro="advanced_options">
-      <param name="param_force" display="radio" type="boolean" truevalue="-force" falsevalue="" checked="false" optional="True" label="Overwrite tool specific checks" help="(-force) "/>
+    <param name="in" argument="-in" type="data" format="mzml" optional="false" label="Input file containing chromatograms (converted mzXML file)" help=" select mzml data sets(s)"/>
+    <param name="tr" argument="-tr" type="data" format="traml" optional="false" label="transition file" help=" select traml data sets(s)"/>
+    <section name="algorithm" title="Algorithm parameters section" help="" expanded="false">
+      <param name="precursor_tolerance" argument="-algorithm:precursor_tolerance" type="float" optional="true" value="0.1" label="Precursor tolerance when mapping (in Th)" help=""/>
+      <param name="product_tolerance" argument="-algorithm:product_tolerance" type="float" optional="true" value="0.1" label="Product tolerance when mapping (in Th)" help=""/>
+      <param name="map_multiple_assays" argument="-algorithm:map_multiple_assays" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Allow to map multiple assays to chromatograms and duplicate these chromatograms in the output" help=""/>
+      <param name="error_on_unmapped" argument="-algorithm:error_on_unmapped" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Treat remaining, unmapped chromatograms as an erro" help=""/>
+    </section>
+    <expand macro="adv_opts_macro">
+      <param name="force" argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overwrite tool specific checks" help=""/>
+      <param name="test" argument="-test" type="hidden" optional="true" value="False" label="Enables the test mode (needed for internal use only)" help="">
+        <expand macro="list_string_san"/>
+      </param>
     </expand>
+    <param name="OPTIONAL_OUTPUTS" type="select" multiple="true" label="Optional outputs" optional="true">
+      <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+    </param>
   </inputs>
   <outputs>
-    <data name="param_out" format="mzml"/>
+    <data name="out" label="${tool.name} on ${on_string}: out" format="mzml"/>
+    <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
+      <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
   </outputs>
-  <help>MRMMapper maps measured chromatograms (mzML) and the transitions used (TraML)
+  <tests>
+    <expand macro="autotest_MRMMapper"/>
+    <expand macro="manutest_MRMMapper"/>
+  </tests>
+  <help><![CDATA[MRMMapper maps measured chromatograms (mzML) and the transitions used (TraML)
 
 
-For more information, visit https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Documentation/release/2.3.0/html/TOPP_MRMMapper.html</help>
+For more information, visit http://www.openms.de/documentation/TOPP_MRMMapper.html]]></help>
+  <expand macro="references"/>
 </tool>

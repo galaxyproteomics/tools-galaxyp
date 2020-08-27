@@ -83,7 +83,7 @@ jobs:
       if: github.event_name == 'pull_request'
       run: echo ::set-env name=COMMIT_RANGE::"HEAD~.."
     - name: Planemo ci_find_repos
-      run: planemo ci_find_repos --changed_in_commit_range ${{ env.COMMIT_RANGE }} --exclude packages --exclude deprecated --exclude_from .tt_skip --exclude_from .tt_biocontainer_skip --output changed_repositories.list
+      run: planemo ci_find_repos --changed_in_commit_range ${{ env.COMMIT_RANGE }} --exclude packages --exclude deprecated --exclude_from .tt_skip --output changed_repositories.list
     - name: Show repo list
       run: cat changed_repositories.list
     - uses: actions/upload-artifact@v2.0.1
@@ -233,7 +233,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        chunk: [0, 1, 2, 3]
+        chunk: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39]
         python-version: [3.7]
     services:
       postgres:
@@ -278,21 +278,43 @@ jobs:
         touch changed_repositories_chunk.list changed_tools_chunk.list
         if [ -s ../workflow_artifacts/changed_repositories.list ]; then
             if [ $(wc -l < ../workflow_artifacts/changed_repositories.list) -eq 1 ]; then
-                planemo ci_find_tools --chunk_count 4 --chunk ${{ matrix.chunk }} \
+                planemo ci_find_tools --chunk_count 10 --chunk ${{ matrix.chunk }} \
                                --output changed_tools_chunk.list \
                                $(cat ../workflow_artifacts/changed_repositories.list)
             else
-                planemo ci_find_repos --chunk_count 4 --chunk ${{ matrix.chunk }} \
+                planemo ci_find_repos --chunk_count 10 --chunk ${{ matrix.chunk }} \
                                --output changed_repositories_chunk.list \
                                $(cat ../workflow_artifacts/changed_repositories.list)
             fi
         fi
     - name: Show changed tools/repositories chunk list
       run: cat changed_tools_chunk.list changed_repositories_chunk.list
+    # TODO this is only temporary and only for OpenMS
+    - name: create test data
+      run: |
+           while read repo
+           do
+               if [ -x $repo/test-data.sh ]; then
+                   cd $repo
+                   ./test-data.sh
+               fi
+           done < ../workflow_artifacts/changed_repositories.list
+    # TODO without this planemo task aborts with `System.IO.IOException: No space left on device` 
+    #        sudo swapoff -a
+    #        sudo rm -f /swapfile
+    - name: free disk space
+      run: |
+        sudo apt clean
+        docker system prune --all --force --volumes
     - name: Planemo test tools
       run: |
+        if grep -lqf .tt_biocontainer_skip changed_tools_chunk.list changed_repositories_chunk.list; then
+                PLANEMO_OPTIONS=""
+        else
+                PLANEMO_OPTIONS="--biocontainers --no_dependency_resolution --no_conda_auto_init"
+        fi
         if [ -s changed_tools_chunk.list ]; then
-            PIP_QUIET=1 planemo test --database_connection postgresql://postgres:postgres@localhost:5432/galaxy --biocontainers --no_dependency_resolution --no_conda_auto_init --galaxy_source $GALAXY_REPO --galaxy_branch $GALAXY_RELEASE --galaxy_python_version ${{ matrix.python-version }} --test_output_json tool_test_output.json $(cat changed_tools_chunk.list) || true
+            PIP_QUIET=1 planemo test --database_connection postgresql://postgres:postgres@localhost:5432/galaxy $PLANEMO_OPTIONS --galaxy_source $GALAXY_REPO --galaxy_branch $GALAXY_RELEASE --galaxy_python_version ${{ matrix.python-version }} --test_output_json tool_test_output.json $(cat changed_tools_chunk.list) || true
             docker system prune --all --force --volumes || true
         elif [ -s changed_repositories_chunk.list ]; then
             while read -r DIR; do
@@ -301,7 +323,7 @@ jobs:
                 else
                     TESTPATH="$DIR"
                 fi
-                PIP_QUIET=1 planemo test --database_connection postgresql://postgres:postgres@localhost:5432/galaxy --biocontainers --no_dependency_resolution --no_conda_auto_init --galaxy_source $GALAXY_REPO --galaxy_branch $GALAXY_RELEASE --galaxy_python_version ${{ matrix.python-version }} --test_output_json "$DIR"/tool_test_output.json "$TESTPATH" || true
+                PIP_QUIET=1 planemo test --database_connection postgresql://postgres:postgres@localhost:5432/galaxy $PLANEMO_OPTIONS --galaxy_source $GALAXY_REPO --galaxy_branch $GALAXY_RELEASE --galaxy_python_version ${{ matrix.python-version }} --test_output_json "$DIR"/tool_test_output.json "$TESTPATH" || true
                 docker system prune --all --force --volumes || true
             done < changed_repositories_chunk.list
         else
@@ -374,7 +396,7 @@ jobs:
   # deploy the tools to the toolsheds (first TTS for testing)
   deploy:
     name: Deploy
-    needs: combine_outputs
+    needs: [lint,flake8,lintr,combine_outputs]
     strategy:
       matrix:
         python-version: [3.7]
@@ -408,6 +430,7 @@ jobs:
         while read -r DIR; do
             planemo shed_update --shed_target testtoolshed --shed_key "${{ env.SHED_KEY }}" --force_repository_creation "$DIR" || exit 1;
         done < ../workflow_artifacts/changed_repositories.list
+      continue-on-error: true
     - name: Deploy on toolshed
       env:
         SHED_KEY: ${{ secrets.ts_api_key }}

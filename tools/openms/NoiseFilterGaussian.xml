@@ -1,64 +1,80 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
 <!--Proposed Tool Section: [Signal processing and preprocessing]-->
-<tool id="NoiseFilterGaussian" name="NoiseFilterGaussian" version="2.3.0">
+<tool id="NoiseFilterGaussian" name="NoiseFilterGaussian" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@" profile="20.05">
   <description>Removes noise from profile spectra by using Gaussian filter (on uniform as well as non-uniform data).</description>
   <macros>
     <token name="@EXECUTABLE@">NoiseFilterGaussian</token>
     <import>macros.xml</import>
+    <import>macros_autotest.xml</import>
+    <import>macros_test.xml</import>
   </macros>
-  <expand macro="references"/>
-  <expand macro="stdio"/>
   <expand macro="requirements"/>
-  <command detect_errors="aggressive"><![CDATA[NoiseFilterGaussian
+  <expand macro="stdio"/>
+  <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
+@EXT_FOO@
+#import re
 
-#if $param_in:
-  -in $param_in
-#end if
-#if $param_out:
-  -out $param_out
-#end if
-#if $param_algorithm_gaussian_width:
-  -algorithm:gaussian_width $param_algorithm_gaussian_width
-#end if
-#if $param_algorithm_ppm_tolerance:
-  -algorithm:ppm_tolerance $param_algorithm_ppm_tolerance
-#end if
-#if $param_algorithm_use_ppm_tolerance:
-  -algorithm:use_ppm_tolerance
-#end if
-#if $adv_opts.adv_opts_selector=='advanced':
-    #if $adv_opts.param_processOption:
-  -processOption
-  #if " " in str($adv_opts.param_processOption):
-    "$adv_opts.param_processOption"
-  #else
-    $adv_opts.param_processOption
-  #end if
-#end if
-    #if $adv_opts.param_force:
-  -force
-#end if
-#end if
-]]></command>
+## Preprocessing
+mkdir in &&
+ln -s '$in' 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)' &&
+mkdir out &&
+
+## Main program call
+
+set -o pipefail &&
+@EXECUTABLE@ -write_ctd ./ &&
+python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
+@EXECUTABLE@ -ini @EXECUTABLE@.ctd
+-in
+'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
+-out
+'out/output.${gxy2omsext("mzml")}'
+
+## Postprocessing
+&& mv 'out/output.${gxy2omsext("mzml")}' '$out'
+#if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
+  && mv '@EXECUTABLE@.ctd' '$ctd_out'
+#end if]]></command>
+  <configfiles>
+    <inputs name="args_json" data_style="paths"/>
+    <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
+  </configfiles>
   <inputs>
-    <param name="param_in" type="data" format="mzml" optional="False" label="input raw data file" help="(-in) "/>
-    <param name="param_algorithm_gaussian_width" type="float" value="0.2" label="Use a gaussian filter width which has approximately the same width as your mass peaks (FWHM in m/z)" help="(-gaussian_width) "/>
-    <param name="param_algorithm_ppm_tolerance" type="float" value="10.0" label="Gaussian width, depending on the m/z position" help="(-ppm_tolerance) &lt;br&gt;The higher the value, the wider the peak and therefore the wider the gaussian"/>
-    <param name="param_algorithm_use_ppm_tolerance" display="radio" type="boolean" truevalue="-algorithm:use_ppm_tolerance" falsevalue="" checked="false" optional="True" label="If true, instead of the gaussian_width value, the ppm_tolerance is used" help="(-use_ppm_tolerance) The gaussian is calculated in each step anew, so this is much slower"/>
-    <expand macro="advanced_options">
-      <param name="param_processOption" display="radio" type="select" optional="False" value="inmemory" label="Whether to load all data and process them in-memory or whether to process the data on the fly (lowmemory) without loading the whole file into memory first" help="(-processOption) ">
+    <param name="in" argument="-in" type="data" format="mzml" optional="false" label="input raw data file" help=" select mzml data sets(s)"/>
+    <section name="algorithm" title="Algorithm parameters section" help="" expanded="false">
+      <param name="gaussian_width" argument="-algorithm:gaussian_width" type="float" optional="true" value="0.2" label="Use a gaussian filter width which has approximately the same width as your mass peaks (FWHM in m/z)" help=""/>
+      <param name="ppm_tolerance" argument="-algorithm:ppm_tolerance" type="float" optional="true" value="10.0" label="Gaussian width, depending on the m/z position" help="The higher the value, the wider the peak and therefore the wider the gaussian"/>
+      <param name="use_ppm_tolerance" argument="-algorithm:use_ppm_tolerance" type="boolean" truevalue="true" falsevalue="false" checked="false" label="If true, instead of the gaussian_width value, the ppm_tolerance is used" help="The gaussian is calculated in each step anew, so this is much slower"/>
+    </section>
+    <expand macro="adv_opts_macro">
+      <param name="processOption" argument="-processOption" display="radio" type="select" optional="false" label="Whether to load all data and process them in-memory or whether to process the data on the fly (lowmemory) without loading the whole file into memory first" help="">
         <option value="inmemory" selected="true">inmemory</option>
         <option value="lowmemory">lowmemory</option>
+        <expand macro="list_string_san"/>
       </param>
-      <param name="param_force" display="radio" type="boolean" truevalue="-force" falsevalue="" checked="false" optional="True" label="Overwrite tool specific checks" help="(-force) "/>
+      <param name="force" argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overwrite tool specific checks" help=""/>
+      <param name="test" argument="-test" type="hidden" optional="true" value="False" label="Enables the test mode (needed for internal use only)" help="">
+        <expand macro="list_string_san"/>
+      </param>
     </expand>
+    <param name="OPTIONAL_OUTPUTS" type="select" multiple="true" label="Optional outputs" optional="true">
+      <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+    </param>
   </inputs>
   <outputs>
-    <data name="param_out" format="mzml"/>
+    <data name="out" label="${tool.name} on ${on_string}: out" format="mzml"/>
+    <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
+      <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
   </outputs>
-  <help>Removes noise from profile spectra by using Gaussian filter (on uniform as well as non-uniform data).
+  <tests>
+    <expand macro="autotest_NoiseFilterGaussian"/>
+    <expand macro="manutest_NoiseFilterGaussian"/>
+  </tests>
+  <help><![CDATA[Removes noise from profile spectra by using Gaussian filter (on uniform as well as non-uniform data).
 
 
-For more information, visit https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Documentation/release/2.3.0/html/TOPP_NoiseFilterGaussian.html</help>
+For more information, visit http://www.openms.de/documentation/TOPP_NoiseFilterGaussian.html]]></help>
+  <expand macro="references"/>
 </tool>

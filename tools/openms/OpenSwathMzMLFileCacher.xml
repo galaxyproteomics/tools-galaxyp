@@ -1,56 +1,85 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
 <!--Proposed Tool Section: [Targeted Experiments]-->
-<tool id="OpenSwathMzMLFileCacher" name="OpenSwathMzMLFileCacher" version="2.3.0">
+<tool id="OpenSwathMzMLFileCacher" name="OpenSwathMzMLFileCacher" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@" profile="20.05">
   <description>This tool caches the spectra and chromatogram data of an mzML to disk.</description>
   <macros>
     <token name="@EXECUTABLE@">OpenSwathMzMLFileCacher</token>
     <import>macros.xml</import>
+    <import>macros_autotest.xml</import>
+    <import>macros_test.xml</import>
   </macros>
-  <expand macro="references"/>
-  <expand macro="stdio"/>
   <expand macro="requirements"/>
-  <command detect_errors="aggressive"><![CDATA[OpenSwathMzMLFileCacher
+  <expand macro="stdio"/>
+  <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
+@EXT_FOO@
+#import re
 
-#if $param_in:
-  -in $param_in
-#end if
-#if $param_out:
-  -out $param_out
-#end if
-#if $param_out_type:
-  -out_type
-  #if " " in str($param_out_type):
-    "$param_out_type"
-  #else
-    $param_out_type
-  #end if
-#end if
-#if $param_convert_back:
-  -convert_back
-#end if
-#if $adv_opts.adv_opts_selector=='advanced':
-    #if $adv_opts.param_force:
-  -force
-#end if
-#end if
-]]></command>
+## Preprocessing
+mkdir in &&
+ln -s '$in' 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)' &&
+mkdir out &&
+
+## Main program call
+
+set -o pipefail &&
+@EXECUTABLE@ -write_ctd ./ &&
+python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
+@EXECUTABLE@ -ini @EXECUTABLE@.ctd
+-in
+'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
+-out
+'out/output.${out_type}'
+
+## Postprocessing
+&& mv 'out/output.${out_type}' '$out'
+#if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
+  && mv '@EXECUTABLE@.ctd' '$ctd_out'
+#end if]]></command>
+  <configfiles>
+    <inputs name="args_json" data_style="paths"/>
+    <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
+  </configfiles>
   <inputs>
-    <param name="param_in" type="data" format="mzml,sqMass" optional="False" label="Input mzML file" help="(-in) "/>
-    <param name="param_out_type" display="radio" type="select" optional="True" label="Output file type -- default: determined from file extension or content &lt;br&gt;Note: that not all conversion paths work or make sense" help="(-out_type) ">
-      <option value="mzML">mzML</option>
-      <option value="sqMass">sqMass</option>
+    <param name="in" argument="-in" type="data" format="mzml,sqmass" optional="false" label="Input mzML file" help=" select mzml,sqmass data sets(s)"/>
+    <param name="out_type" argument="-out_type" display="radio" type="select" optional="false" label="Output file type -- default: determined from file extension or content" help="Note: that not all conversion paths work or make sense">
+      <option value="mzML">mzml</option>
+      <option value="sqMass">sqmass</option>
+      <expand macro="list_string_san"/>
     </param>
-    <param name="param_convert_back" display="radio" type="boolean" truevalue="-convert_back" falsevalue="" checked="false" optional="True" label="Convert back to mzML" help="(-convert_back) "/>
-    <expand macro="advanced_options">
-      <param name="param_force" display="radio" type="boolean" truevalue="-force" falsevalue="" checked="false" optional="True" label="Overwrite tool specific checks" help="(-force) "/>
+    <param name="lossy_compression" argument="-lossy_compression" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Use numpress compression to achieve optimally small file size (attention: may cause small loss of precision; only for mzML data)" help=""/>
+    <param name="full_meta" argument="-full_meta" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Write full meta information into sqMass file (may require large amounts of memory)" help=""/>
+    <expand macro="adv_opts_macro">
+      <param name="lossy_mass_accuracy" argument="-lossy_mass_accuracy" type="float" optional="true" value="-1.0" label="Desired (absolute) m/z accuracy for lossy compression" help="(e.g. use 0.0001 for a mass accuracy of 0.2 ppm at 500 m/z, default uses -1.0 for maximal accuracy)"/>
+      <param name="process_lowmemory" argument="-process_lowmemory" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Whether to process the file on the fly without loading the whole file into memory first (only for conversions of mzXML/mzML to mzML)" help="Note: this flag will prevent conversion from spectra to chromatograms"/>
+      <param name="lowmem_batchsize" argument="-lowmem_batchsize" type="integer" optional="true" min="0" value="500" label="The batch size of the low memory conversion" help=""/>
+      <param name="force" argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overwrite tool specific checks" help=""/>
+      <param name="test" argument="-test" type="hidden" optional="true" value="False" label="Enables the test mode (needed for internal use only)" help="">
+        <expand macro="list_string_san"/>
+      </param>
     </expand>
+    <param name="OPTIONAL_OUTPUTS" type="select" multiple="true" label="Optional outputs" optional="true">
+      <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+    </param>
   </inputs>
   <outputs>
-    <data name="param_out" format="mzml"/>
+    <data name="out" label="${tool.name} on ${on_string}: out">
+      <change_format>
+        <when input="out_type" value="mzML" format="mzml"/>
+        <when input="out_type" value="sqMass" format="sqmass"/>
+      </change_format>
+    </data>
+    <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
+      <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
   </outputs>
-  <help>This tool caches the spectra and chromatogram data of an mzML to disk.
+  <tests>
+    <expand macro="autotest_OpenSwathMzMLFileCacher"/>
+    <expand macro="manutest_OpenSwathMzMLFileCacher"/>
+  </tests>
+  <help><![CDATA[This tool caches the spectra and chromatogram data of an mzML to disk.
 
 
-For more information, visit https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Documentation/release/2.3.0/html/UTILS_OpenSwathMzMLFileCacher.html</help>
+For more information, visit http://www.openms.de/documentation/UTILS_OpenSwathMzMLFileCacher.html]]></help>
+  <expand macro="references"/>
 </tool>
