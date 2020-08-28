@@ -1,16 +1,4 @@
-#' wl-22-08-2017, Tue: first touch
-#' wl-23-08-2017, Wed: add some comments
-#' wl-24-08-2017, Thu: debug three functions: imageSlice, imagePca and
-#'  cluster.
-#' wl-07-11-2017, Tue: Make some Changes
-#'   - add 'lib_dir' for wrapper function 'massPix'
-#'   - remove output in 'cluster' function
-#'   - remove 'getwd' and use 'spectra_dir' in function 'subsetImage'
-#' wl-27-11-2017, Mon: More trivia changes
-#' wl-29-01-2018, Mon: modify and debug 'norm.median'
-#' wl-30-01-2018, Tue: modify and debug 'norm.standard'.
-#' wl-13-02-2018, Tue: modify and debug 'cluster'
-#' wl-25-03-2019, Mon: apply styler to reformat R codes 
+#' wl-28-08-2020, Fri: Review
 
 #' library(calibrate)  # for plot function 'textxy' only.
 #' library(rJava)      # for execute Java

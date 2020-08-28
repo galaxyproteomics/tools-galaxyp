@@ -1,20 +1,4 @@
-#' wl-02-11-2017, Thu: commence
-#' wl-07-11-2017, Tue: debug using manual test
-#' wl-10-11-2017, Fri: change 'steps' as float
-#' wl-24-11-2017, Fri: Major changes
-#' wl-25-11-2017, Sat: error handling
-#' wl-07-11-2017, Thu: add debug codes
-#' wl-25-01-2018, Thu: remove user's input for 'offset'
-#' wl-30-01-2018, Tue: fix bugs in 'standards'
-#' wl-12-02-2018, Mon: change output file as tabular (.tab) for galaxy only
-#' wl-14-02-2018, Wed: save cluster intensity data
-#' wl-28-03-2019, Thu: apply style_file() to reformat this script and use
-#'  vim's folding as outline view. Without reformatng, the folding
-#'  is messy.
-#' wl-19-08-2020, Wed: review and drop WriteXLS. And find out PCA loadings
-#'  will lead the failure of Galaxy planemo test. Round it and planemo test
-#'  passes.
-#' wl-20-08-2020, Thu: debug deisotope search mod
+#' wl-28-08-2020, Fri: Review
 #' Usages:
 #'  1.) For command line and galaxy, change `com_f` to TRUE.
 #'  2.) For command line, change `home_dir` as appropriate
@@ -258,7 +242,7 @@ if (com_f) {
     intensity_out = paste0(home_dir, "test-data/res/intensity.tsv")
   )
 }
-#' print(opt)
+print(opt)
 
 suppressPackageStartupMessages({
   source(paste0(home_dir, "all_masspix.R"))
