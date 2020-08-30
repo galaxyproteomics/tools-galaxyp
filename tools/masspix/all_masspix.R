@@ -214,6 +214,7 @@ mzextractor <- function(files, imzMLparse, thres.int = 10000,
 
   #' load parse and java
   .jinit()
+  .jclassLoader()$setDebug(1L)
   .jaddClassPath(path = imzMLparse)
 
   log <- vector()
