@@ -17,6 +17,7 @@ suppressPackageStartupMessages({
 func <- function() {
   argv <- commandArgs(trailingOnly = FALSE)
   path <- sub("--file=", "", argv[grep("--file=", argv)])
+  return(path)
 }
 home_dir <- paste0(dirname(func()), "/")
 
