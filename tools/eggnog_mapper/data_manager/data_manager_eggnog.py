@@ -39,7 +39,7 @@ def main():
     # params = json.loads(open(args.config_file).read())
     dm_dict = {}
     dm_dict['data_tables'] = dm_dict.get('data_tables', {})
-    data_table = 'eggnog_mapper_db'
+    data_table = 'eggnog_mapper_db_versioned'
     dm_dict['data_tables'][data_table]\
         = dm_dict['data_tables'].get(data_table, [])
     # Versionning is super confusing:
