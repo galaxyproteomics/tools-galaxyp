@@ -1,0 +1,178 @@
+<tool id="encyclopedia_quantify" name="EncyclopeDIA Quantify" version="@VERSION@.0">
+    <description>samples from Data-Independent Acquisition (DIA) MS/MS Data</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements" />
+    <command detect_errors="aggressive"><![CDATA[
+        @CMD_IMPORTS@
+        @LINK_SCAN_INPUTS@
+        @LINK_FASTA_INPUT@
+        @LINK_TARGET_FASTA@
+        @LINK_LIB_INPUT@
+        for SCAN_FILE in `ls -1 inputs/*`; do 
+        echo "\$SCAN_FILE" &&
+        EncyclopeDIA -Djava.awt.headless=true -Xmx\$[ \${GALAXY_MEMORY_MB:-20480} / 1024 ]g 
+        -i \$SCAN_FILE
+        @FASTA_INPUT@
+        @TARGET_FASTA@
+        @LIB_INPUT@
+        @COMMON_OPTIONS@
+        @MASS_LIBRARY_TOLERANCE@
+        @PERCOLATOR_OPTIONS@
+        @PEAK_OPTIONS@
+        @WINDOW_OPTIONS@
+        @MODIFICATION_OPTIONS@
+        @SEARCH_OPTIONS@ | tee -a search2lib.log
+        ; done && 
+        for TXT in `find inputs/*.mzML.[efw]*[ast].txt`; do TRGT=`echo \$TXT | sed 's/mzML/dia/'`; ln -s \$TXT \$TRGT; done &&
+        EncyclopeDIA -Djava.awt.headless=true -Xmx\$[ \${GALAXY_MEMORY_MB:-20480} / 1024 ]g -libexport
+        @SCAN_INPUTS@
+        @FASTA_INPUT@
+        @TARGET_FASTA@
+        @LIB_INPUT@
+        -a $a
+        -o chromatogram_library.elib
+        && ls -l ./*.* inputs/*
+        && cat chromatogram_library.elib.peptides.txt
+        && cat chromatogram_library.elib.proteins.txt
+        | tee -a search2lib.log
+    ]]></command>
+    <inputs>
+        <expand macro="scan_inputs"/>
+        <expand macro="lib_input" optional="false" libhelp="Use a Chromatogram elib from SearchToLib"/>
+        <expand macro="fasta_input"/>
+        <expand macro="target_fasta"/>
+        <expand macro="options_section"/>
+        <param argument="-a" type="boolean" truevalue="true" falsevalue="false" checked="true" label="align between files" help="retention-time alignment of peptides should be enabled when quantifying samples"/>
+        <param name="select_outputs" type="select" label="Select outputs" multiple="true">
+            <option value="log" selected="true">log</option>
+            <option value="elib" selected="true">elib</option>
+            <option value="features" selected="false">concatenated_features.txt</option>
+            <option value="results" selected="true">concatenated_results.txt</option>
+            <option value="decoy" selected="false">concatenated_decoy.txt</option>
+            <option value="rt_plots" selected="false">Retention Time Plots</option>
+            <option value="rt_tables" selected="false">Retention Time Tables</option>
+            <option value="peptides" selected="true">peptides.txt (requires align between files)</option>
+            <option value="proteins" selected="true">proteins.txt (requires align between files)</option>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="log" format="txt" label="${tool.name} ${on_string} log" from_work_dir="search2lib.log">
+            <filter>'log' in select_outputs</filter>
+        </data>
+        <data name="elib" format="elib" label="${tool.name} ${on_string} elib" from_work_dir="chromatogram_library.elib">
+            <filter>'elib' in select_outputs</filter>
+        </data>
+        <data name="features" format="tabular" label="${tool.name} ${on_string} concatenated_features.txt" from_work_dir="inputs/chromatogram_library_concatenated_features.txt">
+            <filter>'features' in select_outputs</filter>
+            <actions>
+                <action name="column_names" type="metadata" default="id,TD,ScanNr,topN,rank,peakZScore,peakCalibratedScore,deltaSn,avgIdotp,midIdotp,peakScore,peakWeightedScore,NCI,CIMassErrMean,CIMassErrVar,precursorMassErrMean,precursorMassErrVar,peakSimilarity,sampledTimes,midTime,spectraNorm,pepLength,charge2,charge3,precursorMz,sequence,protein" />
+            </actions>
+        </data>
+        <data name="results" format="tabular" label="${tool.name} ${on_string} concatenated_results.txt" from_work_dir="inputs/chromatogram_library_concatenated_results.txt">
+            <filter>'results' in select_outputs</filter>
+            <actions>
+                <action name="column_names" type="metadata" default="PSMId,score,q-value,posterior_error_prob,peptide,proteinIds" />
+            </actions>
+        </data>
+        <data name="decoy" format="tabular" label="${tool.name} ${on_string} concatenated_decoy.txt" from_work_dir="inputs/chromatogram_library_concatenated_decoy.txt">
+            <filter>'decoy' in select_outputs</filter>
+            <actions>
+                <action name="column_names" type="metadata" default="PSMId,score,q-value,posterior_error_prob,peptide,proteinIds" />
+            </actions>
+        </data>
+        <collection name="rt_plots" type="list" label="${tool.name} - ${on_string}: Retention Time Plots">
+            <filter>library and 'rt_plots' in select_outputs</filter>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+\.pdf)" ext="pdf" directory="inputs"/>
+        </collection>
+        <collection name="rt_tables" type="list" label="${tool.name} - ${on_string}: Retention Time Tables">
+            <filter>library and 'rt_tables' in select_outputs</filter>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+\.mzML\..+\.rt_fit\.txt)" ext="tabular" directory="inputs"/>
+        </collection>
+        <data name="peptides" format="tabular" label="${tool.name} ${on_string} peptides.txt" from_work_dir="chromatogram_library.elib.peptides.txt">
+            <filter>a and 'peptides' in select_outputs</filter>
+            <actions>
+                <action name="column_names" type="metadata" default="Peptide,Protein,numFragments" />
+            </actions>
+        </data>
+        <data name="proteins" format="tabular" label="${tool.name} ${on_string} proteins.txt" from_work_dir="chromatogram_library.elib.proteins.txt">
+            <filter>a and 'proteins' in select_outputs</filter>
+            <actions>
+                <action name="column_names" type="metadata" default="Protein,NumPeptides,PeptideSequences" />
+            </actions>
+        </data>
+    </outputs>
+    <tests>
+        <test>
+            <param name="scan_inputs" ftype="mzml" value="BCS_hela_wide_500_900_1.mzML,BCS_hela_wide_500_900_2.mzML"/>
+            <param name="library" ftype="elib" value="BCS_hela.elib"/>
+            <param name="fasta" ftype="fasta" value="uniprot_human.fasta"/>
+            <output name="results" ftype="tabular">
+                <assert_contents>
+                    <has_text text="GIEQAVQSHAVAEEEAR"/>
+                </assert_contents>
+            </output>
+            <output name="peptides" ftype="tabular">
+                <assert_contents>
+                    <has_text text="AYPLADAHLTK"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help><![CDATA[
+
+**EncyclopeDIA Quantify**
+
+@ENCYCLOPEDIA_WIKI@
+
+EncyclopeDIA Quantify retention-time aligns peptides from the chromatogram library and produces quantitation results. 
+
+
+**Inputs**
+
+  - Spectrum files in mzML format
+  - A chromatogram library that can be generated by SearchToLib
+  - A protein data base in fasta format
+
+@MSCONVERT_HELP@
+
+**Outputs**
+
+  - A log file
+  - A Chromatogram Library (.elib)
+  - The identified features in tabular format
+    Feature values of scans that are used by percolator to determine matches.
+  - The identified Peptide Spectral Match results in tabular format
+    Columns: PSMId, score, q-value, posterior_error_prob, peptide, proteinIds
+  - The identified peptides in tabular format
+    Per peptide: the normalized intensity for each scan file.
+    Columns: Peptide, Protein, numFragments, intensity_in_file1, intensity_in_file2, ...
+  - The identified proteins in tabular format
+    Per protein: the normalized intensity for each scan file.
+    Columns: Protein, NumPeptides, PeptideSequences, intensity_in_file1, intensity_in_file2, ...
+
+
+**Typical DIA SearchToLib Workflow**
+
+Two sets of Mass Spec MS/MS DIA data are collected for the experiment.  In addition to collecting wide-window DIA experiments on each quantitative replicate, a pool containing peptides from every condition is measured using several staggered narrow-window DIA experiments.
+
+  1. SearchToLib is first run with the pooled narrow-window mzML files to create a combined DIA elib chromatogram library.   
+     If a Spectral library argument is provided, for example from **Prosit**, SearchToLIB uses EncyclopeDIA to search each input spectrum mzML file.  
+     Otherwise, SearchToLIB uses Walnut, a FASTA database search engine for DIA data that uses PECAN-style scoring.
+
+
+       * Prosit_ generates a predicted spectrum library of fragmentation patterns and retention times for every +2H and +3H tryptic peptide in a FASTA database, with up to one missed cleavage.
+
+
+  2. EncyclopeDIA Quantify is then run on the wide-window quantitative replicate mzML files using that chromatogram library, with the *align between files* option, to produce quantification results.
+
+.. image:: SearchToLib_Workflow.png
+  :width: 810
+  :height: 580
+
+.. _Prosit: https://www.proteomicsdb.org/prosit
+
+    ]]></help>
+    <expand macro="citations" />
+</tool>
