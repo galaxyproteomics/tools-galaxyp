@@ -1,4 +1,4 @@
-<tool id="cardinal_preprocessing" name="MSI preprocessing" version="@VERSION@.2">
+<tool id="cardinal_preprocessing" name="MSI preprocessing" version="@VERSION@.0">
     <description>
         mass spectrometry imaging preprocessing
     </description>
@@ -7,7 +7,7 @@
     </macros>
     <expand macro="requirements">
         <requirement type="package" version="2.3">r-gridextra</requirement>
-        <requirement type="package" version="3.2.1">r-ggplot2</requirement>
+        <requirement type="package" version="3.3.2">r-ggplot2</requirement>
     </expand>
     <command detect_errors="exit_code">
     <![CDATA[
@@ -347,35 +347,37 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             title("Spectra after peak binning", outer=TRUE, line=0)
 
 
-    ############################### Data reduction ###########################
+    ############################### Mass binning ###########################
 
-        #elif str( $method.methods_conditional.preprocessing_method) == 'Data_reduction':
-            print('Data_reduction')
+        #elif str( $method.methods_conditional.preprocessing_method) == 'Mass_binning':
+            print('mass binning')
 
-            ## these functions only work on MSImageSet
-            msidata = as(msidata, "MSImageSet")
+            #if str( $method.methods_conditional.mz_range.features_filtering) == 'change_mz_range':
 
-            #if str( $method.methods_conditional.methods_for_reduction.reduction_method) == 'bin':
-                print('bin reduction')
+                #if str($processed_cond.processed_file) == "processed":
 
-                msidata = reduceDimension(msidata, method="bin", width=$method.methods_conditional.methods_for_reduction.bin_width, units="$method.methods_conditional.methods_for_reduction.bin_units", fun=$method.methods_conditional.methods_for_reduction.bin_fun)
+                msidata = mse_bin = mzBin(msidata,resolution=$method.methods_conditional.bin_width, from=$method.methods_conditional.mz_range.min_mz, to=$method.methods_conditional.mz_range.max_mz, units="$method.methods_conditional.bin_units", fun=$method.methods_conditional.bin_fun)
+                
+                #else 
+                    msidata = mse_bin = mzBin(msidata,resolution=$method.methods_conditional.bin_width, units="$method.methods_conditional.bin_units", fun=$method.methods_conditional.bin_fun)
+                #end if
 
+		   
+	    #elif str( $method.methods_conditional.mz_range.features_filtering) == 'none':	    
+
+                msidata = mse_bin = mzBin(msidata,resolution=$method.methods_conditional.bin_width, units="$method.methods_conditional.bin_units", fun=$method.methods_conditional.bin_fun)
+
+            #end if
+             
+            msidata <- process(msidata, BPPARAM=MulticoreParam(workers=number_cpu))
+                
                 ## optional: replace NA with 0
-                #if $method.methods_conditional.methods_for_reduction.replace_NA_bin:
+                #if $method.methods_conditional.replace_NA_bin:
                     ## count and replace NAs
                     print(paste0("Number of NA that were set to zero after binning:",sum(is.na(spectra(msidata)))))
                     spectra(msidata)[is.na(spectra(msidata))] = 0 
                 #end if
-
-            #elif str( $method.methods_conditional.methods_for_reduction.reduction_method) == 'resample':
-                print('resample reduction')
-
-                msidata = reduceDimension(msidata, method="resample", step=$method.methods_conditional.methods_for_reduction.resample_step)
-            #end if
-
-            ## coercition into new format
-            msidata = as(msidata, "MSImagingExperiment")
-
+                
             ############################### QC ###########################
 
             maxfeatures =nrow(msidata)
@@ -386,7 +388,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             QC_numbers= cbind(QC_numbers, reduced)
             vectorofactions = append(vectorofactions, "reduced")
             print(plot(msidata, pixel=random_spectra))
-            title("Spectra after data reduction", outer=TRUE, line=0)
+            title("Spectra after m/z binning", outer=TRUE, line=0)
 
         ############################### Transformation ###########################
 
@@ -479,7 +481,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                     <option value="Peak_alignment">Peak alignment</option>
                     <option value="Peak_filtering">Peak filtering</option>
                     <option value="Peak_binning">Peak binning to reference peaks</option>
-                    <option value="Data_reduction">Data reduction</option>
+                    <option value="Mass_binning">m/z binning</option>
                     <option value="Transformation">Transformation</option>
                 </param>
                 <when value="Normalization">
@@ -620,31 +622,29 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                             <option value="area">area</option>
                     </param>
                 </when>
-                <when value="Data_reduction">
-                    <conditional name="methods_for_reduction">
-                        <param name="reduction_method" type="select" label="Reduction method">
-                            <option value="bin" selected="True">bin</option>
-                            <option value="resample">resample</option>
+                <when value="Mass_binning">
+                    <param name="bin_width" type="float" value="1" label="The width of a bin in m/z or ppm" help="Width must be greater than range of m/z values divided by number of m/z features"/>
+		    <param name="bin_units" type="select" display="radio"
+		           label="Unit for bin">
+		            <option value="mz" selected="True">mz</option>
+		            <option value="ppm">ppm</option>
+		    </param>
+                    <param name="bin_fun" type="select" display="radio"
+                           label="Calculate sum or mean intensity for ions of the same bin">
+                            <option value="mean" selected="True">mean</option>
+                            <option value="sum">sum</option>
+                    </param>
+                    <param name="replace_NA_bin" type="boolean" label="Replace NA with 0" truevalue="TRUE" falsevalue="FALSE" checked="True" help="Binning can introduce NAs, should they be replaced with 0"/>
+                    <conditional name="mz_range">
+            		 <param name="features_filtering" type="select" label="Select m/z feature filtering option">
+                            <option value="none" selected="True">none</option>
+                            <option value="change_mz_range">change m/z range</option>
                         </param>
-                        <when value="bin">
-                            <param name="bin_width" type="float" value="1"
-                                   label="The width of a bin in m/z or ppm" help="Width must be greater than range of m/z values divided by number of m/z features"/>
-                            <param name="bin_units" type="select" display="radio"
-                                   label="Unit for bin">
-                                    <option value="mz" selected="True">mz</option>
-                                    <option value="ppm">ppm</option>
-                            </param>
-                            <param name="bin_fun" type="select" display="radio"
-                                   label="Calculate sum or mean intensity for ions of the same bin">
-                                    <option value="mean" selected="True">mean</option>
-                                    <option value="sum">sum</option>
-                            </param>
-                            <param name="replace_NA_bin" type="boolean" label="Replace NA with 0" truevalue="TRUE" falsevalue="FALSE" checked="True" help="Binning can introduce NAs, should they be replaced with 0"/>
-                        </when>
-                        <when value="resample">
-                            <param name="resample_step" type="float" value="1"
-                                   label="The step size in m/z" help="Step size must be greater than range of m/z values divided by number of m/z features"/>
-                        </when>
+			    <when value="none"/>
+			    <when value="change_mz_range">
+				<param name="min_mz" type="float" value="1" label="Minimum value for m/z"/>
+				<param name="max_mz" type="float" value="10000" label="Maximum value for m/z"/>
+			    </when>
                     </conditional>
                 </when>
                 <when value="Transformation">
@@ -800,11 +800,9 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             </repeat>
             <repeat name="methods">
                 <conditional name="methods_conditional">
-                    <param name="preprocessing_method" value="Data_reduction"/>
-                    <conditional name="methods_for_reduction">
-                        <param name="reduction_method" value="bin"/>
+                    <param name="preprocessing_method" value="Mass_binning"/>
                         <param name="bin_width" value="0.1"/>
-                    </conditional>
+                        <param name="bin_units" value="mz"/>
                 </conditional>
             </repeat>
             <output name="QC_overview" file="preprocessing_results4.pdf" compare="sim_size"/>
@@ -817,7 +815,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             <expand macro="processed_infile_imzml"/>
             <conditional name="processed_cond">
                 <param name="processed_file" value="processed"/>
-                <param name="accuracy" value="100"/>
+                <param name="accuracy" value="200"/>
                 <param name="units" value="ppm"/>
             </conditional>
             <repeat name="methods">
