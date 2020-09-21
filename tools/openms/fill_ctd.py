@@ -166,7 +166,7 @@ for p in model.get_parameters():
     except KeyError:
         # few tools use dashes in parameters which are automatically replaced
         # by underscores by Galaxy. in these cases the dictionary needs to be
-        # updated
+        # updated (better: then dash and the underscore variant are in the dict)
         # TODO might be removed later https://github.com/OpenMS/OpenMS/pull/4529
         try:
             lineage = [_.replace("-", "_") for _ in p.get_lineage(name_only=True)]
@@ -174,7 +174,7 @@ for p in model.get_parameters():
         except KeyError:
             continue
         else:
-            setInDict(args, lineage, val)
+            setInDict(args, p.get_lineage(name_only=True), val)
 
     if p.type is str and type(p.restrictions) is _Choices and set(p.restrictions.choices) == set(["true", "false"]):
         v = getFromDict(args, p.get_lineage(name_only=True))
