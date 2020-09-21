@@ -150,6 +150,8 @@ model = CTDModel(from_file=input_ctd)
 
 # transform values from json that correspond to
 # - old style booleans (string + restrictions) -> transformed to a str
+# - new style booleans that get a string (happens for hidden parameters [-test])
+#   are transformed to a bool
 # - unrestricted ITEMLIST which are represented as strings
 #   ("=quoted and space separated) in Galaxy -> transform to lists
 # - optional data input parameters that have defaults and for which no
@@ -177,7 +179,11 @@ for p in model.get_parameters():
     if p.type is str and type(p.restrictions) is _Choices and set(p.restrictions.choices) == set(["true", "false"]):
         v = getFromDict(args, p.get_lineage(name_only=True))
         setInDict(args, p.get_lineage(name_only=True), str(v).lower())
-
+    elif p.type is bool:
+        v = getFromDict(args, p.get_lineage(name_only=True))
+        if isinstance(v, str):
+            v = (v.lower() == "true")
+            setInDict(args, p.get_lineage(name_only=True), v)
     elif p.is_list and (p.restrictions is None or type(p.restrictions) is _NumericRange):
         v = getFromDict(args, p.get_lineage(name_only=True))
         if type(v) is str:
