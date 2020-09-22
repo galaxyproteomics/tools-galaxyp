@@ -96,6 +96,8 @@ fi
 ## prepare_test_data
 ###############################################################################
 echo "Get test data"
+find test-data -type f,l,d ! -name "*fa"  ! -name "*loc" -delete
+
 cp $(find $OPENMSGIT/src/tests/topp/ -type f | grep -Ev "third_party_tests.cmake|CMakeLists.txt|check_ini") test-data/
 cp -r $OPENMSGIT/share/OpenMS/MAPPING/ test-data/
 cp -r $OPENMSGIT/share/OpenMS/CHEMISTRY test-data/
@@ -214,13 +216,12 @@ cd - || exit
 ###############################################################################
 ## auto generate tests
 ###############################################################################
-
 echo "Write test macros to $autotests"
 echo "<macros>" > "$autotests"
 for i in $(ls *xml |grep -v macros)
 do
 	b=$(basename "$i" .xml)
-	get_tests2 "$b" >> "$autotests "
+	get_tests2 "$b" >> "$autotests"
 done
 echo "</macros>" >> "$autotests"
 
@@ -239,7 +240,7 @@ link_tmp_files
 # -> SpectraSTSearchAdapter 
 if [[ ! -z "$1" ]]; then
 	echo "" > macros_discarded_auto.xml
-	for i in OpenSwathFileSplitter IDRipper MzMLSplitter MSFragger MaRaClusterAdapter NovorAdapter SpectraSTSearchAdapter
+	for i in OpenSwathFileSplitter IDRipper MzMLSplitter MSFraggerAdapter MaRaClusterAdapter NovorAdapter SpectraSTSearchAdapter
 	do
 		echo "<xml name=\"manutest_$i\">" >>  macros_discarded_auto.xml
 		xmlstarlet sel -t -c "/macros/xml[@name='autotest_$i']/test" macros_autotest.xml >>  macros_discarded_auto.xml
