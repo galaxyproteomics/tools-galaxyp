@@ -67,6 +67,7 @@ conda deactivate
 
 patch PepNovoAdapter.xml < PepNovoAdapter.patch
 patch OMSSAAdapter.xml < OMSSAAdapter.patch
+patch -p0 <404-urls.patch
 
 # #-b version log debug test in_type executable pepnovo_executable param_model_directory rt_concat_trafo_out param_id_pool
 

@@ -150,6 +150,8 @@ model = CTDModel(from_file=input_ctd)
 
 # transform values from json that correspond to
 # - old style booleans (string + restrictions) -> transformed to a str
+# - new style booleans that get a string (happens for hidden parameters [-test])
+#   are transformed to a bool
 # - unrestricted ITEMLIST which are represented as strings
 #   ("=quoted and space separated) in Galaxy -> transform to lists
 # - optional data input parameters that have defaults and for which no
@@ -164,7 +166,7 @@ for p in model.get_parameters():
     except KeyError:
         # few tools use dashes in parameters which are automatically replaced
         # by underscores by Galaxy. in these cases the dictionary needs to be
-        # updated
+        # updated (better: then dash and the underscore variant are in the dict)
         # TODO might be removed later https://github.com/OpenMS/OpenMS/pull/4529
         try:
             lineage = [_.replace("-", "_") for _ in p.get_lineage(name_only=True)]
@@ -172,12 +174,16 @@ for p in model.get_parameters():
         except KeyError:
             continue
         else:
-            setInDict(args, lineage, val)
+            setInDict(args, p.get_lineage(name_only=True), val)
 
     if p.type is str and type(p.restrictions) is _Choices and set(p.restrictions.choices) == set(["true", "false"]):
         v = getFromDict(args, p.get_lineage(name_only=True))
         setInDict(args, p.get_lineage(name_only=True), str(v).lower())
-
+    elif p.type is bool:
+        v = getFromDict(args, p.get_lineage(name_only=True))
+        if isinstance(v, str):
+            v = (v.lower() == "true")
+            setInDict(args, p.get_lineage(name_only=True), v)
     elif p.is_list and (p.restrictions is None or type(p.restrictions) is _NumericRange):
         v = getFromDict(args, p.get_lineage(name_only=True))
         if type(v) is str:
