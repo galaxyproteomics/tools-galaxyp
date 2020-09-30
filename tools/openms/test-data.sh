@@ -65,7 +65,7 @@ if conda env list | grep "$OPENMSENV"; then
 	true
 else
 	# TODO conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults -p $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION openjdk=8.0.192 ctdopts=1.4 lxml
-	conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bgruening --channel bioconda --channel defaults -p $OPENMSENV openms=$VERSION openjdk=8.0.192 ctdopts=1.4 lxml
+	conda create -y --quiet --override-channels --channel https://125255-42372094-gh.circle-artifacts.com/0/tmp/artifacts/packages --channel iuc --channel conda-forge --channel bioconda --channel defaults -p $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION openjdk=8.0.192 ctdopts=1.4 lxml
 # chmod -R u-w $OPENMSENV 
 fi
 ###############################################################################
