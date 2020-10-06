@@ -55,7 +55,15 @@ if [[ "$?" -ne "0" ]]; then >&2 echo 'MetaboliteSpectralMatcher failed'; >&2 ech
 
 # TODO MRMPairFinder
 
-# TODO OpenSwathDIAPreScoring
+# generate two inputs for OpenSwathDIAPreScoring
+OpenSwathDIAPreScoring -tr OpenSwathWorkflow_1_input.TraML -swath_files OpenSwathAnalyzer_2_swathfile.mzML -output_files OpenSwathDIAPreScoring.tsv > OpenSwathDIAPreScoring.stdout 2> stderr
+if [[ "$?" -ne "0" ]]; then >&2 echo 'OpenSwathDIAPreScoring failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
+
+# generate two inputs for OpenSwathDIAPreScoring by linking
+ln -s OpenSwathAnalyzer_2_swathfile.mzML OpenSwathDIAPreScoring_in1.mzML
+ln -s OpenSwathAnalyzer_2_swathfile.mzML OpenSwathDIAPreScoring_in2.mzML
+OpenSwathDIAPreScoring -tr OpenSwathWorkflow_1_input.TraML -swath_files OpenSwathDIAPreScoring_in1.mzML OpenSwathDIAPreScoring_in2.mzML -output_files OpenSwathDIAPreScoring_2_1.tsv OpenSwathDIAPreScoring_2_2.tsv > OpenSwathDIAPreScoring.stdout 2> stderr
+if [[ "$?" -ne "0" ]]; then >&2 echo 'OpenSwathDIAPreScoring failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
 OpenSwathRewriteToFeatureXML -featureXML OpenSwathFeatureXMLToTSV_input.featureXML -out OpenSwathRewriteToFeatureXML.featureXML > OpenSwathRewriteToFeatureXML.stdout 2> stderr
 # if [[ "$?" -ne "0" ]]; then >&2 echo 'OpenSwathRewriteToFeatureXML failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
@@ -107,10 +115,8 @@ if [[ "$?" -ne "0" ]]; then >&2 echo 'RNADigestor failed'; >&2 echo -e "stderr:\
 RNPxlXICFilter -test -control FileFilter_1_input.mzML -treatment FileFilter_1_input.mzML -out RNPxlXICFilter.mzML > RNPxlXICFilter.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'RNPxlXICFilter failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
-# TODO out should be tsv, but needs https://github.com/OpenMS/OpenMS/pull/4533
-RTEvaluation -in PeptideIndexer_1.idXML -out RTEvaluation.csv > RTEvaluation.stdout 2> stderr
+RTEvaluation -in PeptideIndexer_1.idXML -out RTEvaluation.tsv > RTEvaluation.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'RTEvaluation failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
-ln -fs RTEvaluation.csv RTEvaluation.tsv > .stdout 2> stderr
 
 SemanticValidator -test -in FileFilter_1_input.mzML -mapping_file MAPPING/ms-mapping.xml > SemanticValidator.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'SemanticValidator failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
