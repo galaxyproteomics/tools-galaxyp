@@ -17,6 +17,7 @@ function get_tests2 {
     # - some input files are originally in a subdir (degenerated cases/), but not in test-data
     # - SeedListGenerator: https://github.com/OpenMS/OpenMS/issues/4404
     # - OpenSwathAnalyzer 9/10: cachedMzML (not supported yet)
+    # - FeatureFinderIdentification name clash of two tests https://github.com/OpenMS/OpenMS/pull/5002
     CMAKE=$(cat $OPENMSGIT/src/tests/topp/CMakeLists.txt $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake  |
         sed 's@${DATA_DIR_SHARE}/@@g' |
         grep -v 'OpenSwathMzMLFileCacher .*-convert_back' |
@@ -25,7 +26,8 @@ function get_tests2 {
         grep -v "FileMerger_1_input1.dta2d.*FileMerger_1_input2.dta " |
         sed 's@degenerate_cases/@@g' |
         grep -v 'TOPP_SeedListGenerator_3"' | 
-        egrep -v 'TOPP_OpenSwathAnalyzer_test_3"|TOPP_OpenSwathAnalyzer_test_4"')
+        egrep -v 'TOPP_OpenSwathAnalyzer_test_3"|TOPP_OpenSwathAnalyzer_test_4"' |
+	egrep -v '"TOPP_FeatureFinderIdentification_4"')
 
 
 #         grep -v 'FileFilter.*-spectra:select_polarity ""' |
