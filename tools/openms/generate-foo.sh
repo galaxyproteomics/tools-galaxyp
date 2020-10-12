@@ -18,6 +18,7 @@ function get_tests2 {
     # - SeedListGenerator: https://github.com/OpenMS/OpenMS/issues/4404
     # - OpenSwathAnalyzer 9/10: cachedMzML (not supported yet)
     # - FeatureFinderIdentification name clash of two tests https://github.com/OpenMS/OpenMS/pull/5002
+    # TODO SiriusAdapter https://github.com/OpenMS/OpenMS/pull/5010
     CMAKE=$(cat $OPENMSGIT/src/tests/topp/CMakeLists.txt $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake  |
         sed 's@${DATA_DIR_SHARE}/@@g' |
         grep -v 'OpenSwathMzMLFileCacher .*-convert_back' |
@@ -27,7 +28,8 @@ function get_tests2 {
         sed 's@degenerate_cases/@@g' |
         grep -v 'TOPP_SeedListGenerator_3"' | 
         egrep -v 'TOPP_OpenSwathAnalyzer_test_3"|TOPP_OpenSwathAnalyzer_test_4"' |
-	egrep -v '"TOPP_FeatureFinderIdentification_4"')
+	egrep -v '"TOPP_FeatureFinderIdentification_4"' | 
+	sed 's/\("TOPP_SiriusAdapter_4".*\)-sirius:database all\(.*\)/\1-sirius:database pubchem\2/')
 
 
 #         grep -v 'FileFilter.*-spectra:select_polarity ""' |
@@ -191,6 +193,8 @@ function link_tmp_files {
 function prepare_test_data {
 #     id=$1
 # | egrep -i "$id\_.*[0-9]+(_prepare\"|_convert)?"
+
+# TODO SiriusAdapter https://github.com/OpenMS/OpenMS/pull/5010
     cat $OPENMSGIT/src/tests/topp/CMakeLists.txt  $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake | sed 's/#.*$//'| sed 's/^\s*//; s/\s*$//' | grep -v "^$"  | awk '{printf("%s@NEWLINE@", $0)}' | sed 's/)@NEWLINE@/)\n/g' | sed 's/@NEWLINE@/ /g' | 
         sed 's/degenerate_cases\///' | 
         egrep -v "WRITEINI|WRITECTD|INVALIDVALUE|DIFF" | 
@@ -199,6 +203,7 @@ function prepare_test_data {
         sed 's@${DATA_DIR_SHARE}/@@g;'|
         sed 's@${TMP_RIP_PATH}@dummy2.tmp@g'|
         sed 's@TOFCalibration_ref_masses @TOFCalibration_ref_masses.txt @g; s@TOFCalibration_const @TOFCalibration_const.csv @'| 
+	sed 's/\("TOPP_SiriusAdapter_4".*\)-sirius:database all\(.*\)/\1-sirius:database pubchem\2/' |
     while read line
     do
         test_id=$(echo "$line" | sed 's/add_test(//; s/"//g;  s/)[^)]*$//; s/\${TOPP_BIN_PATH}\///g;s/\${DATA_DIR_TOPP}\///g; s#THIRDPARTY/##g' | cut -d" " -f1)
@@ -210,7 +215,8 @@ function prepare_test_data {
 
         line=$(echo "$line" | sed 's/add_test("//; s/)[^)]*$//; s/\${TOPP_BIN_PATH}\///g;s/\${DATA_DIR_TOPP}\///g; s#THIRDPARTY/##g' | cut -d" " -f2-)
         # line="$(fix_tmp_files $line)"
-        echo "$line > $test_id.stdout 2> $test_id.stderr"
+        echo 'echo executing "'$test_id'"'
+	echo "$line > $test_id.stdout 2> $test_id.stderr"
         echo "if [[ \"\$?\" -ne \"0\" ]]; then >&2 echo '$test_id failed'; >&2 echo -e \"stderr:\n\$(cat $test_id.stderr | sed 's/^/    /')\"; echo -e \"stdout:\n\$(cat $test_id.stdout)\";fi"    
     done
 }

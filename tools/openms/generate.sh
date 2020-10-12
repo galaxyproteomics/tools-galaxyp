@@ -6,7 +6,6 @@ PROFILE="20.05"
 ## FILETYPES_RE=$(grep -v "^#" $FILETYPES | grep -v "^$" | cut -f 1 -d" " | tr '\n' '|' | sed 's/|$//'| sed 's/|/\\|/g')
 
 export tmp=$(mktemp -d)
-export tmp="/tmp/openms-stuff"
 export CTDCONVERTER="$tmp/CTDConverter"
 
 ###############################################################################

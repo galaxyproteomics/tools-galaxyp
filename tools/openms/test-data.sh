@@ -14,10 +14,6 @@ if [ -z "$tmp" ]; then
 	created="yes"
 fi
 
-# TODO fix in final
-tmp=/tmp/openms-stuff
-unset $created
-
 export OPENMSGIT="$tmp/OpenMS$VERSION.0-git"
 export OPENMSPKG="$tmp/OpenMS$VERSION-pkg/"
 export OPENMSENV="$tmp/OpenMS$VERSION-env"
@@ -108,16 +104,19 @@ cp -r $OPENMSGIT/share/OpenMS/MAPPING/ test-data/
 cp -r $OPENMSGIT/share/OpenMS/CHEMISTRY test-data/
 cp -r $OPENMSGIT/share/OpenMS/examples/ test-data/
 if [[ ! -f test-data/MetaboliteSpectralDB.mzML ]]; then 
-	wget -q https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Tutorials/Data/latest/Example_Data/Metabolomics/databases/MetaboliteSpectralDB.mzML
+	wget -nc https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Tutorials/Data/latest/Example_Data/Metabolomics/databases/MetaboliteSpectralDB.mzML
 	mv MetaboliteSpectralDB.mzML test-data/
 fi
 ln -fs TOFCalibration_ref_masses test-data/TOFCalibration_ref_masses.txt
 ln -fs TOFCalibration_const test-data/TOFCalibration_const.csv
 
 if [ ! -d test-data/pepnovo_models/ ]; then
+	mkdir -p /tmp/pepnovo
 	wget -nc http://proteomics.ucsd.edu/Software/PepNovo/PepNovo.20120423.zip
-	unzip -f PepNovo.20120423.zip -d /tmp/
-	mv /tmp/Models test-data/pepnovo_models/
+	unzip PepNovo.20120423.zip -d /tmp/pepnovo/
+	mv /tmp/pepnovo/Models test-data/pepnovo_models/
+	rm PepNovo.20120423.zip
+	rm -rf /tmp/pepnovo
 fi
 ###############################################################################
 ## generate ctd files using the binaries in the conda package 
