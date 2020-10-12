@@ -18,7 +18,7 @@ function get_tests2 {
     # - SeedListGenerator: https://github.com/OpenMS/OpenMS/issues/4404
     # - OpenSwathAnalyzer 9/10: cachedMzML (not supported yet)
     # - FeatureFinderIdentification name clash of two tests https://github.com/OpenMS/OpenMS/pull/5002
-    # TODO SiriusAdapter https://github.com/OpenMS/OpenMS/pull/5010
+    # - TODO SiriusAdapter https://github.com/OpenMS/OpenMS/pull/5010
     CMAKE=$(cat $OPENMSGIT/src/tests/topp/CMakeLists.txt $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake  |
         sed 's@${DATA_DIR_SHARE}/@@g' |
         grep -v 'OpenSwathMzMLFileCacher .*-convert_back' |

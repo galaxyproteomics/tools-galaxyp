@@ -2,7 +2,6 @@
 
 VERSION=2.6
 FILETYPES="filetypes.txt"
-# TODO fix in final
 CONDAPKG="https://anaconda.org/bioconda/openms/2.6.0/download/linux-64/openms-2.6.0-h4afb90d_0.tar.bz2"
 
 # import the magic
@@ -60,8 +59,7 @@ echo "Create OpenMS $VERSION conda env"
 if conda env list | grep "$OPENMSENV"; then
 	true
 else
-	# TODO conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults -p $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION openjdk=8.0.192 ctdopts=1.4 lxml
-	conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults -p $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION openjdk=8.0.192 ctdopts=1.4 lxml
+	conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults -p $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION ctdopts=1.4 lxml
 # chmod -R u-w $OPENMSENV 
 fi
 ###############################################################################
