@@ -1,10 +1,10 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
 <!--Proposed Tool Section: [Targeted Experiments]-->
-<tool id="MRMMapper" name="MRMMapper" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@" profile="20.05">
-  <description>MRMMapper maps measured chromatograms (mzML) and the transitions used (TraML)</description>
+<tool id="OpenSwathDIAPreScoring" name="OpenSwathDIAPreScoring" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@" profile="20.05">
+  <description>Scoring spectra using the DIA scores.</description>
   <macros>
-    <token name="@EXECUTABLE@">MRMMapper</token>
+    <token name="@EXECUTABLE@">OpenSwathDIAPreScoring</token>
     <import>macros.xml</import>
     <import>macros_autotest.xml</import>
     <import>macros_test.xml</import>
@@ -16,11 +16,11 @@
 #import re
 
 ## Preprocessing
-mkdir in &&
-ln -s '$in' 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)' &&
 mkdir tr &&
 ln -s '$tr' 'tr/${re.sub("[^\w\-_]", "_", $tr.element_identifier)}.$gxy2omsext($tr.ext)' &&
-mkdir out &&
+mkdir swath_files &&
+${ ' '.join(["ln -s '%s' 'swath_files/%s.%s' &&" % (_, re.sub('[^\w\-_]', '_', _.element_identifier), $gxy2omsext(_.ext)) for _ in $swath_files if _]) }
+mkdir output_files &&
 
 ## Main program call
 
@@ -28,15 +28,15 @@ set -o pipefail &&
 @EXECUTABLE@ -write_ctd ./ &&
 python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
 @EXECUTABLE@ -ini @EXECUTABLE@.ctd
--in
-'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
 -tr
 'tr/${re.sub("[^\w\-_]", "_", $tr.element_identifier)}.$gxy2omsext($tr.ext)'
--out
-'out/output.${gxy2omsext("mzml")}'
+-swath_files
+${' '.join(["'swath_files/%s.%s'"%(re.sub('[^\w\-_]', '_', _.element_identifier), $gxy2omsext(_.ext)) for _ in $swath_files if _])}
+-output_files
+${' '.join(["'output_files/%s.%s'"%(re.sub('[^\w\-_]', '_', _.element_identifier), $gxy2omsext("tabular")) for _ in $swath_files if _])}
 
 ## Postprocessing
-&& mv 'out/output.${gxy2omsext("mzml")}' '$out'
+${' '.join(["&& mv -n 'swath_files/%(id)s.%(gext)s' 'output_files/%(id)s'"%{"id": re.sub('[^\w\-_]', '_', _.element_identifier), "gext": $gxy2omsext("tabular")} for _ in $output_files if _])}
 #if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
   && mv '@EXECUTABLE@.ctd' '$ctd_out'
 #end if]]></command>
@@ -45,14 +45,9 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
     <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
   </configfiles>
   <inputs>
-    <param name="in" argument="-in" type="data" format="mzml" optional="false" label="Input file containing chromatograms (converted mzXML file)" help=" select mzml data sets(s)"/>
     <param name="tr" argument="-tr" type="data" format="traml" optional="false" label="transition file" help=" select traml data sets(s)"/>
-    <section name="algorithm" title="Algorithm parameters section" help="" expanded="false">
-      <param name="precursor_tolerance" argument="-algorithm:precursor_tolerance" type="float" optional="true" value="0.1" label="Precursor tolerance when mapping (in Th)" help=""/>
-      <param name="product_tolerance" argument="-algorithm:product_tolerance" type="float" optional="true" value="0.1" label="Product tolerance when mapping (in Th)" help=""/>
-      <param name="map_multiple_assays" argument="-algorithm:map_multiple_assays" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Allow to map multiple assays to chromatograms and duplicate these chromatograms in the output" help=""/>
-      <param name="error_on_unmapped" argument="-algorithm:error_on_unmapped" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Treat remaining, unmapped chromatograms as an erro" help=""/>
-    </section>
+    <param name="swath_files" argument="-swath_files" type="data" format="mzml" multiple="true" optional="false" label="Swath files that were used to extract the transitions" help="If present, SWATH specific scoring will be applied select mzml data sets(s)"/>
+    <param name="min_upper_edge_dist" argument="-min_upper_edge_dist" type="float" optional="true" value="0.0" label="Minimal distance to the edge to still consider a precursor, in Thomson (only in SWATH)" help=""/>
     <expand macro="adv_opts_macro">
       <param name="force" argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
       <param name="test" argument="-test" type="hidden" optional="true" value="False" label="Enables the test mode (needed for internal use only)" help="">
@@ -64,18 +59,20 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
     </param>
   </inputs>
   <outputs>
-    <data name="out" label="${tool.name} on ${on_string}: out" format="mzml"/>
+    <collection type="list" name="output_files" label="${tool.name} on ${on_string}: output_files">
+      <discover_datasets directory="output_files" format="tabular" pattern="__name__"/>
+    </collection>
     <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
       <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
     </data>
   </outputs>
   <tests>
-    <expand macro="autotest_MRMMapper"/>
-    <expand macro="manutest_MRMMapper"/>
+    <expand macro="autotest_OpenSwathDIAPreScoring"/>
+    <expand macro="manutest_OpenSwathDIAPreScoring"/>
   </tests>
-  <help><![CDATA[MRMMapper maps measured chromatograms (mzML) and the transitions used (TraML)
+  <help><![CDATA[Scoring spectra using the DIA scores.
 
 
-For more information, visit http://www.openms.de/doxygen/release/2.6.0/html/TOPP_MRMMapper.html]]></help>
+For more information, visit http://www.openms.de/doxygen/release/2.6.0/html/UTILS_OpenSwathDIAPreScoring.html]]></help>
   <expand macro="references"/>
 </tool>
