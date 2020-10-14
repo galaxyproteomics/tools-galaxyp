@@ -64,4 +64,3 @@ if __name__ == "__main__":
         itypes.append('M')
 
     pf.score_psms(args.dbname, args.peptides, ion_types=itypes, epsilon=args.epsilon, maxcharge=1, b_run=args.b_run, y_run=args.y_run, a_test=args.test)
-    
