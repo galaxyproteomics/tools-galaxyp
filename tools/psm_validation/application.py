@@ -45,7 +45,7 @@ if __name__ == "__main__":
         type=int,
         default=2,
         help="Number of consecutive y-ions"
-        )
+    )
 
     parser.add_argument(
         "-t",
