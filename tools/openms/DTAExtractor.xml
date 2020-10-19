@@ -1,82 +1,81 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
 <!--Proposed Tool Section: [File Handling]-->
-<tool id="DTAExtractor" name="DTAExtractor" version="2.3.0">
+<tool id="DTAExtractor" name="DTAExtractor" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@" profile="20.05">
   <description>Extracts spectra of an MS run file to several files in DTA format.</description>
   <macros>
     <token name="@EXECUTABLE@">DTAExtractor</token>
     <import>macros.xml</import>
+    <import>macros_autotest.xml</import>
+    <import>macros_test.xml</import>
   </macros>
-  <expand macro="references"/>
-  <expand macro="stdio"/>
   <expand macro="requirements"/>
-  <command detect_errors="aggressive"><![CDATA[DTAExtractor
+  <expand macro="stdio"/>
+  <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
+@EXT_FOO@
+#import re
 
-#if $param_in:
-  -in $param_in
-#end if
-#if $param_out:
-  -out     "$param_out"
-#end if
-#if $param_mz:
-  -mz     "$param_mz"
-#end if
-#if $param_rt:
-  -rt     "$param_rt"
-#end if
-#if $param_level:
-  -level     "$param_level"
-#end if
-#if $adv_opts.adv_opts_selector=='advanced':
-    #if $adv_opts.param_force:
-  -force
-#end if
-#end if
-&gt; $param_stdout
-]]></command>
+## Preprocessing
+mkdir in &&
+ln -s '$in' 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)' &&
+
+## Main program call
+
+set -o pipefail &&
+@EXECUTABLE@ -write_ctd ./ &&
+python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
+@EXECUTABLE@ -ini @EXECUTABLE@.ctd
+-in
+'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
+| tee '$stdout'
+
+## Postprocessing
+#if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
+  && mv '@EXECUTABLE@.ctd' '$ctd_out'
+#end if]]></command>
+  <configfiles>
+    <inputs name="args_json" data_style="paths"/>
+    <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
+  </configfiles>
   <inputs>
-    <param name="param_in" type="data" format="mzml" optional="False" label="input file" help="(-in) "/>
-    <param name="param_out" type="text" size="30" label="base name of DTA output files (RT, m/z and extension are appended)" help="(-out) ">
-      <sanitizer>
-        <valid initial="string.printable">
-          <remove value="'"/>
-          <remove value="&quot;"/>
-        </valid>
-      </sanitizer>
+    <param name="in" argument="-in" type="data" format="mzml" optional="false" label="input file" help=" select mzml data sets(s)"/>
+    <param name="out" argument="-out" type="text" optional="false" value="" label="base name of DTA output files (RT, m/z and extension are appended)" help="">
+      <expand macro="list_string_san"/>
     </param>
-    <param name="param_mz" type="text" size="30" value=":" label="m/z range of precursor peaks to extract" help="(-mz) &lt;br&gt;This option is ignored for MS level 1">
-      <sanitizer>
-        <valid initial="string.printable">
-          <remove value="'"/>
-          <remove value="&quot;"/>
-        </valid>
-      </sanitizer>
+    <param name="mz" argument="-mz" type="text" optional="true" value=":" label="m/z range of precursor peaks to extract" help="This option is ignored for MS level 1">
+      <expand macro="list_string_san"/>
     </param>
-    <param name="param_rt" type="text" size="30" value=":" label="retention time range of spectra to extract" help="(-rt) ">
-      <sanitizer>
-        <valid initial="string.printable">
-          <remove value="'"/>
-          <remove value="&quot;"/>
-        </valid>
-      </sanitizer>
+    <param name="rt" argument="-rt" type="text" optional="true" value=":" label="retention time range of spectra to extract" help="">
+      <expand macro="list_string_san"/>
     </param>
-    <param name="param_level" type="text" size="30" value="1,2,3" label="MS levels to extract" help="(-level) ">
-      <sanitizer>
-        <valid initial="string.printable">
-          <remove value="'"/>
-          <remove value="&quot;"/>
-        </valid>
-      </sanitizer>
+    <param name="level" argument="-level" type="text" optional="true" value="1,2,3" label="MS levels to extract" help="">
+      <expand macro="list_string_san"/>
     </param>
-    <expand macro="advanced_options">
-      <param name="param_force" display="radio" type="boolean" truevalue="-force" falsevalue="" checked="false" optional="True" label="Overwrite tool specific checks" help="(-force) "/>
+    <expand macro="adv_opts_macro">
+      <param name="force" argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
+      <param name="test" argument="-test" type="hidden" optional="true" value="False" label="Enables the test mode (needed for internal use only)" help="">
+        <expand macro="list_string_san"/>
+      </param>
     </expand>
+    <param name="OPTIONAL_OUTPUTS" type="select" optional="true" multiple="true" label="Optional outputs">
+      <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+    </param>
   </inputs>
   <outputs>
-    <data name="param_stdout" format="txt" label="Output from stdout"/>
+    <data name="stdout" format="txt" label="${tool.name} on ${on_string}: stdout">
+      <filter>OPTIONAL_OUTPUTS is None</filter>
+    </data>
+    <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
+      <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
   </outputs>
-  <help>Extracts spectra of an MS run file to several files in DTA format.
+  <tests>
+    <expand macro="autotest_DTAExtractor"/>
+    <expand macro="manutest_DTAExtractor"/>
+  </tests>
+  <help><![CDATA[Extracts spectra of an MS run file to several files in DTA format.
 
 
-For more information, visit https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Documentation/release/2.3.0/html/TOPP_DTAExtractor.html</help>
+For more information, visit http://www.openms.de/doxygen/release/2.6.0/html/TOPP_DTAExtractor.html]]></help>
+  <expand macro="references"/>
 </tool>

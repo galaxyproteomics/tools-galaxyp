@@ -1,164 +1,151 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
 <!--Proposed Tool Section: [ID Processing]-->
-<tool id="PeptideIndexer" name="PeptideIndexer" version="2.3.0">
+<tool id="PeptideIndexer" name="PeptideIndexer" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@" profile="20.05">
   <description>Refreshes the protein references for all peptide hits.</description>
   <macros>
     <token name="@EXECUTABLE@">PeptideIndexer</token>
     <import>macros.xml</import>
+    <import>macros_autotest.xml</import>
+    <import>macros_test.xml</import>
   </macros>
-  <expand macro="references"/>
-  <expand macro="stdio"/>
   <expand macro="requirements"/>
-  <command detect_errors="aggressive"><![CDATA[PeptideIndexer
+  <expand macro="stdio"/>
+  <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
+@EXT_FOO@
+#import re
 
-#if $param_in:
-  -in $param_in
+## Preprocessing
+mkdir in &&
+ln -s '$in' 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)' &&
+#if $fasta:
+  mkdir fasta &&
+  ln -s '$fasta' 'fasta/${re.sub("[^\w\-_]", "_", $fasta.element_identifier)}.$gxy2omsext($fasta.ext)' &&
 #end if
-#if $param_fasta:
-  -fasta $param_fasta
+mkdir out &&
+
+## Main program call
+
+set -o pipefail &&
+@EXECUTABLE@ -write_ctd ./ &&
+python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
+@EXECUTABLE@ -ini @EXECUTABLE@.ctd
+-in
+'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
+#if $fasta:
+  -fasta
+  'fasta/${re.sub("[^\w\-_]", "_", $fasta.element_identifier)}.$gxy2omsext($fasta.ext)'
 #end if
-#if $param_out:
-  -out $param_out
-#end if
-#if $param_decoy_string:
-  -decoy_string     "$param_decoy_string"
-#end if
-#if $param_decoy_string_position:
-  -decoy_string_position
-  #if " " in str($param_decoy_string_position):
-    "$param_decoy_string_position"
-  #else
-    $param_decoy_string_position
-  #end if
-#end if
-#if $param_missing_decoy_action:
-  -missing_decoy_action
-  #if " " in str($param_missing_decoy_action):
-    "$param_missing_decoy_action"
-  #else
-    $param_missing_decoy_action
-  #end if
-#end if
-#if $param_write_protein_sequence:
-  -write_protein_sequence
-#end if
-#if $param_write_protein_description:
-  -write_protein_description
-#end if
-#if $param_keep_unreferenced_proteins:
-  -keep_unreferenced_proteins
-#end if
-#if $param_allow_unmatched:
-  -allow_unmatched
-#end if
-#if $param_full_tolerant_search:
-  -full_tolerant_search
-#end if
-#if $param_aaa_max:
-  -aaa_max $param_aaa_max
-#end if
-#if $param_mismatches_max:
-  -mismatches_max $param_mismatches_max
-#end if
-#if $param_IL_equivalent:
-  -IL_equivalent
-#end if
-#if $param_filter_aaa_proteins:
-  -filter_aaa_proteins
-#end if
-#if $param_enzyme_name:
-  -enzyme:name
-  #if " " in str($param_enzyme_name):
-    "$param_enzyme_name"
-  #else
-    $param_enzyme_name
-  #end if
-#end if
-#if $param_enzyme_specificity:
-  -enzyme:specificity
-  #if " " in str($param_enzyme_specificity):
-    "$param_enzyme_specificity"
-  #else
-    $param_enzyme_specificity
-  #end if
-#end if
-#if $adv_opts.adv_opts_selector=='advanced':
-    #if $adv_opts.param_force:
-  -force
-#end if
-#end if
--threads "\${GALAXY_SLOTS:-1}"
-]]></command>
+-out
+'out/output.${gxy2omsext("idxml")}'
+
+## Postprocessing
+&& mv 'out/output.${gxy2omsext("idxml")}' '$out'
+#if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
+  && mv '@EXECUTABLE@.ctd' '$ctd_out'
+#end if]]></command>
+  <configfiles>
+    <inputs name="args_json" data_style="paths"/>
+    <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
+  </configfiles>
   <inputs>
-    <param name="param_in" type="data" format="idxml" optional="False" label="Input idXML file containing the identifications" help="(-in) "/>
-    <param name="param_fasta" type="data" format="fasta" optional="False" label="Input sequence database in FASTA format" help="(-fasta) Non-existing relative filenames are looked up via 'OpenMS.ini:id_db_dir'"/>
-    <param name="param_decoy_string" type="text" size="30" value="DECOY_" label="String that was appended (or prefixed - see 'decoy_string_position' flag below) to the accessions in the protein database to indicate decoy proteins" help="(-decoy_string) ">
-      <sanitizer>
-        <valid initial="string.printable">
-          <remove value="'"/>
-          <remove value="&quot;"/>
-        </valid>
-      </sanitizer>
+    <param name="in" argument="-in" type="data" format="idxml" optional="false" label="Input idXML file containing the identifications" help=" select idxml data sets(s)"/>
+    <param name="fasta" argument="-fasta" type="data" format="fasta" optional="true" label="Input sequence database in FASTA format" help="Leave empty for using the same DB as used for the input idXML (this might fail). Non-existing relative filenames are looked up via 'OpenMS.ini:id_db_dir' select fasta data sets(s)"/>
+    <param name="decoy_string" argument="-decoy_string" type="text" optional="true" value="" label="String that was appended (or prefixed - see 'decoy_string_position' flag below) to the accessions in the protein database to indicate decoy proteins" help="If empty (default), it's determined automatically (checking for common terms, both as prefix and suffix)">
+      <expand macro="list_string_san"/>
     </param>
-    <param name="param_decoy_string_position" display="radio" type="select" optional="False" value="prefix" label="Should the 'decoy_string' be prepended (prefix) or appended (suffix) to the protein accession?" help="(-decoy_string_position) ">
+    <param name="decoy_string_position" argument="-decoy_string_position" display="radio" type="select" optional="false" label="Is the 'decoy_string' prepended (prefix) or appended (suffix) to the protein accession" help="(ignored if decoy_string is empty)">
       <option value="prefix" selected="true">prefix</option>
       <option value="suffix">suffix</option>
+      <expand macro="list_string_san"/>
     </param>
-    <param name="param_missing_decoy_action" display="radio" type="select" optional="False" value="error" label="Action to take if NO peptide was assigned to a decoy protein (which indicates wrong database or decoy string): 'error' (exit with error, no output), 'warn' (exit with success, warning message)" help="(-missing_decoy_action) ">
+    <param name="missing_decoy_action" argument="-missing_decoy_action" display="radio" type="select" optional="false" label="Action to take if NO peptide was assigned to a decoy protein (which indicates wrong database or decoy string): 'error' (exit with error, no output), 'warn' (exit with success, warning message), 'silent' (no action is taken, not even a warning)" help="">
       <option value="error" selected="true">error</option>
       <option value="warn">warn</option>
+      <option value="silent">silent</option>
+      <expand macro="list_string_san"/>
     </param>
-    <param name="param_write_protein_sequence" display="radio" type="boolean" truevalue="-write_protein_sequence" falsevalue="" checked="false" optional="True" label="If set, the protein sequences are stored as well" help="(-write_protein_sequence) "/>
-    <param name="param_write_protein_description" display="radio" type="boolean" truevalue="-write_protein_description" falsevalue="" checked="false" optional="True" label="If set, the protein description is stored as well" help="(-write_protein_description) "/>
-    <param name="param_keep_unreferenced_proteins" display="radio" type="boolean" truevalue="-keep_unreferenced_proteins" falsevalue="" checked="false" optional="True" label="If set, protein hits which are not referenced by any peptide are kept" help="(-keep_unreferenced_proteins) "/>
-    <param name="param_allow_unmatched" display="radio" type="boolean" truevalue="-allow_unmatched" falsevalue="" checked="false" optional="True" label="If set, unmatched peptide sequences are allowed" help="(-allow_unmatched) By default (i.e. if this flag is not set) the program terminates with an error on unmatched peptides"/>
-    <param name="param_full_tolerant_search" display="radio" type="boolean" truevalue="-full_tolerant_search" falsevalue="" checked="false" optional="True" label="If set, all peptide sequences are matched using tolerant search" help="(-full_tolerant_search) Thus potentially more proteins (containing ambiguous amino acids) are associated. This is much slower!"/>
-    <param name="param_aaa_max" type="integer" min="0" optional="True" value="4" label="[tolerant search only] Maximal number of ambiguous amino acids (AAAs) allowed when matching to a protein database with AAAs" help="(-aaa_max) AAAs are 'B', 'Z' and 'X'"/>
-    <param name="param_mismatches_max" type="integer" min="0" optional="True" value="0" label="[tolerant search only] Maximal number of real mismatches (will be used after checking for ambiguous AA's (see 'aaa_max' option)" help="(-mismatches_max) In general this param should only be changed if you want to look for other potential origins of a peptide which might have unknown SNPs or the like"/>
-    <param name="param_IL_equivalent" display="radio" type="boolean" truevalue="-IL_equivalent" falsevalue="" checked="false" optional="True" label="Treat the isobaric amino acids isoleucine ('I') and leucine ('L') as equivalent (indistinguishable)" help="(-IL_equivalent) "/>
-    <param name="param_filter_aaa_proteins" display="radio" type="boolean" truevalue="-filter_aaa_proteins" falsevalue="" checked="false" optional="True" label="In the tolerant search for matches to proteins with ambiguous amino acids (AAAs), rebuild the search database to only consider proteins with AAAs" help="(-filter_aaa_proteins) This may save time if most proteins don't contain AAAs and if there is a significant number of peptides that enter the tolerant search"/>
-    <param name="param_enzyme_name" type="select" optional="False" value="Trypsin" label="Enzyme which determines valid cleavage sites -" help="(-name) e.g. trypsin cleaves after lysine (K) or arginine (R), but not before proline (P)">
-      <option value="glutamyl endopeptidase">glutamyl endopeptidase</option>
-      <option value="TrypChymo">TrypChymo</option>
-      <option value="unspecific cleavage">unspecific cleavage</option>
-      <option value="Trypsin/P">Trypsin/P</option>
-      <option value="Alpha-lytic protease">Alpha-lytic protease</option>
-      <option value="V8-DE">V8-DE</option>
-      <option value="V8-E">V8-E</option>
-      <option value="PepsinA">PepsinA</option>
-      <option value="Asp-N">Asp-N</option>
-      <option value="2-iodobenzoate">2-iodobenzoate</option>
-      <option value="Lys-N">Lys-N</option>
-      <option value="Asp-N_ambic">Asp-N_ambic</option>
-      <option value="CNBr">CNBr</option>
-      <option value="Asp-N/B">Asp-N/B</option>
-      <option value="Formic_acid">Formic_acid</option>
-      <option value="Chymotrypsin">Chymotrypsin</option>
-      <option value="Lys-C">Lys-C</option>
-      <option value="Trypsin" selected="true">Trypsin</option>
-      <option value="Arg-C">Arg-C</option>
-      <option value="Arg-C/P">Arg-C/P</option>
-      <option value="Lys-C/P">Lys-C/P</option>
-      <option value="no cleavage">no cleavage</option>
-      <option value="leukocyte elastase">leukocyte elastase</option>
-      <option value="proline endopeptidase">proline endopeptidase</option>
-      <option value="Chymotrypsin/P">Chymotrypsin/P</option>
+    <param name="write_protein_sequence" argument="-write_protein_sequence" type="boolean" truevalue="true" falsevalue="false" checked="false" label="If set, the protein sequences are stored as well" help=""/>
+    <param name="write_protein_description" argument="-write_protein_description" type="boolean" truevalue="true" falsevalue="false" checked="false" label="If set, the protein description is stored as well" help=""/>
+    <param name="keep_unreferenced_proteins" argument="-keep_unreferenced_proteins" type="boolean" truevalue="true" falsevalue="false" checked="false" label="If set, protein hits which are not referenced by any peptide are kept" help=""/>
+    <param name="unmatched_action" argument="-unmatched_action" display="radio" type="select" optional="false" label="If peptide sequences cannot be matched to any protein: 1) raise an error; 2) warn (unmatched PepHits will miss target/decoy annotation with downstream problems); 3) remove the hit" help="">
+      <option value="error" selected="true">error</option>
+      <option value="warn">warn</option>
+      <option value="remove">remove</option>
+      <expand macro="list_string_san"/>
     </param>
-    <param name="param_enzyme_specificity" display="radio" type="select" optional="False" value="full" label="Specificity of the enzyme" help="(-specificity) &lt;br&gt;  'full': both internal cleavage sites must match. &lt;br&gt;  'semi': one of two internal cleavage sites must match. &lt;br&gt;  'none': allow all peptide hits no matter their context. Therefore, the enzyme chosen does not play a role here">
-      <option value="full" selected="true">full</option>
-      <option value="semi">semi</option>
-      <option value="none">none</option>
-    </param>
-    <expand macro="advanced_options">
-      <param name="param_force" display="radio" type="boolean" truevalue="-force" falsevalue="" checked="false" optional="True" label="Overwrite tool specific checks" help="(-force) "/>
+    <param name="aaa_max" argument="-aaa_max" type="integer" optional="true" min="0" max="10" value="3" label="Maximal number of ambiguous amino acids (AAAs) allowed when matching to a protein database with AAAs" help="AAAs are B, J, Z and X!"/>
+    <param name="mismatches_max" argument="-mismatches_max" type="integer" optional="true" min="0" max="10" value="0" label="Maximal number of mismatched (mm) amino acids allowed when matching to a protein database" help="The required runtime is exponential in the number of mm's; apply with care. MM's are allowed in addition to AAA's"/>
+    <param name="IL_equivalent" argument="-IL_equivalent" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Treat the isobaric amino acids isoleucine ('I') and leucine ('L') as equivalent (indistinguishable)" help="Also occurences of 'J' will be treated as 'I' thus avoiding ambiguous matching"/>
+    <section name="enzyme" title="" help="" expanded="false">
+      <param name="name" argument="-enzyme:name" type="select" optional="false" label="Enzyme which determines valid cleavage sites -" help="e.g. trypsin cleaves after lysine (K) or arginine (R), but not before proline (P). Default: deduce from input">
+        <option value="auto" selected="true">auto</option>
+        <option value="Asp-N/B">Asp-N/B</option>
+        <option value="Asp-N_ambic">Asp-N_ambic</option>
+        <option value="Chymotrypsin">Chymotrypsin</option>
+        <option value="Chymotrypsin/P">Chymotrypsin/P</option>
+        <option value="CNBr">CNBr</option>
+        <option value="proline endopeptidase">proline endopeptidase</option>
+        <option value="glutamyl endopeptidase">glutamyl endopeptidase</option>
+        <option value="Alpha-lytic protease">Alpha-lytic protease</option>
+        <option value="2-iodobenzoate">2-iodobenzoate</option>
+        <option value="iodosobenzoate">iodosobenzoate</option>
+        <option value="staphylococcal protease/D">staphylococcal protease/D</option>
+        <option value="PepsinA">PepsinA</option>
+        <option value="TrypChymo">TrypChymo</option>
+        <option value="Trypsin/P">Trypsin/P</option>
+        <option value="V8-DE">V8-DE</option>
+        <option value="V8-E">V8-E</option>
+        <option value="leukocyte elastase">leukocyte elastase</option>
+        <option value="Arg-C">Arg-C</option>
+        <option value="Arg-C/P">Arg-C/P</option>
+        <option value="Asp-N">Asp-N</option>
+        <option value="proline-endopeptidase/HKR">proline-endopeptidase/HKR</option>
+        <option value="Glu-C+P">Glu-C+P</option>
+        <option value="PepsinA + P">PepsinA + P</option>
+        <option value="cyanogen-bromide">cyanogen-bromide</option>
+        <option value="Clostripain/P">Clostripain/P</option>
+        <option value="elastase-trypsin-chymotrypsin">elastase-trypsin-chymotrypsin</option>
+        <option value="no cleavage">no cleavage</option>
+        <option value="unspecific cleavage">unspecific cleavage</option>
+        <option value="Formic_acid">Formic_acid</option>
+        <option value="Lys-C">Lys-C</option>
+        <option value="Lys-N">Lys-N</option>
+        <option value="Lys-C/P">Lys-C/P</option>
+        <option value="Trypsin">Trypsin</option>
+        <expand macro="list_string_san"/>
+      </param>
+      <param name="specificity" argument="-enzyme:specificity" display="radio" type="select" optional="false" label="Specificity of the enzyme" help="Default: deduce from input..   'full': both internal cleavage sites must match..   'semi': one of two internal cleavage sites must match..   'none': allow all peptide hits no matter their context (enzyme is irrelevant)">
+        <option value="auto" selected="true">auto</option>
+        <option value="full">full</option>
+        <option value="semi">semi</option>
+        <option value="none">none</option>
+        <expand macro="list_string_san"/>
+      </param>
+    </section>
+    <expand macro="adv_opts_macro">
+      <param name="force" argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
+      <param name="test" argument="-test" type="hidden" optional="true" value="False" label="Enables the test mode (needed for internal use only)" help="">
+        <expand macro="list_string_san"/>
+      </param>
     </expand>
+    <param name="OPTIONAL_OUTPUTS" type="select" optional="true" multiple="true" label="Optional outputs">
+      <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+    </param>
   </inputs>
   <outputs>
-    <data name="param_out" format="idxml"/>
+    <data name="out" label="${tool.name} on ${on_string}: out" format="idxml"/>
+    <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
+      <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
   </outputs>
-  <help>Refreshes the protein references for all peptide hits.
+  <tests>
+    <expand macro="autotest_PeptideIndexer"/>
+    <expand macro="manutest_PeptideIndexer"/>
+  </tests>
+  <help><![CDATA[Refreshes the protein references for all peptide hits.
 
 
-For more information, visit https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Documentation/release/2.3.0/html/TOPP_PeptideIndexer.html</help>
+For more information, visit http://www.openms.de/doxygen/release/2.6.0/html/TOPP_PeptideIndexer.html]]></help>
+  <expand macro="references"/>
 </tool>

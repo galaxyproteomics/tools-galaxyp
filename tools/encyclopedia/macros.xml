@@ -1,0 +1,551 @@
+<macros>
+    <token name="@VERSION@">0.9.5</token>
+    <xml name="requirements">
+        <requirements>
+            <requirement type="package" version="@VERSION@">encyclopedia</requirement>
+            <yield/>
+        </requirements>
+    </xml>
+
+    <token name="@ENCYCLOPEDIA_WIKI@">
+EncyclopeDIA_ is library search engine comprised of several algorithms for DIA data analysis and can search for peptides using either DDA-based spectrum libraries or DIA-based chromatogram libraries. See: https://bitbucket.org/searleb/encyclopedia/wiki/Home
+
+.. _EncyclopeDIA: https://bitbucket.org/searleb/encyclopedia/wiki/Home
+    </token>
+    <xml name="citations">
+        <citations>
+            <citation type="doi">10.1038/s41467-018-07454-w</citation>
+            <citation type="doi">10.1038/s41467-020-15346-1</citation>
+            <citation type="doi">10.1074/mcp.P119.001913</citation>
+            <yield/>
+        </citations>
+    </xml>
+
+    <token name="@CMD_IMPORTS@">
+#import re
+#def identifier_or_name($input1)
+    #if hasattr($input1, 'element_identifier')
+        #return $input1.element_identifier
+    #else
+        #return $input1.name
+    #end if
+#end def
+#def clean($name1)
+    #set $name_clean = $re.sub('[^\w\-_]', '_', $re.sub('(?i)[.](fa|fasta|imzml|mzml)$','', $re.sub('.*/','', $name1.rstrip('.gz'))))
+    #return $name_clean
+#end def
+#def ln_name($ds) 
+    #set $ext = ''
+    #if $ds.is_of_type('mzml') or $ds.is_of_type('imzml')
+        #set $ext = ".mzML"
+    #else if $ds.is_of_type('elib')
+        #set $ext = ".elib"
+    #else if $ds.is_of_type('dlib')
+        #set $ext = ".dlib"
+    #else if $ds.is_of_type('blib')
+        #set $ext = ".blib"
+    #else if $ds.is_of_type('fasta')
+        #set $ext = ".fasta"
+    #else if $ds.is_of_type('fasta.gz')
+        #set $ext = ".fasta.gz"
+    #end if
+    #set $name = "%s%s" % ($clean($identifier_or_name($ds)),$ext) 
+    #return $name
+#end def
+#set $i_name = None
+#set $f_name = None
+#set $l_name = None
+#set $t_name = None
+    </token>
+
+    <xml name="scan_input">
+        <param name="scan_input" argument="-i" type="data" format="imzml,mzml" label="Spectrum file in mzML format"> 
+            <help>@MSCONVERT_RAW@</help>
+        </param>
+    </xml>
+    <token name="@LINK_SCAN_INPUT@"><![CDATA[
+    #set $i_name = $ln_name($scan_input)
+    ln -s '$scan_input' '$i_name' &&
+    ]]></token>
+    <token name="@SCAN_INPUT@">
+    -i '$i_name'
+    </token>
+
+    <xml name="scan_inputs">
+        <param name="scan_inputs" argument="-i" type="data" format="imzml,mzml" multiple="true" label="Spectrum files in  mzML format">
+            <help>@MSCONVERT_RAW@</help>
+        </param>
+    </xml>
+    <token name="@LINK_SCAN_INPUTS@"><![CDATA[
+    #set $inputs_dir = 'inputs'
+    mkdir -p $inputs_dir &&
+    #for $sf in $scan_inputs
+      #set $i_name = $ln_name($sf)
+      ln -s '$sf' '${inputs_dir}/${i_name}' &&
+    #end for
+    ]]></token>
+    <token name="@SCAN_INPUTS@">
+    -i '$inputs_dir'
+    </token>
+
+    <xml name="fasta_input">
+        <param name="fasta" argument="-f" type="data" format="fasta" label="Background proteome protein fasta database"> 
+            <help>provides the necessary peptide-to-protein links not specified in the spectrum library</help>
+        </param>
+    </xml>
+    <token name="@LINK_FASTA_INPUT@"><![CDATA[
+    #set $f_name = $ln_name($fasta)
+    ln -s '$fasta' '$f_name' &&
+    ]]></token>
+    <token name="@FASTA_INPUT@">
+    -f '$f_name'
+    </token>
+
+    <xml name="target_fasta">
+        <param name="target_fasta" argument="-t" type="data" format="fasta" label="Target fasta database" optional="true"> 
+            <help>Optional - Only analyze this subset of the background fasta proteome</help>
+        </param>
+        <param argument="-tp" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Target FASTA file contains peptides">
+            <help>Rather than full proteins</help>
+        </param>
+    </xml>
+    <token name="@LINK_TARGET_FASTA@"><![CDATA[
+    #if $target_fasta
+    #set $t_name = $ln_name($target_fasta)
+    ln -s '$target_fasta' '$t_name' &&
+    #else
+    #set $t_name = None
+    #end if
+    ]]></token>
+    <token name="@TARGET_FASTA@">
+    #if $t_name
+    -t '$t_name'
+    -tp $tp
+    #end if
+    </token>
+
+    <xml name="lib_input" token_optional="true" token_libhelp="">
+        <param name="library" argument="-l" type="data" format="elib,dlib" optional="@OPTIONAL@" label="Library: Chromatagram .ELIB or Spectrum .DLIB"> 
+            <help>@LIBHELP@</help>
+        </param>
+    </xml>
+    <token name="@LINK_LIB_INPUT@"><![CDATA[
+    #if $library
+    #set $l_name = $ln_name($library)
+    cp '$library' '$l_name' &&
+    #else
+    #set $l_name = None
+    #end if
+    ]]></token>
+    <token name="@LIB_INPUT@">
+    #if $l_name
+    -l '$l_name'
+    #end if
+    </token>
+
+    <xml name="common_options" token_overlapping_selected="false" token_nonoverlapping_selected="false" 
+                               token_cid_selected="false" token_hcd_selected="false">
+        <conditional name="acquisition">
+            <param name="set_acquisition" type="select" label="Set Acquisition Options">
+                <option value="no">No - use default options</option>
+                <option value="yes">Yes</option>
+            </param> 
+            <when value="no"/>
+            <when value="yes">
+                <param argument="-numberOfExtraDecoyLibrariesSearched" type="float" value="0.0" min="0.0" max="1.0" label="numberOfExtraDecoyLibrariesSearched"/>
+                <param argument="-acquisition" type="select" optional="true" label="Data Acquization Type">
+                    <option value="Overlapping DIA" selected="@OVERLAPPING_SELECTED@">Overlapping DIA</option>
+                    <option value="Non-Overlapping DIA" selected="@NONOVERLAPPING_SELECTED@">Non-Overlapping DIA</option>
+                </param>
+                <param argument="-enzyme" type="select" optional="true" label="Digestion Enzyme">
+                     <option value="Trypsin">Trypsin</option>
+                     <option value="Trypsin/p">Trypsin/p</option>
+                     <option value="Lys-C">Lys-C</option>
+                     <option value="Lys-N">Lys-N</option>
+                     <option value="Arg-C">Arg-C</option>
+                     <option value="Glu-C">Glu-C</option>
+                     <option value="Chymotrypsin">Chymotrypsin</option>
+                     <option value="Pepsin A">Pepsin A</option>
+                     <option value="Elastase">Elastase</option>
+                     <option value="Thermolysin">Thermolysin</option>
+                     <option value="No Enzyme">No Enzyme</option>
+                </param>
+                <param argument="-frag" type="select" optional="true" label="Fragmentation">
+                    <option value="CID" selected="@CID_SELECTED@">CID/HCD (B/Y)</option>
+                    <option value="HCD" selected="@HCD_SELECTED@">HCD (Y-Only)</option>
+                    <option value="ETD">ETD (C/Z/Z+1)</option>
+                </param>
+            </when>
+        </conditional>
+    </xml>
+    <xml name="encyclopedia_common_options">
+        <expand macro="common_options" token_overlapping_selected="true" token_nonoverlapping_selected="false" 
+                               token_cid_selected="true" token_hcd_selected="false"/>
+    </xml>
+    <xml name="walnut_common_options">
+        <expand macro="common_options" token_overlapping_selected="false" token_nonoverlapping_selected="true" 
+                               token_cid_selected="false" token_hcd_selected="true"/>
+    </xml>
+    <token name="@COMMON_OPTIONS@">
+    #if $options.acquisition.set_acquisition == 'yes'
+      -numberOfExtraDecoyLibrariesSearched $options.acquisition.numberOfExtraDecoyLibrariesSearched
+      #if $options.acquisition.acquisition 
+        -acquisition '$options.acquisition.acquisition'
+      #end if
+      #if $options.acquisition.enzyme:
+        -enzyme '$options.acquisition.enzyme'
+      #end if
+      #if $options.acquisition.frag:
+        -frag '$options.acquisition.frag'
+      #end if
+    #end if
+    </token>
+
+    <xml name="mass_tolerance">
+        <conditional name="tolerance">
+            <param name="set_tolerance" type="select" label="Set Tolerance Options">
+                <option value="no">No - use default options</option>
+                <option value="yes">Yes</option>
+            </param> 
+            <when value="no"/>
+            <when value="yes">
+                <conditional name="precursor_tolerance">
+                    <param argument="-ptolunits" type="select" label="Precursor Mass Tolerance">
+                        <option value="PPM">PPM</option>
+                        <option value="AMU">AMU</option>
+                        <option value="Resolution">Resolution</option>
+                    </param>
+                    <when value="PPM">
+                        <param argument="-ptol" type="float" value="10" min="1.0" max="200.0" label="Precursor Mass Tolerance (PPM)"/>
+                    </when>
+                    <when value="AMU">
+                        <param argument="-ptol" type="float" value=".4" min="1.0" max="1.0" label="Precursor Mass Tolerance (AMU)"/>
+                    </when>
+                    <when value="Resolution">
+                        <param argument="-ptol" type="integer" value="15000" min="5000" max="300000" label="Precursor Mass Tolerance (Resolution)"/>
+                    </when>
+                </conditional>
+                <conditional name="fragment_tolerance">
+                    <param argument="-ftolunits" type="select" label="Fragment Mass Tolerance">
+                        <option value="PPM">PPM</option>
+                        <option value="AMU">AMU</option>
+                        <option value="Resolution">Resolution</option>
+                    </param>
+                    <when value="PPM">
+                        <param argument="-ftol" type="float" value="10" min="1.0" max="200.0" label="Fragment Mass Tolerance (PPM)"/>
+                    </when>
+                    <when value="AMU">
+                        <param argument="-ftol" type="float" value=".4" min="1.0" max="1.0" label="Fragment Mass Tolerance (AMU)"/>
+                    </when>
+                    <when value="Resolution">
+                        <param argument="-ftol" type="integer" value="15000" min="5000" max="300000" label="Fragment Mass Tolerance (Resolution)"/>
+                    </when>
+                </conditional>
+                <yield/>
+            </when>
+        </conditional>
+    </xml>
+    <token name="@MASS_TOLERANCE@">
+    #if $options.tolerance.set_tolerance == 'yes'
+    -ptolunits $options.tolerance.precursor_tolerance.ptolunits
+    -ptol $options.tolerance.precursor_tolerance.ptol
+    -ftolunits $options.tolerance.fragment_tolerance.ftolunits
+    -ftol $options.tolerance.fragment_tolerance.ftol
+    #end if
+    </token>
+
+    <xml name="mass_library_tolerance">
+        <expand macro="mass_tolerance">
+        <conditional name="library_tolerance">
+            <param argument="-ltolunits" type="select" label="Library Mass Tolerance">
+                <option value="defaults">Use defaults</option>
+                <option value="PPM">PPM</option>
+                <option value="AMU">AMU</option>
+                <option value="Resolution">Resolution</option>
+            </param>
+            <when value="defaults"/>
+            <when value="PPM">
+                <param argument="-ltol" type="float" value="10" min="1.0" max="200.0" label="Library Mass Tolerance (PPM)"/>
+            </when>
+            <when value="AMU">
+                <param argument="-ltol" type="float" value=".4" min="1.0" max="1.0" label="Library Mass Tolerance (AMU)"/>
+            </when>
+            <when value="Resolution">
+                <param argument="-ltol" type="integer" value="15000" min="5000" max="300000" label="Library Mass Tolerance (Resolution)"/>
+            </when>
+        </conditional>
+        </expand>
+    </xml>
+    <token name="@MASS_LIBRARY_TOLERANCE@">
+    @MASS_TOLERANCE@
+    #if $options.tolerance.set_tolerance == 'yes' and $options.tolerance.library_tolerance.ltolunits != 'defaults'
+    -ltolunits $options.tolerance.library_tolerance.ltolunits
+    -ltol $options.tolerance.library_tolerance.ltol
+    #end if
+    </token>
+
+    <xml name="percolator_options">
+        <conditional name="percolator">
+            <param name="set_percolator" type="select" label="Set Percolator Options">
+                <option value="no">No - use default options</option>
+                <option value="yes">Yes</option>
+            </param>
+            <when value="no"/>
+            <when value="yes">
+                <param argument="-percolatorVersionNumber" type="integer" value="3" min="2" max="3" label="percolatorVersionNumber"/>
+                <param argument="-percolatorProteinThreshold" type="float" value="0.01" label="percolatorProteinThreshold"/>
+                <param argument="-percolatorThreshold" type="float" value="0.01" label="percolatorThreshold"/>
+            </when>
+        </conditional>
+    </xml>
+    <token name="@PERCOLATOR_OPTIONS@">
+    #if $options.percolator.set_percolator == 'yes'
+        #if str($options.percolator.percolatorVersionNumber)
+            -percolatorVersionNumber $options.percolator.percolatorVersionNumber
+        #end if
+        #if str($options.percolator.percolatorProteinThreshold)
+            -percolatorProteinThreshold $options.percolator.percolatorProteinThreshold
+        #end if
+        #if str($options.percolator.percolatorThreshold)
+            -percolatorThreshold $options.percolator.percolatorThreshold
+        #end if
+    #end if
+    </token>
+
+    <xml name="peak_options">
+        <conditional name="peak">
+            <param name="set_peak" type="select" label="Set Peak Options">
+                <option value="no">No - use default options</option>
+                <option value="yes">Yes</option>
+            </param>
+            <when value="no"/>
+            <when value="yes">
+                <param argument="-numberOfQuantitativePeaks" type="integer" value="" min="1" max="100" optional="true" label="Number of Quantitative Peaks" help="(default 5)"/>
+                <param argument="-minNumOfQuantitativePeaks" type="integer" value="" min="0" max="100" optional="true" label="Minimum Number of Quantitative Peaks" help="(default 3)"/>
+                <param argument="-minQuantitativeIonNumber" type="integer" value="" min="0" max="100" optional="true" label="Minimum Number of Quantitative Ions" help="(default 3)"/>
+                <param argument="-minIntensity" type="float" value="-1.0" optional="true" label="minIntensity"/>
+                <param argument="-expectedPeakWidth" type="float" value="25.0" min="1" max="100.0" optional="true" label="Expected Peak Width" help="(default 5)"/>
+                <param argument="-filterPeaklists" type="select" optional="true" label="Filter Peak Lists">
+                    <option value="false">No</option>
+                    <option value="true">Yes</option>
+                </param>
+            </when>
+        </conditional>
+    </xml>
+    <token name="@PEAK_OPTIONS@">
+    #if $options.peak.set_peak == 'yes'
+        #if str($options.peak.numberOfQuantitativePeaks)
+            -numberOfQuantitativePeaks $options.peak.numberOfQuantitativePeaks
+        #end if
+        #if str($options.peak.minNumOfQuantitativePeaks)
+            -minNumOfQuantitativePeaks $options.peak.minNumOfQuantitativePeaks
+        #end if
+        #if str($options.peak.minQuantitativeIonNumber)
+            -minQuantitativeIonNumber $options.peak.minQuantitativeIonNumber
+        #end if
+        #if str($options.peak.minIntensity)
+            -minIntensity $options.peak.minIntensity
+        #end if
+        #if str($options.peak.expectedPeakWidth)
+            -expectedPeakWidth $options.peak.expectedPeakWidth
+        #end if
+        #if $options.peak.filterPeaklists
+            -filterPeaklists $options.peak.filterPeaklists
+        #end if
+    #end if
+    </token>
+
+    <xml name="window_options">
+        <conditional name="window">
+            <param name="set_window" type="select" label="Set Window Options">
+                <option value="no">No - use default options</option>
+                <option value="yes">Yes</option>
+            </param>
+            <when value="no"/>
+            <when value="yes">
+                <param argument="-foffset" type="integer" value="" optional="true" label="fragmentOffsetPPM"/>
+                <param argument="-poffset" type="integer" value="" optional="true" label="Precursor Offset PPM" help="-poffset"/>
+                <param argument="-precursorIsolationMargin" type="integer" value="" optional="true" label="precursorIsolationMargin"/>
+                <param argument="-precursorWindowSize" type="integer" value="" optional="true" label="precursorWindowSize"/>
+                <param argument="-rtWindowInMin" type="float" value="" optional="true" label="rtWindowInMin"/>
+                <param argument="-scoringBreadthType" type="select" optional="true" label="scoringBreadthType">
+                    <option value="window">Across entire window</option>
+                    <option value="recal20">Recalibrated (20% gradient)</option>
+                    <option value="recal">Recalibrated (peak width only)</option>
+                    <option value="uncal20">Uncalibrated (20% gradient)</option>
+                    <option value="uncal">Uncalibrated (peak width only)</option>
+                </param>
+            </when>
+        </conditional>
+    </xml>
+    <token name="@WINDOW_OPTIONS@">
+    #if $options.window.set_window == 'yes' 
+        #if str($options.window.foffset)
+            -foffset $options.window.foffset
+        #end if
+        #if str($options.window.poffset)
+            -poffset $options.window.poffset
+        #end if
+        #if str($options.window.precursorIsolationMargin)
+            -precursorIsolationMargin $options.window.precursorIsolationMargin
+        #end if
+        #if str($options.window.precursorWindowSize)
+            -precursorWindowSize $options.window.precursorWindowSize
+        #end if
+        #if str($options.window.rtWindowInMin)
+            -rtWindowInMin $options.window.rtWindowInMin
+        #end if
+        #if $options.window.scoringBreadthType
+            -scoringBreadthType $options.window.scoringBreadthType
+        #end if
+    #end if
+    </token>
+
+    <xml name="modification_options">
+        <conditional name="modifications">
+            <param name="set_modifications" type="select" label="Set Modifications Options">
+                <option value="no">No - use default options</option>
+                <option value="yes">Yes</option>
+            </param>
+            <when value="no"/>
+            <when value="yes">
+                <param argument="-fixed" type="select" optional="true" label="Fixed Modification">
+                    <option value="C=57.0214635">C+57 (Carbamidomethyl) C=57.0214635</option>
+                    <option value="C=58.005479">C+58 (Carboxymethyl) C=58.005479</option>
+                    <option value="C=45.987721">C+46 (MMTS) C=45.987721</option>
+                    <option value="C=125.047679">C+125 (NEM) C=125.047679</option>
+                </param>
+                <yield/>
+                <!--
+                <param argument="-localizationModification" type="select" optional="true" label="localizationModification">
+                </param>
+                -->
+                <param argument="-verifyModificationIons" type="boolean" truevalue="true" falsevalue="false" checked="true" label="verifyModificationIons"/>
+            </when>
+        </conditional>
+    </xml>
+    <token name="@MODIFICATION_OPTIONS@">
+    #if $options.modifications.set_modifications == 'yes'
+        #if $options.modifications.fixed
+            -fixed $options.modifications.fixed
+        #end if
+        -verifyModificationIons $options.modifications.verifyModificationIons
+    #end if
+    </token>
+
+    <xml name="search_options">
+        <conditional name="search">
+            <param name="set_search" type="select" label="Set Search Options">
+                <option value="no">No - use default options</option>
+                <option value="yes">Yes</option>
+            </param>
+            <when value="no"/>
+            <when value="yes">
+                <param argument="-minCharge" type="integer" value="2" min="1" max="10" label="minCharge" optional="true"/>
+                <param argument="-maxCharge" type="integer" value="3" min="1" max="10" label="maxCharge" optional="true"/>
+                <param argument="-minLength" type="integer" value="5" min="1" max="100" label="minLength" optional="true"/>
+                <param argument="-maxLength" type="integer" value="100" min="10" max="200" label="maxLength" optional="true"/>
+                <param argument="-minEluteTime" type="integer" value="12" min="1" max="69" label="minEluteTime" optional="true"/>
+                <param argument="-maxMissedCleavage" type="integer" value="1" min="0" max="5" label="maxMissedCleavage" optional="true"/>
+                <param argument="-minQuantitativeIonNumber" type="integer" value="3" min="1" max="10" label="minQuantitativeIonNumber" optional="true"/>
+                <param argument="-minNumOfQuantitativePeaks" type="integer" value="3" min="1" max="10" label="minNumOfQuantitativePeaks" optional="true"/>
+                <param argument="-numberOfQuantitativePeaks" type="integer" value="3" min="1" max="10" label="numberOfQuantitativePeaks" optional="true"/>
+<!--
+                <param argument="-addDecoysToBackground" type="boolean" truevalue="true" falsevalue="false" checked="false" label="addDecoysToBackground"/>
+                <param argument="-dontRunDecoys" type="boolean" truevalue="true" falsevalue="false" checked="false" label="dontRunDecoys"/>
+-->
+            </when>
+        </conditional>
+    </xml>
+    <token name="@SEARCH_OPTIONS@">
+    #if $options.search.set_search == 'yes'
+        -minCharge $options.search.minCharge
+        -maxCharge $options.search.maxCharge
+        -minLength $options.search.minLength
+        -maxLength $options.search.maxLength
+        -minEluteTime $options.search.minEluteTime
+        -maxMissedCleavage $options.search.maxMissedCleavage
+        -minQuantitativeIonNumber $options.search.minQuantitativeIonNumber
+        -minNumOfQuantitativePeaks $options.search.minNumOfQuantitativePeaks
+        -numberOfQuantitativePeaks $options.search.numberOfQuantitativePeaks
+        ## -addDecoysToBackground $options.search.addDecoysToBackground
+        ## -dontRunDecoys $options.search.dontRunDecoys
+    #end if
+    </token>
+
+    <xml name="options_section">
+        <section name="options" title="Parameter Settings" expanded="false">
+            <expand macro="common_options"/>
+            <expand macro="mass_library_tolerance"/>
+            <expand macro="percolator_options"/>
+            <expand macro="peak_options"/>
+            <expand macro="window_options"/>
+            <expand macro="modification_options"/>
+            <expand macro="search_options"/>
+        </section>
+    </xml>
+
+    <xml name="libexport">
+        <param argument="-a" type="boolean" truevalue="true" falsevalue="false" checked="false" label="align between files"/>
+    </xml>
+
+    <token name="@SEARCH2LIB_CMDS@"><![CDATA[
+        @CMD_IMPORTS@
+        @LINK_SCAN_INPUTS@
+        @LINK_FASTA_INPUT@
+        @LINK_TARGET_FASTA@
+        @LINK_LIB_INPUT@
+        for SCAN_FILE in `ls -1 inputs/*`; do
+            echo "\$SCAN_FILE" &&
+            EncyclopeDIA -Djava.awt.headless=true -Duser.language=en-US -Duser.region=US
+                -Xmx\$[ \${GALAXY_MEMORY_MB:-20480} / 1024 ]g
+                -numberOfThreadsUsed "\${GALAXY_SLOTS:-4}"
+            #if not $library
+                -walnut
+            #end if
+            -i \$SCAN_FILE
+            @FASTA_INPUT@
+            @TARGET_FASTA@
+            @LIB_INPUT@
+            @COMMON_OPTIONS@
+            @MASS_LIBRARY_TOLERANCE@
+            @PERCOLATOR_OPTIONS@
+            @PEAK_OPTIONS@
+            @WINDOW_OPTIONS@
+            @MODIFICATION_OPTIONS@
+            @SEARCH_OPTIONS@ | tee -a search2lib.log
+        ; done &&
+        for TXT in `find inputs/*.mzML.[efw]*[ast].txt`; do TRGT=`echo \$TXT | sed 's/mzML/dia/'`; ln -s \$TXT \$TRGT; done &&
+        EncyclopeDIA -Djava.awt.headless=true -Duser.language=en-US -Duser.region=US -Xmx\$[ \${GALAXY_MEMORY_MB:-20480} / 1024 ]g -libexport
+        #if not $library
+            -pecan
+        #end if
+        @SCAN_INPUTS@
+        @FASTA_INPUT@
+        @TARGET_FASTA@
+        @LIB_INPUT@
+        -a $a
+        -o chromatogram_library.elib
+        && ls -l ./*.* inputs/*
+        | tee -a search2lib.log
+]]>
+    </token>
+    <token name="@MSCONVERT_CMD@"><![CDATA[
+      msconvert  --zlib --64 --mzML --simAsSpectra --filter "peakPicking true 1-" --filter "demultiplex optimization=overlap_only" *.raw
+]]>
+    </token>
+    <token name="@MSCONVERT_RAW@"><![CDATA[
+mzML conversion from RAW requires special options: @MSCONVERT_CMD@
+]]>
+    </token>
+    <token name="@MSCONVERT_HELP@"><![CDATA[
+
+    The MSConvert command can be used to convert and deconvolute DIA raw files to mzML format. You need to use these options:
+
+    ::
+
+      @MSCONVERT_CMD@
+
+]]>
+    </token>
+</macros>

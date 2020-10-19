@@ -7,11 +7,11 @@
     </macros>
     <expand macro="requirements">
         <requirement type="package" version="2.3">r-gridextra</requirement>
-        <requirement type="package" version="3.2.1">r-ggplot2</requirement>
+        <requirement type="package" version="3.3.2">r-ggplot2</requirement>
         <requirement type="package" version="1.1_2">r-rcolorbrewer</requirement>
-        <requirement type="package" version="2.23_16">r-kernsmooth</requirement>
-        <requirement type="package" version="1.1.0">r-scales</requirement>
-        <requirement type="package" version="1.0.12"> r-pheatmap</requirement>
+        <requirement type="package" version="2.23_17">r-kernsmooth</requirement>
+        <requirement type="package" version="1.1.1">r-scales</requirement>
+        <requirement type="package" version="1.0.12">r-pheatmap</requirement>
     </expand>
     <command detect_errors="exit_code">
     <![CDATA[
@@ -60,7 +60,7 @@ msidata <- msidata[,!duplicated(coord(msidata))]
     merged_annotation = merge(msidata_coordinates, annotation_input, by=c("x", "y"), all.x=TRUE)
     merged_annotation[is.na(merged_annotation)] = "NA"
     merged_annotation = merged_annotation[order(merged_annotation\$pixel_index),]
-    msidata\$annotation = as.factor(merged_annotation[,4])
+    msidata\$annotation = as.character(merged_annotation[,4])
 
 #end if
 
@@ -68,13 +68,13 @@ msidata <- msidata[,!duplicated(coord(msidata))]
 @DATA_PROPERTIES_INRAM@
 
 ## Median intensities
-medint = round(median(spectra(msidata), na.rm=TRUE), digits=2)
+medint = round(median(int_matrix), digits=2)
 ## Spectra multiplied with m/z (potential number of peaks)
-numpeaks = ncol(msidata)*nrow(msidata)
+numpeaks = as.numeric(ncol(msidata)*nrow(msidata))
 ## Percentage of intensities > 0
 percpeaks = round(npeaks/numpeaks*100, digits=2)
 ## Number of empty TICs
-TICs = pixelApply(msidata, sum)
+TICs = pixelApply(msidata, sum, na.rm=TRUE)
 NumemptyTIC = sum(TICs == 0)
 ## Median und sd TIC
 medTIC = round(median(TICs), digits=1)
@@ -82,6 +82,8 @@ sdTIC = round(sd(TICs), digits=0)
 ## Median and sd # peaks per spectrum
 medpeaks = round(median(colSums(spectra(msidata)>0, na.rm=TRUE), na.rm=TRUE), digits=0)
 sdpeaks = round(sd(colSums(spectra(msidata)>0, na.rm=TRUE), na.rm=TRUE), digits=0)
+##max window size 
+max_window = round(mz(msidata)[nrow(msidata)]-mz(msidata)[nrow(msidata)-1], digits=2)
 ## Processing informations
 centroidedinfo = centroided(msidata)
 
@@ -137,6 +139,7 @@ properties2 = c("Median of intensities",
                "Number of empty spectra",
                "Median TIC ± sd", 
                "Median # peaks per spectrum ± sd",
+               "maximum m/z window size",
                "Centroided", 
                paste0("input m/z (#valid/#input) in \n", "$calibrant_file.display_name"))
 
@@ -145,6 +148,7 @@ values2 = c(paste0(medint),
            paste0(NumemptyTIC), 
            paste0(medTIC, " ± ", sdTIC),
            paste0(medpeaks, " ± ",sdpeaks),
+           paste0(max_window),
            paste0(centroidedinfo), 
            paste0(number_calibrants_valid, " / ", number_calibrants_in))
 
@@ -183,12 +187,13 @@ if (npeaks > 0){
 
     ### only for previously combined data, same plot as in combine QC pdf
 
-    if (!is.null(levels(msidata\$annotation))){
+    if (!is.null(unique(msidata\$annotation))){
 
-        number_combined = length(levels(msidata\$annotation))
+        number_combined = length(unique(msidata\$annotation))
 
         position_df = data.frame(coord(msidata)\$x, coord(msidata)\$y, msidata\$annotation)
         colnames(position_df) = c("x", "y","annotation")
+                print(position_df)
 
         combine_plot = ggplot(position_df, aes(x=x, y=y, fill=annotation))+
                geom_tile() +
@@ -220,7 +225,7 @@ if (npeaks > 0){
     pixelxyarray=data.frame(coord(msidata)\$x, coord(msidata)\$y,pixelnumber)
     colnames(pixelxyarray) = c("x", "y", "pixelnumber")
     gg_title = "Pixel order"
-    
+
     print(ggplot(pixelxyarray, aes(x=x, y=y, fill=pixelnumber))+
      geom_tile() + coord_fixed()+
      ggtitle(gg_title) + theme_bw()+
@@ -414,7 +419,7 @@ if (npeaks > 0){
 
     ############################### 6b) median int image ###############################
 
-    median_int = pixelApply(msidata, median)
+    median_int = pixelApply(msidata, median, na.rm=TRUE)
 
     median_coordarray=data.frame(coord(msidata)\$x, coord(msidata)\$y, median_int)
     colnames(median_coordarray) = c("x", "y", "median_int")
@@ -433,7 +438,7 @@ if (npeaks > 0){
 
     ############################### 6c) max int image ###############################
 
-    max_int = pixelApply(msidata, max)
+    max_int = pixelApply(msidata, max, na.rm=TRUE)
 
     max_coordarray=data.frame(coord(msidata)\$x, coord(msidata)\$y, max_int)
     colnames(max_coordarray) = c("x", "y", "max_int")
@@ -495,7 +500,7 @@ if (npeaks > 0){
         par(oma=c(0,0,0,1))## margin for image legend
         print(image(pca, column = "PC1" , strip=FALSE, superpose = FALSE, main="PC1", col.regions = risk.colors(100), layout=c(2,1), ylim= c(maximumy+0.2*maximumy,minimumy-1)))
         print(image(pca, column = "PC2" , strip=FALSE, superpose = FALSE, main="PC2", col.regions = risk.colors(100), layout=FALSE,  ylim= c(maximumy+0.2*maximumy,minimumy-1)))
-    ## remove pca to clean up RAM space
+    	## remove pca to clean up space
         rm(pca)
         gc()
 
@@ -513,7 +518,7 @@ if (npeaks > 0){
     title(xlab="Spectra index", line=3)
     title(ylab="Number of peaks", line=4)
 
-    if (!is.null(levels(msidata\$annotation))){
+    if (!is.null(unique(msidata\$annotation))){
         abline(v=abline_vector, lty = 3)}
 
     ## 9b) histogram
@@ -525,11 +530,11 @@ if (npeaks > 0){
 
     ## 9c) additional histogram to show contribution of annotation groups
 
-    if (!is.null(levels(msidata\$annotation))){
+    if (!is.null(unique(msidata\$annotation))){
 
         df_9 = data.frame(peaksperpixel, msidata\$annotation)
         colnames(df_9) = c("Npeaks", "annotation")
-
+ 
         hist_9 = ggplot(df_9, aes(x=Npeaks, fill=annotation)) +
         geom_histogram()+ theme_bw()+
         theme(text=element_text(family="ArialMT", face="bold", size=12))+
@@ -555,17 +560,17 @@ if (npeaks > 0){
 
     title(xlab="Spectra index", line=3)
     title(ylab = "Total ion current intensity", line=4)
-    if (!is.null(levels(msidata\$annotation))){
+    if (!is.null(unique(msidata\$annotation))){
         abline(v=abline_vector, lty = 3)}
 
     ## 10b) histogram
-    hist((TICs), main="", las=1, xlab = "TIC per spectrum", ylab="")
+    hist(TICs, main="", las=1, xlab = "TIC per spectrum", ylab="")
     title(main= "TIC per spectrum", line=2)
     title(ylab="Frequency = # spectra", line=4)
     abline(v=median(TICs[TICs>0]), col="blue")
 
     ## 10c) additional histogram to show annotation contributions
-    if (!is.null(levels(msidata\$annotation))){
+    if (!is.null(unique(msidata\$annotation))){
         df_10 = data.frame((TICs), msidata\$annotation)
         colnames(df_10) = c("TICs", "annotation")
 
@@ -633,26 +638,26 @@ if (npeaks > 0){
     par(mfrow = c(2,1), mar=c(5,6,4,2))
 
     ## 14a) Median intensity over spectra
-    medianint_spectra = pixelApply(msidata, median)
+    medianint_spectra = pixelApply(msidata, median, na.rm=TRUE)
     plot(medianint_spectra, main="Median intensity per spectrum",las=1, xlab="Spectra index", ylab="")
     title(ylab="Median spectrum intensity", line=4)
-    if (!is.null(levels(msidata\$annotation))){
+    if (!is.null(unique(msidata\$annotation))){
         abline(v=abline_vector, lty = 3)}
 
     ## 14b) histogram: 
-    hist(as.matrix(spectra(msidata)), main="", xlab = "", ylab="", las=1)
+    hist(int_matrix, main="", xlab = "", ylab="", las=1)
     title(main="Intensity histogram", line=2)
     title(xlab="intensities")
     title(ylab="Frequency", line=4)
-    abline(v=median(as.matrix(spectra(msidata))[(as.matrix(spectra(msidata))>0)], na.rm=TRUE), col="blue")
+    abline(v=median(int_matrix)[(as.matrix(spectra(msidata))>0)], col="blue")
 
 
     ## 14c) histogram to show contribution of annotation groups
 
-    if (!is.null(levels(msidata\$annotation))){
+    if (!is.null(unique(msidata\$annotation))){
 
         df_13 = data.frame(matrix(,ncol=2, nrow=0))
-        for (subsample in levels(msidata\$annotation)){
+        for (subsample in unique(msidata\$annotation)){
             log2_int_subsample = spectra(msidata)[,msidata\$annotation==subsample]
             df_subsample = data.frame(as.numeric(log2_int_subsample))
             df_subsample\$annotation = subsample
@@ -668,43 +673,43 @@ if (npeaks > 0){
         theme(legend.position="bottom",legend.direction="vertical")+
         theme(legend.key.size = unit(0.2, "line"), legend.text = element_text(size = 8))+
         guides(fill=guide_legend(ncol=5,byrow=TRUE))+
-        geom_vline(xintercept = median(spectra(msidata)[(spectra(msidata)>0)]), size = 1, colour = "black",linetype = "dashed")
+        geom_vline(xintercept = median(int_matrix)[(int_matrix>0)], size = 1, colour = "black",linetype = "dashed")
         print(hist_13)
 
         ## 14d) boxplots to visualize in a different way the intensity distributions
-        par(mfrow = c(1,1), cex.axis=1.3, cex.lab=1.3, mar=c(13.1,4.1,5.1,2.1))
+        par(mfrow = c(1,1), cex.axis=1.3, cex.lab=1.3, mar=c(10,4.1,5.1,2.1))
 
         mean_matrix = matrix(,ncol=0, nrow = nrow(msidata))
-        for (subsample in levels(msidata\$annotation)){
+        for (subsample in unique(msidata\$annotation)){
             mean_mz_sample = rowMeans(spectra(msidata)[,msidata\$annotation==subsample],na.rm=TRUE)
             mean_matrix = cbind(mean_matrix, mean_mz_sample)}
-
-        boxplot(log10(mean_matrix), ylab = "Log10 mean intensity per m/z", main="Log10 mean m/z intensities per annotation group", xaxt = "n")
-        (axis(1, at = c(1:number_combined), labels=levels(msidata\$annotation), las=2))
+            
+        boxplot(log10(as.data.frame(mean_matrix)), ylab = "Log10 mean intensity per m/z", main="Log10 mean m/z intensities per annotation group", xaxt = "n")
+        (axis(1, at = c(1:number_combined), cex.axis=0.9, labels=unique(msidata\$annotation), las=2))
 
         ## 14e) Heatmap of mean intensities of annotation groups
 
-        colnames(mean_matrix) = levels(msidata\$annotation)
+        colnames(mean_matrix) = unique(msidata\$annotation)
         mean_matrix[is.na(mean_matrix)] = 0
             heatmap.parameters <- list(mean_matrix, 
             show_rownames = T, show_colnames = T,
             main = "Heatmap of mean intensities per annotation group")
-            par(oma=c(3,0,0,0))
-            print(heatmap(mean_matrix),margins = c(10, 10))
+            par(oma=c(5,0,0,0))
+        heatmap(mean_matrix)
 
 
         ## 14f) PCA of mean intensities of annotation groups
-
+            par(mar=c(4.1, 4.1, 4.1, 8.5))
         ## define annotation by colour
-        annotation_colour = rainbow(length(levels(msidata\$annotation)))[as.factor(levels(msidata\$annotation))]
+        annotation_colour = rainbow(length(unique(msidata\$annotation)))[as.factor(unique(msidata\$annotation))]
         ## transform and scale dataframe
         pca = prcomp(t(mean_matrix),center=FALSE,scale.=FALSE)
         ## plot single plot
         plot(pca\$x[,c(1,2)],col=annotation_colour,pch=19)
+        legend("topright",xpd=TRUE, bty="n", inset=c(-0.3,0), cex=0.8, legend=unique(msidata\$annotation), col=rainbow(length(unique(msidata\$annotation))), pch=19)
         ## plot pca with colours for max first 5 PCs
         pc_comp = ifelse(ncol(pca\$x)<5 , ncol(pca\$x), 5)
         pairs(pca\$x[,1:pc_comp],col=annotation_colour,pch=19)
-        legend("bottom", horiz = TRUE, legend=levels(msidata\$annotation), col=rainbow(length(levels(msidata\$annotation))), pch=19)
 
     }
 
@@ -721,20 +726,20 @@ if (npeaks > 0){
     third_mz_range = round(nrow(msidata_no_NA)/3,0)
 
     par(cex.axis=1, cex.lab=1, mar=c(5.1,4.1,4.1,2.1))
-    print(plot(msidata_no_NA, run="infile", layout=c(2,2), strip=FALSE, main= "Average spectrum"))
-    print(plot(msidata_no_NA[1:third_mz_range,], layout=FALSE, run="infile", strip=FALSE, main="Zoomed average spectrum"))
-    print(plot(msidata_no_NA[third_mz_range:(2*third_mz_range),], layout=FALSE, run="infile", strip=FALSE, main="Zoomed average spectrum"))
-    print(plot(msidata_no_NA[(2*third_mz_range):nrow(msidata_no_NA),], layout=FALSE, run="infile", strip=FALSE, main="Zoomed average spectrum"))
+    print(plot(msidata_no_NA, run="infile", layout=c(2,2), strip=FALSE, main= "Average spectrum", col="black"))
+    print(plot(msidata_no_NA[1:third_mz_range,], layout=FALSE, run="infile", strip=FALSE, main="Zoomed average spectrum", col="black"))
+    print(plot(msidata_no_NA[third_mz_range:(2*third_mz_range),], layout=FALSE, run="infile", strip=FALSE, main="Zoomed average spectrum", col="black"))
+    print(plot(msidata_no_NA[(2*third_mz_range):nrow(msidata_no_NA),], layout=FALSE, run="infile", strip=FALSE, main="Zoomed average spectrum", col="black"))
 
     ## plot one average mass spectrum for each pixel annotation group
 
-    if (!is.null(levels(msidata\$annotation))){
+    if (!is.null(unique(msidata\$annotation))){
         ## print legend only for less than 10 samples
-        if (length(levels(msidata\$annotation)) < 10){
+        if (length(unique(msidata\$annotation)) < 10){
             key_legend = TRUE
         }else{key_legend = FALSE}
         par(mfrow = c(1,1), cex.axis=1, cex.lab=1, mar=c(5.1,4.1,4.1,2.1))
-        print(plot(msidata, run="infile", pixel.groups=msidata\$annotation, key=key_legend, col=hue_pal()(length(levels(msidata\$annotation))),superpose=TRUE, main="Average mass spectra for annotation groups"))
+        print(plot(msidata, run="infile", pixel.groups=msidata\$annotation, key=key_legend, col=hue_pal()(length(unique(msidata\$annotation))),superpose=TRUE, main="Average mass spectra for annotation groups"))
     }
 
     ## plot 4 random mass spectra
@@ -742,7 +747,7 @@ if (npeaks > 0){
     pixel_vector = sample(which(TICs != 0),4)
 
     par(mfrow = c(2, 2), cex.axis=1, cex.lab=1, mar=c(5.1,4.1,4.1,2.1))
-    print(plot(msidata_no_NA, pixel = pixel_vector))
+    print(plot(msidata_no_NA, pixel = pixel_vector, col="black"))
 
 
     ################### 16) Zoomed in mass spectra for calibrants ##############
@@ -752,6 +757,7 @@ if (npeaks > 0){
     differencevector2 = vector()
 
     if (length(inputcalibrantmasses) != 0){
+
 
     ### calculate plusminus values in m/z for each calibrant, this is used for all following plots
     plusminusvalues = rep($plusminus_ppm/1000000, length(inputcalibrantmasses)) * inputcalibrantmasses
@@ -765,6 +771,17 @@ if (npeaks > 0){
             maxmasspixel2 = features(msidata_no_NA, mz=inputcalibrantmasses[mass]+0.5)
             minmasspixel3 = features(msidata_no_NA, mz=inputcalibrantmasses[mass]-1.5)
             maxmasspixel3 = features(msidata_no_NA, mz=inputcalibrantmasses[mass]+3)
+            
+            ## test if some values are lower than min(mz)
+            minmasspixel1 = ifelse(length(minmasspixel1)>0, minmasspixel1, 1)
+            minmasspixel2 = ifelse(length(minmasspixel2)>0, minmasspixel2, 1)
+            minmasspixel3 = ifelse(length(minmasspixel3)>0, minmasspixel3, 1)
+            
+            ## test if min and max are same (more likely for centroided data):
+            maxmasspixel1 = ifelse(minmasspixel1 != maxmasspixel1, maxmasspixel1, maxmasspixel1 + 1)
+            maxmasspixel2 = ifelse(minmasspixel2 != maxmasspixel2, maxmasspixel2, maxmasspixel1 + 1)
+            maxmasspixel3 = ifelse(minmasspixel3 != maxmasspixel3, maxmasspixel3, maxmasspixel1 + 1)
+            
 
             ### find m/z with the highest mean intensity in m/z range (red line in plot 16) and calculate ppm difference for plot 17
             filtered_data = msidata_no_NA[mz(msidata_no_NA) >= inputcalibrantmasses[mass]-plusminusvalues[mass] & mz(msidata_no_NA) <= inputcalibrantmasses[mass]+plusminusvalues[mass],]
@@ -790,20 +807,20 @@ if (npeaks > 0){
             par(oma=c(0,0,2,0))
             ## average plot
 
-            print(plot(msidata_no_NA[minmasspixel1:maxmasspixel1,], run="infile", layout=c(2,2), strip=FALSE, main= "Average spectrum"))
+            print(plot(msidata_no_NA[minmasspixel1:maxmasspixel1,], run="infile", layout=c(2,2), strip=FALSE, main= "Average spectrum", col="black"))
             abline(v=c(inputcalibrantmasses[mass] -plusminusvalues[count], inputcalibrantmasses[mass] ,inputcalibrantmasses[mass] +plusminusvalues[count]), col="blue", lty=c(3,5,3))
             abline(v=c(maxvalue), col="red", lty=2)
             abline(v=c(mzvalue), col="green2", lty=4)
             ## average plot including points per data point
-            print(plot(msidata_no_NA[minmasspixel1:maxmasspixel1,], run="infile", layout=FALSE, strip=FALSE, main="Average spectrum with data points"))
+            print(plot(msidata_no_NA[minmasspixel1:maxmasspixel1,], run="infile", layout=FALSE, strip=FALSE, main="Average spectrum with data points", col="black"))
             points(mz(msidata_no_NA[minmasspixel1:maxmasspixel1,]), rowMeans(spectra(msidata_no_NA)[minmasspixel1:maxmasspixel1,,drop=FALSE]), col="blue", pch=20)
             ## plot of third average plot
-            print(plot(msidata_no_NA[minmasspixel2:maxmasspixel2,], run="infile", layout=FALSE, strip=FALSE, main= "Average spectrum"))
+            print(plot(msidata_no_NA[minmasspixel2:maxmasspixel2,], run="infile", layout=FALSE, strip=FALSE, main= "Average spectrum", col="black"))
             abline(v=c(inputcalibrantmasses[mass] -plusminusvalues[count], inputcalibrantmasses[mass] ,inputcalibrantmasses[mass] +plusminusvalues[count]), col="blue", lty=c(3,5,3))
             abline(v=c(maxvalue), col="red", lty=2)
             abline(v=c(mzvalue), col="green2", lty=4)
             ## plot of fourth average plot
-            print(plot(msidata_no_NA[minmasspixel3:maxmasspixel3,], run="infile", layout=FALSE, strip=FALSE, main= "Average spectrum"))
+            print(plot(msidata_no_NA[minmasspixel3:maxmasspixel3,], run="infile", layout=FALSE, strip=FALSE, main= "Average spectrum", col="black"))
             abline(v=c(inputcalibrantmasses[mass] -plusminusvalues[count], inputcalibrantmasses[mass] ,inputcalibrantmasses[mass] +plusminusvalues[count]), col="blue", lty=c(3,5,3))
             abline(v=c(maxvalue), col="red", lty=2)
             abline(v=c(mzvalue), col="green2", lty=4)
@@ -813,7 +830,7 @@ if (npeaks > 0){
 
             ### 16b) one large extra plot with different colours for different pixel annotation groups
 
-            if (!is.null(levels(msidata\$annotation))){
+            if (!is.null(unique(msidata\$annotation))){
                 if (number_combined < 10){
                     key_zoomed = TRUE
                 }else{key_zoomed = FALSE}
@@ -835,7 +852,9 @@ if (npeaks > 0){
         ### plot the ppm difference calculated above: theor. m/z value to highest m/z value: 
 
         calibrant_names = as.character(inputcalibrants[,2])
+
         diff_df = data.frame(differencevector, calibrant_names)
+
 
         if (sum(is.na(diff_df[,1])) == nrow(diff_df)){
                 plot(0,type='n',axes=FALSE,ann=FALSE)
@@ -910,7 +929,7 @@ if (npeaks > 0){
             for (each_cal in 1:ncol(ppm_df)){
                 lines(ppm_df[,each_cal], col=mycolours[each_cal], type="p")}
             legend("topright", inset=c(-0.2,0), xpd = TRUE, bty="n", cex=0.8,legend=inputcalibrantmasses, col=mycolours[1:ncol(ppm_df)],lty=1)
-             if (!is.null(levels(msidata\$annotation))){
+             if (!is.null(unique(msidata\$annotation))){
                 abline(v=abline_vector, lty = 3)}}
 
             ### make x-y-images for mz accuracy
@@ -982,7 +1001,7 @@ if (npeaks > 0){
             </param>
             <conditional name="processed_cond">
                 <param name="processed_file" value="processed"/>
-                <param name="accuracy" value="200"/>
+                <param name="accuracy" value="400"/>
                 <param name="units" value="ppm"/>
             </conditional>
             <conditional name="tabular_annotation">

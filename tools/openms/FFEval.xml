@@ -1,64 +1,116 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
 <!--Proposed Tool Section: [Utilities]-->
-<tool id="FFEval" name="FFEval" version="2.3.0">
+<tool id="FFEval" name="FFEval" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@" profile="20.05">
   <description>Evaluation tool for feature detection algorithms.</description>
   <macros>
     <token name="@EXECUTABLE@">FFEval</token>
     <import>macros.xml</import>
+    <import>macros_autotest.xml</import>
+    <import>macros_test.xml</import>
   </macros>
-  <expand macro="references"/>
-  <expand macro="stdio"/>
   <expand macro="requirements"/>
-  <command detect_errors="aggressive"><![CDATA[FFEval
+  <expand macro="stdio"/>
+  <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
+@EXT_FOO@
+#import re
 
-#if $param_in:
-  -in $param_in
+## Preprocessing
+mkdir in &&
+ln -s '$in' 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)' &&
+mkdir truth &&
+ln -s '$truth' 'truth/${re.sub("[^\w\-_]", "_", $truth.element_identifier)}.$gxy2omsext($truth.ext)' &&
+#if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir out &&
 #end if
-#if $param_truth:
-  -truth $param_truth
+#if $abort_reasons:
+  mkdir abort_reasons &&
+  ln -s '$abort_reasons' 'abort_reasons/${re.sub("[^\w\-_]", "_", $abort_reasons.element_identifier)}.$gxy2omsext($abort_reasons.ext)' &&
 #end if
-#if $param_rt_tol:
-  -rt_tol $param_rt_tol
+#if "out_roc_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir out_roc &&
 #end if
-#if $param_rt_tol_abs:
-  -rt_tol_abs $param_rt_tol_abs
+
+## Main program call
+
+set -o pipefail &&
+@EXECUTABLE@ -write_ctd ./ &&
+python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
+@EXECUTABLE@ -ini @EXECUTABLE@.ctd
+-in
+'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
+-truth
+'truth/${re.sub("[^\w\-_]", "_", $truth.element_identifier)}.$gxy2omsext($truth.ext)'
+#if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  -out
+  'out/output.${gxy2omsext("featurexml")}'
 #end if
-#if $param_mz_tol:
-  -mz_tol $param_mz_tol
+#if $abort_reasons:
+  -abort_reasons
+  'abort_reasons/${re.sub("[^\w\-_]", "_", $abort_reasons.element_identifier)}.$gxy2omsext($abort_reasons.ext)'
 #end if
-#if $param_out:
-  -out $param_out
+#if "out_roc_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  -out_roc
+  'out_roc/output.${gxy2omsext("csv")}'
 #end if
-#if $param_abort_reasons:
-  -abort_reasons $param_abort_reasons
+#if len(str($OPTIONAL_OUTPUTS).split(',')) == 0
+  | tee '$stdout'
 #end if
-#if $param_out_roc:
-  -out_roc $param_out_roc
+
+## Postprocessing
+#if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  && mv 'out/output.${gxy2omsext("featurexml")}' '$out'
 #end if
-#if $adv_opts.adv_opts_selector=='advanced':
-    #if $adv_opts.param_force:
-  -force
+#if "out_roc_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  && mv 'out_roc/output.${gxy2omsext("csv")}' '$out_roc'
 #end if
-#end if
-]]></command>
+#if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
+  && mv '@EXECUTABLE@.ctd' '$ctd_out'
+#end if]]></command>
+  <configfiles>
+    <inputs name="args_json" data_style="paths"/>
+    <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
+  </configfiles>
   <inputs>
-    <param name="param_in" type="data" format="featurexml" optional="False" label="Feature input file, which contains the data to be tested against the truth file" help="(-in) "/>
-    <param name="param_truth" type="data" format="featurexml" optional="False" label="Truth feature file that defines what features should be found" help="(-truth) "/>
-    <param name="param_rt_tol" type="float" min="0.0" optional="True" value="0.3" label="Allowed tolerance of RT relative to average feature RT span" help="(-rt_tol) "/>
-    <param name="param_rt_tol_abs" type="float" min="-1.0" optional="True" value="-1.0" label="Allowed absolute tolerance of RT (overwrites 'rt_tol' if set above zero)" help="(-rt_tol_abs) "/>
-    <param name="param_mz_tol" type="float" min="0.0" optional="True" value="0.25" label="Allowed tolerance in m/z (is divided by charge)" help="(-mz_tol) "/>
-    <param name="param_abort_reasons" type="data" format="featurexml" optional="True" label="Feature file containing seeds with abort reasons" help="(-abort_reasons) "/>
-    <expand macro="advanced_options">
-      <param name="param_force" display="radio" type="boolean" truevalue="-force" falsevalue="" checked="false" optional="True" label="Overwrite tool specific checks" help="(-force) "/>
+    <param name="in" argument="-in" type="data" format="featurexml" optional="false" label="Feature input file, which contains the data to be tested against the truth file" help=" select featurexml data sets(s)"/>
+    <param name="truth" argument="-truth" type="data" format="featurexml" optional="false" label="Truth feature file that defines what features should be found" help=" select featurexml data sets(s)"/>
+    <param name="rt_tol" argument="-rt_tol" type="float" optional="true" min="0.0" value="0.3" label="Allowed tolerance of RT relative to average feature RT span" help=""/>
+    <param name="rt_tol_abs" argument="-rt_tol_abs" type="float" optional="true" min="-1.0" value="-1.0" label="Allowed absolute tolerance of RT (overwrites 'rt_tol' if set above zero)" help=""/>
+    <param name="mz_tol" argument="-mz_tol" type="float" optional="true" min="0.0" value="0.25" label="Allowed tolerance in m/z (is divided by charge)" help=""/>
+    <param name="abort_reasons" argument="-abort_reasons" type="data" format="featurexml" optional="true" label="Feature file containing seeds with abort reasons" help=" select featurexml data sets(s)"/>
+    <expand macro="adv_opts_macro">
+      <param name="force" argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
+      <param name="test" argument="-test" type="hidden" optional="true" value="False" label="Enables the test mode (needed for internal use only)" help="">
+        <expand macro="list_string_san"/>
+      </param>
     </expand>
+    <param name="OPTIONAL_OUTPUTS" type="select" optional="true" multiple="true" label="Optional outputs">
+      <option value="out_FLAG">out (Feature output file)</option>
+      <option value="out_roc_FLAG">out_roc (If given, a ROC curve file is created (ROC points based on intensity threshold))</option>
+      <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+    </param>
   </inputs>
   <outputs>
-    <data name="param_out" format="featurexml"/>
-    <data name="param_out_roc" format="tabular"/>
+    <data name="out" label="${tool.name} on ${on_string}: out" format="featurexml">
+      <filter>OPTIONAL_OUTPUTS is not None and "out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+    <data name="out_roc" label="${tool.name} on ${on_string}: out_roc" format="csv">
+      <filter>OPTIONAL_OUTPUTS is not None and "out_roc_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+    <data name="stdout" format="txt" label="${tool.name} on ${on_string}: stdout">
+      <filter>OPTIONAL_OUTPUTS is None</filter>
+    </data>
+    <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
+      <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
   </outputs>
-  <help>Evaluation tool for feature detection algorithms.
+  <tests>
+    <expand macro="autotest_FFEval"/>
+    <expand macro="manutest_FFEval"/>
+  </tests>
+  <help><![CDATA[Evaluation tool for feature detection algorithms.
 
 
-For more information, visit https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Documentation/release/2.3.0/html/UTILS_FFEval.html</help>
+For more information, visit http://www.openms.de/doxygen/release/2.6.0/html/UTILS_FFEval.html]]></help>
+  <expand macro="references"/>
 </tool>

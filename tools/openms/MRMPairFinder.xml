@@ -1,60 +1,95 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
 <!--Proposed Tool Section: [Utilities]-->
-<tool id="MRMPairFinder" name="MRMPairFinder" version="2.3.0">
+<tool id="MRMPairFinder" name="MRMPairFinder" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@" profile="20.05">
   <description>Util which can be used to evaluate labeled pair ratios on MRM features.</description>
   <macros>
     <token name="@EXECUTABLE@">MRMPairFinder</token>
     <import>macros.xml</import>
+    <import>macros_autotest.xml</import>
+    <import>macros_test.xml</import>
   </macros>
-  <expand macro="references"/>
-  <expand macro="stdio"/>
   <expand macro="requirements"/>
-  <command detect_errors="aggressive"><![CDATA[MRMPairFinder
+  <expand macro="stdio"/>
+  <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
+@EXT_FOO@
+#import re
 
-#if $param_in:
-  -in $param_in
+## Preprocessing
+mkdir in &&
+ln -s '$in' 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)' &&
+mkdir pair_in &&
+ln -s '$pair_in' 'pair_in/${re.sub("[^\w\-_]", "_", $pair_in.element_identifier)}.$gxy2omsext($pair_in.ext)' &&
+mkdir out &&
+#if "feature_out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir feature_out &&
 #end if
-#if $param_pair_in:
-  -pair_in $param_pair_in
+
+## Main program call
+
+set -o pipefail &&
+@EXECUTABLE@ -write_ctd ./ &&
+python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
+@EXECUTABLE@ -ini @EXECUTABLE@.ctd
+-in
+'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
+-pair_in
+'pair_in/${re.sub("[^\w\-_]", "_", $pair_in.element_identifier)}.$gxy2omsext($pair_in.ext)'
+-out
+'out/output.${gxy2omsext("consensusxml")}'
+#if "feature_out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  -feature_out
+  'feature_out/output.${gxy2omsext("featurexml")}'
 #end if
-#if $param_out:
-  -out $param_out
+#if len(str($OPTIONAL_OUTPUTS).split(',')) == 0
+  | tee '$stdout'
 #end if
-#if $param_feature_out:
-  -feature_out $param_feature_out
+
+## Postprocessing
+&& mv 'out/output.${gxy2omsext("consensusxml")}' '$out'
+#if "feature_out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  && mv 'feature_out/output.${gxy2omsext("featurexml")}' '$feature_out'
 #end if
-#if $adv_opts.adv_opts_selector=='advanced':
-    #if $adv_opts.param_mass_tolerance:
-  -mass_tolerance $adv_opts.param_mass_tolerance
-#end if
-    #if $adv_opts.param_RT_tolerance:
-  -RT_tolerance $adv_opts.param_RT_tolerance
-#end if
-    #if $adv_opts.param_RT_pair_tolerance:
-  -RT_pair_tolerance $adv_opts.param_RT_pair_tolerance
-#end if
-    #if $adv_opts.param_force:
-  -force
-#end if
-#end if
-]]></command>
+#if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
+  && mv '@EXECUTABLE@.ctd' '$ctd_out'
+#end if]]></command>
+  <configfiles>
+    <inputs name="args_json" data_style="paths"/>
+    <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
+  </configfiles>
   <inputs>
-    <param name="param_in" type="data" format="featurexml" optional="False" label="Input featureXML file containing the features of the MRM experiment spectra" help="(-in) "/>
-    <param name="param_pair_in" type="data" format="tabular" optional="False" label="Pair-file in the format: prec-m/z-light prec-m/z-heavy frag-m/z-light frag-m/z-heavy rt" help="(-pair_in) "/>
-    <expand macro="advanced_options">
-      <param name="param_mass_tolerance" type="float" min="0.0" optional="True" value="0.01" label="Precursor mass tolerance which is used for the pair finding and the matching of the given pair m/z values to the features" help="(-mass_tolerance) "/>
-      <param name="param_RT_tolerance" type="float" min="0.0" optional="True" value="200.0" label="Maximal deviation in RT dimension in seconds a feature can have when comparing to the RT values given in the pair file" help="(-RT_tolerance) "/>
-      <param name="param_RT_pair_tolerance" type="float" min="0.0" optional="True" value="5.0" label="Maximal deviation in RT dimension in seconds the two partners of a pair is allowed to have" help="(-RT_pair_tolerance) "/>
-      <param name="param_force" display="radio" type="boolean" truevalue="-force" falsevalue="" checked="false" optional="True" label="Overwrite tool specific checks" help="(-force) "/>
+    <param name="in" argument="-in" type="data" format="featurexml" optional="false" label="Input featureXML file containing the features of the MRM experiment spectra" help=" select featurexml data sets(s)"/>
+    <param name="pair_in" argument="-pair_in" type="data" format="csv" optional="false" label="Pair-file in the format: prec-m/z-light prec-m/z-heavy frag-m/z-light frag-m/z-heavy rt" help=" select csv data sets(s)"/>
+    <expand macro="adv_opts_macro">
+      <param name="mass_tolerance" argument="-mass_tolerance" type="float" optional="true" min="0.0" value="0.01" label="Precursor mass tolerance which is used for the pair finding and the matching of the given pair m/z values to the features" help=""/>
+      <param name="RT_tolerance" argument="-RT_tolerance" type="float" optional="true" min="0.0" value="200.0" label="Maximal deviation in RT dimension in seconds a feature can have when comparing to the RT values given in the pair file" help=""/>
+      <param name="RT_pair_tolerance" argument="-RT_pair_tolerance" type="float" optional="true" min="0.0" value="5.0" label="Maximal deviation in RT dimension in seconds the two partners of a pair is allowed to have" help=""/>
+      <param name="force" argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
+      <param name="test" argument="-test" type="hidden" optional="true" value="False" label="Enables the test mode (needed for internal use only)" help="">
+        <expand macro="list_string_san"/>
+      </param>
     </expand>
+    <param name="OPTIONAL_OUTPUTS" type="select" optional="true" multiple="true" label="Optional outputs">
+      <option value="feature_out_FLAG">feature_out (Output featureXML file, only written if given, skipped otherwise)</option>
+      <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+    </param>
   </inputs>
   <outputs>
-    <data name="param_out" format="consensusxml"/>
-    <data name="param_feature_out" format="featurexml"/>
+    <data name="out" label="${tool.name} on ${on_string}: out" format="consensusxml"/>
+    <data name="feature_out" label="${tool.name} on ${on_string}: feature_out" format="featurexml">
+      <filter>OPTIONAL_OUTPUTS is not None and "feature_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+    <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
+      <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
   </outputs>
-  <help>Util which can be used to evaluate labeled pair ratios on MRM features.
+  <tests>
+    <expand macro="autotest_MRMPairFinder"/>
+    <expand macro="manutest_MRMPairFinder"/>
+  </tests>
+  <help><![CDATA[Util which can be used to evaluate labeled pair ratios on MRM features.
 
 
-For more information, visit https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Documentation/release/2.3.0/html/UTILS_MRMPairFinder.html</help>
+For more information, visit http://www.openms.de/doxygen/release/2.6.0/html/UTILS_MRMPairFinder.html]]></help>
+  <expand macro="references"/>
 </tool>

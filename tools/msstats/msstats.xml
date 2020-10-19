@@ -1,0 +1,794 @@
+<tool id="msstats" name="MSstats" version="@VERSION@.0">
+    <description>statistical relative protein significance analysis in DDA, SRM and DIA Mass Spectrometry</description>
+    <macros>
+        <token name="@VERSION@">3.20.1</token>
+        <xml name="useUniquePeptide">
+            <param name="useUniquePeptide" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="true" label="remove peptides that are assigned for more than one proteins" help="We assume to use unique peptide for each protein"/>
+        </xml>
+        <xml name="summaryforMultipleRows">
+            <param name="summaryforMultipleRows" type="select" label="Summary for MultipleRows" help="summaryforMultipleRows - when there are multiple measurements for certain feature and certain run, use highest or sum of all">
+                <option value="max" selected="true">max</option>
+                <option value="sum">sum</option>
+            </param>
+        </xml>
+        <xml name="fewMeasurements">
+            <param name="fewMeasurements" type="select" label="Remove the features that have 1 or 2 measurements across runs" help="(fewMeasurements)">
+                <option value="remove" selected="true">remove</option>
+                <option value="keep">keep</option>
+            </param>
+        </xml>
+        <xml name="removeProtein_with1Peptide">
+            <param name="removeProtein_with1Peptide" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="false" label="Remove the proteins which have only 1 peptide and charge"/>
+        </xml>
+        
+    </macros>
+    <requirements>
+        <requirement type="package" version="@VERSION@">bioconductor-msstats</requirement>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        cat '$msstats_script' > '$r_script' &&
+        Rscript '$msstats_script'
+        && cat msstats*.log > '$log'
+    ]]></command>
+    <configfiles>
+        <configfile name="msstats_script"><![CDATA[
+library('MSstats', warn.conflicts = F, quietly = T, verbose = F)
+
+#if $input.input_src == 'MSstats'
+
+  #if $input.msstats_input.is_of_type('csv')
+raw <- read.csv("$input.msstats_input")
+  #else
+raw <- read.table("$input.msstats_input", sep="\t", header=TRUE)
+  #end if
+
+#elif $input.input_src == 'MaxQuant'
+\# Read in MaxQuant files
+mq_evidence <- read.table("$input.evidence", sep="\t", header=TRUE)
+
+mq_proteinGroups <- read.table("$input.proteinGroups", sep="\t", header=TRUE)
+
+\# Read in annotation including condition and biological replicates per run.
+\# Users should make this annotation file. It is not the output from MaxQuant.
+  #if $input.annotation.is_of_type('csv')
+annot <- read.csv("$input.annotation", header=TRUE)
+  #else
+annot <- read.table("$input.annotation", sep="\t", header=TRUE)
+  #end if
+
+raw <- MaxQtoMSstatsFormat(evidence=mq_evidence, 
+                           proteinGroups=mq_proteinGroups,
+                           annotation=annot, 
+                           proteinID="$input.proteinID",
+                           useUniquePeptide=$input.input_options.useUniquePeptide, 
+                           summaryforMultipleRows=$input.input_options.summaryforMultipleRows, 
+                           fewMeasurements="$input.input_options.fewMeasurements", 
+                           removeMpeptides=$input.input_options.removeMpeptides,
+                           removeOxidationMpeptides=$input.input_options.removeOxidationMpeptides,
+                           removeProtein_with1Peptide=$input.input_options.removeProtein_with1Peptide)
+
+#elif $input.input_src == 'OpenMS'
+
+  #if $input.evidence.is_of_type('csv')
+input <- read.csv("$input.evidence", header=TRUE)
+  #else
+input <- read.table("$input.evidence", sep="\t", header=TRUE)
+  #end if
+  #if $input.annotation.is_of_type('csv')
+annot <- read.csv("$input.annotation", header=TRUE)
+  #else
+annot <- read.table("$input.annotation", sep="\t", header=TRUE)
+  #end if
+
+raw <- OpenMStoMSstatsFormat(input,
+                             annotation=annot,
+                             useUniquePeptide=$input.input_options.useUniquePeptide, 
+                             summaryforMultipleRows=$input.input_options.summaryforMultipleRows, 
+                             fewMeasurements="$input.input_options.fewMeasurements", 
+                             removeProtein_with1Peptide=$input.input_options.removeProtein_with1Peptide)
+
+#elif $input.input_src == 'OpenSWATH'
+
+  #if $input.evidence.is_of_type('csv')
+input <- read.csv("$input.evidence", header=TRUE)
+  #else
+input <- read.table("$input.evidence", sep="\t", header=TRUE)
+  #end if
+  #if $input.annotation.is_of_type('csv')
+annot <- read.csv("$input.annotation", header=TRUE)
+  #else
+annot <- read.table("$input.annotation", sep="\t", header=TRUE)
+  #end if
+
+raw <- OpenSWATHtoMSstatsFormat(input,
+                                annotation=annot,
+                                filter_with_mscore=$input.input_options.filter_with_mscore,
+                                mscore_cutoff=$input.input_options.mscore_cutoff,
+                                useUniquePeptide=$input.input_options.useUniquePeptide,
+                                fewMeasurements="$input.input_options.fewMeasurements",
+                                removeProtein_with1Feature=$input.input_options.removeProtein_with1Feature,
+                                summaryforMultipleRows=$input.input_options.summaryforMultipleRows)
+
+#end if
+
+processed_data <- dataProcess(raw,
+                          logTrans=$dp_options.logTrans,
+                          normalization="$dp_options.norm.normalization",
+                          #if $dp_options.norm.normalization == 'globalStandards'
+                          nameStandards=c($dp_options.norm.nameStandards),
+                          #end if
+                          ## address=$dp_options.address,
+                          fillIncompleteRows=$dp_options.fillIncompleteRows,
+                          featureSubset="$dp_options.features.featureSubset",
+                          #if $dp_options.features.featureSubset == 'topN'
+                          n_top_feature=$dp_options.features.n_top_feature,
+                          #end if
+                          #if $dp_options.features.featureSubset == 'highQuality'
+                          remove_uninformative_feature_outlier=$dp_options.features.remove_uninformative_feature_outlier,
+                          #end if
+                          summaryMethod="$dp_options.summarize.summaryMethod",
+                          #if $dp_options.summarize.summaryMethod == 'TMP'
+                          MBimpute=$dp_options.summarize.MBimpute,
+                          remove50missing=$dp_options.summarize.remove50missing,
+                          #end if
+                          #if $dp_options.summarize.summaryMethod == 'linear'
+                          equalFeatureVar=$dp_options.summarize.equalFeatureVar,
+                          #end if
+                          #if $dp_options.censoredInt == 'NULL'
+                          censoredInt=NULL,
+                          #else
+                          censoredInt="$dp_options.censoredInt",
+                          #end if
+                          cutoffCensored="$dp_options.cutoffCensored",
+                          maxQuantileforCensored=$dp_options.maxQuantileforCensored,
+                          clusters=NULL)
+  
+#if 'processed_data' in $selected_outputs
+write.table(processed_data\$ProcessedData, "ProcessedData.tsv", sep = "\t", quote = F, row.names = F, dec = ".")
+#end if
+#if 'runlevel_data' in $selected_outputs
+write.table(processed_data\$RunlevelData, "RunlevelData.tsv", sep = "\t", quote = F, row.names = F, dec = ".")
+#end if
+
+#if 'qcplot' in $selected_outputs
+dataProcessPlots(data = processed_data, type="QCplot", ylimUp=35,
+                 width=5, height=5, address="MSStats_only_")
+#end if
+
+#if 'profile_plot' in $selected_outputs
+dataProcessPlots(data = processed_data, type="ProfilePlot",  ylimUp=35, featureName="NA", width=5, height=5, address="MSStats_only_")
+#end if
+
+#if 'condition_plot' in $selected_outputs
+dataProcessPlots(data = processed_data, type="ConditionPlot", width=5, height=5, address="MSStats_only_")
+#end if
+
+## Quantifiaction
+#if 'quant_sample_matrix' in $selected_outputs
+sampleQuantMatrix <- quantification(processed_data,  type="Sample")
+write.table(sampleQuantMatrix, "SampleQuantificationMatrix.tsv", sep = "\t", quote = F, row.names = F, dec = ".")
+#end if
+
+#if 'quant_sample_long' in $selected_outputs
+sampleQuantLong <- quantification(processed_data,  type="Sample", format="long")
+write.table(sampleQuantLong, "SampleQuantificationLong.tsv", sep = "\t", quote = F, row.names = F, dec = ".")
+#end if
+
+#if 'quant_group_matrix' in $selected_outputs
+groupQuantMatrix <- quantification(processed_data,  type="Group")
+write.table(groupQuantMatrix, "GroupQuantificationMatrix.tsv", sep = "\t", quote = F, row.names = F, dec = ".")
+#end if
+
+#if 'quant_group_long' in $selected_outputs
+groupQuantLong <- quantification(processed_data,  type="Group", format="long")
+write.table(groupQuantLong, "GroupQuantificationLong.tsv", sep = "\t", quote = F, row.names = F, dec = ".")
+#end if
+
+## Group Comparison
+#if $group.group_comparison == 'yes'
+\# Group Comparison
+  #if $group.comparison_matrix.is_of_type('csv')
+comp_matrix <- read.csv("$group.comparison_matrix", header=TRUE)
+  #else
+comp_matrix <- read.table("$group.comparison_matrix", sep="\t", header=TRUE)
+  #end if
+
+## first columns contains comparison names, use as row name
+comparison <- comp_matrix[,-1]
+row.names(comparison) <- as.character(comp_matrix[,1])
+## order of conditions has to be the same as they appear in the levels function
+comparison <- as.matrix(comparison[levels(processed_data\$ProcessedData\$GROUP_ORIGINAL)])
+
+## perform group comparison
+comparisons <- groupComparison(contrast.matrix = comparison, data = processed_data)
+
+print(comparisons\$fittedmodel)
+  #if 'fittedmodel' in $group.select_outputs
+capture.output(print(comparisons\$fittedmodel), file="ComparisonFittedModel.txt")
+  #end if
+
+
+  #if 'comparison_result' in $group.select_outputs
+write.table(comparisons\$ComparisonResult, "ComparisonResult.tsv", sep = "\t", quote = F, row.names = F, dec = ".")
+  #end if
+
+  #if 'model_qc' in $group.select_outputs
+write.table(comparisons\$ModelQC, "ModelQC.tsv", sep = "\t", quote = F, row.names = F, dec = ".")
+  #end if
+
+## Visualizations:
+
+  #if 'qqplot' in $group.select_outputs
+\# normal quantile-quantile plots
+modelBasedQCPlots(data=comparisons, type="QQPlots",
+                  width=5, height=5, address="MSStats_group_")
+  #end if
+
+  #if 'residualplot' in $group.select_outputs
+\# residual plots
+modelBasedQCPlots(data=comparisons, type="ResidualPlots",
+                  width=5, height=5, address="MSStats_group_")
+  #end if
+
+  #if 'volcanoplot' in $group.select_outputs
+\# volcano plot
+groupComparisonPlots(data = comparisons\$ComparisonResult, type = 'VolcanoPlot',ProteinName=FALSE,
+                     width=5, height=5, address="MSStats_group_")
+  #end if
+
+  #if 'heatmap' in $group.select_outputs
+\# heatmap - works only for more than 1 comparison
+if (nrow(comparison)>1)
+	{
+	groupComparisonPlots(data = comparisons\$ComparisonResult, type = 'Heatmap', address="MSStats_group_")
+	}
+  #end if
+
+  #if 'comparisonplot' in $group.select_outputs
+\#comparison
+groupComparisonPlots(data=comparisons\$ComparisonResult, type="ComparisonPlot",
+                     width=5, height=5, address="MSStats_group_")
+  #end if
+
+#end if
+        ]]></configfile>
+    </configfiles>
+    <inputs>
+        <conditional name="input">
+            <param name="input_src" type="select" label="input source">
+                <option value="MSstats">MStats 10 column format</option>
+                <option value="MaxQuant">MaxQuant</option>
+                <!-- 
+                <option value="OpenMS">OpenMS</option>
+                -->
+                <option value="OpenSWATH">OpenSWATH</option>
+            </param>
+            <when value="MSstats">
+                <param name="msstats_input" type="data" format="tabular,csv" label="MSstats 10-column input"/>
+            </when>
+            <when value="MaxQuant">
+                <param name="evidence" type="data" format="tabular,csv" label="evidence.txt - feature-level data"/>
+                <param name="annotation" type="data" format="tabular,csv" label="annotation.txt data which includes Raw.file, Condition, BioReplicate, Run, IsotopeLabelType information"/>
+                <param name="proteinGroups" type="data" format="tabular,csv" label="proteinGroups.txt" help="It needs to matching protein group ID. If proteinGroups=NULL, use 'Proteins' column in 'evidence.txt'"/>
+                <param name="proteinID" type="select" label="Select Protein ID in evidence.txt">
+                    <option value="Proteins">Protein column</option>
+                    <option value="Leading.razor.protein">Leading razor protein column</option>
+                </param>
+                <section name="input_options" title="MaxQtoMSstatsFormat Options" expanded="false">
+                    <expand macro="useUniquePeptide"/>
+                    <expand macro="summaryforMultipleRows"/>
+                    <expand macro="fewMeasurements"/>
+                    <param name="removeMpeptides" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="true" label="Remove the peptides including 'M' sequence"/>
+                    <param name="removeOxidationMpeptides" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="true" label="Remove the peptides including Oxidized 'M' sequence"/>
+                    <expand macro="removeProtein_with1Peptide"/>
+                </section>
+            </when>
+            <!--
+            <when value="OpenMS">
+                <param name="evidence" type="data" format="tabular,csv" label="OpenSWATH_input"/>
+                <param name="annotation" type="data" format="tabular,csv" label="OpenSWATH_annotation"/>
+                <section name="input_options" title="MaxQtoMSstatsFormat Options" expanded="false">
+                    <expand macro="useUniquePeptide"/>
+                    <expand macro="summaryforMultipleRows"/>
+                    <expand macro="fewMeasurements"/>
+                    <expand macro="removeProtein_with1Peptide"/>
+                </section>
+            </when>
+            -->
+            <when value="OpenSWATH">
+                <param name="evidence" type="data" format="tabular,csv" label="OpenSWATH_input"/>
+                <param name="annotation" type="data" format="tabular,csv" label="OpenSWATH_annotation"/>
+                <section name="input_options" title="OpenSWATHtoMSstatsFormat Options" expanded="false">
+                    <param name="filter_with_mscore" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="true" label="Remove the peptides including 'M' sequence"/>
+                    <param name="mscore_cutoff" type="float" value="0.01" min="0" max="1.0" label="mscore_cutoff"/>
+                    <expand macro="useUniquePeptide"/>
+                    <expand macro="fewMeasurements"/>
+                    <expand macro="summaryforMultipleRows"/>
+                    <param name="removeProtein_with1Feature" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="false" label="Remove the proteins which have only 1 peptide and charge"/>
+                </section>
+            </when>
+        </conditional>
+        <section name="dp_options" title="dataProcess Options" expanded="false">
+            <param name="logTrans" type="select" label="Log-transform Variable ABUNDANCE with base:" help="(logTrans)">
+                <option value="2" selected="true">2</option>
+                <option value="10">10</option>
+            </param>
+            <conditional name="norm">
+                <param name="normalization" type="select" label="Normalization to remove systematic bias between MS runs">
+                    <option value="equalizeMedians" selected="true">equalizeMedians - represents constant normalization</option>
+                    <option value="quantile">quantile - quantile normalization</option>
+                    <option value="globalStandards">globalStandards - normalization with global standards proteins</option>
+                    <option value="FALSE">no normalization is performed</option>
+                </param>
+                <when value="equalizeMedians"/> 
+                <when value="quantile"/> 
+                <when value="globalStandards"> 
+                    <param name="nameStandards" type="text" value="" label="global standard peptide names">
+                        <help>peptide names should be double-quoted and separated by commas</help>
+                        <validator type="empty_field" />
+                        <validator type="regex" message="double-quoted names separated by commas"><![CDATA[^".+"(,".+")*$]]></validator>
+                    </param>
+                </when>
+                <when value="FALSE"/> 
+            </conditional>
+            <param name="fillIncompleteRows" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="true" label="Fill Incomplete Rows" help=" If the input dataset has incomplete rows, TRUE (default) adds the rows with intensity value=NA for missing peaks. FALSE reports error message with list of features which have incomplete rows"/>
+            <conditional name="features">
+                <param name="featureSubset" type="select" label="Features to use">
+                    <option value="all" selected="true">Use all features that the data set has</option>
+                    <option value="top3">Use the top 3 features which have highest average of log2(intensity) across runs</option>
+                    <option value="topN">Use the top N features which have highest average of log2(intensity) across runs</option>
+                    <option value="highQuality">Flag uninformative feature and outliers</option>
+                </param>
+                <when value="all"/>
+                <when value="top3"/>
+                <when value="topN">
+                    <param name="n_top_feature" type="integer" value="3" min="1" label="The number of top features for featureSubset"/>
+                </when>
+                <when value="highQuality">
+                    <param name="remove_uninformative_feature_outlier" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="false" label="Remove features flagged with Uninformative feature_quality"/>
+                </when>
+            </conditional>
+            <conditional name="summarize">
+                <param name="summaryMethod" type="select" label="Summary Method">
+                    <option value="TMP" selected="true">TMP - Tukey's median polish</option>
+                    <option value="linear" selected="true">linear - linear mixed model</option>
+                </param>
+                <when value="TMP">
+                    <param name="MBimpute" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="true" label="Impute Missing Values 'NA' or '0' (depending on censoredInt option) by Accelated failure model" help="(MBimpute) TRUE - inserts 'NA' or '0' (depending on censoredInt option), . FALSE uses the values assigned by cutoffCensored"/>
+                    <param name="remove50missing" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="false" label="Remove runs which have more than 50% missing values"/>
+                </when>
+                <when value="linear">
+                    <param name="equalFeatureVar" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="false" label="Account for heterogeneous variation among intensities from different features" help="(equalFeatureVar) TRUE assumes equal variance among intensities from features. FALSE means that we cannot assume equal variance among intensities from features, then we will account for heterogeneous variation from different features"/>
+                </when>
+            </conditional>
+            <param name="censoredInt" type="select" label="Missing values to censor">
+                <help>The output from Skyline and Progenesis should use '0'</help>
+                <option value="NA" selected="true">Assume that all 'NA's in 'Intensity' column are censored</option>
+                <option value="0">Use zero intensities '0' as censored intensity</option>
+                <option value="NULL">Assume all NA intensites are randomly missing</option>
+            </param>
+            <param name="cutoffCensored" type="select" label="Cutoff value for censoring">
+                <option value="minFeature" selected="true">minimum value for each feature</option>
+                <option value="minRun">minimum value for each run</option>
+                <option value="minFeatureNRun">smallest between minimum value of corresponding feature and minimum value of corresponding run</option>
+            </param>
+            <param name="maxQuantileforCensored" type="float" value="0.999" min="0.75" max="1.0" label="Maximum quantile for deciding censored missing values"/>
+        </section>
+        <param name="selected_outputs" type="select" multiple="true" optional="false" label="Select outputs">
+            <option value="log" selected="true">MSstats log</option>
+            <option value="r_script" selected="false">MSstats Rscript</option>
+            <option value="processed_data" selected="true">MSstats ProcessedData</option>
+            <option value="runlevel_data" selected="false">MSstats RunlevelData</option>
+            <option value="qcplot" selected="true">MSstats QCPlot.pdf</option>
+            <option value="profile_plot" selected="false">MSstats ProfilePlot.pdf</option>
+            <option value="profile_wsum_plot" selected="false">MSstats ProfilePlot_wSummarization.pdf</option>
+            <option value="condition_plot" selected="false">MSstats ConditionPlot.pdf</option>
+            <option value="quant_sample_matrix" selected="false">Sample Quantification Matrix Table</option>
+            <option value="quant_sample_long" selected="false">Sample Quantification Long Table</option>
+            <option value="quant_group_matrix" selected="true">Group Quantification Matrix Table</option>
+            <option value="quant_group_long" selected="false">Group Quantification Long Table</option>
+        </param>
+
+        <conditional name="group">
+            <param name="group_comparison" type="select" label="Compare Groups">
+                <option value="no">No</option>
+                <option value="yes">Yes</option>
+            </param>
+            <when value="no"/>
+            <when value="yes">
+                <param name="comparison_matrix" type="data" format="tabular,csv" label="Comparison Matrix"/>
+                <param name="select_outputs" type="select" multiple="true" label="Select outputs">
+                    <help>Heatmap requires more than one comparison</help>
+                    <option value="fittedmodel" selected="true">MSstats ComparisonFittedModel.txt</option>
+                    <option value="comparison_result" selected="true">MSstats ComparisonResult.tsv</option>
+                    <option value="model_qc" selected="false">MSstats ModelQC.tsv</option>
+                    <option value="qqplot" selected="false">MSstats QQPlot.pdf</option>
+                    <option value="residualplot" selected="false">MSstats ResidualPlot.pdf</option>
+                    <option value="volcanoplot" selected="true">MSstats VolcanoPlot.pdf</option>
+                    <option value="heatmap" selected="false">MSstats Heatmap.pdf</option>
+                    <option value="comparisonplot" selected="true">MSstats ComparisonPlot.pdf</option>
+                </param>
+            </when>
+        </conditional>
+    </inputs>
+
+    <outputs>
+        <data name="log" format="txt" label="MSstats log">
+            <filter>'log' in selected_outputs</filter>
+        </data>
+        <data name="r_script" format="txt" label="MSstats Rscript">
+            <filter>'r_script' in selected_outputs</filter>
+        </data>
+        <data name="processed_data" format="tabular" label="MSstats ProcessedData" from_work_dir="ProcessedData.tsv">
+            <filter>'processed_data' in selected_outputs</filter>
+            <actions>
+                <action name="column_names" type="metadata" default="PROTEIN,PEPTIDE,TRANSITION,FEATURE,LABEL,GROUP_ORIGINAL,SUBJECT_ORIGINAL,RUN,GROUP,SUBJECT,INTENSITY,SUBJECT_NESTED,ABUNDANCE,FRACTION,originalRUN,censored" />
+            </actions>
+        </data>
+        <data name="runlevel_data" format="tabular" label="MSstats RunlevelData" from_work_dir="RunlevelData.tsv">
+            <filter>'runlevel_data' in selected_outputs</filter>
+            <actions>
+               <action name="column_names" type="metadata" default="RUN,Protein,LogIntensities,NumMeasuredFeature,MissingPercentage,more50missing,NumImputedFeature,originalRUN,GROUP,GROUP_ORIGINAL,SUBJECT_ORIGINAL,SUBJECT_NESTED,SUBJECT" />
+            </actions>
+        </data>
+        <data name="qcplot" format="pdf" label="MSstats QCPlot.pdf" from_work_dir="MSStats_only_QCPlot.pdf">
+            <filter>'qcplot' in selected_outputs</filter>
+        </data>
+        <data name="profile_plot" format="pdf" label="MSstats ProfilePlot.pdf" from_work_dir="MSStats_only_ProfilePlot.pdf">
+            <filter>'profile_plot' in selected_outputs</filter>
+        </data>
+        <data name="profile_wsum_plot" format="pdf" label="MSstats ProfilePlot_wSummarization.pdf" from_work_dir="MSStats_only_ProfilePlot_wSummarization.pdf">
+            <filter>'profile_wsum_plot' in selected_outputs</filter>
+        </data>
+        <data name="condition_plot" format="pdf" label="MSstats ConditionPlot.pdf" from_work_dir="MSStats_only_ConditionPlot.pdf">
+            <filter>'condition_plot' in selected_outputs</filter>
+        </data>
+        <data name="quant_sample_matrix" format="tabular" label="MSstats SampleQuantificationMatrix.tsv" from_work_dir="SampleQuantificationMatrix.tsv">
+            <filter>'quant_sample_matrix' in selected_outputs</filter>
+        </data>
+        <data name="quant_sample_long" format="tabular" label="MSstats SampleQuantificationLong.tsv" from_work_dir="SampleQuantificationLong.tsv">
+            <filter>'quant_sample_long' in selected_outputs</filter>
+            <actions>
+                <action name="column_names" type="metadata" default="Protein,Group_Subject,LogIntensity" />
+            </actions>
+        </data>
+        <data name="quant_group_matrix" format="tabular" label="MSstats GroupQuantificationMatrix.tsv" from_work_dir="GroupQuantificationMatrix.tsv">
+            <filter>'quant_group_matrix' in selected_outputs</filter>
+        </data>
+        <data name="quant_group_long" format="tabular" label="MSstats GroupQuantificationLong.tsv" from_work_dir="GroupQuantificationLong.tsv">
+            <filter>'quant_group_long' in selected_outputs</filter>
+            <actions>
+                <action name="column_names" type="metadata" default="Protein,Group,LogIntensity" />
+            </actions>
+        </data>
+        <data name="comparison_result" format="tabular" label="MSstats ComparisonResult.tsv" from_work_dir="ComparisonResult.tsv">
+            <filter> group['group_comparison'] == 'yes' and 'comparison_result' in group['select_outputs']</filter>
+            <actions>
+                <action name="column_names" type="metadata" default="Protein,Label,log2FC,SE,Tvalue,DF,pvalue,adj.pvalue,issue,MissingPercentage,ImputationPercentage" />
+            </actions>
+        </data>
+        <data name="fittedmodel" format="txt" label="MSstats ComparisonFittedModel.txt" from_work_dir="ComparisonFittedModel.txt">
+            <filter> group['group_comparison'] == 'yes' and 'fittedmodel' in group['select_outputs']</filter>
+        </data>
+        <data name="model_qc" format="tabular" label="MSstats ModelQC.tsv" from_work_dir="ModelQC.tsv">
+            <filter> group['group_comparison'] == 'yes' and 'model_qc' in group['select_outputs']</filter>
+            <actions>
+                <action name="column_names" type="metadata" default="RUN,PROTEIN,ABUNDANCE,NumMeasuredFeature,MissingPercentage,more50missing,NumImputedFeature,originalRUN,GROUP,GROUP_ORIGINAL,SUBJECT_ORIGINAL,SUBJECT_NESTED,SUBJECT,residuals,fitted" />
+            </actions>
+        </data>
+        <data name="qqplot" format="pdf" label="MSstats ModelQQ.pdf" from_work_dir="MSStats_group_QQPlot.pdf">
+            <filter> group['group_comparison'] == 'yes' and 'qqplot' in group['select_outputs']</filter>
+        </data>
+        <data name="residualplot" format="pdf" label="MSstats ResidualPlot.pdf" from_work_dir="MSStats_group_ResidualPlot.pdf">
+            <filter> group['group_comparison'] == 'yes' and 'residualplot' in group['select_outputs']</filter>
+        </data>
+        <data name="volcanoplot" format="pdf" label="MSstats VolcanoPlot.pdf" from_work_dir="MSStats_group_VolcanoPlot.pdf">
+            <filter> group['group_comparison'] == 'yes' and 'volcanoplot' in group['select_outputs']</filter>
+        </data>
+        <data name="heatmap" format="pdf" label="MSstats Heatmap.pdf" from_work_dir="MSStats_group_Heatmap.pdf">
+            <filter> group['group_comparison'] == 'yes' and 'heatmap' in group['select_outputs']</filter>
+        </data>
+        <data name="comparisonplot" format="pdf" label="MSstats ComparisonPlot.pdf" from_work_dir="MSStats_group_ComparisonPlot.pdf">
+            <filter> group['group_comparison'] == 'yes' and 'comparisonplot' in group['select_outputs']</filter>
+        </data>
+    </outputs>
+    <tests>
+
+        <test>
+            <conditional name="input">
+                <param name="input_src" value="MSstats"/>
+                <param name="msstats_input" ftype="csv" value="msstats_testfile.txt"/>
+            </conditional>
+            <param name="selected_outputs" value="processed_data,profile_plot,profile_wsum_plot,quant_sample_matrix,quant_group_long"/>
+            <output name="processed_data">
+                <assert_contents>
+                    <has_text text="D.GPLTGTYR" />
+                    <has_n_columns n="16" />
+                    <has_n_lines n="2071" />
+                </assert_contents>
+            </output>
+            <output name="quant_sample_matrix">
+                <assert_contents>
+                    <has_text text="C2_1" />
+                    <has_n_columns n="7" />
+                    <has_n_lines n="7" />
+                </assert_contents>
+            </output>
+            <output name="quant_group_long">
+                <assert_contents>
+                    <has_text text="LogIntensity" />
+                    <has_n_columns n="3" />
+                    <has_n_lines n="37" />
+                </assert_contents>
+            </output>
+            <output name="profile_plot" file="MSstats ProfilePlot.pdf" compare="sim_size"/>
+            <output name="profile_wsum_plot" file="profile_wsum_plot.pdf" compare="sim_size"/>                     
+        </test>
+
+        <test>
+            <conditional name="input">
+                <param name="input_src" value="MSstats"/>
+                <param name="msstats_input" ftype="tabular" value="msstats_testfile.tsv"/>
+            </conditional>
+            <conditional name="group">
+            <param name="group_comparison" value="yes"/>
+            <param name="comparison_matrix" ftype="csv" value="comparison_matrix.csv"/>
+            </conditional>
+            <param name="select_outputs" value="residualplot,model_qc"/>
+            <output name="processed_data">
+                <assert_contents>
+                    <has_text text="D.GPLTGTYR" />
+                    <has_n_columns n="16" />
+                    <has_n_lines n="2071" />
+                </assert_contents>
+            </output>
+            <output name="model_qc">
+                <assert_contents>
+                    <has_text text="MissingPercentage" />
+                    <has_n_columns n="15" />
+                    <has_n_lines n="108" />
+                </assert_contents>
+            </output>
+            <output name="residualplot" file="residual_plot.pdf" compare="sim_size"/>                     
+        </test>
+
+        <test>
+            <conditional name="input">
+                <param name="input_src" value="MaxQuant"/>
+                <param name="evidence" ftype="tabular" value="test_MQ_evidence.tabular"/>
+                <param name="annotation" ftype="tabular" value="test_MQ_annotation.txt"/>
+                <param name="proteinGroups" ftype="tabular" value="test_MQ_proteingroups.tabular"/>
+            </conditional>
+            <param name="selected_outputs" value="condition_plot,processed_data,runlevel_data"/>
+            <conditional name="group">
+                <param name="group_comparison" value="yes"/>
+                <param name="comparison_matrix" ftype="csv" value="test_MQ_group12_comparison_matrix.csv"/>
+            </conditional>
+            <param name="select_outputs" value="qqplot,comparison_result"/>
+            <output name="processed_data">
+                <assert_contents>
+                    <has_text text="SPILVATAVAAR" />
+                    <has_n_columns n="16" />
+                    <has_n_lines n="57" />
+                </assert_contents>
+            </output>
+            <output name="runlevel_data">
+                <assert_contents>
+                    <has_text text="qx017084.raw.thermo" />
+                    <has_n_columns n="13" />
+                    <has_n_lines n="13" />
+                </assert_contents>
+            </output>
+            <output name="comparison_result">
+                <assert_contents>
+                    <has_text text="r2-r1" />
+                    <has_n_columns n="11" />
+                    <has_n_lines n="4" />
+                </assert_contents>
+            </output>
+            <output name="condition_plot" file="condition_plot.pdf" compare="sim_size"/>                     
+            <output name="qqplot" file="qq_plot.pdf" compare="sim_size"/>                     
+        </test>
+        
+        <!--
+        <test>
+            <conditional name="input">
+                <param name="input_src" value="OpenMS"/>
+                <param name="evidence" ftype="tabular" value=""/>
+                <param name="annotation" ftype="tabular" value=""/>
+            </conditional>
+            <output name="processed_data">
+                <assert_contents>
+                    <has_text text="D.GPLTGTYR" />
+                </assert_contents>
+            </output>
+        </test>
+        -->
+
+        <test>
+            <conditional name="input">
+                <param name="input_src" value="OpenSWATH"/>
+                <param name="evidence" ftype="tabular" value="test_swath_input_data.tabular"/>
+                <param name="annotation" ftype="tabular" value="test_swath_annotations.tabular"/>
+            </conditional>
+            <output name="processed_data">
+                <assert_contents>
+                    <has_text text="GETLGLIGFGR" />
+                    <has_n_columns n="16" />
+                    <has_n_lines n="253" />
+                </assert_contents>
+            </output>
+            <output name="qcplot" file="QC_plot.pdf" compare="sim_size"/>
+        </test>
+
+        <test>
+            <conditional name="input">
+                <param name="input_src" value="OpenSWATH"/>
+                <param name="evidence" ftype="tabular" value="test_swath_input_data.tabular"/>
+                <param name="annotation" ftype="tabular" value="test_swath_annotations.tabular"/>
+            </conditional>
+            <param name="selected_outputs" value="r_script,processed_data,quant_sample_long"/>
+            <conditional name="group">
+                <param name="group_comparison" value="yes"/>
+                <param name="comparison_matrix" ftype="csv" value="test_swath_group12_comparison_matrix.csv"/>
+            </conditional>
+            <param name="select_outputs" value="comparison_result,volcanoplot,residualplot"/>
+            <output name="processed_data">
+                <assert_contents>
+                    <has_text text="GETLGLIGFGR" />
+                    <has_n_columns n="16" />
+                    <has_n_lines n="253" />
+                </assert_contents>
+            </output>
+            <output name="quant_sample_long">
+                <assert_contents>
+                    <has_text text="NPT_96" />
+                    <has_n_columns n="3" />
+                    <has_n_lines n="31" />
+                </assert_contents>
+            </output>
+            <output name="comparison_result">
+                <assert_contents>
+                    <has_text text="Q5VYK3" />
+                    <has_n_columns n="11" />
+                    <has_n_lines n="6" />
+                </assert_contents>
+            </output>
+            <output name="volcanoplot" file="volcanoplot.pdf" compare="sim_size"/>
+            <output name="residualplot" file="residualplot.pdf" compare="sim_size"/>
+        </test>
+
+    </tests>
+    <help><![CDATA[
+MSstats is an open-source R package for statistical relative quantification of proteins and peptides in global, targeted and data-independent proteomics. `More information on MSstats <http://msstats.org/>`_
+
+The MSstats Galaxy tool (version @VERSION@) allows the detection of differentially abundant proteins for label-free MS experiments with complex designs on data derived from open-source proteomics software available in Galaxy (e.g. MaxQuant, OpenMS, OpenSWATH). Processing functionalities such as log transformation, normalization, feature selection, missing value imputation and quantification are available as well. 
+
+-----
+
+**Input data**
+
+- Data in tabular or csv format, generated by spectral processing tools such as `MaxQuant <http://coxdocs.org/doku.php?id=maxquant:start/>`_, `OpenSWATH <http://openswath.org/en/latest/>`_ will be automatically converted to 10-column MSstats format
+
+    - MaxQuant format: evidence.txt, proteinGroups.txt
+    - OpenSWATH format: pyprophet export file
+    - MSstats format: tabular file with 10 column either manually curated or other sources such as swath2stats tool which is implemented in Pyprophet export in Galaxy. For manual curation: Names of headers are fixed but not case sensitive: 
+    
+        - ProteinName: protein ID or peptide ID for peptide-level modeling and analysis; statistical analysis will be done separately for each unique label in this column
+        - PeptideSequence: Amino acid sequence for each peptides. If the peptide sequences should be distinguished based on post-translational modifications, this column can be renamed to PeptideModifiedSequence.
+        - PrecursorCharge: charge state of precursor. 
+        - FragmentIon: e.g. b4, y3, if unknown use a single value for all entries. 
+        - ProductCharge: charge state of product. If unknown use 0 for all entries.
+        - IsotopeLabelType: This column indicates whether this measurement is based on the endogenous peptides (use “L”) or labeled reference peptides (use “H”).
+        - Condition: For group comparison experiments, this column indicates groups of interest (such as “Disease” or “Control”). For time-course experiments, this column indicates time points (such as “T1”, “T2”, etc). If the experimental design contains both distinct groups of subjects and multiple time points per subject, this column should indicate a combination of these values (such as “Disease_T1”, “Disease_T2”, “Control_T1”, “Control_T2”, etc.).
+        - BioReplicate:  This column should contain a unique identifier for each biological replicate in the experiment. For example, in a clinical proteomic investigation this should be a unique patient id. Patients from distinct groups should have distinct ids. MSstats does not require the presence of technical replicates in the experiment. If the technical replicates are present, all samples or runs from a same biological replicate should have a same id. MSstats automatically detects the presence of technical replicates and accounts for them in the model-based analysis.
+        - Run: This column contains the identifier of a mass spectrometry run. Each mass spectrometry run should have a unique identifier, regardless of the origin of the biological sample. In SRM experiments, if all the transitions of a biological or a technical replicate are split into multiple “methods” due to the technical limitations, each method should have a separate identifier. When processed by Skyline, distinct values of runs correspond to distinct input file names. It is possible to use the actual input file names as values in the column Run.
+        - Intensity: This column should contain the quantified signal of a feature in a run without any transformation (in particular, no logarithm transform). The signals can be quantified as the peak height or the peak of area under curve. Any other quantitative representation of abundance can also be used.
+        - Example file header: 
+          ::
+            
+           proteinname    peptidesequence  precursorcharge  fragmention   productcharge
+             P02768          DLGEENFK            3               y7             0      
+             P02768          DLGEENFK            3               y8             0      
+             P02768         ETYGEMADCCAK         2               b3             0      
+             P02768         ETYGEMADCCAK         2               b4             0      
+              ...              ...              ...              ...           ...     
+
+                 isotopelabeltype    condition     bioreplicate    run    intensity
+                       L                 1             ReplA        1      4298.12
+                       H                 1             ReplA        1      1974.59
+                       L                 1             ReplA        1      7183.22
+                       H                 1             ReplA        1      8467.58
+                      ...               ...             ...        ...      ...
+
+
+- Annotations as tabular file are needed for all input options except MSstats format
+
+    - 4 columns with exactly these headers: Raw.file, Condition, BioReplicate, Run; additional 5th column only for MaxQuant: IsotopeLabelType
+    
+        - Raw.file: File name that has to match exactly as it appears in the other input files (e.g. S1207.raw.thermo; in/AA12_mzML.mzML)
+        - all other columns: see description above for MSstats format columns
+
+- Comparison matrix as tabular file
+
+    - 1st column: name of comparison
+    - additionally one column for each condition that is present in the tabular file. Use 1 and -1 to indicate the conditions to compare and 0 for conditions that are not compared. Multiple groups can be combined by using 0.5. 
+    - first row contains the names of the groups, they must exactly match the condition name used in the annotation file
+    - each additional row represents one comparison
+    - Example for a two group comparison
+    
+       ::
+
+               names     groupA  groupB
+          groupA-groupB    1      -1 
+
+
+    - Example for an experiment with 5 groups and 4 different comparisons
+    
+       ::
+       
+          names    G1   G2   G3   G4   G5
+          G2-G1    -1    1    0    0    0
+          G4-G5     0    0    0    1   -1
+          G3-G5     0    0   -1    0    1
+        G1+G2-G5    0.5  0.5  0    0   -1
+
+**Options**
+
+- data conversion from MaxQuant and OpenSWATH to MSstats format: 
+
+    - MaxQuant input: + Contaminant, + Reverse, + Only.identified.by.site, proteins are automatically removed during conversion
+    
+- data processing options: 
+
+    - MaxQuant input: Contaminants and reverse and only ID by site) from MaxQuant tool are automatically removed; 
+    - log transformation
+    - normalization of MS runs
+    - Feature selection
+    - Missing value imputation: 
+    
+        - MaxQuant input: All missing values are NA, usecensoredInt must be 'NA'
+        - OpenSWATH input: secensoredInt must be '0'
+        - Summary method: TMP + censoredInt = NULL: It assumes that all intensities are missing at random, therefore no action with MBimpute = FALSE or error with MBimpute = TRUE
+        - censoredInt='NA'or'0'& MBimpute=TRUE: AFT model-based imputation usingcutoffCensoredvalue in the AFT model
+        - censoredInt='NA'or'0'&MBimpute=FALSE: censored intensities (hereNA’s) will be replaced withthe value specified incutoffCensored.
+    - Summarizing intensities per MS run
+- group comparison: automatic detection of differentially abundant proteins between two conditions, conditions have to be specified with the 'comparison matrix'
+- quantification per sample or group
+
+    - sample: relative protein abundance in each biological replicate. If there are technical replicates for biological replicates,sample quantification will be the median among technical replicates. If there is no technical replicate for biological replicate (sample), sample quantification will be the same as run-level summarization.
+    - group: relative protein abundance in each condition, summarized over the biological replicates (median among sample quantification). In presence of completely missing values in a condition, the estimates will be zero
+
+**Output options**
+
+- Different outputs available. Especially for studies with many proteins, it is suggested to select only the necessary pdf outputs as many of them generate one plot per protein.
+
+    - MSstats log - check log file for warnings and information on the analysis steps (txt)
+    - r-script - can be used to re-run analysis outside Galaxy (txt)
+    - processed_data - transformed, normalized, imputed intensities (tabular)
+    - runlevel_data - summarized intensities per run (tabular)
+    - qcplot - log2 intensity boxplot for all proteins and run on first page, followed by one boxplot per protein (pdf)
+    - profile_plot - log2 intensity profiles one plot per protein and run (pdf)
+    - profile_wsum_plot - log2 intensity profiles one plot per protein and run with run summarization (pdf)
+    - condition_plot - log2 intensity range for each protein and condition (pdf)
+    - quant_sample_matrix - relative protein abundance in each biological replicate (tabular)
+    - quant_sample_long - relative protein abundance in each biological replicate, long format (tabular)
+    - quant_group_matrix - relative protein abundance in each condition (tabular)
+    - quant_group_long - relative protein abundance in each condition, long format (tabular)
+    - comparison_result - summary of statistical results per protein and comparison (tabular)
+    - model_qc - summary statistics per run (tabular)
+    - qqplot - one QQplot per protein (pdf)
+    - residualplot - one residual plot per protein (pdf)
+    - volcanoplot - one volcano plot per comparison (pdf)
+    - heatmap - needs at least 2 comparisons, one heatmap for all proteins and comparisons (pdf)
+    - comparisonplot - log2 intensity range for each protein and comparison (pdf)    
+
+For additional help please visit the `MSstats documentation <http://msstats.org/msstats-2/>`_
+
+
+    ]]></help>
+    <citations>
+        <citation type="doi">10.1093/bioinformatics/btu305</citation>
+    </citations>
+</tool>
+
