@@ -4,9 +4,7 @@ MT2MQ
 Description
 -----------
 
-For multi-omics data analysis of microbiome data, the Galaxy-P team has developed a tool – MT2MQ – which takes in metatranscriptomics gene families 
-output from ASaiM workflow and converts it to GO/EC terms. This tool helps transform the metatranscriptomics output which can be then used as an input for 
-comparative statistical analysis via metaQuantome.
+In order to enable multi-omics data analysis of microbiome data, the Galaxy-P team has developed a tool – MT2MQ – which processes metatranscriptomics gene families output from ASaiM workflow and converts it to Gene Ontology (GO) or EC terms. The processed metatranscriptomics output can be subsequently used as an input for comparative statistical analysis via [metaQuantome](https://www.mcponline.org/content/18/8_suppl_1/S82) software suite.
 
 Authors
 -------
