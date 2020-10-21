@@ -46,7 +46,7 @@ https://github.com/galaxyproteomics/tools-galaxyp/blob/master/tools/mt2mq/test-d
    - Click on ** For all selected** drop down menu and select **Build Dataset list**.
    - Once the collection is created, rename the dataset collection as `Input collection`.
    
-2. Download the map_go_uniref50.txt file from [zenodo](https://doi.org/10.5281/zenodo.4115871).
+2. Download the map_go_uniref50.txt file from [Zenodo](https://doi.org/10.5281/zenodo.4115871).
 
 3. Run the **Regroup a HUMAnN2 generated table by features**(Galaxy Version 0.11.1.0) tool is regrouping table features (abundances or coverage) given a table of feature values and a mapping of groups to component features. It produces a new table with group values in place of feature values.
  - [**Regroup a HUMAnN2 generated table by features**](https://toolshed.g2.bx.psu.edu/repository?repository_id=85391b8d5d7ad39d) with the following parameters:
