@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-VERSION=2.5
+VERSION=2.6
 FILETYPES="filetypes.txt"
-CONDAPKG="https://anaconda.org/bioconda/openms/2.5.0/download/linux-64/openms-2.5.0-h463af6b_1.tar.bz2"
+CONDAPKG="https://anaconda.org/bioconda/openms/2.6.0/download/linux-64/openms-2.6.0-h4afb90d_0.tar.bz2"
 
 # import the magic
 . ./generate-foo.sh
@@ -49,7 +49,7 @@ if [[ ! -d $OPENMSGIT ]]; then
 	cd -
 else
 	cd $OPENMSGIT
-		git pull origin release/$VERSION.0
+	git pull origin release/$VERSION.0
 	cd -
 fi
 
@@ -59,7 +59,7 @@ echo "Create OpenMS $VERSION conda env"
 if conda env list | grep "$OPENMSENV"; then
 	true
 else
-	conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults -p $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION openjdk=8.0.192 ctdopts=1.4 lxml
+	conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults -p $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION ctdopts=1.4 lxml
 # chmod -R u-w $OPENMSENV 
 fi
 ###############################################################################
@@ -88,7 +88,6 @@ else
 	git pull origin topic/cdata
 	cd -
 fi
-# export PYTHONPATH=$(pwd)/CTDopts
 
 ###############################################################################
 ## copy all the test data files to test-data
@@ -103,21 +102,26 @@ cp -r $OPENMSGIT/share/OpenMS/MAPPING/ test-data/
 cp -r $OPENMSGIT/share/OpenMS/CHEMISTRY test-data/
 cp -r $OPENMSGIT/share/OpenMS/examples/ test-data/
 if [[ ! -f test-data/MetaboliteSpectralDB.mzML ]]; then 
-	wget -q https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Tutorials/Data/latest/Example_Data/Metabolomics/databases/MetaboliteSpectralDB.mzML && mv MetaboliteSpectralDB.mzML test-data/
+	wget -nc https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Tutorials/Data/latest/Example_Data/Metabolomics/databases/MetaboliteSpectralDB.mzML
+	mv MetaboliteSpectralDB.mzML test-data/
 fi
 ln -fs TOFCalibration_ref_masses test-data/TOFCalibration_ref_masses.txt
 ln -fs TOFCalibration_const test-data/TOFCalibration_const.csv
 
 if [ ! -d test-data/pepnovo_models/ ]; then
-	wget http://proteomics.ucsd.edu/Software/PepNovo/PepNovo.20120423.zip
-	unzip -e PepNovo.20120423.zip -d /tmp/
-	mv /tmp/Models test-data/pepnovo_models/
+	mkdir -p /tmp/pepnovo
+	wget -nc http://proteomics.ucsd.edu/Software/PepNovo/PepNovo.20120423.zip
+	unzip PepNovo.20120423.zip -d /tmp/pepnovo/
+	mv /tmp/pepnovo/Models test-data/pepnovo_models/
+	rm PepNovo.20120423.zip
+	rm -rf /tmp/pepnovo
 fi
 ###############################################################################
 ## generate ctd files using the binaries in the conda package 
 ###############################################################################
 echo "Create CTD files"
 conda activate $OPENMSENV
+rm -rf ctd
 mkdir -p ctd
 
 # TODO because of https://github.com/OpenMS/OpenMS/issues/4641
@@ -175,7 +179,7 @@ echo 'export NOVOR_BINARY="/home/berntm/Downloads/novor/lib/novor.jar"' >> prepa
 echo 'export OMSSA_BINARY="$(dirname $(realpath $(which omssacl)))/omssacl"'>> prepare_test_data.sh
 echo 'export PERCOLATOR_BINARY="percolator"'>> prepare_test_data.sh
 echo 'export SIRIUS_BINARY="$(which sirius)"' >> prepare_test_data.sh
-echo 'export SPECTRAST_BINARY="spectrast"' >> prepare_test_data.sh
+echo 'export SPECTRAST_BINARY="'"$OPENMSGIT"'/THIRDPARTY/Linux/64bit/SpectraST/spectrast"' >> prepare_test_data.sh
 echo 'export XTANDEM_BINARY="xtandem"' >> prepare_test_data.sh
 echo 'export THERMORAWFILEPARSER_BINARY="ThermoRawFileParser.exe"' >> prepare_test_data.sh
 

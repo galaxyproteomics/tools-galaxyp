@@ -1,4 +1,4 @@
-<tool id="cardinal_quality_report" name="MSI Qualitycontrol" version="@VERSION@.0">
+<tool id="cardinal_quality_report" name="MSI Qualitycontrol" version="@VERSION@.1">
     <description>
         mass spectrometry imaging QC
     </description>
@@ -67,7 +67,6 @@ msidata <- msidata[,!duplicated(coord(msidata))]
 ###################### calculation of data properties ################################
 @DATA_PROPERTIES_INRAM@
 
-
 ## Median intensities
 medint = round(median(int_matrix), digits=2)
 ## Spectra multiplied with m/z (potential number of peaks)
@@ -83,6 +82,8 @@ sdTIC = round(sd(TICs), digits=0)
 ## Median and sd # peaks per spectrum
 medpeaks = round(median(colSums(spectra(msidata)>0, na.rm=TRUE), na.rm=TRUE), digits=0)
 sdpeaks = round(sd(colSums(spectra(msidata)>0, na.rm=TRUE), na.rm=TRUE), digits=0)
+##max window size 
+max_window = round(mz(msidata)[nrow(msidata)]-mz(msidata)[nrow(msidata)-1], digits=2)
 ## Processing informations
 centroidedinfo = centroided(msidata)
 
@@ -138,6 +139,7 @@ properties2 = c("Median of intensities",
                "Number of empty spectra",
                "Median TIC ± sd", 
                "Median # peaks per spectrum ± sd",
+               "maximum m/z window size",
                "Centroided", 
                paste0("input m/z (#valid/#input) in \n", "$calibrant_file.display_name"))
 
@@ -146,6 +148,7 @@ values2 = c(paste0(medint),
            paste0(NumemptyTIC), 
            paste0(medTIC, " ± ", sdTIC),
            paste0(medpeaks, " ± ",sdpeaks),
+           paste0(max_window),
            paste0(centroidedinfo), 
            paste0(number_calibrants_valid, " / ", number_calibrants_in))
 
@@ -222,7 +225,7 @@ if (npeaks > 0){
     pixelxyarray=data.frame(coord(msidata)\$x, coord(msidata)\$y,pixelnumber)
     colnames(pixelxyarray) = c("x", "y", "pixelnumber")
     gg_title = "Pixel order"
-    
+
     print(ggplot(pixelxyarray, aes(x=x, y=y, fill=pixelnumber))+
      geom_tile() + coord_fixed()+
      ggtitle(gg_title) + theme_bw()+
@@ -755,6 +758,7 @@ if (npeaks > 0){
 
     if (length(inputcalibrantmasses) != 0){
 
+
     ### calculate plusminus values in m/z for each calibrant, this is used for all following plots
     plusminusvalues = rep($plusminus_ppm/1000000, length(inputcalibrantmasses)) * inputcalibrantmasses
 
@@ -767,6 +771,17 @@ if (npeaks > 0){
             maxmasspixel2 = features(msidata_no_NA, mz=inputcalibrantmasses[mass]+0.5)
             minmasspixel3 = features(msidata_no_NA, mz=inputcalibrantmasses[mass]-1.5)
             maxmasspixel3 = features(msidata_no_NA, mz=inputcalibrantmasses[mass]+3)
+            
+            ## test if some values are lower than min(mz)
+            minmasspixel1 = ifelse(length(minmasspixel1)>0, minmasspixel1, 1)
+            minmasspixel2 = ifelse(length(minmasspixel2)>0, minmasspixel2, 1)
+            minmasspixel3 = ifelse(length(minmasspixel3)>0, minmasspixel3, 1)
+            
+            ## test if min and max are same (more likely for centroided data):
+            maxmasspixel1 = ifelse(minmasspixel1 != maxmasspixel1, maxmasspixel1, maxmasspixel1 + 1)
+            maxmasspixel2 = ifelse(minmasspixel2 != maxmasspixel2, maxmasspixel2, maxmasspixel1 + 1)
+            maxmasspixel3 = ifelse(minmasspixel3 != maxmasspixel3, maxmasspixel3, maxmasspixel1 + 1)
+            
 
             ### find m/z with the highest mean intensity in m/z range (red line in plot 16) and calculate ppm difference for plot 17
             filtered_data = msidata_no_NA[mz(msidata_no_NA) >= inputcalibrantmasses[mass]-plusminusvalues[mass] & mz(msidata_no_NA) <= inputcalibrantmasses[mass]+plusminusvalues[mass],]
@@ -837,7 +852,9 @@ if (npeaks > 0){
         ### plot the ppm difference calculated above: theor. m/z value to highest m/z value: 
 
         calibrant_names = as.character(inputcalibrants[,2])
+
         diff_df = data.frame(differencevector, calibrant_names)
+
 
         if (sum(is.na(diff_df[,1])) == nrow(diff_df)){
                 plot(0,type='n',axes=FALSE,ann=FALSE)

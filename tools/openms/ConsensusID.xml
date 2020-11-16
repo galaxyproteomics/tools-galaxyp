@@ -17,7 +17,7 @@
 
 ## Preprocessing
 mkdir in &&
-ln -s '$in' 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)' &&
+${ ' '.join(["ln -s '%s' 'in/%s.%s' &&" % (_, re.sub('[^\w\-_]', '_', _.element_identifier), $gxy2omsext(_.ext)) for _ in $in if _]) }
 mkdir out &&
 
 ## Main program call
@@ -27,12 +27,12 @@ set -o pipefail &&
 python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
 @EXECUTABLE@ -ini @EXECUTABLE@.ctd
 -in
-'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
+${' '.join(["'in/%s.%s'"%(re.sub('[^\w\-_]', '_', _.element_identifier), $gxy2omsext(_.ext)) for _ in $in if _])}
 -out
-'out/output.${in.ext}'
+'out/output.${in[0].ext}'
 
 ## Postprocessing
-&& mv 'out/output.${in.ext}' '$out'
+&& mv 'out/output.${in[0].ext}' '$out'
 #if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
   && mv '@EXECUTABLE@.ctd' '$ctd_out'
 #end if]]></command>
@@ -41,9 +41,10 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
     <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
   </configfiles>
   <inputs>
-    <param name="in" argument="-in" type="data" format="consensusxml,featurexml,idxml" optional="false" label="input file" help=" select consensusxml,featurexml,idxml data sets(s)"/>
+    <param name="in" argument="-in" type="data" format="consensusxml,featurexml,idxml" multiple="true" optional="false" label="input file" help=" select consensusxml,featurexml,idxml data sets(s)"/>
     <param name="rt_delta" argument="-rt_delta" type="float" optional="true" min="0.0" value="0.1" label="[idXML input only] Maximum allowed retention time deviation between identifications belonging to the same spectrum" help=""/>
     <param name="mz_delta" argument="-mz_delta" type="float" optional="true" min="0.0" value="0.1" label="[idXML input only] Maximum allowed precursor m/z deviation between identifications belonging to the same spectrum" help=""/>
+    <param name="per_spectrum" argument="-per_spectrum" type="boolean" truevalue="true" falsevalue="false" checked="false" label="(only idXML) if set, mapping will be done based on exact matching of originating mzml file and spectrum_ref" help=""/>
     <param name="algorithm" argument="-algorithm" type="select" optional="false" label="Algorithm used for consensus scoring" help="* PEPMatrix: Scoring based on posterior error probabilities (PEPs) and peptide sequence similarities (scored by a substitution matrix). Requires PEPs as scores.. * PEPIons: Scoring based on posterior error probabilities (PEPs) and fragment ion similarities ('shared peak count'). Requires PEPs as scores.. * best: For each peptide ID, use the best score of any search engine as the consensus score. Requires the same score type in all ID runs.. * worst: For each peptide ID, use the worst score of any search engine as the consensus score. Requires the same score type in all ID runs.. * average:  For each peptide ID, use the average score of all search engines as the consensus. Requires the same score type in all ID runs.. * ranks: Calculates a consensus score based on the ranks of peptide IDs in the results of different search engines. The final score is in the range (0, 1], with 1 being the best score. No requirements about score types">
       <option value="PEPMatrix" selected="true">PEPMatrix</option>
       <option value="PEPIons">PEPIons</option>
@@ -57,6 +58,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <param name="considered_hits" argument="-filter:considered_hits" type="integer" optional="true" min="0" value="0" label="The number of top hits in each ID run that are considered for consensus scoring ('0' for all hits)" help=""/>
       <param name="min_support" argument="-filter:min_support" type="float" optional="true" min="0.0" max="1.0" value="0.0" label="For each peptide hit from an ID run, the fraction of other ID runs that must support that hit (otherwise it is removed)" help=""/>
       <param name="count_empty" argument="-filter:count_empty" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Count empty ID runs" help="(i.e. those containing no peptide hit for the current spectrum) when calculating 'min_support'?"/>
+      <param name="keep_old_scores" argument="-filter:keep_old_scores" type="boolean" truevalue="true" falsevalue="false" checked="false" label="if set, keeps the original scores as user params" help=""/>
     </section>
     <section name="PEPIons" title="PEPIons algorithm parameters" help="" expanded="false">
       <param name="mass_tolerance" argument="-PEPIons:mass_tolerance" type="float" optional="true" min="0.0" value="0.5" label="Maximum difference between fragment masses (in Da) for fragments to be considered 'shared' between peptides" help=""/>
@@ -71,12 +73,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <param name="penalty" argument="-PEPMatrix:penalty" type="integer" optional="true" min="1" value="5" label="Alignment gap penalty (the same value is used for gap opening and extension)" help=""/>
     </section>
     <expand macro="adv_opts_macro">
-      <param name="force" argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overwrite tool specific checks" help=""/>
+      <param name="force" argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
       <param name="test" argument="-test" type="hidden" optional="true" value="False" label="Enables the test mode (needed for internal use only)" help="">
         <expand macro="list_string_san"/>
       </param>
     </expand>
-    <param name="OPTIONAL_OUTPUTS" type="select" multiple="true" label="Optional outputs" optional="true">
+    <param name="OPTIONAL_OUTPUTS" type="select" optional="true" multiple="true" label="Optional outputs">
       <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
     </param>
   </inputs>
@@ -93,6 +95,6 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
   <help><![CDATA[Computes a consensus of peptide identifications of several identification engines.
 
 
-For more information, visit http://www.openms.de/documentation/TOPP_ConsensusID.html]]></help>
+For more information, visit http://www.openms.de/doxygen/release/2.6.0/html/TOPP_ConsensusID.html]]></help>
   <expand macro="references"/>
 </tool>

@@ -1,7 +1,6 @@
 <macros>
   <token name="@VERSION@">3.0.20287</token>
   <token name="@FULL_VERSION@">@VERSION@-769529fa4</token>
-  
   <xml name="msconvertCommand">
     <command detect_errors="exit_code">
 <![CDATA[
@@ -39,32 +38,29 @@
       ln -s '$data_processing.precursor_refinement.input_ident' '$input_ident_name' &&
     #end if
 
-    uid=`id -u` &&
-    gid=`id -g` &&
 
-    wine64_anyuser msconvert ${inputmask}
+    CAN_SUDO=\$(sudo -n -l 2> /dev/null; echo \$?) &&
+    if [ "\$CAN_SUDO" -eq "0" ]; then
+        uid=`id -u` &&
+        gid=`id -g` &&    
+        WINE="wine64_anyuser";
+    else
+        WINE="wine64" &&
+        ## create a writable copy of wine prefix (since copying fails for some html
+        ## stderr and exit code is swallowed)
+        export WINEPREFIX=\$(mktemp -d) &&
+        (cp -a /wineprefix64/* \$WINEPREFIX 2> /dev/null || true);
+    fi
+    &&
+    \$WINE msconvert ${inputmask}
+
     --outdir outputs
     --${output_type}
-
-    #if $general_options.combineIonMobilitySpectra:
-    --combineIonMobilitySpectra
-    #end if
-
-    #if $general_options.simAsSpectra:
-    --simAsSpectra
-    #end if
-
-    #if $general_options.srmAsSpectra:
-    --srmAsSpectra
-    #end if
-
-    #if $general_options.acceptZeroLengthSpectra:
-    --acceptZeroLengthSpectra
-    #end if
-
-    #if $general_options.ignoreUnknownInstrumentError:
-    --ignoreUnknownInstrumentError
-    #end if
+    $general_options.combineIonMobilitySpectra
+    $general_options.simAsSpectra
+    $general_options.srmAsSpectra
+    $general_options.acceptZeroLengthSpectra
+    $general_options.ignoreUnknownInstrumentError
 
     #if $general_options.scan_summing.do_scan_summing:
       --filter "scanSumming precursorTol=$general_options.scan_summing.precursorTol scanTimeTol=$general_options.scan_summing.scanTimeTol ionMobilityTol=$general_options.scan_summing.ionMobilityTol"
@@ -181,8 +177,8 @@
       #if str($filtering.analyzer) != "false"
         --filter "analyzer $filtering.analyzer"
       #end if
-      
-    ## OUTPUT ENCODING
+
+      ## OUTPUT ENCODING
       #set $mz_encoding = str($settings.mz_encoding)
       #set $intensity_encoding = str($settings.intensity_encoding)
       #if $mz_encoding == $intensity_encoding
@@ -217,14 +213,21 @@
 
       #if $general_options.multi_run_output.do_multi_run_output == 'false':
         --outfile '${os.path.splitext($basename)[0]}'
-        && sudo mv 'outputs/${os.path.splitext($basename)[0]}.${output_type}' '${output}' && sudo chown \$uid:\$gid '${output}'
+        && 
+        if [ "\$CAN_SUDO" -eq "0" ]; then
+            sudo chown \$uid:\$gid 'outputs/${os.path.splitext($basename)[0]}.${output_type}' && 
+            sudo mv 'outputs/${os.path.splitext($basename)[0]}.${output_type}' '${output}';
+        else
+          mv 'outputs/${os.path.splitext($basename)[0]}.${output_type}' '${output}';
+        fi
       #else
-        && sudo chown \$uid:\$gid 'outputs' -R
         && ls -la outputs/
       #end if
 
       #if $data_processing.precursor_refinement.use_mzrefinement
-        && sudo mv '$output_refinement_name' '$output_refinement' && sudo chown \$uid:\$gid '$output_refinement'
+      && if [ "\$CAN_SUDO" -ne "0" ]; then
+        mv '$output_refinement_name' '$output_refinement';
+      fi
       #end if
 ]]>
     </command>
@@ -243,7 +246,7 @@
       <option value="ms2">ms2</option>
     </param>
 
-    <section name="data_processing" title="Data Processing Filters">  
+    <section name="data_processing" title="Data Processing Filters">
         <conditional name="peak_picking">
             <param type="boolean" name="pick_peaks" label="Apply peak picking?" truevalue="true" falsevalue="false" />
             <when value="false" />
@@ -407,7 +410,7 @@
 
 
     <section name="filtering" title="Scan Inclusion/Exclusion Filters">
-      
+
       <param name="activation" type="select" label="Filter by Activation">
         <option value="false" selected="true">no</option>
         <option value="ETD">ETD</option>
@@ -462,7 +465,7 @@
     </section>
 
     <section name="general_options" title="General Options">
-      <param argument="--combineIonMobilitySpectra" type="boolean" label="Combine ion mobility spectra" help="When false, each mobility scan is written as a separate spectrum. When true, each retention time point will have a single merged scan. For Bruker TIMS spectra, the ion mobilities will be preserved in a separate binaryDataArray, and for TIMS PASEF MS2s, each precursor will be merged separately." />
+      <param argument="--combineIonMobilitySpectra" type="boolean" truevalue="--combineIonMobilitySpectra" falsevalue="" label="Combine ion mobility spectra" help="When false, each mobility scan is written as a separate spectrum. When true, each retention time point will have a single merged scan. For Bruker TIMS spectra, the ion mobilities will be preserved in a separate binaryDataArray, and for TIMS PASEF MS2s, each precursor will be merged separately." />
 
       <conditional name="scan_summing">
         <param name="do_scan_summing" type="boolean" truevalue="true" falsevalue="false" label="Sum adjacent scans" help="Sums MS2 sub-scans whose precursors are similar in the m/z, scan time, and/or ion mobility dimensions. It is useful for some Waters DDA data and Bruker PASEF data, where sub-scans should be summed together to increase the SNR" />
@@ -474,10 +477,10 @@
         </when>
       </conditional>
 
-      <param argument="--simAsSpectra" type="boolean" label="SIM as Spectra" help="Write selected ion monitoring as spectra, not chromatograms" />
-      <param argument="--srmAsSpectra" type="boolean" label="SRM as Spectra" help="Write selected reaction monitoring as spectra, not chromatograms" />
-      <param argument="--acceptZeroLengthSpectra" type="boolean" label="Accept zero-length spectra" help="Some vendor readers have an efficient way of filtering out empty spectra, but it takes more time to open the file" />
-      <param argument="--ignoreUnknownInstrumentError" type="boolean" label="Ignore unknown instrument error" help="If true, if an instrument cannot be determined from a vendor file, it will not be an error" />
+      <param argument="--simAsSpectra" type="boolean" truevalue="--simAsSpectra" falsevalue="" label="SIM as Spectra" help="Write selected ion monitoring as spectra, not chromatograms" />
+      <param argument="--srmAsSpectra" type="boolean" truevalue="--srmAsSpectra" falsevalue=""  label="SRM as Spectra" help="Write selected reaction monitoring as spectra, not chromatograms" />
+      <param argument="--acceptZeroLengthSpectra" type="boolean" truevalue="--acceptZeroLengthSpectra" falsevalue=""  label="Accept zero-length spectra" help="Some vendor readers have an efficient way of filtering out empty spectra, but it takes more time to open the file" />
+      <param argument="--ignoreUnknownInstrumentError" type="boolean" truevalue="--ignoreUnknownInstrumentError" falsevalue=""  label="Ignore unknown instrument error" help="If true, if an instrument cannot be determined from a vendor file, it will not be an error" />
 
       <conditional name="multi_run_output">
         <param name="do_multi_run_output" type="boolean" truevalue="true" falsevalue="false" label="Output multiple runs per file" help="Some input types can store multiple runs (samples) in a single file (e.g. WIFF). Each run must be written to a separate output file, so check this option if you want to output all runs for a file (each file will create a dataset collection)" />
@@ -514,7 +517,7 @@
       <param type="boolean" name="gzip_compression" label="Compress output file with gzip" truevalue="true" falsevalue="false" />
     </section>
   </xml>
-  
+
   <xml name="msconvertOutput">
     <outputs>
       <data format="mzml" name="output" label="${($input.name[:-4] if $input.name.endswith('.tar') else $input.name).rsplit('.',1)[0]}.${output_type}" >
@@ -646,7 +649,7 @@
       <param name="pick_peaks" value="true" />
       <param name="pick_peaks_algorithm" value="cwt" />
       <param name="pick_peaks_ms_levels" value="1" />
-      <output name="output" file="small-peakpicking-cwt-allMS.mzML" lines_diff="8" /> 
+      <output name="output" file="small-peakpicking-cwt-allMS.mzML" lines_diff="8" />
     </test>
     <test>
       <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
@@ -736,7 +739,7 @@
       <output name="output" file="Rpal_01-mzRefinement.mzML" compare="sim_size" delta="0" />
       <output name="output_refinement" file="Rpal_01.pepXML.mzRefinement.tsv" />
     </test>
-    
+
     <test>
       <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
       <param name="license_agreement" value="true" />
