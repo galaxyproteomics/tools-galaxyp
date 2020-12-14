@@ -22,10 +22,13 @@ order to generate the test data on call `test-data.sh`.
 
 Manual updates should only be done to
 
-- the `@GALAXY_VERSION@"` token in `macros.xml`
 - and the manually contributed tests in `macros_test.xml` (The goal is that all
   tools that do not have an automatically generated test are covered here)
 - the `hardcoded_params.json` files
+
+Wrapper versions are managed in `bump.json`. For tools listed in the file
+the wrapper version will be set accordingly and otherwise `0` is used. 
+For a major update of the tool version the bump file should be reset (to `{}`).
 
 In a few cases patches may be acceptable.
 
