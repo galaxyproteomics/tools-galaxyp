@@ -1,4 +1,4 @@
-<tool id="cardinal_spectra_plots" name="MSI plot spectra" version="@VERSION@.2">
+<tool id="cardinal_spectra_plots" name="MSI plot spectra" version="@VERSION@.3">
     <description>
         mass spectrometry imaging mass spectra plots
     </description>
@@ -71,16 +71,23 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                 spectra_input = spectra_tabular[,c($pixel_conditional.column_pixel_x, $pixel_conditional.column_pixel_y, $pixel_conditional.single_or_overlaid.column_pixel_annotation)]
                 colnames(spectra_input) = c("x", "y", "annotation")
                 spectra_input\$annotation = as.character(spectra_input\$annotation)
+                
+                ## keeping only spectra with annotations
+                input_pixels = paste(spectra_input[,1], spectra_input[,2], sep="_")
+                dataset_pixels = paste(coord(msidata)\$x, coord(msidata)\$y, sep="_")
+                pixelsofinterest = dataset_pixels %in% input_pixels
+                msidata = msidata[,pixelsofinterest]
 
-                msidata_coordinates = data.frame(coord(msidata)\$x, coord(msidata)\$y)
-                colnames(msidata_coordinates) = c("x", "y")
-                merged_annotation = merge(msidata_coordinates, spectra_input, by=c("x", "y"))
+                msidata_coordinates = data.frame(coord(msidata)\$x, coord(msidata)\$y, c(1:ncol(msidata)))
+                colnames(msidata_coordinates) = c("x", "y", "pixel_index")
+                merged_annotation = merge(msidata_coordinates, spectra_input, by=c("x", "y"), all.x=TRUE)
                 merged_annotation[is.na(merged_annotation)] = "NA"
-
-                merged_annotation = merged_annotation[order(merged_annotation\$annotation),]
-                msidata\$annotation = factor(merged_annotation\$annotation)
-
-
+                merged_annotation = merged_annotation[order(merged_annotation\$pixel_index),]
+                msidata\$annotation = factor(merged_annotation[,4], levels = unique(as.character(merged_annotation[,4]))) ## keep the right order
+                
+print(msidata\$annotation)
+print(merged_annotation)
+                 
                     ## overview plot over annotated samples
                     number_combined = length(levels(msidata\$annotation))
 
@@ -105,15 +112,15 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
 
                     #elif str($pixel_conditional.single_or_overlaid.colour_conditional.colour_type) == "colourpalette"
 
-                    number_levels = (length(levels(msidata\$annotation)))
-
-        	    colourvector = noquote($pixel_conditional.single_or_overlaid.colour_conditional.palettes)(number_levels)
+                    	number_levels = (length(levels(msidata\$annotation)))
+                    
+        	    	colourvector = noquote($pixel_conditional.single_or_overlaid.colour_conditional.palettes)(number_levels)
 
                     #end if
-
-                    position_df = merged_annotation
+                    
+                    position_df = data.frame(coord(msidata)\$x, coord(msidata)\$y, as.factor(msidata\$annotation))
                     colnames(position_df) = c("x", "y", "sample_name")
-
+print(position_df)
                     combine_plot = ggplot(position_df, aes(x=x, y=y, fill=sample_name))+
                            geom_tile(height = 1, width=1)+
                            coord_fixed()+
@@ -126,9 +133,8 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                            guides(fill=guide_legend(ncol=4,byrow=TRUE))+
                            scale_discrete_manual(aesthetics = c("colour", "fill"), values = colourvector)
 
-
                        coord_labels = aggregate(cbind(x,y)~sample_name, data=position_df, mean, na.rm=TRUE, na.action="na.pass")
-                       coord_labels\$file_number = 1:length(unique(position_df\$sample_name))
+                       coord_labels\$file_number = 1:nrow(coord_labels)
 
                     for(file_count in 1:nrow(coord_labels))
                     	{combine_plot = combine_plot + annotate("text",x=coord_labels[file_count,"x"],
@@ -149,7 +155,6 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
 
                     pixeldf = data.frame(table(msidata\$annotation))
                     colnames(pixeldf) = c("sample name", "number of pixels")
-
 
             ##################### II) Sample: plot zoom-in mass spectrum ##########
 
@@ -179,7 +184,6 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                     )   
 
                         ## plot single tabular mz, average per annotation, manual zoom
-
                         print(plot(msidata[minmasspixel:maxmasspixel,], run="infile", strip=FALSE, col = colourvector,
                         xlim= c($token.xlimmin,$token.xlimmax),pixel.groups=msidata\$annotation, grid = $grid_variable,
                         key=key_legend, superpose=TRUE, main="Average spectrum per group"))
