@@ -14,8 +14,8 @@ options.names <- sapply(listoptions, function(x) {
 names(options.args) <- unlist(options.names)
 ##
 
-data_path <- paste0(options.args["pwd"], "/data/")
-runs_file_path <- paste0(options.args["pwd"], "/runs.txt")
+data_path <- "./data/"
+runs_file_path <- "./runs.txt"
 
 runs <- readLines(runs_file_path)
 
