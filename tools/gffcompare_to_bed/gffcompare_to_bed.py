@@ -44,7 +44,13 @@ class BedEntry(object):
         else:
             self.blockStarts = blockStarts
 
+    def sort_exons(self):
+        sorted_list = [i for i in sorted(zip(self.blockStarts,self.blockSizes))]
+        self.blockStarts = [i[0] for i in sorted_list]
+        self.blockSizes = [i[1] for i in sorted_list]
+
     def __str__(self):
+        self.sort_exons()
         return '%s\t%d\t%d\t%s\t%d\t%s\t%d\t%d\t%s\t%d\t%s\t%s' % (
             self.chrom, self.chromStart, self.chromEnd,
             self.name, self.score, self.strand,
