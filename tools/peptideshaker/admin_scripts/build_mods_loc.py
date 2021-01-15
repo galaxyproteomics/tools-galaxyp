@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import xml.etree.ElementTree as ET
-from os.path import exists
 
 with open("searchgui_mods.loc.sample", "w") as output:
     for mods_path in ["searchGUI_mods.xml", "searchGUI_usermods.xml"]:

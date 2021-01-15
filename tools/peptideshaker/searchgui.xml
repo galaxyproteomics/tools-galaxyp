@@ -1,9 +1,9 @@
-<tool id="search_gui" name="Search GUI" version="@SEARCHGUI_VERSION@.1">
+<tool id="search_gui" name="Search GUI" version="@SEARCHGUI_VERSION@+galaxy@SEARCHGUI_VERSION_SUFFIX@">
     <description>
         Perform protein identification using various search engines and prepare results for input to Peptide Shaker
     </description>
     <macros>
-        <import>macros.xml</import>
+        <import>macros_basic.xml</import>
     </macros>
     <requirements>
         <requirement type="package" version="@SEARCHGUI_VERSION@">searchgui</requirement>
@@ -13,6 +13,8 @@
     <command use_shared_home="false">
 <![CDATA[
         #from datetime import datetime
+        #import json
+        #import os
         #set $exp_str = "Galaxy_Experiment_%s" % datetime.now().strftime("%Y%m%d%H%M%s")
         #set $samp_str = "Sample_%s" % datetime.now().strftime("%Y%m%d%H%M%s")
         #set $temp_stderr = "searchgui_stderr"
@@ -27,313 +29,29 @@
 
         ## echo the search engines to run (single quotes important because X!Tandem)
         echo '$search_engines_options.engines';
-        echo 'DB: ${input_database.element_identifier} sequences: ${input_database.metadata.sequences}';
+        echo 'DB: ${input_fasta_file.element_identifier} sequences: ${input_fasta_file.metadata.sequences}';
 
         ##Create a searchgui.properties file for the version, which will be added to the searchgui_results if not already present
         echo 'searchgui.version=@SEARCHGUI_VERSION@' >> searchgui.properties;
 
-        #for $mgf in $peak_lists:
-            #set $input_name = $mgf.element_identifier.split('/')[-1].replace(".mgf", "") + ".mgf"
-            ln -s -f '${mgf}' '${input_name}';
-            #set $encoded_id = $__app__.security.encode_id($mgf.id)
-            echo 'Spectrums:${mgf.element_identifier}(API:${encoded_id})';
+        #for $peak_list_file in $peak_lists_files:
+            #set $input_name = ""
+            #if $peak_list_file.is_of_type("mgf"):
+                #set $input_name = $peak_list_file.element_identifier.split('/')[-1].replace(".mgf", "") + ".mgf"
+            #else if $peak_list_file.is_of_type("mzml"):
+                #set $input_name = $peak_list_file.element_identifier.split('/')[-1].replace(".mzml", "") + ".mzml"
+            #end if
+            ln -s -f '${peak_list_file}' '${input_name}';
+            #set $encoded_id = $__app__.security.encode_id($peak_list_file.id)
+            echo 'Spectrums:${peak_list_file.element_identifier}(API:${encoded_id})';
         #end for
-        ##ln -s "${input_database}" input_database.fasta;
-        cp "${input_database}" input_database.fasta;
 
-        ###########################################
-        ####       Set paths                   ####
-        ###########################################
-        echo 'Setting paths' &&
-        searchgui -Djava.awt.headless=true eu.isas.searchgui.cmd.PathSettingsCLI
-            --exec_dir="\$cwd/${bin_dir}"
-            -temp_folder \$cwd
-            -log \$cwd/searchgui.log  2>> $temp_stderr &&
+        ## copy the input .par file to the working folder
+        cp '${input_parameters_file}' './SEARCHGUI_IdentificationParameters.par';
 
-        ###########################################
-        ####       Creating decoy database     ####
-        ###########################################
-        #if $protein_database_options.create_decoy:
-            echo 'Creating decoy database.' &&
-            searchgui -Djava.awt.headless=true eu.isas.searchgui.cmd.FastaCLI
-                --exec_dir="\$cwd/${bin_dir}"
-                -in input_database.fasta
-                -decoy  2>> $temp_stderr &&
-            rm input_database.fasta &&
-            cp input_database_concatenated_target_decoy.fasta input_database.fasta &&
-            ## ln -sf input_database_concatenated_target_decoy.fasta input_database.fasta;
-        #end if
+        ## copy the input .fasta file to the working folder
+        cp '${input_fasta_file}' './input_fasta_file.fasta';
 
-        #####################################################
-        ## generate IdentificationParameters for SearchGUI ##
-        #####################################################
-        echo 'setting identification parameters' &&
-        (searchgui -Djava.awt.headless=true eu.isas.searchgui.cmd.IdentificationParametersCLI
-            --exec_dir="\$cwd/${bin_dir}"
-            -out SEARCHGUI_IdentificationParameters.par
-
-            @GENERAL_PARAMETERS@
-
-            -db input_database.fasta
-            $protein_database_options.use_gene_mapping
-            #if $protein_database_options.use_gene_mapping:
-                $protein_database_options.update_gene_mapping
-            #else:
-                -updateGeneMapping 0
-            #end if
-
-            #if $advanced_options.xtandem.xtandem_advanced == "yes"
-
-                -xtandem_npeaks ${advanced_options.xtandem.xtandem_npeaks}
-                -xtandem_min_peaks ${advanced_options.xtandem.xtandem_min_peaks}
-                -xtandem_min_frag_mz ${advanced_options.xtandem.xtandem_min_frag_mz}
-                -xtandem_min_prec_mass ${advanced_options.xtandem.xtandem_min_prec_mass}
-                -xtandem_noise_suppr ${advanced_options.xtandem.xtandem_noise_suppr}
-                -xtandem_dynamic_range ${advanced_options.xtandem.xtandem_dynamic_range}
-                -xtandem_quick_acetyl ${advanced_options.xtandem.xtandem_quick_acetyl}
-                -xtandem_quick_pyro ${advanced_options.xtandem.xtandem_quick_pyro}
-                -xtandem_stp_bias ${advanced_options.xtandem.xtandem_stp_bias}
-                -xtandem_evalue ${advanced_options.xtandem.xtandem_evalue}
-                -xtandem_output_proteins ${advanced_options.xtandem.xtandem_output_proteins}
-                -xtandem_output_sequences ${advanced_options.xtandem.xtandem_output_sequences}
-                -xtandem_output_spectra ${advanced_options.xtandem.xtandem_output_spectra}
-                ## -xtandem_skyline_path ${advanced_options.xtandem.xtandem_skyline_path}
-
-                #if $advanced_options.xtandem.xtandem_refine.xtandem_refine_selector == "yes"
-                    -xtandem_refine 1
-                    -xtandem_refine_unc ${advanced_options.xtandem.xtandem_refine.xtandem_refine_unc}
-                    -xtandem_refine_semi ${advanced_options.xtandem.xtandem_refine.xtandem_refine_semi}
-                    -xtandem_refine_p_mut ${advanced_options.xtandem.xtandem_refine.xtandem_refine_p_mut}
-                    -xtandem_refine_snaps ${advanced_options.xtandem.xtandem_refine.xtandem_refine_snaps}
-                    -xtandem_refine_spec_synt ${advanced_options.xtandem.xtandem_refine.xtandem_refine_spec_synt}
-                    -xtandem_refine_pot ${advanced_options.xtandem.xtandem_refine.xtandem_refine_pot}
-                    -xtandem_refine_pot ${advanced_options.xtandem.xtandem_refine.xtandem_refine_evalue}
-
-                #end if
-            #else
-                -xtandem_output_spectra 1
-            #end if
-
-            #if $advanced_options.omssa.omssa_advanced == "yes"
-                -omssa_hitlist_length ${advanced_options.omssa.hitlist_length}
-                -omssa_remove_prec ${advanced_options.omssa.remove_precursor}
-                -omssa_scale_prec ${advanced_options.omssa.scale_precursor}
-                -omssa_estimate_charge ${advanced_options.omssa.estimate_charge}
-                -omssa_memory ${advanced_options.omssa.omssa_memory}
-                -omssa_neutron ${advanced_options.omssa.omssa_neutron}
-                -omssa_low_intensity "${advanced_options.omssa.omssa_low_intensity}"
-                -omssa_high_intensity ${advanced_options.omssa.omssa_high_intensity}
-                -omssa_intensity_incr ${advanced_options.omssa.omssa_intensity_incr}
-                -omssa_single_window_wd ${advanced_options.omssa.omssa_single_window_wd}
-                -omssa_double_window_wd ${advanced_options.omssa.omssa_double_window_wd}
-                -omssa_single_window_pk ${advanced_options.omssa.omssa_single_window_pk}
-                -omssa_double_window_pk ${advanced_options.omssa.omssa_double_window_pk}
-                -omssa_min_ann_int_pks ${advanced_options.omssa.omssa_min_ann_int_pks}
-                -omssa_min_annotated_peaks ${advanced_options.omssa.omssa_min_annotated_peaks}
-                -omssa_min_peaks ${advanced_options.omssa.omssa_min_peaks}
-                -omssa_methionine ${advanced_options.omssa.omssa_methionine}
-                -omssa_max_ladders ${advanced_options.omssa.omssa_max_ladders}
-                -omssa_max_frag_charge ${advanced_options.omssa.omssa_max_frag_charge}
-                -omssa_fraction ${advanced_options.omssa.omssa_fraction}
-                -omssa_plus_one ${advanced_options.omssa.omssa_plus_one}
-                -omssa_charge ${advanced_options.omssa.omssa_charge}
-                -omssa_prec_per_spectrum ${advanced_options.omssa.omssa_prec_per_spectrum}
-                -omssa_forward ${advanced_options.omssa.omssa_forward}
-                -omssa_rewind ${advanced_options.omssa.omssa_rewind}
-                -omssa_max_frag_series ${advanced_options.omssa.omssa_max_frag_series}
-                -omssa_corr ${advanced_options.omssa.omssa_corr}
-                -omssa_consecutive_p ${advanced_options.omssa.omssa_consecutive_p}
-                -omssa_it_sequence_evalue ${advanced_options.omssa.omssa_it_sequence_evalue}
-                -omssa_it_spectrum_evalue ${advanced_options.omssa.omssa_it_spectrum_evalue}
-                -omssa_it_replace_evalue ${advanced_options.omssa.omssa_it_replace_evalue}
-                -omssa_max_evalue ${advanced_options.omssa.omssa_max_evalue}
-                -omssa_hitlist_charge ${advanced_options.omssa.omssa_hitlist_charge}
-                -omssa_min_pep_length ${advanced_options.omssa.omssa_min_pep_length}
-                -omssa_max_pep_length ${advanced_options.omssa.omssa_max_pep_length}
-                -omssa_format ${advanced_options.omssa.omssa_format}
-            #end if
-
-            #if $advanced_options.msgf.msgf_advanced == "yes"
-                -msgf_decoy ${advanced_options.msgf.msgf_decoy}
-                -msgf_min_pep_length ${advanced_options.msgf.msgf_min_pep_length}
-                -msgf_max_pep_length ${advanced_options.msgf.msgf_max_pep_length}
-                -msgf_termini ${advanced_options.msgf.msgf_termini}
-                -msgf_num_ptms ${advanced_options.msgf.msgf_num_ptms}
-                -msgf_instrument ${advanced_options.msgf.msgf_instrument}
-                -msgf_fragmentation ${advanced_options.msgf.msgf_fragmentation}
-                -msgf_protocol ${advanced_options.msgf.msgf_protocol}
-                -msgf_num_matches ${advanced_options.msgf.msgf_num_matches}
-                -msgf_additional ${advanced_options.msgf.msgf_additional}
-            #end if
-
-            #if $advanced_options.ms_amanda.ms_amanda_advanced == "yes"
-                 -ms_amanda_decoy ${advanced_options.ms_amanda.ms_amanda_decoy}
-                 -ms_amanda_instrument "${advanced_options.ms_amanda.ms_amanda_instrument}"
-                 -ms_amanda_max_rank ${advanced_options.ms_amanda.ms_amanda_max_rank}
-                 -ms_amanda_mono ${advanced_options.ms_amanda.ms_amanda_mono}
-            #end if
-
-            #if $advanced_options.myrimatch.myrimatch_advanced == "yes"
-                -myrimatch_min_pep_length ${advanced_options.myrimatch.myrimatch_min_pep_length}
-                -myrimatch_max_pep_length ${advanced_options.myrimatch.myrimatch_max_pep_length}
-                -myrimatch_min_prec_mass ${advanced_options.myrimatch.myrimatch_min_prec_mass}
-                -myrimatch_max_prec_mass ${advanced_options.myrimatch.myrimatch_max_prec_mass}
-                -myrimatch_num_matches ${advanced_options.myrimatch.myrimatch_num_matches}
-                -myrimatch_num_ptms ${advanced_options.myrimatch.myrimatch_num_ptms}
-                -myrimatch_fragmentation ${advanced_options.myrimatch.myrimatch_fragmentation}
-                -myrimatch_termini ${advanced_options.myrimatch.myrimatch_termini}
-                -myrimatch_plus_three ${advanced_options.myrimatch.myrimatch_plus_three}
-                -myrimatch_xcorr ${advanced_options.myrimatch.myrimatch_xcorr}
-                -myrimatch_tic_cutoff ${advanced_options.myrimatch.myrimatch_tic_cutoff}
-                -myrimatch_intensity_classes ${advanced_options.myrimatch.myrimatch_intensity_classes}
-                -myrimatch_class_multiplier ${advanced_options.myrimatch.myrimatch_class_multiplier}
-                -myrimatch_num_batches ${advanced_options.myrimatch.myrimatch_num_batches}
-                -myrimatch_max_peak ${advanced_options.myrimatch.myrimatch_max_peak}
-            #end if
-
-
-            #* Not working in tests
-            #if $advanced_options.andromeda.andromeda_advanced == "yes"
-                -andromeda_max_pep_mass ${advanced_options.andromeda.andromeda_max_pep_mass}
-                -andromeda_max_comb ${advanced_options.andromeda.andromeda_max_comb}
-                -andromeda_top_peaks ${advanced_options.andromeda.andromeda_top_peaks}
-                -andromeda_top_peaks_window ${advanced_options.andromeda.andromeda_top_peaks_window}
-                -andromeda_incl_water ${advanced_options.andromeda.andromeda_incl_water}
-                -andromeda_incl_ammonia ${advanced_options.andromeda.andromeda_incl_ammonia}
-                -andromeda_neutral_losses ${advanced_options.andromeda.andromeda_neutral_losses}
-                -andromeda_fragment_all ${advanced_options.andromeda.andromeda_fragment_all}
-                -andromeda_emp_correction ${advanced_options.andromeda.andromeda_emp_correction}
-                -andromeda_higher_charge ${advanced_options.andromeda.andromeda_higher_charge}
-                -andromeda_equal_il ${advanced_options.andromeda.andromeda_equal_il}
-                -andromeda_frag_method ${advanced_options.andromeda.andromeda_frag_method}
-                -andromeda_max_mods ${advanced_options.andromeda.andromeda_max_mods}
-                -andromeda_min_pep_length ${advanced_options.andromeda.andromeda_min_pep_length}
-                -andromeda_max_pep_length ${advanced_options.andromeda.andromeda_max_pep_length}
-                -andromeda_max_psms ${advanced_options.andromeda.andromeda_max_psms}
-                -andromeda_decoy_mode ${advanced_options.andromeda.andromeda_decoy_mode}
-            #end if
-            *#
-
-            #if $advanced_options.tide.tide_advanced == "yes"
-                #if str($advanced_options.tide.tide_max_spectrum_mz).strip() != '':
-                  -tide_num_ptms ${advanced_options.tide.tide_max_spectrum_mz}
-                #end if
-                -tide_num_ptms_per_type ${advanced_options.tide.tide_num_ptms_per_type}
-                -tide_min_pep_length ${advanced_options.tide.tide_min_pep_length}
-                -tide_max_pep_length ${advanced_options.tide.tide_max_pep_length}
-                -tide_min_prec_mass ${advanced_options.tide.tide_min_prec_mass}
-                -tide_max_prec_mass ${advanced_options.tide.tide_max_prec_mass}
-                -tide_decoy_format ${advanced_options.tide.tide_decoy_format}
-                -tide_keep_terminals ${advanced_options.tide.tide_keep_terminals}
-                -tide_print_peptides ${advanced_options.tide.tide_print_peptides}
-                -tide_verbosity ${advanced_options.tide.tide_verbosity}
-                -tide_monoisotopic ${advanced_options.tide.tide_monoisotopic}
-                -tide_clip_n_term ${advanced_options.tide.tide_clip_n_term}
-                -tide_digestion_type ${advanced_options.tide.tide_digestion_type}
-                -tide_compute_sp ${advanced_options.tide.tide_compute_sp}
-                -tide_max_psms ${advanced_options.tide.tide_max_psms}
-                -tide_compute_p ${advanced_options.tide.tide_compute_p}
-                -tide_min_spectrum_mz ${advanced_options.tide.tide_min_spectrum_mz}
-                #if str($advanced_options.tide.tide_max_spectrum_mz).strip() != '':
-                  -tide_max_spectrum_mz ${advanced_options.tide.tide_max_spectrum_mz}
-                #end if
-                -tide_min_spectrum_peaks ${advanced_options.tide.tide_min_spectrum_peaks}
-                -tide_spectrum_charges ${advanced_options.tide.tide_spectrum_charges}
-                -tide_remove_prec ${advanced_options.tide.tide_remove_prec}
-                -tide_remove_prec_tol ${advanced_options.tide.tide_remove_prec_tol}
-                -tide_progress_indicator ${advanced_options.tide.tide_progress_indicator}
-                -tide_use_flanking ${advanced_options.tide.tide_use_flanking}
-                -tide_use_neutral_losses ${advanced_options.tide.tide_use_neutral_losses}
-                -tide_mz_bin_width ${advanced_options.tide.tide_mz_bin_width}
-                -tide_mz_bin_offset ${advanced_options.tide.tide_mz_bin_offset}
-                -tide_concat ${advanced_options.tide.tide_concat}
-
-                #set $formats = ["tide_export_text", "tide_export_sqt", "tide_export_pepxml", "tide_export_mzid", "tide_export_pin"]
-                #for $format in $formats:
-                    #if str($advanced_options.tide.tide_export).strip() == $format:
-                      -$format 1
-                    #else:
-                      -$format 0
-                    #end if
-
-                #end for
-
-                -tide_remove_temp ${advanced_options.tide.tide_remove_temp}
-
-            #end if
-
-
-            #if $advanced_options.comet.comet_advanced == "yes"
-
-                #if $advanced_options.comet.comet_spectrum.comet_spectrum_selector == "yes"
-                    -comet_min_peaks ${advanced_options.comet.comet_spectrum.comet_min_peaks}
-                    -comet_min_peak_int ${advanced_options.comet.comet_spectrum.comet_min_peak_int}
-
-                    -comet_remove_prec ${advanced_options.comet.comet_spectrum.comet_prec.comet_remove_prec}
-
-
-                     #if $advanced_options.comet.comet_spectrum.comet_prec.comet_remove_prec == "1"
-                        -comet_remove_prec_tol ${advanced_options.comet.comet_spectrum.comet_prec.comet_remove_prec_tol}
-                     #end if
-
-                     #if $advanced_options.comet.comet_spectrum.comet_prec.comet_remove_prec == "2"
-                        -comet_remove_prec_tol ${advanced_options.comet.comet_spectrum.comet_prec.comet_remove_prec_tol}
-                     #end if
-
-                    -comet_clear_mz_range_lower ${advanced_options.comet.comet_spectrum.comet_clear_mz_range_lower}
-                    -comet_clear_mz_range_upper ${advanced_options.comet.comet_spectrum.comet_clear_mz_range_upper}
-                #end if
-
-                #if $advanced_options.comet.comet_search.comet_search_selector == "yes"
-                    -comet_enzyme_type ${advanced_options.comet.comet_search.comet_enzyme_type}
-                    -comet_isotope_correction ${advanced_options.comet.comet_search.comet_isotope_correction}
-                    -comet_min_prec_mass ${advanced_options.comet.comet_search.comet_min_prec_mass}
-                    -comet_max_prec_mass ${advanced_options.comet.comet_search.comet_max_prec_mass}
-                    -comet_num_matches ${advanced_options.comet.comet_search.comet_num_matches}
-                    -comet_max_frag_charge ${advanced_options.comet.comet_search.comet_max_frag_charge}
-                    -comet_remove_meth ${advanced_options.comet.comet_search.comet_remove_meth}
-                    -comet_batch_size ${advanced_options.comet.comet_search.comet_batch_size}
-                    -comet_num_ptms ${advanced_options.comet.comet_search.comet_num_ptms}
-                #end if
-
-                #if $advanced_options.comet.comet_fragment_ions.comet_fragment_ions_selector == "yes"
-                    -comet_frag_bin_offset ${advanced_options.comet.comet_fragment_ions.comet_frag_bin_offset}
-                    -comet_theoretical_fragment_ions ${advanced_options.comet.comet_fragment_ions.comet_theoretical_fragment_ions}
-                #end if
-            #end if
-
-            #if $advanced_options.directtag.directtag_advanced == "yes"
-                -directag_tic_cutoff ${advanced_options.directtag.directag_tic_cutoff}
-                -directag_max_peak_count ${advanced_options.directtag.directag_max_peak_count}
-                -directag_intensity_classes ${advanced_options.directtag.directag_intensity_classes}
-                -directag_adjust_precursor ${advanced_options.directtag.directag_adjust_precursor}
-                -directag_min_adjustment ${advanced_options.directtag.directag_min_adjustment}
-                -directag_max_adjustment ${advanced_options.directtag.directag_max_adjustment}
-                -directag_adjustment_step ${advanced_options.directtag.directag_adjustment_step}
-                -directag_charge_states ${advanced_options.directtag.directag_charge_states}
-                #if str($advanced_options.directtag.directag_output_suffix).strip() != '':
-                -directag_output_suffix ${advanced_options.directtag.directag_output_suffix}
-                #end if
-                -directag_ms_charge_state ${advanced_options.directtag.directag_ms_charge_state}
-                -directag_duplicate_spectra ${advanced_options.directtag.directag_duplicate_spectra}
-                -directag_deisotoping ${advanced_options.directtag.directag_deisotoping}
-                -directag_isotope_tolerance ${advanced_options.directtag.directag_isotope_tolerance}
-                -directag_complement_tolerance ${advanced_options.directtag.directag_complement_tolerance}
-                -directag_tag_length ${advanced_options.directtag.directag_tag_length}
-                -directag_max_var_mods ${advanced_options.directtag.directag_max_var_mods}
-                -directag_max_tag_count ${advanced_options.directtag.directag_max_tag_count}
-                -directag_intensity_weight ${advanced_options.directtag.directag_intensity_weight}
-                -directag_fidelity_weight ${advanced_options.directtag.directag_fidelity_weight}
-                -directag_complement_weight ${advanced_options.directtag.directag_complement_weight}
-            #end if
-
-            #if $advanced_options.novor.novor_advanced == "yes"
-                -novor_fragmentation ${advanced_options.novor.novor_fragmentation}
-                -novor_mass_analyzer ${advanced_options.novor.novor_mass_analyzer}
-            #end if
-
-        2> $temp_stderr)
-        &&
 
         ################
         ## Search CLI ##
@@ -342,23 +60,19 @@
         (searchgui -Djava.awt.headless=true eu.isas.searchgui.cmd.SearchCLI
             --exec_dir="\$cwd/${bin_dir}"
             -spectrum_files \$cwd
+            -fasta_file "\$cwd/input_fasta_file.fasta"
             -output_folder \$cwd/output
-            -id_params SEARCHGUI_IdentificationParameters.par
+            -id_params ./SEARCHGUI_IdentificationParameters.par
 
             -threads "\${GALAXY_SLOTS:-12}"
 
-            #if $advanced_options.searchgui_advanced.searchgui_advanced_selector == 'advanced'
-                -correct_titles "${advanced_options.searchgui_advanced.correct_titles}"
-                $advanced_options.searchgui_advanced.missing_titles
-                -mgf_splitting "${advanced_options.searchgui_advanced.mgf_splitting}"
-                -mgf_spectrum_count "${advanced_options.searchgui_advanced.mgf_spectrum_count}"
+            #if $searchgui_advanced.searchgui_advanced_selector == 'advanced'
+                -correct_titles "${searchgui_advanced.correct_titles}"
+                $searchgui_advanced.missing_titles
+                -mgf_splitting "${searchgui_advanced.mgf_splitting}"
+                -mgf_spectrum_count "${searchgui_advanced.mgf_spectrum_count}"
+                -output_gzip "${searchgui_advanced.output_gzip}"
             #end if
-
-            ## Turn of the protein tree generation as it can produce errors if the search is finished before the tree is created
-            ## the tree is generated afterwards in PeptideShaker
-            ## -protein_index 0
-
-            ##-makeblastdb_folder \$BLAST_ROOT_DIR
 
             #set $engines_list = str($search_engines_options.engines).split(',')
             #if 'X!Tandem' in $engines_list:
@@ -409,6 +123,12 @@
                 -andromeda 0
             #end if
 
+            #if 'MetaMorpheus' in $engines_list:
+                -meta_morpheus 1
+            #else
+                -meta_morpheus 0
+            #end if
+
             #if 'Novor' in $engines_list:
                 -novor 1
             #else
@@ -441,35 +161,26 @@
 ]]>
     </command>
     <inputs>
+        <param format="json" name="input_parameters_file" type="data" label="Identification Parameters file"/>
 
-        <param format="fasta" name="input_database" type="data" label="Protein Database"
-            help="Select FASTA database from history"/>
-        <section name="protein_database_options" expanded="false" title="Protein Database Options">
-            <param name="create_decoy" type="boolean" truevalue="True" falsevalue="False" checked="true"
-                label="Create a concatenated target/decoy database before running PeptideShaker"
-                help="Selecting this option will help PeptideShaker calculate FDR values" />
-            <param name="use_gene_mapping" type="boolean" truevalue="-useGeneMapping 1" falsevalue="-useGeneMapping 0" checked="false"
-                label="gene mappings will be used and saved along with the project (UniProt databases only)"
-                help="This should only be enabled for UniProt databaases" />
-            <param name="update_gene_mapping" type="boolean" truevalue="-updateGeneMapping 1" falsevalue="-updateGeneMapping 0" checked="false"
-                label="Update gene mappings automatically from Ensembl (UniProt databases only)"
-            help="This should only be enabled for UniProt databaases" />
-        </section>
-        <param name="peak_lists" format="mgf" type="data" multiple="true" label="Input Peak Lists (mgf)"
-            help="Select appropriate MGF dataset(s) from history" />
+        <param format="fasta" name="input_fasta_file" type="data" label="Fasta file"/>
+
+        <param name="peak_lists_files" format="mgf,mzml" type="data" multiple="true" label="Input Peak Lists"
+            help="Select appropriate MGF/MZML dataset(s) from history" />
 
         <!-- Search Engine Selection -->
         <section name="search_engines_options" expanded="true" title="Search Engine Options">
             <param name="engines" type="select" display="checkboxes" multiple="True" label="DB-Search Engines">
-                <help>Comet and Tide shouldn't both be selected since they use a similar algoritm.</help>
+                <help>Comet and Tide shouldn't both be selected since they use a similar algoritm. OMSSA may not work into isolated environments like containers.</help>
                 <option value="X!Tandem" selected="True">X!Tandem</option>
-
                 <option value="MSGF" selected="True">MS-GF+</option>
-                <option value="OMSSA" selected="True">OMSSA</option>
+                <option value="OMSSA">OMSSA</option>
                 <option value="Comet">Comet</option>
                 <option value="Tide">Tide</option>
                 <option value="MyriMatch">MyriMatch</option>
                 <option value="MS_Amanda">MS_Amanda</option>
+                <!-- TODO: MetaMorpheus Waiting for support for dotnet in bioconda package -->
+                <!-- <option value="MetaMorpheus">MetaMorpheus</option> -->
                 <!-- Windows only
                 <option value="Andromeda">Andromeda</option>
                 -->
@@ -483,679 +194,130 @@
             </param>
         </section>
 
-
-        <!-- General Parameters -->
-        <expand macro="general_options"/>
-
-
-        <section name="advanced_options" expanded="false" title="Andvanced Options">
-            <!-- Optional Advanced SearchGUI Parameters -->
-            <conditional name="searchgui_advanced">
-                <param name="searchgui_advanced_selector" type="select" label="SearchGUI Options">
-                    <option value="basic" selected="True">Default</option>
-                    <option value="advanced">Advanced</option>
-                </param>
-                <when value="basic" />
-                <when value="advanced">
+        <conditional name="searchgui_advanced">
+            <param name="searchgui_advanced_selector" type="select" label="SearchGUI Options">
+                <option value="basic" selected="True">Default</option>
+                <option value="advanced">Advanced</option>
+            </param>
+            <when value="basic" />
+            <when value="advanced">
                 <param name="correct_titles" type="select" label="How should PeptideShaker deal with duplicate spectra?"
                     help="Unless you suspect some input files to be genuine duplicates then rename spectra is the safest option">
                     <option value="0">no correction</option>
                     <option value="1" selected="True">rename spectra</option>
                     <option value="2">delete spectra</option>
                 </param>
-
                 <param name="missing_titles" type="boolean" checked="false" truevalue="-missing_titles 1" falsevalue="-missing_titles 0"
                     label="Add missing spectrum titles" help="(-missing_titles)"/>
-
                 <param name="mgf_splitting" type="integer" value="1000" label="The maximum mgf file size in MB before splitting the mgf"
                     help="Choose a smaller value if you are running on a machine with limited memory"/>
-
                 <param name="mgf_spectrum_count" type="integer" value="25000" label="The maximum number of spectra per mgf file when splitting"
                     help="Choose a smaller value if you are running on a machine with limited memory"/>
-                </when>
-            </conditional>
+                <param name="output_gzip" type="boolean" checked="true" truevalue="1" falsevalue="0"
+                    label="Gzip result files"/>
+            </when>
+        </conditional>
 
-            <!-- X!TANDEM ADVANCED PARAMETERS -->
-            <conditional name="xtandem">
-                <param name="xtandem_advanced" type="select" label="X!Tandem Options">
-                    <option value="yes">Advanced</option>
-                    <option value="no" selected="True">Default</option>
-                </param>
-                <when value="no" />
-                <when value="yes">
-                    <param name="xtandem_npeaks" type="integer" value="50"
-                        label="X!Tandem: Total Peaks" help="Maximum number of peaks to be used from a spectrum"/>
-                    <param name="xtandem_min_peaks" type="integer" value="15"
-                        label="X!Tandem: Min Peaks" help="Minimum number of peaks required for a spectrum to be considered"/>
-                    <param name="xtandem_min_frag_mz" type="integer" value="200"
-                        label="X!Tandem: Min Frag m/z" help="Fragment mass peaks with m/z less than this value will be discarded"/>
-                    <param name="xtandem_min_prec_mass" type="integer" value="200"
-                        label="X!Tandem: Min Precursor Mass" help="Minimum mass of 1+ mass of parent ion to be considered"/>
-                    <param name="xtandem_noise_suppr" type="boolean" checked="true" truevalue="1" falsevalue="0"
-                        label="X!Tandem: Noise Suppression" help="Use noise suppression"/>
-                    <param name="xtandem_dynamic_range" help="Sets the dynamic range for scoring spectra"
-                        label="X!Tandem: Dynamic Range" value="100" type="integer" />
-                    <param name="xtandem_quick_acetyl" help="Protein N-terminal modification detection"
-                        label="X!Tandem: Quick Acetyl" type="boolean" truevalue="1" falsevalue="0" checked="true" />
-                    <param name="xtandem_quick_pyro" help="Peptide N-terminus cyclization detection"
-                        label="X!Tandem: Quick Pyrolidone" type="boolean" truevalue="1" falsevalue="0" checked="true" />
-                    <param name="xtandem_stp_bias" help="Interpretation of peptide phosphorylation models"
-                        label="X!Tandem: Protein stP Bias" type="boolean" truevalue="1" falsevalue="0" checked="false" />
-                    <param name="xtandem_evalue" help="Highest value for recorded peptides"
-                        label="X!Tandem: Maximum Valid Expectation Value" type="float" value="0.01" />
-                    <param name="xtandem_output_proteins" help="Controls output of protein sequences"
-                        label="X!Tandem: Output Proteins" type="boolean" truevalue="1" falsevalue="0" checked="false" />
-                    <param name="xtandem_output_sequences" help="Controls output of sequence information"
-                        label="X!Tandem: Output Sequences" type="boolean" truevalue="1" falsevalue="0" checked="false" />
-                    <param name="xtandem_output_spectra" help="Controls output of spectrum information"
-                        label="X!Tandem: Output Spectra" type="boolean" truevalue="1" falsevalue="0" checked="true" />
-                    <!-- <param name="xtandem_skyline_path" label="X!Tandem 'spectrum, skyline path'" type="txt" help="Path to a spectrum data file for use by skyline." -->
-
-                    <conditional name="xtandem_refine"><!-- -xtandem_refine -->
-                        <param name="xtandem_refine_selector" type="select" label="X!Tandem peptide model refinement">
-                            <option value="no" selected="True">Don't refine</option>
-                            <option value="yes" >Use refinement</option>
-                        </param>
-                        <when value="no"/>
-                        <when value="yes">
-                            <param name="xtandem_refine_unc" type="boolean" truevalue="1" falsevalue="0" checked="true"
-                                label="X!Tandem: Unanticipated cleavage, refinement" help="Allow for unanticipated cleavage during refinement"/>
-                            <param name="xtandem_refine_semi" type="boolean" truevalue="1" falsevalue="0" checked="false"
-                                label="X!Tandem: Cleavage semi, refinement" help="Search for semi-tryptic peptides during refinement"/>
-                            <param name="xtandem_refine_p_mut" type="boolean" truevalue="1" falsevalue="0" checked="false"
-                                label="X!Tandem: Point mutations, refinement" help="Allow for point mutations during refinement"/>
-                            <param name="xtandem_refine_snaps" type="boolean" truevalue="1" falsevalue="0" checked="true"
-                                label="X!Tandem: snAPs, refinement" help="Search for known single amino acid polymorphisms during refinement"/>
-                            <param name="xtandem_refine_spec_synt" type="boolean" truevalue="1" falsevalue="0" checked="true"
-                                label="X!Tandem: Spectrum synthesis, refinement" help="Use spectrum synthesis scoring"/>
-                            <param name="xtandem_refine_pot" type="boolean" truevalue="1" falsevalue="0" checked="false"
-                                label="X!Tandem: Use potential modifications, refinement" help="Controls the use of refinement modifications in all refinement modules."/>
-                            <param name="xtandem_refine_evalue" help="Highest value for recorded peptides during refinement"
-                                label="X!Tandem: Maximum Valid Expectation Value, refinement" type="float" value="0.01" />
-                        </when>
-                    </conditional>
-                </when>
-            </conditional>
-
-            <!-- OMSSA ADVANCED PARAMETERS -->
-            <conditional name="omssa">
-                <param name="omssa_advanced" type="select" label="OMSSA Options">
-                    <option value="yes">Advanced</option>
-                    <option value="no" selected="True">Default</option>
-                </param>
-                <when value="no" />
-                <when value="yes">
-                    <param name="hitlist_length" label="OMSSA: Hit List Length" type="integer" value="25" />
-                    <param name="remove_precursor" label="OMSSA: Remove Precurosr" type="boolean" truevalue="1" falsevalue="0" checked="true"/>
-                    <param name="scale_precursor" label="OMSSA: Scale Precursor Mass" type="boolean" truevalue="1" falsevalue="0" checked="false"/>
-                    <param name="estimate_charge" label="OMSSA: Estimate Charge" type="boolean" truevalue="1" falsevalue="0" checked="true" />
-
-                    <param name="omssa_memory" type="boolean" truevalue="1" falsevalue="0" checked="true"
-                        label="OMSSA: Map Sequences in Memory" help="Use memory mapped sequence libraries" />
-                    <param name="omssa_neutron" type="float" value="1446.94"
-                           label="OMSSA: Neutron Mass" help="Mass after which OMSSA should consider neutron exact mass" />
-                    <param name="omssa_low_intensity" type="float" value="0.0"
-                        label="OMSSA: Low Intensity Cutoff" help="Low intensity cutoff as a fraction of max peak" />
-                    <param name="omssa_high_intensity" type="float" value="0.2"
-                        label="OMSSA: High Intensity Cutoff" help="High intensity cutoff as a fraction of max peak" />
-                       <param name="omssa_intensity_incr" type="float" value="0.0005"
-                           label="OMSSA: Intensity Increment" help="Intensity increment" />
-                    <param name="omssa_single_window_wd" type="integer" value="27"
-                        label="OMSSA: Single Charge Window Width" help="Single charge window width in Da (integer)" />
-                    <param name="omssa_double_window_wd" type="integer" value="14"
-                        label="OMSSA: Double Charge Window Width" help="OMSSA double charge window width in Da (integer)" />
-                    <param name="omssa_single_window_pk" type="integer" value="2"
-                        label="OMSSA: Single Charge Window Peaks" help="Minimum number of peaks in single charge window (integer)" />
-                    <param name="omssa_double_window_pk" type="integer" value="2"
-                        label="OMSSA: Double Charge Window Peaks" help="Minimum number of peaks in double charge window (integer)" />
-                    <param name="omssa_min_ann_int_pks" type="integer" value="6"
-                        label="OMSSA: Minimum Number of Annotated Peaks of Intense Ones" help="Minimum number of annotated peaks among the most intense ones" />
-                    <param name="omssa_min_annotated_peaks" type="integer" value="2"
-                        label="OMSSA: Minimum number of Annotated Peaks" help="Minimum number of annotated peaks" />
-                       <param name="omssa_min_peaks" type="integer" value="4"
-                           label="OMSSA: Minimum Peak Count" help="The minimum number of m/z values a spectrum must have to be searched" />
-                    <param name="omssa_methionine" type="boolean" truevalue="1" falsevalue="0" checked="true"
-                        label="OMSSA: Cleave n-term Methionine" help="Allow for N-terminal methionine cleavage" />
-                    <param name="omssa_max_ladders" type="integer" value="128"
-                        label="OMSSA: Maximum Number of m/z Ladders" help="The maximum number of mass ladders to generate per database peptide" />
-                    <param name="omssa_max_frag_charge" type="integer" value="2"
-                        label="OMSSA: Maximum Fragment Charge" help="Maximum fragment charge" />
-                    <param name="omssa_fraction" type="float" value="0.95"
-                        label="OMSSA: Fraction of Peaks to estimate Charge 1" help="fraction of peaks to estimate charge 1" />
-                    <param name="omssa_plus_one" type="boolean" truevalue="1" falsevalue="0" checked="true"
-                        label="OMSSA: Estimate Plus One Charge" help="Allow OMSSA to estimate plus one charge algorithmically"/>
-                    <param name="omssa_charge" type="select"
-                        label="OMSSA: Fragment Charge" help="OMSSA fragment charge option" >
-                        <option value="0" >Minus</option>
-                        <option value="1" selected="True">Plus</option>
-                    </param>
-                    <param name="omssa_prec_per_spectrum" type="integer" value="1"
-                        label="OMSSA: Minimum Number of Precursors per Spectrum" help="Minimum number of precursors per spectrum" />
-                    <param name="omssa_forward" type="boolean" truevalue="1" falsevalue="0" checked="true"
-                        label="OMSSA: Include First Forward Ion (b1) in Search" help="Allow OMSSA to include first forward ion (b1) in search" />
-                    <param name="omssa_rewind" type="boolean" truevalue="1" falsevalue="0" checked="true"
-                        label="OMSSA: Search Rewind" help="Allow search rewind (C-terminal) ions" />
-                    <param name="omssa_max_frag_series" type="integer" value="100"
-                        label="OMSSA: Maximum Fragment per Series" help="Max number of fragments ions ions in each series being searched" />
-                    <param name="omssa_corr" type="boolean" truevalue="1" falsevalue="0" checked="true"
-                        label="OMSSA: Use Correlation Correction" help="Allow the use correlation correction score" />
-                    <param name="omssa_consecutive_p" type="float" value="0.5"
-                        label="OMSSA: Consecutive Ion Probability" help="Probability of consecutive ion (used in correlation correction)" />
-                    <param name="omssa_it_sequence_evalue" type="float" value="0.0"
-                        label="OMSSA: Sequence e-value Cutoff" help="The maximum e-value allowed to consider a sequence in the iterative search(0.0 means all)" />
-                    <param name="omssa_it_spectrum_evalue" type="float" value="0.01"
-                        label="OMSSA: Spectrum e-value Cutoff" help="The maximum e-value allowed to consider a spectrum in the iterative search(0.0 means all)" />
-                    <param name="omssa_it_replace_evalue" type="float" value="0.01"
-                        label="OMSSA: Replace e-value cutoff" help="The maximum e-value allowed to replace a hit in the iterative search(0.0 means all)" />
-                    <param name="omssa_remove_prec" type="boolean" truevalue="1" falsevalue="0" checked="true"
-                        label="OMSSA: Remove Precursor" help="Remove precursors" />
-                    <param name="omssa_scale_prec" type="boolean" truevalue="1" falsevalue="0" checked="false"
-                        label="OMSSA: Scale Precursor Mass" help="scale precursor mass" />
-                    <param name="omssa_estimate_charge" type="boolean" truevalue="1" falsevalue="0" checked="true"
-                        label="OMSSA: Remove Precursor" help="Remove precursors" />
-                    <param name="omssa_max_evalue" type="float" value="100"
-                        label="OMSSA: Maximal evalue Considered" help="The maximum e-value considered" />
-                    <param name="omssa_remove_prec" type="boolean" truevalue="1" falsevalue="0" checked="true"
-                        label="OMSSA: Estimate Precursor Charge" help="Allow estimation of precursor charge" />
-                    <param name="omssa_it_replace_evalue" type="float" value="100"
-                        label="OMSSA: Maximal evalue" help="The maximum OMSSA e-value considered" />
-                    <param name="omssa_hitlist_length" type="integer" value="0"
-                        label="OMSSA: Hitlist Length" help="OMSSA hitlist length, 0 means all" />
-                    <param name="omssa_hitlist_charge" type="integer" value="30"
-                        label="OMSSA: Number of Hits per Spectrum per Charge" help="number of hits per spectrum per charge" />
-                    <param name="omssa_min_pep_length" type="integer" value="4"
-                        label="OMSSA: Minumum Peptide Length" help="Minimum length of peptides for no-enzyme and semi-tryptic searches" />
-                    <param name="omssa_max_pep_length" type="integer" value="40"
-                        label="OMSSA: Maximum Peptide Length" help="Maximum length of peptides for no-enzyme and semi-tryptic searches (0: none)" />
-                    <param name="omssa_format" label="OMSSA output format" type="select" >
-                        <option value="0" selected="True">OMX</option>
-                        <option value="1" >CSV</option>
-                    </param>
-                </when>
-            </conditional>
-
-            <!-- MS-GF+ ADVANCED PARAMETERS -->
-            <conditional name="msgf">
-                <param name="msgf_advanced" type="select" label="MSGF Options">
-                    <option value="yes">Advanced</option>
-                    <option value="no" selected="True">Default</option>
-                </param>
-                <when value="no" />
-                <when value="yes">
-                    <param name="msgf_decoy" type="boolean" truevalue="1" falsevalue="0" checked="false"
-                        label="MSGF: Search Decoys" help="If yes then a decoy database will be generated and searched. Assumed input database contains no decoys"/>
-                    <param name="msgf_min_pep_length" type="integer" value="6"
-                        label="MSGF: Minimum Peptide Length" help="Minimum length for a peptide to be considered"/>
-                    <param name="msgf_max_pep_length" type="integer" value="30"
-                        label="MSGF: Maximum Peptide Length" help="Maximum length for a peptide to be considered"/>
-                    <param name="msgf_termini" type="select" format="txt"
-                        label="MSGF: Number of tolerable termini" help="Searches will take much longer if selecting a value other than 2">
-                        <option value="0">0 (ie non-specific cleavage)</option>
-                        <option value="1">1 (ie semi-tryptic cleavage)</option>
-                        <option value="2" selected="true">2 (ie fully-tryptic cleavage)</option>
-                    </param>
-                    <param name="msgf_num_ptms" label="MSGF: Max PTMs per peptide" type="integer" value="2"/>
-
-                    <param name="msgf_instrument" label="MSGF: Instrument type" type="select" help="Identifier of the instrument to generate MS/MS spectra (used to determine the scoring model)">
-                        <option value="0" selected="True">Low-res LCQ/LTQ</option>
-                        <option value="1" >High-res LTQ</option>
-                        <option value="2" >TOF</option>
-                        <option value="3" >Q-Exactive</option>
-                    </param>
-                    <param name="msgf_fragmentation" label="MSGF: Fragmentation type" type="select" help="Fragmentation method identifier (used to determine the scoring model)">
-                        <option value="0" selected="True">As written in the spectrum or CID if no info</option>
-                        <option value="1" >CID</option>
-                        <option value="2" >ETD</option>
-                        <option value="3" >HCD</option>
-                    </param>
-                    <param name="msgf_protocol" label="MSGF: Protocol type" type="select" help="Protocol identifier. Protocols are used to enable scoring parameters for enriched and/or labeled samples">
-                        <option value="0" selected="True">Automatic</option>
-                        <option value="1" >Phosphorylation</option>
-                        <option value="2" >iTRAQ</option>
-                        <option value="3" >iTRAQPhospho</option>
-                        <option value="4" >TMT</option>
-                        <option value="5" >Standard</option>
-                    </param>
-                    <param name="msgf_num_matches" label="MSGF: Maximum Number of Spectrum Matches" type="integer" value="1" help="Number of peptide matches per spectrum to report" />
-                    <param name="msgf_additional" label="MS-GF+ additional features" type="select" help="Additional features to export">
-                        <option value="0" selected="True">output basic scores only</option>
-                        <option value="1" >output additional features</option>
-                    </param>
-                </when>
-            </conditional>
-
-              <!-- MS-AMANDA ADVANCED PARAMETERS  -->
-            <conditional name="ms_amanda">
-                <param name="ms_amanda_advanced" type="select" label="MS Amanda Options">
-                    <option value="yes">Advanced</option>
-                    <option value="no" selected="True">Default</option>
-                </param>
-                <when value="no" />
-                <when value="yes">
-                    <param name="ms_amanda_decoy"  type="boolean" truevalue="1" falsevalue="0" checked="false"
-                        label="MS Amanda: Generate Decoys" help="generate decoys" />
-                    <param name="ms_amanda_instrument" label="MS Amanda: instrument" type="select"
-                      help="MS Amanda instrument id option. Available ion types are listed here.">
-
-                      <option value="b, y" selected="True">b, y</option>
-                      <option value="b, y, -H2O, -NH3" >b, y, -H2O, -NH3</option>
-                      <option value="a, b, y, -H2O, -NH3, Imm" >a, b, y, -H2O, -NH3, Imm</option>
-                      <option value="a, b, y, -H2O, -NH3" >a, b, y, -H2O, -NH3</option>
-                      <option value="a, b, y" >a, b, y</option>
-                      <option value="a, b, y, Imm" >a, b, y, Imm</option>
-                      <option value="a, b, y, z, -H2O, -NH3, Imm" >a, b, y, z, -H2O, -NH3, Imm</option>
-                      <option value="c, y, z+1, z+2" >c, y, z+1, z+2</option>
-                      <option value="b, c, y, z+1, z+2" >b, c, y, z+1, z+2</option>
-                      <option value="b, y, INT" >b, y, INT</option>
-                      <option value="b, y, INT, Imm" >b, y, INT, Imm</option>
-                      <option value="a, b, y, INT" >a, b, y, INT</option>
-                      <option value="a, b, y, INT, IMM" >a, b, y, INT, IMM</option>
-                      <option value="a, b, y, INT, IMM, -H2O" >a, b, y, INT, IMM, -H2O</option>
-                      <option value="a, b, y, INT, IMM, -H2O, -NH3" >a, b, y, INT, IMM, -H2O, -NH3</option>
-                      <option value="a, b, y, INT, IMM, -NH3" >a, b, y, INT, IMM, -NH3</option>
-
-                    </param>
-                    <param name="ms_amanda_max_rank" type="integer" value="10"
-                        label="MS Amanda: Maximum Rank" help="MS Amanda maximum rank" />
-                    <param name="ms_amanda_mono" type="boolean" truevalue="1" falsevalue="0" checked="true"
-                        label="MS Amanda: Use Monoisotopic Mass Values" help="MS Amanda use monoisotopic mass values" />
-                </when>
-            </conditional>
-
-
-            <!-- TIDE ADVANCED PARAMETERS -->
-            <conditional name="tide">
-                <param name="tide_advanced" type="select" label="TIDE Options">
-                    <option value="yes">Advanced</option>
-                    <option value="no" selected="True">Default</option>
-                </param>
-                <when value="no" />
-                <when value="yes">
-                    <param name="tide_num_ptms" type="integer" value="" optional="true"
-                        label="TIDE: Maximum Number of PTMs" help="Set the maximum number of PTMs on peptide to be considered"/>
-                    <param name="tide_num_ptms_per_type" type="integer" value="2"
-                        label="TIDE: Maximum Number of PTMs of each Type" help="Set the maximum number of PTMs of each type to be considered"/>
-                    <param name="tide_min_pep_length" type="integer" value="6"
-                        label="TIDE: Minimum Peptide Length" help="Set the minimum length of peptide to be considered"/>
-                    <param name="tide_max_pep_length" type="integer" value="30"
-                        label="TIDE: Maximum Peptide Length" help="Set the maximum length of peptide to be considered"/>
-                    <param name="tide_min_prec_mass" type="float" value="200.0"
-                        label="TIDE: Minimum Precursor Mass" help="Set the minimum precursor mass to be considered"/>
-                    <param name="tide_max_prec_mass" type="float" value="7200.0"
-                        label="TIDE: Maximum Precursor Mass" help="Set the maximum precursor mass to be considered"/>
-                    <param name="tide_decoy_format" label="TIDE: Decoy Format" type="select" help="Select the format for generating the decoy sequences">
-                        <option value="none" selected="True">none</option>
-                        <option value="shuffle" >shuffle</option>
-                        <option value="peptide-revers" >peptide-reverse</option>
-                        <option value="protein-reverse" >protein-reverse</option>
-                    </param>
-                    <param name="tide_keep_terminals" label="TIDE: Keep Terminals" type="select" help="Select to keep the terminal amino acids when creating decoys">
-                        <option value="N" >N</option>
-                        <option value="C" >C</option>
-                        <option value="NC" selected="True">NC</option>
-                        <option value="non" >none</option>
-                    </param>
-                    <param name="tide_decoy_seed" type="integer" value="1"
-                        label="TIDE: Decoy Seed" help="Set the decoy seed"/>
-                    <param name="tide_print_peptides" type="boolean" truevalue="1" falsevalue="0" checked="false"
-                        label="TIDE: Print Peptides" help="If true, the peptides will be printed in the output"/>
-                    <param name="tide_verbosity" label="TIDE: Progress Display Verbosity" type="select" help="Select the display verbosity level to report the search progress">
-                        <option value="0" >0</option>
-                        <option value="10" >10</option>
-                        <option value="20" >20</option>
-                        <option value="30" selected="True">30</option>
-                        <option value="40" >40</option>
-                        <option value="50" >50</option>
-                        <option value="60" >60</option>
-                    </param>
-
-                    <param name="tide_monoisotopic" type="boolean" truevalue="1" falsevalue="0" checked="true"
-                        label="TIDE: Monoisotopic" help="If true, the precursor mass is monoisotopic"/>
-                    <param name="tide_clip_n_term" type="boolean" truevalue="1" falsevalue="0" checked="false"
-                        label="TIDE: Clip Nterm Methionine" help="If true, the Nterm Methionine will be clipped"/>
-                    <param name="tide_digestion_type" label="TIDE: Digestion Type" type="select" help="Either both ends (full-digest) or at least one end (partial-digest) of a peptide must conform to enzyme specificity rules">
-                        <option value="full-digest" selected="True">full-digest</option>
-                        <option value="partial-digest" >partial-digest</option>
-                    </param>
-                    <param name="tide_compute_sp" type="boolean" truevalue="1" falsevalue="0" checked="false"
-                        label="TIDE: Compute SP" help="If true, the SP-score is calculated"/>
-                    <param name="tide_max_psms" type="integer" value="10"
-                        label="TIDE: Maximum Number of PSMs" help="Set the maximum number of PSMs to be considered"/>
-                    <param name="tide_compute_p" type="boolean" truevalue="1" falsevalue="0" checked="false"
-                        label="TIDE: Compute Exact P-value" help="If true, the exact p-values are calculated"/>
-                    <param name="tide_min_spectrum_mz" type="float" value="0.0"
-                        label="TIDE: Minimum Spectrum m/z" help="Set the minimum spectrum m/z value for a spectrum to be considered"/>
-                    <param name="tide_max_spectrum_mz" type="float" value="" optional="true"
-                        label="TIDE: Maximum Spectrum m/z" help="Set the maximum spectrum m/z value for a spectrum to be considered"/>
-                    <param name="tide_min_spectrum_peaks" type="integer" value="20"
-                        label="TIDE: Minimum Spectrum Peaks" help="Set the minimum amount of peaks in a spectrum for it to be considered"/>
-                    <param name="tide_spectrum_charges" label="TIDE: Spectrum Charges" type="select" help="Select what precursor charges should be taken into account for matching">
-                        <option value="1" >1</option>
-                        <option value="2" >2</option>
-                        <option value="3" >3</option>
-                        <option value="all" selected="True">all</option>
-                    </param>
-                    <param name="tide_remove_prec" type="boolean" truevalue="1" falsevalue="0" checked="false"
-                        label="TIDE: Remove Precursor" help="If true, the peak that corresponds to the precursor mass is excluded"/>
-                    <param name="tide_remove_prec_tol" type="float" value="1.5"
-                        label="TIDE: Remove Precursor Tolerance" help="Choose the threshold for precursor mass searching (for precursor peak removal)"/>
-                    <param name="tide_progress_indicator" type="integer" value="1000"
-                        label="TIDE: Progress Indicator" help="Choose the progress indicator frequency  (in number of fragmentation spectra processed)"/>
-                    <param name="tide_use_flanking" type="boolean" truevalue="1" falsevalue="0" checked="false"
-                        label="TIDE: Use Flanking" help="Includes two flanking peaks on either side of each b- and y-ion to compute the XCorr"/>
-                    <param name="tide_use_neutral_losses" type="boolean" truevalue="1" falsevalue="0" checked="false"
-                        label="TIDE: Neutral Losses" help="Includes fragment peaks with neutral losses to perform the matching"/>
-                    <param name="tide_mz_bin_width" type="float" value="0.02"
-                        label="TIDE: mz Bin Width" help="Choose bin size to analyze the fragmentation spectrum"/>
-                    <param name="tide_mz_bin_offset" type="float" value="0.0"
-                        label="TIDE: mz Bin Offset" help="Choose bin offset to analyze the fragmentation spectrum"/>
-                    <param name="tide_concat" type="boolean" truevalue="1" falsevalue="0" checked="false"
-                        label="TIDE: Concat Target and Decoy" help="If true, the target results are concatenated with the decoy results"/>
-
-                    <param name="tide_export" label="TIDE: Output Format" type="select" help="Choose the output format">
-                        <option value="tide_export_text" selected="True">Text</option>
-                        <option value="tide_export_sqt" >SQT</option>
-                        <option value="tide_export_pepxml" >pepxml</option>
-                        <option value="tide_export_mzid" >MzIdentML</option>
-                        <option value="tide_export_pin" >Percolator input file</option>
-                    </param>
-
-                    <param name="tide_remove_temp" type="boolean" truevalue="1" falsevalue="0" checked="true"
-                        label="TIDE: Remove Temp Folders" help="If true, the temp folders are removed when the search is done"/>
-                </when>
-            </conditional>
-
-
-            <!-- MyriMatch ADVANCED PARAMETERS -->
-            <conditional name="myrimatch">
-                <param name="myrimatch_advanced" type="select" label="MyriMatch Options">
-                    <option value="yes">Advanced</option>
-                    <option value="no" selected="True">Default</option>
-                </param>
-                <when value="no" />
-                <when value="yes">
-                    <param name="myrimatch_min_pep_length"  type="integer" value="8"
-                        label="MyriMatch: Minimum Peptide Length" help="Minimum length for a peptide to be considered" />
-                    <param name="myrimatch_max_pep_length"  type="integer" value="30"
-                        label="MyriMatch: Maximum Peptide Length" help="Maximum length for a peptide to be considered" />
-                    <param name="myrimatch_min_prec_mass"  type="float" value="600.0"
-                        label="MyriMatch: Minimum Precursor Mass" help="Minimum precursor mass of parent ion to be considered" />
-                    <param name="myrimatch_max_prec_mass"  type="float" value="5000.0"
-                        label="MyriMatch: Maximum Precursor Mass" help="Maximum precursor mass of parent ion to be considered" />
-                    <param name="myrimatch_num_matches"  type="integer" value="10"
-                        label="MyriMatch: Maximum Number of Spectrum Matches" help="Set the value for the maximum number of spectrum matches" />
-                    <param name="myrimatch_num_ptms"  type="integer" value="2"
-                        label="MyriMatch: Max Variable PTMs per Peptide" help="Set the number of PTMS allowed per peptide" />
-                    <param name="myrimatch_fragmentation" label="MyriMatch: Fragmentation Method" type="select" help="Choose the fragmentation method used (CID: b,y) or (ETD: c, z*)">
-                        <option value="CID" selected="True">CID</option>
-                        <option value="HCD" >HCD</option>
-                        <option value="ETD" >ETD</option>
-                    </param>
-                    <param name="myrimatch_termini" label="MyriMatch: Enzymatic Terminals" type="select" help="Select the number of enzymatic terminals">
-                        <option value="0">None required</option>
-                        <option value="1">At least one</option>
-                        <option value="2" selected="True" >Both</option>
-                    </param>
-                    <param name="myrimatch_plus_three"  type="boolean" truevalue="1" falsevalue="0" checked="true"
-                        label="MyriMatch: Use Smart Plus Three Option" help="Defines what algorithms are used to generate a set of theoretical fragment ions" />
-                    <param name="myrimatch_xcorr"  type="boolean" truevalue="1" falsevalue="0" checked="false"
-                        label="MyriMatch: Compute Xcorr" help="a Sequest-like cross correlation score can be calculated for the top ranking hits" />
-                    <param name="myrimatch_tic_cutoff"  type="float" value="0.98"
-                        label="MyriMatch: TIC cutoff percentage" help="Cumulative ion current of picked peaks divided by TIC >= this value for peaks to be retained (0.0 - 1.0)" />
-                    <param name="myrimatch_intensity_classes"  type="integer" value="3"
-                        label="MyriMatch: Number of Intensity Classes" help="Experimental spectra have their peaks stratified into this number of intensity classed" />
-                    <param name="myrimatch_class_multiplier"  type="integer" value="2"
-                        label="MyriMatch: Class Size Multiplier" help="Has to do with previous option, this parameter controls the size of each class relative to the class above" />
-                    <param name="myrimatch_num_batches"  type="integer" value="50"
-                        label="MyriMatch: Number of Batches" help="The number of batches per node to strive for when usinge the MPI-based parallelization features" />
-                    <param name="myrimatch_max_peak"  type="integer" value="100"
-                        label="MyriMatch: Maximum Peak Count" help="Maximum number of peaks to be used from a spectrum" />
-                </when>
-            </conditional>
-
-
-            <!-- Andromeda ADVANCED PARAMETERS -->
-            <!-- Windows only
-            <conditional name="andromeda">
-                <param name="andromeda_advanced" type="select" label="Andromeda Options">
-                    <option value="yes">Advanced</option>
-                    <option value="no" selected="True">Default</option>
-                </param>
-                <when value="no" />
-                <when value="yes">
-                    <param name="andromeda_max_pep_mass" type="float" value="4600.0" label="Andromeda maximum peptide mass, default is: 4600.0" />
-                    <param name="andromeda_max_comb" type="integer" value="250" label="Andromeda maximum combinations, default is: 250" />
-                    <param name="andromeda_top_peaks" type="integer" value="8" label="Andromeda number of top peaks, default is: 8" />
-                    <param name="andromeda_top_peaks_window" type="integer" value="100" label="Andromeda top peaks window width, default is: 100" />
-                    <param name="andromeda_incl_water" type="boolean" truevalue="1" falsevalue="0" checked="true" label="Andromeda account for water losses, default is: true" />
-                    <param name="andromeda_incl_ammonia" type="boolean" truevalue="1" falsevalue="0" checked="true" label="Andromeda account for ammonina losses, default is: true" />
-                    <param name="andromeda_neutral_losses" type="boolean" truevalue="1" falsevalue="0" checked="true" label="Andromeda neutral losses are sequence dependent, default is: true" />
-                    <param name="andromeda_fragment_all" type="boolean" truevalue="1" falsevalue="0" checked="false" label="Andromeda fragment all option, default is: false" />
-                    <param name="andromeda_emp_correction" type="boolean" truevalue="1" falsevalue="0" checked="true" label="Andromeda emperical correction, default is: true" />
-                    <param name="andromeda_higher_charge" type="boolean" truevalue="1" falsevalue="0" checked="true" label="Andromeda higher charge option, default is: true" />
-                    <param name="andromeda_equal_il" type="boolean" truevalue="1" falsevalue="0" checked="false" label="Andromeda whether I and L should be considered indistinguishable, default is: false" />
-                    <param name="andromeda_frag_method" type="select" value="" label="Andromeda fragmentation method, (HCD, CID or EDT), default is: CID." >
-                       <option value="CID" selected="true">CID</option>
-                       <option value="HCD">HCD</option>
-                       <option value="EDT">EDT</option>
-                    </param>
-                    <param name="andromeda_max_mods" type="integer" value="5" label="Andromeda maximum number of modifications, default is: 5" />
-                    <param name="andromeda_min_pep_length" type="integer" value="8" label="Andromeda minimum peptide length when using no enzyme, default is: 8" />
-                    <param name="andromeda_max_pep_length" type="integer" value="25" label="Andromeda maximum peptide length when using no enzyme, default is: 25" />
-                    <param name="andromeda_max_psms" type="integer" value="10" label="Andromeda maximum number of spectrum matches spectrum, default is: 10" />
-                    <param name="andromeda_decoy_mode" type="boolean" truevalue="decoy" falsevalue="none" checked="false" label="Andromeda decoy mode" />
-                </when>
-            </conditional>
-            -->
-
-            <!-- Comet ADVANCED PARAMETERS -->
-            <conditional name="comet">
-                <param name="comet_advanced" type="select" label="Comet Options">
-                    <option value="yes">Advanced</option>
-                    <option value="no" selected="True">Default</option>
-                </param>
-                <when value="no" />
-                <when value="yes">
-                    <!-- Spectrum Related parameters -->
-                    <conditional name="comet_spectrum">
-                        <param name="comet_spectrum_selector" type="select" label="Comet: Spectrum Related">
-                            <option value="yes">Set Spectrum Parameters</option>
-                            <option value="no" selected="True">Keep Default Spectrum Parameters</option>
-                        </param>
-                        <when value="no" />
-                        <when value="yes">
-                            <param name="comet_min_peaks"  type="integer" value="10"
-                                label="Comet: Minimum Number of Peaks per Spectrum" help="The minimum number of peaks per spectrum" />
-                            <param name="comet_min_peak_int"  type="float" value="0.0"
-                                label="Comet: Minimum Peaks Intensity" help="The minimum intensity for input peaks to be considered" />
-                            <conditional name="comet_prec">
-                                <param name="comet_remove_prec" label="Comet: Remove Precursor" type="select" help="Select for precursor m/z signal removal">
-                                    <option value="0"  selected="True" >off</option>
-                                    <option value="1">on</option>
-                                    <option value="2">as expected for ETD/ECD spectra</option>
-                                </param>
-                                <when value="0" />
-                                <when value="1">
-                                    <param name="comet_remove_prec_tol"  type="float" value="1.5"
-                                        label="Comet: Remove Precursor Tolerance" />
-                                </when>
-                                <when value="2">
-                                    <param name="comet_remove_prec_tol"  type="float" value="1.5"
-                                        label="Comet: Remove Precursor Tolerance" />
-                                </when>
-                            </conditional>
-                            <param name="comet_clear_mz_range_lower"  type="float" value="0.0"
-                                label="Comet: Minimum Peaks Intensity" help="Intended for iTRAQ/TMT type data where one might want to remove the reporter ion signals, lower m/z range" />
-                            <param name="comet_clear_mz_range_upper"  type="float" value="0.0"
-                                label="Comet: Maximum Peaks Intensity" help="Intended for iTRAQ/TMT type data where one might want to remove the reporter ion signals, upper m/z range" />
-                        </when>
-                    </conditional>
-                      <!-- Search Related parameters -->
-                    <conditional name="comet_search">
-                        <param name="comet_search_selector" type="select" label="Comet: Search Related">
-                            <option value="yes">Set Search Parameters</option>
-                            <option value="no" selected="True">Keep Default Search Parameters</option>
-                        </param>
-                        <when value="no" />
-                        <when value="yes">
-                            <param name="comet_enzyme_type" label="Comet: Enzyme Type" type="select" help="Specifies the number of enzyme termini a peptide must have">
-                                <option value="1">semi-specific</option>
-                                <option value="2" selected="True">full-enzyme</option>
-                                <option value="8">unspecific N-term</option>
-                                <option value="9">unspecific C-term</option>
-                            </param>
-                            <param name="comet_isotope_correction" label="Comet: Isotope Correction" type="select" help="Controls whether the peptide_mass_tolerance takes into account possible isotope errors in the precursor mass measurement">
-                                <option value="0" selected="True">off</option>
-                                <option value="1">-1,0,+1,+2,+3</option>
-                                <option value="2">-8,-4,0,+4,+8</option>
-                            </param>
-                            <param name="comet_min_prec_mass"  type="float" value="0.0"
-                                label="Comet: Minimum Precursor Mass" help="The minimum precursor mass considered" />
-                            <param name="comet_max_prec_mass"  type="float" value="10000.0"
-                                label="Comet: Maximum Precursor Mass" help="The maximum precursor mass considered" />
-                            <param name="comet_num_matches"  type="integer" value="10"
-                                label="Comet: Maximum Number of Matches" help="The maximum number of peptide matches per spectrum" />
-                            <param name="comet_max_frag_charge"  type="integer" value="3"
-                                label="Comet: Maximum Fragment Charge" help="Sets the maximum fragment charge (fill value between 1 and 5)" />
-                            <param name="comet_remove_meth"  type="boolean" truevalue="1" falsevalue="0" checked="false"
-                                label="Comet: Remove Methionine" help="Specifies whether the N-terminal methionine is cleaved prior to matching" />
-                            <param name="comet_batch_size"  type="integer" value="0"
-                                label="Comet: Batch Size" help="0 means load and search all spectra at once, otherwise spectra are loaded and searched in batches of the number specified" />
-                            <param name="comet_num_ptms"  type="integer" value="10"
-                                label="Comet: Maximum Number of PTMs" help="The maximum number of ptms per peptide" />
-                        </when>
-                    </conditional>
-                    <!-- Fragment Ions Related parameters -->
-                    <conditional name="comet_fragment_ions">
-                        <param name="comet_fragment_ions_selector" type="select" label="Comet: Fragment Ions Related">
-                            <option value="yes">Set Fragment Ions Parameters</option>
-                            <option value="no" selected="True">Keep Default Fragment Ions Parameters</option>
-                        </param>
-                        <when value="no" />
-                        <when value="yes">
-                            <param name="comet_frag_bin_offset"  type="float" value="0.4"
-                                label="Comet: Fragment Bin Offset" help="Controls how each fragment bin is defined in terms of where each bin starts" />
-                            <param name="comet_theoretical_fragment_ions"  type="integer" value="0"
-                                label="Comet: Theoretical Fragment Ions" help="Specifies how theoretical fragment ion peaks are represented (0 or 1 values are allowed)" />
-                        </when>
-                    </conditional>
-                </when>
-            </conditional>
-            <conditional name="directtag">
-                <param name="directtag_advanced" type="select" label="DirectTag Options">
-                    <option value="yes">Advanced</option>
-                    <option value="no" selected="True">Default</option>
-                </param>
-                <when value="no" />
-                <when value="yes">
-                    <param name="directag_tic_cutoff" type="integer" value="85" label="DirecTag TIC cutoff in percent, default is '85'."/>
-                    <param name="directag_max_peak_count" type="integer" value="400" label="DirecTag max peak count, default is '400'."/>
-                    <param name="directag_intensity_classes" type="integer" value="3" label="DirecTag number of intensity classses, default is '3'."/>
-                    <param name="directag_adjust_precursor" type="boolean" truevalue="1" falsevalue="0" checked="false" label="DirecTag adjust precursor, default is false."/>
-                    <param name="directag_min_adjustment" type="float" value="-2.5" label="DirecTag minimum precursor adjustment, default is '-2.5'."/>
-                    <param name="directag_max_adjustment" type="float" value="2.5" label="DirecTag maximum precursor adjustment, default is '2.5'."/>
-                    <param name="directag_adjustment_step" type="float" value="0.1" label="DirecTag precursor adjustment step, default is '0.1'."/>
-                    <param name="directag_charge_states" type="integer" value="3" label="DirecTag number of charge states considered, default is '3'."/>
-                    <param name="directag_output_suffix" type="text" value="" label="DirecTag output suffix, default is no suffix."/>
-                    <param name="directag_ms_charge_state" type="boolean" truevalue="1" falsevalue="0" checked="false" label="DirecTag use charge state from M spectrum, default is false."/>
-                    <param name="directag_duplicate_spectra" type="boolean" truevalue="1" falsevalue="0" checked="true" label="DirecTag duplicate spectra per charge, default is true."/>
-                    <param name="directag_deisotoping" type="select" label="DirecTag deisotoping mode, default is no deisotoping">
-                        <option value="0" selected="true">no deisotoping</option>
-                        <option value="1">precursor only</option>
-                        <option value="2">precursor and candidate</option>
-                    </param>
-                    <param name="directag_isotope_tolerance" type="float" value="0.25" label="DirecTag isotope mz tolerance, default is '0.25'."/>
-                    <param name="directag_complement_tolerance" type="float" value="0.5" label="DirecTag complement mz tolerance, default is '0.5'."/>
-                    <param name="directag_tag_length" type="integer" value="3" label="DirecTag tag length, default is '3'."/>
-                    <param name="directag_max_var_mods" type="integer" value="2" label="DirecTag maximum variable modifications per sequence, default is '2'."/>
-                    <param name="directag_max_tag_count" type="integer" value="20" label="DirecTag maximum tag count, default is '20'."/>
-                    <param name="directag_intensity_weight" type="float" value="1.0" label="DirecTag intensity score weight, default is '1.0'."/>
-                    <param name="directag_fidelity_weight" type="float" value="1.0" label="DirecTag fidelity score weight, default is '1.0'."/>
-                    <param name="directag_complement_weight" type="float" value="1.0" label="DirecTag complement_score_weight, default is '1.0'."/>
-                </when>
-            </conditional>
-
-            <conditional name="novor">
-                <param name="novor_advanced" type="select" label="Novor Options">
-                    <option value="yes">Advanced</option>
-                    <option value="no" selected="True">Default</option>
-                </param>
-                <when value="no" />
-                <when value="yes">
-                    <param name="novor_fragmentation" type="select" label="Novor fragmentation method">
-                        <option value="HCD" selected="True">HCD</option>
-                        <option value="CID">CID</option>
-                    </param>
-                    <param name="novor_mass_analyzer" label="Novor: mass analyzer" type="select" help="Identifier of the instrument to generate MS/MS spectra">
-                        <option value="FT" selected="True">FT</option>
-                        <option value="Trap" >Trap</option>
-                        <option value="TOF" >TOF</option>
-                    </param>
-                </when>
-            </conditional>
-        </section>
     </inputs>
     <outputs>
         <data name="searchgui_results" format="searchgui_archive" from_work_dir="searchgui_out.zip" label="${tool.name} on ${on_string}" />
     </outputs>
     <tests>
 
-        <!-- Test that specifying non-default search engines works -->
+        <!-- Test that specifying non-default search engines with default parameters works -->
         <test>
-            <param name="peak_lists" value="searchgui_tinyspectra1.mgf"/>
-            <param name="input_database" value="searchgui_tinydb1.fasta" ftype="fasta"/>
-            <param name="precursor_ion_tol" value="100"/>
-            <param name="min_charge" value="1"/>
-            <param name="max_charge" value="3"/>
-            <param name="engines" value="X!Tandem,MSGF,MyriMatch,OMSSA,Comet"/>
-            <param name="xtandem|xtandem_advanced" value="yes"/>
-            <param name="xtandem|xtandem_advanced|xtandem_refine_selector" value="yes"/>
-            <output name="searchgui_results" file="tiny_searchgui_result1.zip" ftype="searchgui_archive" compare="sim_size" delta="30000" />
-        </test>
-        <!-- Test that search works with MSAmanda -->
-        <test>
-            <param name="peak_lists" value="searchgui_tinyspectra1.mgf"/>
-            <param name="input_database" value="searchgui_tinydb1.fasta" ftype="fasta"/>
-            <param name="precursor_ion_tol" value="100"/>
-            <param name="min_charge" value="1"/>
-            <param name="max_charge" value="3"/>
-            <param name="engines" value="MS_Amanda"/>
-            <output name="searchgui_results" file="tiny_searchgui_result_amandaonly.zip" ftype="searchgui_archive" compare="sim_size" delta="5000" />
+            <param name="peak_lists_files" value="searchgui_tinyspectra1.mgf"/>
+            <param name="input_parameters_file" value="Identification_Parameters_default.par"/>
+            <param name="input_fasta_file" value="fastacli_searchgui_tinydb1_concatenated_target_decoy.fasta" ftype="fasta" />
+            <param name="engines" value="X!Tandem,MSGF,MyriMatch,Comet"/>
+            <output name="searchgui_results" file="searchgui_tiny_result_default_4engines.zip" ftype="searchgui_archive" compare="sim_size" delta="30000" />
         </test>
 
-        <!-- Test that specifying non-default search engines works using modifications -->
+        <!-- Test that search works with MSAmanda with default parameters works-->
         <test>
-            <param name="peak_lists" value="searchgui_tinyspectra1.mgf"/>
-            <param name="input_database" value="searchgui_tinydb1.fasta" ftype="fasta"/>
+            <param name="peak_lists_files" value="searchgui_smallspectra.mgf"/>
+            <param name="input_parameters_file" value="Identification_Parameters_default.par"/>
+            <param name="input_fasta_file" value="fastacli_searchgui_tinydb1_concatenated_target_decoy.fasta" ftype="fasta" />
+            <param name="engines" value="MS_Amanda"/>
+            <output name="searchgui_results" ftype="searchgui_archive">
+                <assert_contents>
+                    <has_size value="635138" delta="5000"/>
+                </assert_contents>
+            </output>
+        </test>
+
+		    <!-- Test that specifying non-default search engines with non-default parameters works -->
+        <test>
+           <param name="peak_lists_files" value="searchgui_tinyspectra1.mgf"/>
+           <param name="input_parameters_file" value="Identification_Parameters_specific.par"/>
+           <param name="input_fasta_file" value="fastacli_searchgui_tinydb1_concatenated_target_decoy.fasta" ftype="fasta" />
+           <param name="engines" value="X!Tandem,MSGF,MyriMatch,Comet"/>
+           <output name="searchgui_results" ftype="searchgui_archive">
+               <assert_contents>
+                   <has_size value="159330" delta="20000"/>
+               </assert_contents>
+           </output>
+        </test>
+
+        <!--
+            NOTE: Identification_Parameters_specific.par is equivalent to the default .par plus these parameters:
             <param name="precursor_ion_tol" value="100"/>
-            <param name="fixed_modifications" value="Carbamidomethylation of C"/>
-            <param name="variable_modifications" value="Oxidation of M"/>
             <param name="min_charge" value="1"/>
             <param name="max_charge" value="3"/>
-            <param name="engines" value="X!Tandem,MSGF,MyriMatch,OMSSA,Comet"/>
             <param name="xtandem|xtandem_advanced" value="yes"/>
             <param name="xtandem|xtandem_advanced|xtandem_refine_selector" value="yes"/>
-            <output name="searchgui_results" file="tiny_searchgui_modifications_result1.zip" ftype="searchgui_archive" compare="sim_size" delta="30000" />
-        </test>
-        <!-- Test that search works with MSAmanda - with modifications -->
+        -->
+
+        <!-- Test that specifying MsAmanda as search engine with non-default parameters works -->
         <test>
-            <param name="peak_lists" value="searchgui_tinyspectra1.mgf"/>
-            <param name="input_database" value="searchgui_tinydb1.fasta" ftype="fasta"/>
-            <param name="precursor_ion_tol" value="100"/>
-            <param name="fixed_modifications" value="Carbamidomethylation of C"/>
-            <param name="variable_modifications" value="Oxidation of M"/>
-            <param name="min_charge" value="1"/>
-            <param name="max_charge" value="3"/>
+            <param name="peak_lists_files" value="searchgui_smallspectra.mgf"/>
+            <param name="input_parameters_file" value="Identification_Parameters_specific.par"/>
+            <param name="input_fasta_file" value="fastacli_searchgui_tinydb1_concatenated_target_decoy.fasta" ftype="fasta" />
             <param name="engines" value="MS_Amanda"/>
-            <output name="searchgui_results" file="tiny_searchgui_modifications_result_amandaonly.zip" ftype="searchgui_archive" compare="sim_size" delta="5000" />
+            <output name="searchgui_results" ftype="searchgui_archive">
+                <assert_contents>
+                    <has_size value="635158" delta="5000"/>
+                </assert_contents>
+            </output>
         </test>
+
+        <!-- Test that specifying non-default search engines with default parameters works using modifications -->
+        <test>
+            <param name="peak_lists_files" value="searchgui_tinyspectra1.mgf"/>
+            <param name="input_parameters_file" value="Identification_Parameters_default_modifications.par"/>
+            <param name="input_fasta_file" value="fastacli_searchgui_tinydb1_concatenated_target_decoy.fasta" ftype="fasta" />
+            <param name="engines" value="X!Tandem,MSGF,MyriMatch,Comet"/>
+            <output name="searchgui_results" file="searchgui_tiny_result_default_4engines_modifications.zip" ftype="searchgui_archive" compare="sim_size" delta="30000" />
+        </test>
+
+        <!--
+            NOTE: Identification_Parameters_default_modifications.par adds:
+            - "Carbamidomethylation of C" as fixed modification
+            - "Oxidation of M" as variable modification
+          -->
+
+        <!-- Test that search works with MSAmanda with default default parameters - with modifications -->
+        <test>
+            <param name="peak_lists_files" value="searchgui_tinyspectra1.mgf"/>
+            <param name="input_parameters_file" value="Identification_Parameters_default_modifications.par"/>
+            <param name="input_fasta_file" value="fastacli_searchgui_tinydb1_concatenated_target_decoy.fasta" ftype="fasta" />
+            <param name="engines" value="MS_Amanda"/>
+            <output name="searchgui_results" ftype="searchgui_archive">
+                <assert_contents>
+                    <has_size value="118136" delta="30000"/>
+                </assert_contents>
+            </output>
+        </test>
+
     </tests>
     <help>
 **What it does**
 
-Runs multiple search engines on any number of MGF peak lists using the SearchGUI.
-Default:     X! Tandem, OMSSA and MS-GF+ are executed.
-Optional:     MyriMatch, MS-Amanda, Comet and Tide can be executed.
+Runs multiple search engines on any number of MGF peak lists using SearchGUI.
+
+Default:     X! Tandem and MS-GF+ are executed.
+
+Optional:     MyriMatch, MS-Amanda, OMSSA (it may not work into isolated environments like containers), Comet, Tide, DirecTag and Novor can be executed.
 
     </help>
     <expand macro="citations" />
