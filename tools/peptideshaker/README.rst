@@ -27,7 +27,7 @@ This can then be fed to the PeptideShaker tool which merges the results and perf
 General Requirements
 --------------------
 
-This tool requires a Java runtime 1.6 or greater to work. To avoid out of memory errors you should set the maximum heapspace for java processes as the default is most likely too small. For example, to set this in your shell:
+To avoid out of memory errors you should set the maximum heapspace for java processes as the default is most likely too small. For example, to set this in your shell:
 
     export _JAVA_OPTIONS='-Xmx1500M'
 
