@@ -18,7 +18,7 @@ def read_mztab(input_path, output_path):
         if not tab.empty:
             tab.to_csv(os.path.join(output_path, f"{name.lower()}.tsv"), sep="\t")
         else:
-            with open(os.path.join(output_path, f"{name.lower()}.tsv"), "w") as empty_tsv:
+            with open(os.path.join(output_path, f"{name.lower()}.tsv"), "w"):
                 pass
 
 
