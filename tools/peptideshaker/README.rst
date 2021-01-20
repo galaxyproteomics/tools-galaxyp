@@ -27,13 +27,14 @@ This can then be fed to the PeptideShaker tool which merges the results and perf
 General Requirements
 --------------------
 
-To avoid out of memory errors you should set the maximum heapspace for java processes as the default is most likely too small. For example, to set this in your shell:
+To avoid out of memory errors you may need to set the maximum heapspace for java processes if the default is too small for the data you are going to process (4gb for SearchGUI, 1GB for PeptideShaker).
+For example, to set this in your shell:
 
-    export _JAVA_OPTIONS='-Xmx1500M'
+    export _JAVA_OPTIONS='-Xmx8192m'
 
 On some systems you may also need to adjust the amount of memory available for class definitions in addition to the maximum heapspace. For example:
 
-	export _JAVA_OPTIONS='-Xmx1500M -XX:MaxPermSize=256M'
+	export _JAVA_OPTIONS='-Xmx8192m -XX:MaxPermSize=1024m'
 
 It is also possible to set this on a per tool basis using advanced features of the galaxy job config system.
 
@@ -52,7 +53,7 @@ For more help on installing Mono please see http://www.mono-project.com/download
 Note
 ----
 
-- Requires Galaxy release v16.01 or later.
+- Requires Galaxy release v20.01 or later.
 
 See:
 
