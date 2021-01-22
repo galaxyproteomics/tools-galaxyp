@@ -7,6 +7,7 @@
 # 
 # python peptideGenomicCoordinate.py <peptide_list> <mz_to_sqlite DB> <genomic mapping file DB> <output.bed>
 # 
+import re
 import sys
 import sqlite3
 
@@ -57,7 +58,7 @@ def main():
                 strand = each_entry[4]
                 cds_start = int(each_entry[5])
                 cds_end = int(each_entry[6])
-                pep_pos_start = (acc_seq.find(peptide)*3)
+                pep_pos_start = (acc_seq.find(re.findall(re.sub('[IL]','[IL]',peptide),acc_seq)[0])*3)
                 pep_pos_end = pep_pos_start + (len(peptide)*3)
                 if pep_pos_start >= cds_start and pep_pos_end <= cds_end:
                     if strand == "+":
