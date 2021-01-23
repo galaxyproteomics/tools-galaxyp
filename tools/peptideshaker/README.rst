@@ -3,7 +3,7 @@ GalaxyP - PeptideShaker
 
 - Home: <https://github.com/galaxyproteomics/tools-galaxyp/>
 - Galaxy Tool Shed: <http://toolshed.g2.bx.psu.edu/view/galaxyp/peptideshaker>
-- Tool ID: `peptideshaker`, `search_gui`
+- Tools ID: `peptide_shaker`, `search_gui`, `ident_params`, `fasta_cli`
 
 
 Description
@@ -11,19 +11,30 @@ Description
 
 Perform protein identification combining numerous search engines (using SearchGUI) followed by peptide and protein inference with PeptideShaker.
 
-Includes tool wrappers for SearchGUI and PeptideShaker. The SearchGUI tool takes any number of mgf files and performs searches on these.  It creates a large zip archive with all search results, the original database and spectra.  This can then be fed to the PeptideShaker tool which merges the results and performs peptide and protein inference.
+Includes tool wrappers for FastaCLI, IdentificationParametersCLI, SearchGUI and PeptideShaker.
+
+
+
+FastaCLI adds decoy sequences to any fasta file.
+
+The Identification Parameters tool allows to create a parameters (par) file which can be (re)used later to parameterize SearchGUI or PeptideShaker.
+
+The SearchGUI tool takes any number of mgf files and performs searches on these. It creates a large zip archive with all search results, the original database and spectra.
+
+This can then be fed to the PeptideShaker tool which merges the results and performs peptide and protein inference.
 
 
 General Requirements
 --------------------
 
-This tool requires a Java runtime 1.6 or greater to work. To avoid out of memory errors you should set the maximum heapspace for java processes as the default is most likely too small. For example, to set this in your shell:
+To avoid out of memory errors you may need to set the maximum heapspace for java processes if the default is too small for the data you are going to process (4gb for SearchGUI, 1GB for PeptideShaker).
+For example, to set this in your shell:
 
-    export _JAVA_OPTIONS='-Xmx1500M'
+    export _JAVA_OPTIONS='-Xmx8192m'
 
 On some systems you may also need to adjust the amount of memory available for class definitions in addition to the maximum heapspace. For example:
 
-	export _JAVA_OPTIONS='-Xmx1500M -XX:MaxPermSize=256M'
+	export _JAVA_OPTIONS='-Xmx8192m -XX:MaxPermSize=1024m'
 
 It is also possible to set this on a per tool basis using advanced features of the galaxy job config system.
 
@@ -31,34 +42,23 @@ MSAmanda on linux
 -----------------
 
 Running MS Amanda on Linux requires that you have Mono installed. Mono 3.2.1 or newer is required.  If you install via the toolshed Mono should be installed automatically, however if this does not work you can install it manually.
-  
+
 On ubuntu Mono can be installed as follows
 
 	sudo apt-get install mono-runtime
 	sudo apt-get install libmono-system-core4.0-cil
 
-For more help on installing Mono please see http://www.mono-project.com/download. 
+For more help on installing Mono please see http://www.mono-project.com/download.
 
 Note
 ----
 
-- Requires Galaxy release v15.10 or later, which fixes the installation of package_peptideshaker_1_1 and provides a searchgui_archive datatype that includes a version
-
-- PeptideShaker may require xvfb to simulate an X environment if this is installed on a headless server.
+- Requires Galaxy release v20.01 or later.
 
 See:
 
-* <https://code.google.com/p/peptide-shaker/>
-* <https://code.google.com/p/searchgui/>
-
-
-Search GUI - Fixed and Variable Modifications
--------------------------------------------
-
- - Options for modifications are read from local data file: searchgui_mods.loc
-   This is copied from searchgui_mods.loc.sample on the first installation.  
-
-The modifications are from:  https://github.com/compomics/compomics-utilities/blob/master/src/main/java/com/compomics/util/experiment/identification/search_parameters_cli/IdentificationParametersInputBean.java
+* <http://compomics.github.io/projects/peptide-shaker.html/>
+* <http://compomics.github.io/projects/searchgui.html/>
 
 GalaxyP Community
 -----------------
@@ -101,3 +101,4 @@ Authors and contributors:
 * Gerben Menschaert
 * Elvis Ndah
 * Minnesota Supercomputing Institute, Univeristy of Minnesota
+* Carlos Horro

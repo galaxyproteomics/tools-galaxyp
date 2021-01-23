@@ -1,7 +1,6 @@
 <macros>
-  <token name="@VERSION@">3.0.19052</token>
-  <token name="@FULL_VERSION@">@VERSION@-089e81090</token>
-  
+  <token name="@VERSION@">3.0.20287</token>
+  <token name="@FULL_VERSION@">@VERSION@-769529fa4</token>
   <xml name="msconvertCommand">
     <command detect_errors="exit_code">
 <![CDATA[
@@ -39,32 +38,28 @@
       ln -s '$data_processing.precursor_refinement.input_ident' '$input_ident_name' &&
     #end if
 
-    uid=`id -u` &&
-    gid=`id -g` &&
+    CAN_SUDO=\$(sudo -n -l > /dev/null 2> /dev/null; echo $?) &&
+    if [ "\$CAN_SUDO" -eq "0" ]; then
+      uid=`id -u` &&
+      gid=`id -g` &&    
+      WINE="wine64_anyuser";
+    else
+      WINE="wine64" &&
+      ## create a writable copy of wine prefix (since copying fails for some html
+      ## stderr and exit code is swallowed)
+      export WINEPREFIX=\$(mktemp -d) &&
+      (cp -a /wineprefix64/* \$WINEPREFIX 2> /dev/null || true);
+    fi
+    &&
+    \$WINE msconvert ${inputmask}
 
-    wine64_anyuser msconvert ${inputmask}
     --outdir outputs
     --${output_type}
-
-    #if $general_options.combineIonMobilitySpectra:
-    --combineIonMobilitySpectra
-    #end if
-
-    #if $general_options.simAsSpectra:
-    --simAsSpectra
-    #end if
-
-    #if $general_options.srmAsSpectra:
-    --srmAsSpectra
-    #end if
-
-    #if $general_options.acceptZeroLengthSpectra:
-    --acceptZeroLengthSpectra
-    #end if
-
-    #if $general_options.ignoreUnknownInstrumentError:
-    --ignoreUnknownInstrumentError
-    #end if
+    $general_options.combineIonMobilitySpectra
+    $general_options.simAsSpectra
+    $general_options.srmAsSpectra
+    $general_options.acceptZeroLengthSpectra
+    $general_options.ignoreUnknownInstrumentError
 
     #if $general_options.scan_summing.do_scan_summing:
       --filter "scanSumming precursorTol=$general_options.scan_summing.precursorTol scanTimeTol=$general_options.scan_summing.scanTimeTol ionMobilityTol=$general_options.scan_summing.ionMobilityTol"
@@ -181,8 +176,8 @@
       #if str($filtering.analyzer) != "false"
         --filter "analyzer $filtering.analyzer"
       #end if
-      
-    ## OUTPUT ENCODING
+
+      ## OUTPUT ENCODING
       #set $mz_encoding = str($settings.mz_encoding)
       #set $intensity_encoding = str($settings.intensity_encoding)
       #if $mz_encoding == $intensity_encoding
@@ -217,14 +212,25 @@
 
       #if $general_options.multi_run_output.do_multi_run_output == 'false':
         --outfile '${os.path.splitext($basename)[0]}'
-        && sudo mv 'outputs/${os.path.splitext($basename)[0]}.${output_type}' '${output}' && sudo chown \$uid:\$gid '${output}'
+      #end if
+      && 
+      if [ "\$CAN_SUDO" -eq "0" ]; then
+        sudo chown -R \$uid:\$gid './';
+      fi
+      #if $general_options.multi_run_output.do_multi_run_output == 'false':
+        && mv 'outputs/${os.path.splitext($basename)[0]}.${output_type}' '${output}'
       #else
-        && sudo chown \$uid:\$gid 'outputs' -R
-        && ls -la outputs/
+        ## make mzML and mzXML extensions lower case (the Galaxy data type is ) otherwise detetion of the file
+        ## TODO this won't be necessay from Galaxy 21.01 https://github.com/galaxyproject/galaxy/pull/10803
+        #if $output_type == 'mzML' or $output_type == 'mzXML'
+          && find outputs/ -name "*.$output_type" | xargs -I "FILE" sh -c 'mv FILE outputs/\$(basename FILE .$output_type).#echo str($output_type).lower()
+          ## a newline is needed after `#echo ...` therefore the `;'` on the next line
+;'
+        #end if
       #end if
 
       #if $data_processing.precursor_refinement.use_mzrefinement
-        && sudo mv '$output_refinement_name' '$output_refinement' && sudo chown \$uid:\$gid '$output_refinement'
+        && mv '$output_refinement_name' '$output_refinement';
       #end if
 ]]>
     </command>
@@ -243,7 +249,7 @@
       <option value="ms2">ms2</option>
     </param>
 
-    <section name="data_processing" title="Data Processing Filters">  
+    <section name="data_processing" title="Data Processing Filters">
         <conditional name="peak_picking">
             <param type="boolean" name="pick_peaks" label="Apply peak picking?" truevalue="true" falsevalue="false" />
             <when value="false" />
@@ -407,7 +413,7 @@
 
 
     <section name="filtering" title="Scan Inclusion/Exclusion Filters">
-      
+
       <param name="activation" type="select" label="Filter by Activation">
         <option value="false" selected="true">no</option>
         <option value="ETD">ETD</option>
@@ -462,7 +468,7 @@
     </section>
 
     <section name="general_options" title="General Options">
-      <param argument="--combineIonMobilitySpectra" type="boolean" label="Combine ion mobility spectra" help="When false, each mobility scan is written as a separate spectrum. When true, each retention time point will have a single merged scan. For Bruker TIMS spectra, the ion mobilities will be preserved in a separate binaryDataArray, and for TIMS PASEF MS2s, each precursor will be merged separately." />
+      <param argument="--combineIonMobilitySpectra" type="boolean" truevalue="--combineIonMobilitySpectra" falsevalue="" label="Combine ion mobility spectra" help="When false, each mobility scan is written as a separate spectrum. When true, each retention time point will have a single merged scan. For Bruker TIMS spectra, the ion mobilities will be preserved in a separate binaryDataArray, and for TIMS PASEF MS2s, each precursor will be merged separately." />
 
       <conditional name="scan_summing">
         <param name="do_scan_summing" type="boolean" truevalue="true" falsevalue="false" label="Sum adjacent scans" help="Sums MS2 sub-scans whose precursors are similar in the m/z, scan time, and/or ion mobility dimensions. It is useful for some Waters DDA data and Bruker PASEF data, where sub-scans should be summed together to increase the SNR" />
@@ -474,10 +480,10 @@
         </when>
       </conditional>
 
-      <param argument="--simAsSpectra" type="boolean" label="SIM as Spectra" help="Write selected ion monitoring as spectra, not chromatograms" />
-      <param argument="--srmAsSpectra" type="boolean" label="SRM as Spectra" help="Write selected reaction monitoring as spectra, not chromatograms" />
-      <param argument="--acceptZeroLengthSpectra" type="boolean" label="Accept zero-length spectra" help="Some vendor readers have an efficient way of filtering out empty spectra, but it takes more time to open the file" />
-      <param argument="--ignoreUnknownInstrumentError" type="boolean" label="Ignore unknown instrument error" help="If true, if an instrument cannot be determined from a vendor file, it will not be an error" />
+      <param argument="--simAsSpectra" type="boolean" truevalue="--simAsSpectra" falsevalue="" label="SIM as Spectra" help="Write selected ion monitoring as spectra, not chromatograms" />
+      <param argument="--srmAsSpectra" type="boolean" truevalue="--srmAsSpectra" falsevalue=""  label="SRM as Spectra" help="Write selected reaction monitoring as spectra, not chromatograms" />
+      <param argument="--acceptZeroLengthSpectra" type="boolean" truevalue="--acceptZeroLengthSpectra" falsevalue=""  label="Accept zero-length spectra" help="Some vendor readers have an efficient way of filtering out empty spectra, but it takes more time to open the file" />
+      <param argument="--ignoreUnknownInstrumentError" type="boolean" truevalue="--ignoreUnknownInstrumentError" falsevalue=""  label="Ignore unknown instrument error" help="If true, if an instrument cannot be determined from a vendor file, it will not be an error" />
 
       <conditional name="multi_run_output">
         <param name="do_multi_run_output" type="boolean" truevalue="true" falsevalue="false" label="Output multiple runs per file" help="Some input types can store multiple runs (samples) in a single file (e.g. WIFF). Each run must be written to a separate output file, so check this option if you want to output all runs for a file (each file will create a dataset collection)" />
@@ -514,7 +520,7 @@
       <param type="boolean" name="gzip_compression" label="Compress output file with gzip" truevalue="true" falsevalue="false" />
     </section>
   </xml>
-  
+
   <xml name="msconvertOutput">
     <outputs>
       <data format="mzml" name="output" label="${($input.name[:-4] if $input.name.endswith('.tar') else $input.name).rsplit('.',1)[0]}.${output_type}" >
@@ -539,13 +545,13 @@
 
   <xml name="msconvert_tests">
     <test>
-      <param name="input" value="small.mzML" />
+      <param name="input" value="small.mzML" ftype="mzml" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="pick_peaks" value="true" />
       <param name="pick_peaks_algorithm" value="cwt" />
       <param name="pick_peaks_ms_levels" value="1-" />
-      <output name="output" file="small-peakpicking-cwt-allMS.mzML" lines_diff="8" />
+      <output name="output" file="small-peakpicking-cwt-allMS.mzML" ftype="mzml" lines_diff="8" />
     </test>
     <test>
       <param name="input" value="small.RAW" ftype="thermo.raw" />
@@ -554,47 +560,47 @@
       <param name="pick_peaks" value="true" />
       <param name="pick_peaks_algorithm" value="vendor" />
       <param name="pick_peaks_ms_levels" value="1-" />
-      <output name="output" file="small-peakpicking-vendor-allMS.mzML" lines_diff="4" />
+      <output name="output" file="small-peakpicking-vendor-allMS.mzML" ftype="mzml" lines_diff="4" />
     </test>
     <test>
-      <param name="input" value="ThyroglobMRM000003.d.tar" />
+      <param name="input" value="ThyroglobMRM000003.d.tar" ftype="brukertdf.d.tar" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="combineIonMobilitySpectra" value="true" />
       <param name="do_scan_summing" value="true" />
-      <output name="output" file="ThyroglobMRM000003.mzML" lines_diff="4" />
+      <output name="output" file="ThyroglobMRM000003.mzML" ftype="mzml" lines_diff="4" />
     </test>
     <test>
-      <param name="input" value="MassLynxTest.raw.tar" />
+      <param name="input" value="MassLynxTest.raw.tar" ftype="watersmasslynx.raw.tar" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
-      <output name="output" file="MassLynxTest.mzML" lines_diff="4" />
+      <output name="output" file="MassLynxTest.mzML" ftype="mzml" lines_diff="4" />
     </test>
     <test>
-      <param name="input" value="AgilentMassHunterTest.d.tar" />
+      <param name="input" value="AgilentMassHunterTest.d.tar" ftype="agilentmasshunter.d.tar" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzXML" />
-      <output name="output" file="AgilentMassHunterTest.mzXML" lines_diff="4" />
+      <output name="output" file="AgilentMassHunterTest.mzXML" ftype="mzxml" lines_diff="4" />
     </test>
     <test>
-      <param name="input" value="BrukerBafTest.d.tar" />
+      <param name="input" value="BrukerBafTest.d.tar" ftype="brukerbaf.d.tar" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="pick_peaks" value="true" />
       <param name="pick_peaks_algorithm" value="vendor" />
       <param name="pick_peaks_ms_levels" value="1-" />
-      <output name="output" file="BrukerBafTest.mzML" lines_diff="4" />
+      <output name="output" file="BrukerBafTest.mzML" ftype="mzml" lines_diff="4" />
     </test>
     <test>
-      <param name="input" value="SciexTest.wiff.tar" />
+      <param name="input" value="SciexTest.wiff.tar" ftype="wiff.tar" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="do_multi_run_output" value="false" />
       <param name="runIndexSet" value="0" />
-      <output name="output" file="SciexTest-HPINalone.mzML" lines_diff="4" />
+      <output name="output" file="SciexTest-HPINalone.mzML" ftype="mzml" lines_diff="4" />
     </test>
     <test>
-      <param name="input" value="SciexTest.wiff.tar" />
+      <param name="input" value="SciexTest.wiff.tar" ftype="wiff.tar" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzXML" />
       <param name="do_multi_run_output" value="false" />
@@ -602,10 +608,10 @@
       <param name="indices_0|from" value="0" />
       <param name="indices_0|to" value="499" />
       <param name="srmAsSpectra" value="true" />
-      <output name="output" file="SciexTest-HPINalone-srmAsSpectra.mzXML" lines_diff="4" />
+      <output name="output" file="SciexTest-HPINalone-srmAsSpectra.mzXML" ftype="mzxml" lines_diff="4" />
     </test>
     <test>
-      <param name="input" value="SciexTest.wiff.tar" />
+      <param name="input" value="SciexTest.wiff.tar" ftype="wiff.tar" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzXML" />
       <param name="do_multi_run_output" value="false" />
@@ -613,56 +619,56 @@
       <param name="indices_0|from" value="0" />
       <param name="indices_0|to" value="499" />
       <param name="srmAsSpectra" value="true" />
-      <output name="output" file="SciexTest-HPINalone-NE-srmAsSpectra.mzXML" lines_diff="4" />
+      <output name="output" file="SciexTest-HPINalone-NE-srmAsSpectra.mzXML" ftype="mzxml" lines_diff="4" />
     </test>
     <test>
-      <param name="input" value="SciexTest.wiff.tar" />
+      <param name="input" value="SciexTest.wiff.tar" ftype="wiff.tar" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="do_multi_run_output" value="true" />
       <param name="run_index_set_0|from" value="0" />
       <param name="run_index_set_0|to" value="1" />
       <output_collection name="multi_run_output_list" type="list">
-        <element name="SciexTest-HPINalone" file="SciexTest-HPINalone.mzML" lines_diff="4" />
-        <element name="SciexTest-HPINalone+NE" file="SciexTest-HPINalone-NE.mzML" lines_diff="4" />
+        <element name="SciexTest-HPINalone" file="SciexTest-HPINalone.mzML" ftype="mzml" lines_diff="4" />
+        <element name="SciexTest-HPINalone+NE" file="SciexTest-HPINalone-NE.mzML" ftype="mzml" lines_diff="4" />
       </output_collection>
     </test>
     <test>
-      <param name="input" value="SciexTest.wiff.tar" />
+      <param name="input" value="SciexTest.wiff.tar" ftype="wiff.tar" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="do_multi_run_output" value="true" />
       <output_collection name="multi_run_output_list" type="list">
-        <element name="SciexTest-HPINalone" file="SciexTest-HPINalone.mzML" lines_diff="4" />
-        <element name="SciexTest-HPINalone+NE" file="SciexTest-HPINalone-NE.mzML" lines_diff="4" />
+        <element name="SciexTest-HPINalone" file="SciexTest-HPINalone.mzML" ftype="mzml" lines_diff="4" />
+        <element name="SciexTest-HPINalone+NE" file="SciexTest-HPINalone-NE.mzML" ftype="mzml" lines_diff="4" />
       </output_collection>
     </test>
 
     <!-- this data file only has profile MS1, so the result is the same -->
     <test>
-      <param name="input" value="small.mzML" />
+      <param name="input" value="small.mzML" ftype="mzml" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="pick_peaks" value="true" />
       <param name="pick_peaks_algorithm" value="cwt" />
       <param name="pick_peaks_ms_levels" value="1" />
-      <output name="output" file="small-peakpicking-cwt-allMS.mzML" lines_diff="8" /> 
+      <output name="output" file="small-peakpicking-cwt-allMS.mzML" ftype="mzml" lines_diff="8" />
     </test>
     <test>
-      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" ftype="mzml" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mz5" />
       <param name="mz_encoding" value="64" />
       <param name="intensity_encoding" value="64" />
-      <output name="output" file="small-zlib-64.mz5" compare="sim_size" delta="150000" />
+      <output name="output" file="small-zlib-64.mz5" compare="sim_size" ftype="mz5" delta="150000" />
     </test>
     <test>
-      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" ftype="mzml" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzXML" />
       <param name="mz_encoding" value="32" />
       <param name="intensity_encoding" value="32" />
-      <output name="output" file="small-zlib-32.mzXML" lines_diff="6" />
+      <output name="output" file="small-zlib-32.mzXML" ftype="mzxml" lines_diff="6" />
     </test>
     <!-- TODO: how to test gzipped output?
     <test>
@@ -685,47 +691,47 @@
     </test>-->
 
     <test>
-      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" ftype="mzml" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="binary_compression" value="numpressLinearPic" />
-      <output name="output" file="small-numpressLP.mzML" lines_diff="114" />
+      <output name="output" file="small-numpressLP.mzML" ftype="mzml" lines_diff="114" />
     </test>
 
     <test>
-      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" ftype="mzml" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="binary_compression" value="numpressLinearSlof" />
-      <output name="output" file="small-numpressLS.mzML" lines_diff="114" />
+      <output name="output" file="small-numpressLS.mzML" ftype="mzml" lines_diff="114" />
     </test>
 
     <test>
-      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" ftype="mzml" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="binary_compression" value="numpressLinear" />
-      <output name="output" file="small-numpressL.mzML" lines_diff="114" />
+      <output name="output" file="small-numpressL.mzML" ftype="mzml" lines_diff="114" />
     </test>
 
     <test>
-      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" ftype="mzml" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="binary_compression" value="numpressPic" />
-      <output name="output" file="small-numpressP.mzML" lines_diff="114" />
+      <output name="output" file="small-numpressP.mzML" ftype="mzml" lines_diff="114" />
     </test>
 
     <test>
-      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" ftype="mzml" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="binary_compression" value="numpressSlof" />
-      <output name="output" file="small-numpressS.mzML" lines_diff="114" />
+      <output name="output" file="small-numpressS.mzML" ftype="mzml" lines_diff="114" />
     </test>
 
     <test>
-      <param name="input" value="Rpal_01.mz5" />
+      <param name="input" value="Rpal_01.mz5" ftype="mz5" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="binary_compression" value="numpressLinearPic" />
@@ -733,12 +739,12 @@
       <param name="input_ident" value="Rpal_01.pepXML" />
       <param name="thresholdScore" value="mvh" />
       <param name="thresholdValue" value="40-" />
-      <output name="output" file="Rpal_01-mzRefinement.mzML" compare="sim_size" delta="0" />
-      <output name="output_refinement" file="Rpal_01.pepXML.mzRefinement.tsv" />
+      <output name="output" file="Rpal_01-mzRefinement.mzML" ftype="mzml" compare="sim_size" delta="0" />
+      <output name="output_refinement" file="Rpal_01.pepXML.mzRefinement.tsv" ftype="tsv" />
     </test>
-    
+
     <test>
-      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" ftype="mzml" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="binary_compression" value="numpressLinearPic" />
@@ -748,10 +754,10 @@
       <param name="maxMultipleCharge" value="5" />
       <param name="singleChargeFractionTIC" value="0.95" />
       <param name="maxKnownCharge" value="8" />
-      <output name="output" file="small-chargeStatePredictor.mzML" lines_diff="114" />
+      <output name="output" file="small-chargeStatePredictor.mzML" ftype="mzml" lines_diff="114" />
     </test>
     <test>
-      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" ftype="mzml" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="binary_compression" value="numpressLinearPic" />
@@ -763,10 +769,10 @@
       <param name="halfIsoWidth" value="1.5" />
       <param name="defaultMinCharge" value="1" />
       <param name="defaultMaxCharge" value="5" />
-      <output name="output" file="small-turbocharger.mzML" lines_diff="114" />
+      <output name="output" file="small-turbocharger.mzML" ftype="mzml" lines_diff="114" />
     </test>
     <test>
-      <param name="input" value="D100930_yeast_SCX10S_rak_ft8E_pc_01.mz5" />
+      <param name="input" value="D100930_yeast_SCX10S_rak_ft8E_pc_01.mz5" ftype="mz5" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="do_etd_filtering" value="true" />
@@ -777,10 +783,10 @@
       <param name="matching_tolerance" value="50" />
       <param name="matching_tolerance_units" value="ppm" />
       <param name="binary_compression" value="numpressLinearPic" />
-      <output name="output" file="D100930_yeast_SCX10S_rak_ft8E_pc_01-etdfilter.mzML" />
+      <output name="output" file="D100930_yeast_SCX10S_rak_ft8E_pc_01-etdfilter.mzML" ftype="mzml" />
     </test>
     <test>
-      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" ftype="mzml" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="thresholds_0|threshold_type" value="count" />
@@ -790,20 +796,20 @@
       <param name="thresholds_1|value" value="1" />
       <param name="thresholds_1|orientation" value="most-intense" />
       <param name="binary_compression" value="numpressLinearPic" />
-      <output name="output" file="small-threshold.mzML" lines_diff="114" />
+      <output name="output" file="small-threshold.mzML" lines_diff="114" ftype="mzml" />
     </test>
     <test>
-      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" ftype="mzml" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="do_mzwindow_filter" value="true" />
       <param name="mz_window_from" value="420" />
       <param name="mz_window_to" value="840" />
       <param name="binary_compression" value="numpressLinearPic" />
-      <output name="output" file="small-mzWindow.mzML" lines_diff="114" />
+      <output name="output" file="small-mzWindow.mzML" lines_diff="114" ftype="mzml" />
     </test>
     <test>
-      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" ftype="mzml" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="denoise" value="true" />
@@ -811,26 +817,26 @@
       <param name="window_width" value="40" />
       <param name="relax" value="false" />
       <param name="binary_compression" value="numpressLinearPic" />
-      <output name="output" file="small-denoise.mzML" lines_diff="114" />
+      <output name="output" file="small-denoise.mzML" lines_diff="114" ftype="mzml" />
     </test>
     <test>
-      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" ftype="mzml" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="ms2deisotope" value="true" />
       <param name="binary_compression" value="numpressLinearPic" />
-      <output name="output" file="small-deisotope.mzML" lines_diff="114" />
+      <output name="output" file="small-deisotope.mzML" lines_diff="114" ftype="mzml" />
     </test>
     <test>
-      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" ftype="mzml" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="activation" value="CID" />
       <param name="binary_compression" value="numpressLinearPic" />
-      <output name="output" file="small-activation.mzML" lines_diff="114" />
+      <output name="output" file="small-activation.mzML" lines_diff="114" ftype="mzml" />
     </test>
     <test>
-      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" ftype="mzml" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="indices_0|from" value="2" />
@@ -840,44 +846,44 @@
       <param name="indices_2|from" value="13" />
       <param name="indices_2|to" value="15" />
       <param name="binary_compression" value="numpressLinearPic" />
-      <output name="output" file="small-index-filter.mzML" lines_diff="32" />
+      <output name="output" file="small-index-filter.mzML" lines_diff="32" ftype="mzml" />
     </test>
     <test>
-      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" ftype="mzml" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="strip_it" value="true" />
       <param name="binary_compression" value="numpressLinearPic" />
-      <output name="output" file="small-strip-it.mzML" lines_diff="100" />
+      <output name="output" file="small-strip-it.mzML" lines_diff="100" ftype="mzml" />
     </test>
     <test>
-      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" ftype="mzml" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="do_ms_level_filter" value="true" />
       <param name="ms_level_from" value="2" />
       <param name="ms_level_to" value="2" />
       <param name="binary_compression" value="numpressLinearPic" />
-      <output name="output" file="small-ms-level-filter.mzML" lines_diff="86" />
+      <output name="output" file="small-ms-level-filter.mzML" lines_diff="86" ftype="mzml" />
     </test>
     <test>
-      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" ftype="mzml" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="polarity" value="positive" />
       <param name="binary_compression" value="numpressLinearPic" />
-      <output name="output" file="small-polarity-filter.mzML" lines_diff="114" />
+      <output name="output" file="small-polarity-filter.mzML" lines_diff="114" ftype="mzml" />
     </test>
     <test>
-      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" ftype="mzml" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="analyzer" value="IT" />
       <param name="binary_compression" value="numpressLinearPic" />
-      <output name="output" file="small-analyzer-filter.mzML" lines_diff="100" />
+      <output name="output" file="small-analyzer-filter.mzML" lines_diff="100" ftype="mzml" />
     </test>
     <test>
-      <param name="input" value="small-peakpicking-cwt-allMS.mzML" />
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" ftype="mzml" />
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzML" />
       <param name="scan_numbers_0|from" value="3" />
@@ -887,7 +893,7 @@
       <param name="scan_numbers_2|from" value="14" />
       <param name="scan_numbers_2|to" value="16" />
       <param name="binary_compression" value="numpressLinearPic" />
-      <output name="output" file="small-index-filter.mzML" lines_diff="86"/> <!-- the scan numbers here produce the same output as the index test above -->
+      <output name="output" file="small-index-filter.mzML" lines_diff="86" ftype="mzml"/> <!-- the scan numbers here produce the same output as the index test above -->
     </test>
     <!--<test>
       <param name="input" value="small.mzML" />

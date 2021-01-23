@@ -1,4 +1,4 @@
-<tool id="cardinal_preprocessing" name="MSI preprocessing" version="@VERSION@.1">
+<tool id="cardinal_preprocessing" name="MSI preprocessing" version="@VERSION@.2">
     <description>
         mass spectrometry imaging preprocessing
     </description>
@@ -47,7 +47,6 @@ library(ggplot2)
 
 
 ## remove duplicated coordinates, otherwise peak picking and log2 transformation will fail
-msidata <- msidata[,!duplicated(coord(msidata)[,1:2])] 
 
 ## set variable to False
 #set $used_peak_picking = False
@@ -135,24 +134,29 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                 print('gaussian smoothing')
 
                 msidata = smoothSignal(msidata, method="$method.methods_conditional.methods_for_smoothing.smoothing_method", window=$method.methods_conditional.window_smoothing, sd = $method.methods_conditional.methods_for_smoothing.sd_gaussian)
+                msidata <- process(msidata, BPPARAM=MulticoreParam(workers=number_cpu))
 
             #elif str( $method.methods_conditional.methods_for_smoothing.smoothing_method) == 'sgolay':
                 print('sgolay smoothing')
 
                 msidata = smoothSignal(msidata, method="$method.methods_conditional.methods_for_smoothing.smoothing_method", window=$method.methods_conditional.window_smoothing, order = $method.methods_conditional.methods_for_smoothing.order_of_filters)
+                msidata <- process(msidata, BPPARAM=MulticoreParam(workers=number_cpu))
 
                 ## if selected replace negative intensities with zero
                 #if $method.methods_conditional.methods_for_smoothing.replace_negatives:
-                    spectra(msidata)[spectra(msidata)<0] = 0
+                    ## bring spectra matrix to disk
+                    spectra_df = as.matrix(spectra(msidata))
+                    spectra_df[spectra_df<0] = 0
+                    spectra(msidata) = spectra_df
                 #end if
 
             #elif str($method.methods_conditional.methods_for_smoothing.smoothing_method) == 'ma':
                 print('moving average smoothing')
 
                 msidata = smoothSignal(msidata, method="$method.methods_conditional.methods_for_smoothing.smoothing_method", window=$method.methods_conditional.window_smoothing, coef = $method.methods_conditional.methods_for_smoothing.coefficients_ma_filter)
+                msidata <- process(msidata, BPPARAM=MulticoreParam(workers=number_cpu))
 
             #end if
-            msidata <- process(msidata, BPPARAM=MulticoreParam(workers=number_cpu))
 
             ############################### QC ###########################
 
@@ -170,7 +174,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
     ############################### Mz alignment ###########################
 
         #elif str( $method.methods_conditional.preprocessing_method ) == 'mz_alignment':
-            print('M/z alignment')
+            print('m/z alignment')
             ## M/z alignment
 
             #if str( $method.methods_conditional.mzalign_ref_type.align_reference_datatype) == 'align_table':
@@ -183,7 +187,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
 
             #elif str( $method.methods_conditional.mzalign_ref_type.align_reference_datatype) == 'align_noref':
 
-                msidata = mzAlign(msidata,tolerance = $method.methods_conditional.alignment_tol, units = "$method.methods_conditional.alignment_units", , quantile = $method.methods_conditional.quantile, span = $method.methods_conditional.span)
+                msidata = mzAlign(msidata,tolerance = $method.methods_conditional.alignment_tol, units = "$method.methods_conditional.alignment_units", quantile = $method.methods_conditional.quantile, span = $method.methods_conditional.span)
 
             #end if
 
@@ -332,22 +336,22 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
         #elif str( $method.methods_conditional.preprocessing_method) == 'Mass_binning':
             print('mass binning')
 
-            #if str( $method.methods_conditional.mz_range.features_filtering) == 'change_mz_range':
-
-                #if str($processed_cond.processed_file) == "processed":
+            #if str($method.methods_conditional.mz_range.features_filtering) == 'change_mz_range':
 
                 msidata = mse_bin = mzBin(msidata,resolution=$method.methods_conditional.bin_width, from=$method.methods_conditional.mz_range.min_mz, to=$method.methods_conditional.mz_range.max_mz, units="$method.methods_conditional.bin_units", fun="$method.methods_conditional.bin_fun")
-                
-                #else 
-                    ## continuous file cannot be binned from m/z to m/z, therefore first cut m/z range and then do mzbin:
-                    msidata = msidata[mz(msidata) >= $method.methods_conditional.mz_range.min_mz & mz(msidata) <= $method.methods_conditional.mz_range.max_mz,]
-                    msidata = mse_bin = mzBin(msidata,resolution=$method.methods_conditional.bin_width, units="$method.methods_conditional.bin_units", fun="$method.methods_conditional.bin_fun")
-                #end if
 
 		   
-	    #elif str( $method.methods_conditional.mz_range.features_filtering) == 'none':	    
+	    #elif str($method.methods_conditional.mz_range.features_filtering) == 'none':
 
                 msidata = mse_bin = mzBin(msidata,resolution=$method.methods_conditional.bin_width, units="$method.methods_conditional.bin_units", fun=$method.methods_conditional.bin_fun)
+
+	    #elif str($method.methods_conditional.mz_range.features_filtering) == 'bin_to_reference':
+
+	        bin_reference_mz = read.delim("$method.methods_conditional.mz_range.mz_tabular", header = $method.methods_conditional.mz_range.feature_header, stringsAsFactors = FALSE)
+                bin_reference_mz = bin_reference_mz[,$method.methods_conditional.mz_range.feature_column]
+
+	       msidata = mse_bin = mzBin(msidata,resolution=$method.methods_conditional.bin_width, units="$method.methods_conditional.bin_units", fun=$method.methods_conditional.bin_fun,
+	       ref=bin_reference_mz)
 
             #end if
              
@@ -385,7 +389,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                 print('log2 transformation')
 
                 ## replace 0 with NA to prevent Inf
-                spectra_df = spectra(msidata) ## convert into R matrix
+                spectra_df = as.matrix(spectra(msidata)) ## convert into R matrix
                 spectra_df[spectra_df ==0] = NA
                 print(paste0("Number of 0 which were converted into NA:",sum(is.na(spectra_df))))
                 spectra(msidata) = spectra_df
@@ -422,25 +426,14 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
     ################################################################################
 
     ## save msidata as imzML file, will only work if there is at least 1 m/z left
-    
-    #if str($imzml_output) == "cont_format":
-        #set $continuous_format = True
-    #end if
 
         if (nrow(msidata) > 0){
             ## make sure that coordinates are integers
             coord(msidata)\$y = as.integer(coord(msidata)\$y)
             coord(msidata)\$x = as.integer(coord(msidata)\$x)
-        #if $used_peak_picking:
-            #if $continuous_format:
-                msidata = as(msidata, "MSContinuousImagingExperiment")
-            #end if
-        #elif $used_peak_alignment
-            #if $continuous_format:
-                msidata = as(msidata, "MSContinuousImagingExperiment")
-            #end if
-        #end if
-        writeImzML(msidata, "out")
+            ## only continuous files can currently be exported
+            msidata = as(msidata, "MSContinuousImagingExperiment")
+            writeImzML(msidata, "out")
         }
 
     plot(0,type='n',axes=FALSE,ann=FALSE)
@@ -620,15 +613,19 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                     </param>
                     <param name="replace_NA_bin" type="boolean" label="Replace NA with 0" truevalue="TRUE" falsevalue="FALSE" checked="True" help="Binning can introduce NAs, should they be replaced with 0"/>
                     <conditional name="mz_range">
-            		 <param name="features_filtering" type="select" label="Select m/z feature filtering option">
+                    	<param name="features_filtering" type="select" label="Select m/z options">
                             <option value="none" selected="True">none</option>
                             <option value="change_mz_range">change m/z range</option>
+                            <option value="bin_to_reference">bin m/z to reference</option>
                         </param>
 			    <when value="none"/>
 			    <when value="change_mz_range">
 				<param name="min_mz" type="float" value="1" label="Minimum value for m/z"/>
 				<param name="max_mz" type="float" value="10000" label="Maximum value for m/z"/>
 			    </when>
+			    <when value="bin_to_reference">
+		                <expand macro="reading_1_column_mz_tabular" label="Tabular file with m/z features as reference for binning. Only the m/z values from the tabular file will be kept."/>
+	                   </when>
                     </conditional>
                 </when>
                 <when value="Transformation">
@@ -645,7 +642,6 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                 </when>
             </conditional>
         </repeat>
-        <param name="imzml_output" type="boolean" label="imzML output in processed format" checked="True" truevalue="proc_format" falsevalue="cont_format"/>
     </inputs>
     <outputs>
         <data format="imzml" name="outfile_imzml" label="${tool.name} on ${on_string}: imzML"/>
@@ -666,10 +662,8 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                 <conditional name="methods_conditional">
                     <param name="preprocessing_method" value="Smoothing"/>
                     <conditional name="methods_for_smoothing">
-                        <param name="smoothing_method" value="gaussian"/>
-                        <param name="sd_gaussian" value="4"/>
+                        <param name="smoothing_method" value="sgolay"/>
                     </conditional>
-                        <param name="window_smoothing" value="9"/>
                 </conditional>
             </repeat>
             <repeat name="methods">
@@ -702,7 +696,6 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                         </conditional>
                 </conditional>
             </repeat>
-            <param name="imzml_output" value="cont_format"/>
             <output name="QC_overview" file="preprocessing_results1.pdf" compare="sim_size"/>
             <output name="outfile_imzml" ftype="imzml" file="preprocessing_results1.imzml.txt" compare="sim_size">
                 <extra_files type="file" file="preprocessing_results1.imzml" name="imzml" lines_diff="6"/>
@@ -727,7 +720,6 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                     <param name="preprocessing_method" value="Peak_alignment"/>
                 </conditional>
             </repeat>
-            <param name="imzml_output" value="cont_format"/>
             <output name="QC_overview" file="preprocessing_results2.pdf" compare="sim_size"/>
             <output name="outfile_imzml" ftype="imzml" file="preprocessing_results2.imzml.txt" compare="sim_size">
                 <extra_files type="file" file="preprocessing_results2.imzml" name="imzml" lines_diff="6"/>
@@ -753,13 +745,11 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                     <conditional name="methods_for_picking">
                         <param name="picking_method" value="mad"/>
                     </conditional>
-                <param name="imzml_output" value="proc_format"/>
                 </conditional>
             </repeat>
             <repeat name="methods">
                 <conditional name="methods_conditional">
                     <param name="preprocessing_method" value="Peak_alignment"/>
-                    <param name="imzml_output" value="proc_format"/>
                 </conditional>
             </repeat>
             <output name="QC_overview" file="preprocessing_results3.pdf" compare="sim_size"/>
@@ -836,19 +826,21 @@ This tool provides multiple Cardinal functions to preprocess mass spectrometry i
 
 **Options**
 
-- Normalization: Normalization of intensities to total ion current (TIC) or to root-mean-square (RMS)
-- Baseline reduction: Baseline  reduction removes background intensity generated by chemical noise (common in MALDI datasets)
+- Normalization: normalization of intensities to total ion current (TIC) or to root-mean-square (RMS)
+- Baseline reduction: baseline  reduction removes background intensity generated by chemical noise (common in MALDI datasets)
 - Smoothing: Smoothing of the peaks reduces noise and improves peak detection
+- m/z alignment: removes small m/z shifts between spectra 
 - Peak picking: relevant peaks are picked while noise-peaks are removed (needs peak alignment afterwards)
 - Peak alignment: only possible after peak picking, m/z inaccuracies are removed by alignment of same peaks to a common m/z value; if no reference is given the peaks are aligned to the local maxima of the mean spectrum of the current dataset; external reference data can be used from another MSI data file or a tabular file with m/z values, but then only the m/z from the reference will be kept
 - Peak filtering: removes peaks that occur only in a small proportion of pixels. If not sure which cut off to choose run quality control tool first and decide according to the number of peaks per m/z plot
-- Peak binning: extracts peaks intensities (from a profile dataset) for a list of m/z (reference) values
-- Data reduction: binning or resampling to reduce data
+- Peak binning: extracts peaks intensities, either peak height or area under curve (from a profile dataset) for a list of m/z (reference) values
+- m/z binning: generates new m/z bins
 - Transformation: log2 or squareroot transformation of all intensities; when using log2 transformation zero intensities will become NA, this can lead to compatibility problems. 
+                    
 
 **Output**
 
-- MSI data as continuous or processed imzML file
+- MSI data as continuous imzML file
 - pdf with key values and four random mass spectra after each processing step
 
         ]]>

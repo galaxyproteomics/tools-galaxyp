@@ -86,10 +86,13 @@ if [[ "$?" -ne "0" ]]; then >&2 echo 'PhosphoScoring failed'; >&2 echo -e "stder
 PhosphoScoring -in spectra.mzML -id MSGFPlusAdapter_1_out1.tmp -out PhosphoScoring.idxml > PhosphoScoring.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'PhosphoScoring failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
-PSMFeatureExtractor -test -in MSGFPlusAdapter_1_out.idXML XTandemAdapter_1_out.idXML -multiple_search_engines -skip_db_check -out PSMFeatureExtractor.idxml > PSMFeatureExtractor_1.stdout 2> stderr
+# TODO PSMFeatureExtractor should have auto tests with 2.7 https://github.com/OpenMS/OpenMS/pull/5087 
+PSMFeatureExtractor -test -in MSGFPlusAdapter_1_out.idXML XTandemAdapter_1_out.idXML -multiple_search_engines -skip_db_check -out_type idXML -out PSMFeatureExtractor.idxml > PSMFeatureExtractor_1.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'PSMFeatureExtractor_1 failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
-PSMFeatureExtractor -test -in MSGFPlusAdapter_1_out.idXML XTandemAdapter_1_out.idXML -multiple_search_engines -skip_db_check -out PSMFeatureExtractor.mzid > PSMFeatureExtractor_2.stdout 2> stderr
+PSMFeatureExtractor -test -in MSGFPlusAdapter_1_out.idXML XTandemAdapter_1_out.idXML -multiple_search_engines -skip_db_check -out_type mzid -out PSMFeatureExtractor.mzid > PSMFeatureExtractor_2.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'PSMFeatureExtractor_2 failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
+PSMFeatureExtractor -test -in MSGFPlusAdapter_1_out.idXML -out_type idXML -out PSMFeatureExtractor_3.idXML > PSMFeatureExtractor_3.stdout 2> stderr
+if [[ "$?" -ne "0" ]]; then >&2 echo 'PSMFeatureExtractor_3 failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
 QCCalculator -test -in OpenPepXL_input.mzML -out QCCalculator1.qcML > QCCalculator_1.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'QCCalculator_1 failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
