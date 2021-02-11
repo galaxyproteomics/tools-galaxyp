@@ -1,18 +1,19 @@
-<tool id="thermo_raw_file_converter" name="Thermo" version="1.2.3+galaxy0">
+<tool id="thermo_raw_file_converter" name="Thermo" version="1.2.3+galaxy0" profile="20.01">
     <description>RAW file converter</description>
     <requirements>
         <requirement type="package" version="1.2.3">thermorawfileparser</requirement>
     </requirements>
+    <stdio>
+        <regex match="ERROR" source="both" level="fatal" description="Fatal error" />
+    </stdio>
     <command>
 <![CDATA[
 #import re
 
 mkdir ./raws_folder &&
 mkdir ./output_folder &&
-#for $input_raw in $input_files:
-    #set $input_name = re.sub('[^\w\-\.]', '_',$input_raw.element_identifier.split('/')[-1].replace(".raw", "") + ".raw")
-    ln -s -f '${input_raw}' './raws_folder/${input_name}' &&
-#end for
+#set $input_name = re.sub('[^\w\-\.]', '_', $input_file.element_identifier.replace(".raw", "") + ".raw")
+ln -s -f '${input_file}' './raws_folder/${input_name}' &&
 
 ThermoRawFileParser.sh
     -d=./raws_folder
@@ -25,11 +26,24 @@ ThermoRawFileParser.sh
     $peakpicking_boolean
     $ignore_instrument_errors_boolean
 
+#if $output_format == "0"
+    && mv './output_folder/${input_name.replace(".raw", ".mgf")}' '$output'
+#else if $output_format == "1" 
+    && mv './output_folder/${input_name.replace(".raw", ".mzML")}' '$output'
+#else if $output_format == "2" 
+    && mv './output_folder/${input_name.replace(".raw", ".mzML")}' '$output'
+#end if
+
+#if $output_metadata_selector == '1'
+    && mv './output_folder/${input_name.replace(".raw", "-metadata.txt")}' '$output_metadata'
+#else if $output_metadata_selector == '0'
+    && mv './output_folder/${input_name.replace(".raw", "-metadata.json")}' '$output_metadata'
+#end if
+
 ]]>
     </command>
     <inputs>
-        <param name="input_files" type="data" format="thermo.raw" label="Thermo RAW file" help="" multiple="true"
-          optional="False" />
+        <param name="input_file" type="data" format="thermo.raw" label="Thermo RAW file" help="" optional="False" />
 
         <param name="output_format" type="select" label="Output format">
             <option value="0">mgf</option>
@@ -55,90 +69,69 @@ ThermoRawFileParser.sh
     </inputs>
     <outputs>
 
-        <collection name="output_mgf_collection" type="list" label="${tool.name} on ${on_string}: MGF collection">
-            <filter>output_format == "0"</filter>
-            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.mgf" directory="output_folder" ext="mgf"/>
-        </collection>
+        <data name="output" format="mzml" label="${tool.name} on ${on_string}">
+            <change_format>
+                <when input="output_format" value="0" format="mgf" />
+            </change_format>
+        </data>
 
-        <collection name="output_mzml_collection" type="list" label="${tool.name} on ${on_string}: mzML collection">
-            <filter>output_format == "1"</filter>
-            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.mzML" ext="mzml" directory="output_folder"/>
-        </collection>
-
-        <collection name="output_indexedmzml_collection" type="list" label="${tool.name} on ${on_string}: Indexed mzML collection">
-            <filter>output_format == "2"</filter>
-            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.mzML" ext="mzml" directory="output_folder"/>
-        </collection>
-
-        <collection name="output_metadata_collection" type="list" label="${tool.name} on ${on_string}: metadata collection">
+        <data name="output_metadata" format="txt" label="${tool.name} on ${on_string}: metadata">
             <filter>output_metadata_selector != "off"</filter>
-            <discover_datasets pattern="(?P&lt;designation&gt;.+)-metadata.txt" ext="txt" directory="output_folder"/>
-            <discover_datasets pattern="(?P&lt;designation&gt;.+)-metadata.json" ext="json" directory="output_folder"/>
-        </collection>
+            <change_format>
+                <when input="output_metadata_selector" value="0" format="json" />
+            </change_format>
+        </data>
 
     </outputs>
 
     <tests>
         <!-- Basic mgf test - 1 file -->
         <test expect_num_outputs="1">
-            <param name="input_files" value="really_small.raw" ftype="thermo.raw"/>
+            <param name="input_file" value="really_small.raw" ftype="thermo.raw"/>
             <param name="output_format" value="0"/>
-            <output_collection name="output_mgf_collection" type="list" count="1"/>
-
-            <!--<output name="output" file="really_small.mzml" ftype="mzml" compare="sim_size" delta="3000" />-->
+            <output name="output" ftype="mgf">
+                <assert_contents>
+                    <has_text text="SCANS=36"/>
+                    <has_text text="RTINSECONDS=73.863181104"/>
+                    <has_text text="PEPMASS=675.248779296875"/>
+                    <has_text text="CHARGE=2+"/>
+                    <has_text text="121.3116455 920.2367553711"/>
+                    <has_text text="229.2241211 1137.6958007813"/>
+                    <has_text text="1577.8967285 1487.9519042969"/>
+                </assert_contents>
+            </output>
         </test>
 
 
         <!-- Basic mzml test - 2 files -->
-        <test expect_num_outputs="1">
-            <param name="input_files" value="really_small.raw,really_small_2.raw" ftype="thermo.raw"/>
+        <test expect_num_outputs="2">
+            <param name="input_file" value="really_small.raw" ftype="thermo.raw"/>
             <param name="output_format" value="1"/>
-            <output_collection name="output_mzml_collection" type="list" count="2"/>
+            <param name="output_metadata_selector" value="0"/>
+            <output name="output" file="really_small.mzml" ftype="mzml" compare="sim_size" delta="3000" />
+            <output name="output_metadata" value="really_small.json" ftype="json"/>
         </test>
 
         <!-- Testing contents of converted mgf file with txt metadata -->
         <test expect_num_outputs="2">
-            <param name="input_files" value="really_small.raw" ftype="thermo.raw"/>
-            <param name="output_format" value="0"/>
+            <param name="input_file" value="really_small.raw" ftype="thermo.raw"/>
+            <param name="output_format" value="2"/>
             <param name="output_metadata_selector" value="1"/>
-            <output_collection name="output_mgf_collection" type="list" count="1">
-                <element name="really_small" ftype="mgf">
-                    <assert_contents>
-                        <has_text text="SCANS=36"/>
-                        <has_text text="RTINSECONDS=73.863181104"/>
-                        <has_text text="PEPMASS=675.248779296875"/>
-                        <has_text text="CHARGE=2+"/>
-                        <has_text text="121.3116455 920.2367553711"/>
-                        <has_text text="229.2241211 1137.6958007813"/>
-                        <has_text text="1577.8967285 1487.9519042969"/>
-                    </assert_contents>
-                </element>
-            </output_collection>
-            <output_collection name="output_metadata_collection" type="list">
-                <element name="really_small" ftype="txt">
-                    <assert_contents>
-                        <has_text text="Instrument model=[MS, MS:1000494, Thermo Scientific instrument model, Orbitrap Fusion]"/>
-                        <has_text text="Instrument name=Orbitrap Fusion"/>
-                        <has_text text="Instrument serial number=[MS, MS:1000529, instrument serial number, FSN10188]"/>
-                        <has_text text="Software version=[NCIT, NCIT:C111093, Software Version, 3.1.2412.17]"/>
-                        <has_text text="Mass resolution=[MS, MS:1000011, mass resolution, 0.500]"/>
-                        <has_text text="Number of scans=101"/>
-                        <has_text text="Scan range=1;101"/>
-                        <has_text text="Scan start time=[MS, MS:1000016, scan start time, 0.89]"/>
-                        <has_text text="Time range=0.89;1.59"/>
-                        <has_text text="Mass range=120.0000;2000.0000"/>
-                    </assert_contents>
-                </element>
-            </output_collection>
-        </test>
-
-        <!-- mgf collection test with metadata -->
-        <test expect_num_outputs="2">
-            <param name="input_files" value="really_small.raw,really_small_2.raw,really_small_3.raw"/>
-            <param name="output_format" value="0"/>
-            <param name="output_metadata_selector" value="0"/>
-            <output_collection name="output_mgf_collection" type="list" count="3"/>
-            <output_collection name="output_metadata_collection" type="list" count="3"/>
+            <output name="output" value="really_small.indexed_mzML" ftype="mzml"/>
+            <output name="output_metadata" ftype="txt">
+                <assert_contents>
+                    <has_text text="Instrument model=[MS, MS:1000494, Thermo Scientific instrument model, Orbitrap Fusion]"/>
+                    <has_text text="Instrument name=Orbitrap Fusion"/>
+                    <has_text text="Instrument serial number=[MS, MS:1000529, instrument serial number, FSN10188]"/>
+                    <has_text text="Software version=[NCIT, NCIT:C111093, Software Version, 3.1.2412.17]"/>
+                    <has_text text="Mass resolution=[MS, MS:1000011, mass resolution, 0.500]"/>
+                    <has_text text="Number of scans=101"/>
+                    <has_text text="Scan range=1;101"/>
+                    <has_text text="Scan start time=[MS, MS:1000016, scan start time, 0.89]"/>
+                    <has_text text="Time range=0.89;1.59"/>
+                    <has_text text="Mass range=120.0000;2000.0000"/>
+                </assert_contents>
+            </output>
         </test>
     </tests>
     <help>
@@ -149,12 +142,6 @@ Thermo RAW file converter based on the great `ThermoRawFileParser <https://githu
 ]]>
     </help>
     <citations>
-        <citation type="bibtex">@misc{Galaxy Proteomics Tools,
-        author = {Niels Hulstaert, et al.},
-        title = {Galaxy Proteomics Tools},
-        publisher = {GitHub},
-        journal = {GitHub repository},
-        year = {2017}, url = {https://github.com/compomics/ThermoRawFileParser}}
-        </citation>
+        <citation type="doi">10.1021/acs.jproteome.9b00328</citation>
     </citations>
 </tool>
