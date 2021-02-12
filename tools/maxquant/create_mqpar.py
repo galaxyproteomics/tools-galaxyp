@@ -4,8 +4,8 @@ and a template parameter file.
 
 import argparse
 import os
-import yaml
 
+import yaml
 from mqparam import MQParam
 
 parser = argparse.ArgumentParser()
