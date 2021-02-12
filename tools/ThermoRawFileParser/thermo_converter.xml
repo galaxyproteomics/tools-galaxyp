@@ -1,4 +1,4 @@
-<tool id="thermo_raw_file_converter" name="Thermo" version="@TOOL_VERSION@+galaxy0" profile="20.01">
+<tool id="thermo_raw_file_converter" name="Thermo" version="@TOOL_VERSION@+galaxy0" profile="21.01">
     <description>RAW file converter</description>
     <macros>
         <token name="@TOOL_VERSION@">1.3.2</token>
@@ -20,56 +20,93 @@ ln -s -f '$input_file' '$input_name' &&
 ThermoRawFileParser.sh
     --input='$input_name'
     --output_file='$output'
-    -f=$output_format
+    -f=$format_cond.output_format
     #if $output_metadata_selector != "off":
         --metadata="$output_metadata_selector"
         --metadata_output_file='$output_metadata'
     #end if
-    $zlib_boolean
-    $peakpicking_boolean
+    #if $format_cond.output_format == "0"
+        $format_cond.mgfPrecursor
+    #end if
+    #if $format_cond.output_format in ['1', '2']
+        $format_cond.zlib_boolean
+        $format_cond.peakpicking_boolean
+    #end if
     $ignore_instrument_errors_boolean
+    $allDetectors
+    $includeExceptionData
+    #if $msLevel != ''
+        --msLevel="$msLevel"
+    #end if
 ]]>
     </command>
     <inputs>
         <param argument="--input" name="input_file" type="data" format="thermo.raw" label="Thermo RAW file" help="" optional="False"/>
-        <param argument="--format" name="output_format" type="select" label="Output format">
-            <option value="0">mgf</option>
-            <option value="1" selected="True">mzml</option>
-            <option value="2">Indexed mzml</option>
-        </param>
-        <param argument="--noZlibCompression" name="zlib_boolean" type="boolean" truevalue="" falsevalue="-z" checked="true"
-            label="Use zlib compression for the m/z ratios and intensities" help=""/>
-        <param argument="--noPeakPicking" name="peakpicking_boolean" type="boolean" truevalue="" falsevalue="-p" checked="true"
-            label="Use the peak picking provided by the native thermo library" help=""/>
-        <param argument="--ignoreInstrumentErrors" name="ignore_instrument_errors_boolean" type="boolean" truevalue="-e" falsevalue="" checked="true"
-            label="Ignore missing instrument properties" help="If false, it stops the conversion if instrument properties are missing"/>
+        <conditional name="format_cond">
+            <param argument="--format" name="output_format" type="select" label="Output format">
+                <option value="0">mgf</option>
+                <option value="1" selected="True">mzml</option>
+                <option value="2">Indexed mzml</option>
+                <option value="3">Parquet</option>
+            </param>
+            <when value="0">
+                <param argument="--mgfPrecursor" type="boolean" truevalue="--mgfPrecursor" falsevalue="" label="Include precursor scan number in MGF file" help=""/>
+            </when>
+            <when value="1">
+                <param argument="--noZlibCompression" name="zlib_boolean" type="boolean" truevalue="" falsevalue="-z" checked="true"
+                    label="Use zlib compression for the m/z ratios and intensities" help=""/>
+                <param argument="--noPeakPicking" name="peakpicking_boolean" type="boolean" truevalue="" falsevalue="-p" checked="true"
+                    label="Use the peak picking provided by the native thermo library" help=""/>
+            </when>
+            <when value="2">
+                <param argument="--noZlibCompression" name="zlib_boolean" type="boolean" truevalue="" falsevalue="-z" checked="true"
+                    label="Use zlib compression for the m/z ratios and intensities" help=""/>
+                <param argument="--noPeakPicking" name="peakpicking_boolean" type="boolean" truevalue="" falsevalue="-p" checked="true"
+                    label="Use the peak picking provided by the native thermo library" help=""/>
+            </when>
+        </conditional>
         <param argument="--metadata" name="output_metadata_selector" type="select" label="Output metadata">
             <option value="off" selected="True">No</option>
             <option value="0">json</option>
             <option value="1">txt</option>
         </param>
-
+        <param argument="--ignoreInstrumentErrors" name="ignore_instrument_errors_boolean" type="boolean" truevalue="-e" falsevalue="" checked="true"
+            label="Ignore missing instrument properties" help="If false, it stops the conversion if instrument properties are missing"/>
+        <param argument="--allDetectors" type="boolean" truevalue="--allDetectors" falsevalue="" checked="false" label="Extract additional detector data" help="UV/PDA etc"/>
+        <param argument="--includeExceptionData" type="boolean" truevalue="--includeExceptionData" falsevalue="" label="Include reference and exception data"/>
+        <param argument="--msLevel" type="text" value="" label="Select MS levels " help="(MS1, MS2, etc) included in the output, should be a comma-separated list of integers ( 1,2,3 ) and/or intervals ( 1-3 ), open-end intervals ( 1- ) are allowed">
+            <sanitizer invalid_char="">
+                <valid initial="string.digits">
+                    <add value="-"/>
+                    <add value=","/>
+                </valid>
+            </sanitizer>
+        </param>
     </inputs>
     <outputs>
         <data name="output" format="mzml" label="${tool.name} on ${on_string}">
             <change_format>
-                <when input="output_format" value="0" format="mgf" />
+                <when input="format_cond.output_format" value="0" format="mgf"/>
+                <when input="format_cond.output_format" value="3" format="parquet"/>
             </change_format>
         </data>
         <data name="output_metadata" format="txt" label="${tool.name} on ${on_string}: metadata">
             <filter>output_metadata_selector != "off"</filter>
             <change_format>
-                <when input="output_metadata_selector" value="0" format="json" />
+                <when input="output_metadata_selector" value="0" format="json"/>
             </change_format>
         </data>
     </outputs>
 
     <tests>
-        <!-- Basic mgf test - 1 file -->
+        <!-- mgf test, no metadata -->
         <test expect_num_outputs="1">
             <param name="input_file" value="really_small.raw" ftype="thermo.raw"/>
-            <param name="output_format" value="0"/>
-            <output name="output" ftype="mgf">
+            <conditional name="format_cond">
+                <param name="output_format" value="0"/>
+                <param name="mgfPrecursor" value="true"/>
+            </conditional>
+            <output name="output" ftype="mgf" value="really_small.mgf">
                 <assert_contents>
                     <has_text text="SCANS=36"/>
                     <has_text text="RTINSECONDS=73.863181104"/>
@@ -80,22 +117,54 @@ ThermoRawFileParser.sh
                     <has_text text="1577.8967285 1487.9519042969"/>
                 </assert_contents>
             </output>
+            <assert_command>
+                <has_text text="--mgfPrecursor"></has_text>
+            </assert_command>
         </test>
 
-        <!-- Basic mzml test - 2 files -->
+        <!-- mzml test and json metadata  -->
         <test expect_num_outputs="2">
             <param name="input_file" value="really_small.raw" ftype="thermo.raw"/>
-            <param name="output_format" value="1"/>
+            <conditional name="format_cond">
+                <param name="output_format" value="1"/>
+            </conditional>
             <param name="output_metadata_selector" value="0"/>
-            <output name="output" file="really_small.mzml" ftype="mzml" compare="sim_size" delta="3000" />
+            <output name="output" file="really_small.mzml" ftype="mzml"/>
             <output name="output_metadata" value="really_small.json" ftype="json"/>
+            <assert_command>
+                <not_has_text text="--mgfPrecursor"></not_has_text>
+            </assert_command>
         </test>
 
-        <!-- Testing contents of converted mgf file with txt metadata -->
+        <!-- mzml test (wo zlib compression and peak picking) and json metadata  -->
         <test expect_num_outputs="2">
             <param name="input_file" value="really_small.raw" ftype="thermo.raw"/>
-            <param name="output_format" value="2"/>
+            <conditional name="format_cond">
+                <param name="output_format" value="1"/>
+                <param name="zlib_boolean" value="false"/>
+                <param name="peakpicking_boolean" value="false"/>
+            </conditional>
+            <param name="output_metadata_selector" value="0"/>
+            <output name="output" file="really_small_ext.mzml" ftype="mzml"/>
+            <output name="output_metadata" value="really_small.json" ftype="json"/>
+            <assert_command>
+                <not_has_text text="--mgfPrecursor"></not_has_text>
+                <has_text text="-z "></has_text>
+                <has_text text="-p "></has_text>
+            </assert_command>
+        </test>
+
+        <!-- indexed mzml, txt metadata (+ extra options) -->
+        <test expect_num_outputs="2">
+            <param name="input_file" value="really_small.raw" ftype="thermo.raw"/>
+            <conditional name="format_cond">
+                <param name="output_format" value="2"/>
+            </conditional>
             <param name="output_metadata_selector" value="1"/>
+            <param name="ignore_instrument_errors_boolean" value="true"/>
+            <param name="allDetectors" value="true"/>
+            <param name="includeExceptionData" value="--includeExceptionData"/>
+            <param name="msLevel" type="text" value="1"/>
             <output name="output" value="really_small.indexed_mzML" ftype="mzml"/>
             <output name="output_metadata" ftype="txt">
                 <assert_contents>
@@ -111,6 +180,21 @@ ThermoRawFileParser.sh
                     <has_text text="Mass range=120.0000;2000.0000"/>
                 </assert_contents>
             </output>
+            <assert_command>
+                <not_has_text text="--mgfPrecursor"></not_has_text>
+                <has_text text="-e "/>
+                <has_text text="--allDetectors"/>
+                <has_text text="--includeExceptionData"/>
+                <has_text text="--msLevel=&quot;1&quot;"/>
+            </assert_command>
+        </test>
+        <!-- parquet test, no metadata -->
+        <test expect_num_outputs="1">
+            <param name="input_file" value="really_small.raw" ftype="thermo.raw"/>
+            <conditional name="format_cond">
+                <param name="output_format" value="3"/>
+            </conditional>
+            <output name="output" ftype="parquet" value="really_small.parquet"/>
         </test>
     </tests>
     <help>
