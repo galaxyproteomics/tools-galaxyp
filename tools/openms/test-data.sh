@@ -16,7 +16,10 @@ fi
 export OPENMSGIT="$tmp/OpenMS$VERSION.0-git"
 export OPENMSPKG="$tmp/OpenMS$VERSION-pkg/"
 export OPENMSENV="$tmp/OpenMS$VERSION-env"
-export CTDCONVERTER="$tmp/CTDConverter"
+
+if [ -z "$CTDCONVERTER" ]; then
+	export CTDCONVERTER="$tmp/CTDConverter"
+fi
 
 if [[ -z "$1" ]]; then
 	autotests="/dev/null"

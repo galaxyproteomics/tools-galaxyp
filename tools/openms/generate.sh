@@ -48,7 +48,6 @@ if [ ! -d $CTDCONVERTER ]; then
 	#git clone https://github.com/WorkflowConversion/CTDConverter.git CTDConverter
 	git clone -b topic/cdata https://github.com/bernt-matthias/CTDConverter.git $CTDCONVERTER
 fi
-# export PYTHONPATH=$(pwd)/CTDopts
 ###############################################################################
 ## conversion ctd->xml 
 ###############################################################################
