@@ -15,7 +15,7 @@ fi
 
 export OPENMSGIT="$tmp/OpenMS$VERSION.0-git"
 export OPENMSPKG="$tmp/OpenMS$VERSION-pkg/"
-export OPENMSENV="$tmp/OpenMS$VERSION-env"
+export OPENMSENV="OpenMS$VERSION-env"
 
 if [ -z "$CTDCONVERTER" ]; then
 	export CTDCONVERTER="$tmp/CTDConverter"
@@ -62,7 +62,7 @@ echo "Create OpenMS $VERSION conda env"
 if conda env list | grep "$OPENMSENV"; then
 	true
 else
-	conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults -p $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION ctdopts=1.4 lxml
+	conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults -n $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION ctdopts=1.4 lxml
 # chmod -R u-w $OPENMSENV 
 fi
 ###############################################################################
@@ -85,10 +85,10 @@ fi
 echo "Clone CTDConverter"
 if [[ ! -d $CTDCONVERTER ]]; then
 	#git clone https://github.com/WorkflowConversion/CTDConverter.git CTDConverter
-	git clone -b topic/cdata https://github.com/bernt-matthias/CTDConverter.git $CTDCONVERTER
+	git clone -b topic/fix-selects https://github.com/bernt-matthias/CTDConverter.git $CTDCONVERTER
 else
 	cd $CTDCONVERTER
-	git pull origin topic/cdata
+	git pull origin topic/fix-selects
 	cd -
 fi
 
@@ -188,17 +188,17 @@ echo 'export THERMORAWFILEPARSER_BINARY="ThermoRawFileParser.exe"' >> prepare_te
 
 prepare_test_data >> prepare_test_data.sh #tmp_test_data.sh
 
-# prepare_test_data > tmp_test_data.sh
-# # remove calls not needed for the tools listed in any .list file
-# echo LIST $LIST
-# if [ ! -z "$LIST" ]; then
-# 	REX=$(echo $LIST | sed 's/ /\n/g' | sed 's@.*/\([^/]\+\).xml$@\1@' | tr '\n' '|' | sed 's/|$//')
-# else
-# 	REX=".*"
-# fi
-# echo REX $REX
-# cat tmp_test_data.sh | egrep "($REX)" >> prepare_test_data.sh
-# rm tmp_test_data.sh
+## prepare_test_data > tmp_test_data.sh
+## # remove calls not needed for the tools listed in any .list file
+## echo LIST $LIST
+## if [ ! -z "$LIST" ]; then
+## 	REX=$(echo $LIST | sed 's/ /\n/g' | sed 's@.*/\([^/]\+\).xml$@\1@' | tr '\n' '|' | sed 's/|$//')
+## else
+## 	REX=".*"
+## fi
+## echo REX $REX
+## cat tmp_test_data.sh | egrep "($REX)" >> prepare_test_data.sh
+## rm tmp_test_data.sh
 
 echo "Execute test shell script"
 chmod u+x prepare_test_data.sh
