@@ -1,12 +1,14 @@
-<tool id="peptide_shaker" name="Peptide Shaker" version="@PEPTIDESHAKER_VERSION@.3">
+<tool id="peptide_shaker" name="Peptide Shaker" version="@PEPTIDESHAKER_VERSION@+galaxy@PEPTIDESHAKER_VERSION_SUFFIX@">
     <description>
         Perform protein identification using various search engines based on results from SearchGUI
     </description>
     <macros>
-        <import>macros.xml</import>
+        <import>macros_basic.xml</import>
+        <import>macros_modifications.xml</import>
     </macros>
     <requirements>
         <requirement type="package" version="@PEPTIDESHAKER_VERSION@">peptide-shaker</requirement>
+        <requirement type="package">unzip</requirement>
     </requirements>
     <expand macro="stdio" />
 
@@ -17,7 +19,7 @@
         #set $samp_str = "Sample_%s" % datetime.now().strftime("%Y%m%d%H%M%s")
         #set $temp_stderr = "peptideshaker_stderr"
         #set $bin_dir = "bin"
-
+        #set $exporting_followup_boolean = False
 
         mkdir output_reports &&
         cwd=`pwd` &&
@@ -26,66 +28,69 @@
         echo "" > $temp_stderr &&
 
         ln -s '$searchgui_input' searchgui_input.zip &&
-        jar xvf searchgui_input.zip SEARCHGUI_IdentificationParameters.par &&
 
+        ## OPTIONAL MAIN PARAMETERS
+        ## If we have a specific Identification Parameters file to use, we will use it instead of the one provided in the search_gui file
+        #if $optional_main_parameters.input_optional_identification_parameters:
+            cp '${optional_main_parameters.input_optional_identification_parameters}' SEARCHGUI_IdentificationParameters.par &&
+        #else:
+            jar xvf searchgui_input.zip SEARCHGUI_IdentificationParameters.par &&
+        #end if
+        ## Optional Fasta file
+        #if $optional_main_parameters.input_fasta_file:
+            ## copy the input .fasta file to the working folder
+            cp '${optional_main_parameters.input_fasta_file}' './input_fasta_file.fasta' &&
+        #end if
+        ## Optional Spectrum files: if the user specified input spectra files, we use them
+        ## NOTE: != None DOES NOT SEEM TO WORK ANYMORE ON MODERN GALAXIES
+        #if str($optional_main_parameters.input_optional_spectrum_files) != 'None' and str($optional_main_parameters.input_optional_spectrum_files) != '':
+            mkdir peaklist_input_files &&
+            #for $peak_list_file in $optional_main_parameters.input_optional_spectrum_files:
+                #if $peak_list_file.is_of_type("mgf"):
+                    #set $input_name = $peak_list_file.element_identifier.split('/')[-1].replace(".mgf", "") + ".mgf"
+                #else if $peak_list_file.is_of_type("mzml"):
+                    #set $input_name = $peak_list_file.element_identifier.split('/')[-1].replace(".mzml", "") + ".mzml"
+                #end if
+                ln -s -f '${peak_list_file}' 'peaklist_input_files/${input_name}' &&
+            #end for
+        #end if
 
-        peptide-shaker eu.isas.peptideshaker.cmd.PathSettingsCLI
-            --exec_dir="\$cwd/${bin_dir}"
-            -temp_folder \$cwd/PathSettingsCLI
-            -log \$cwd/peptideshaker.log &&
-
-        #if str($exporting_options.output_reports) != "None"
+        #if str($exporting_options.output_reports) != "None" and str($exporting_options.output_reports) != ""
             #set $output_reports_list = set(str($exporting_options.output_reports).split(','))
         #else
             #set $output_reports_list = set()
-        #end if
+	      #end if
 
         ######################
         ## PeptideShakerCLI ##
         ######################
         (peptide-shaker -Djava.awt.headless=true eu.isas.peptideshaker.cmd.PeptideShakerCLI
-            --exec_dir="\$cwd/${bin_dir}"
             -gui 0
             -temp_folder \$cwd/PeptideShakerCLI
-            -experiment '$exp_str'
-            -sample '$samp_str'
-            -replicate 1
+            -log \$cwd/resources
+            -reference '$exp_str'
             -identification_files \$cwd/searchgui_input.zip
             -id_params \$cwd/SEARCHGUI_IdentificationParameters.par
-            -out \$cwd/peptideshaker_output.cpsx
-            #if $exporting_options.zip_conditional.zip_output_boolean == 'zip':
-                -zip \$cwd/peptideshaker_output.zip
+        #if $optional_main_parameters.input_fasta_file:
+            -fasta_file './input_fasta_file.fasta'
+        #end if
+        #if str($optional_main_parameters.input_optional_spectrum_files) != 'None' and str($optional_main_parameters.input_optional_spectrum_files) != '':
+            -spectrum_files  \$cwd/peaklist_input_files
+        #end if
+
+        #if $exporting_options.zip_conditional.zip_output_boolean == 'zip':
+            -zip \$cwd/peptideshaker_output.zip
+            -out \$cwd/peptideshaker_output.psdb
+            #if $exporting_options.zip_conditional.export_mgf_when_zip:
+                -output_mgf 1
+    	    #end if
+        #else:
+            #if $exporting_options.zip_conditional.export_psdb:
+                -out \$cwd/peptideshaker_output.psdb
             #end if
+        #end if
+
             -threads "\${GALAXY_SLOTS:-12}"
-
-        ##Optional processing parameters:
-        #if $processing_options.processing_options_selector == "yes"
-            -protein_fdr "${processing_options.protein_fdr}"
-            -peptide_fdr "${processing_options.peptide_fdr}"
-            -psm_fdr "${processing_options.psm_fdr}"
-            -ptm_score "${processing_options.ptm_score.ptm_score_selector}"
-            #if $processing_options.ptm_score.ptm_score_selector == 1
-                -score_neutral_losses "${processing_options.ptm_score.neutral_losses}"
-                #if str($processing_options.ptm_score.ptm_threshold) != ''
-                    -ptm_threshold "${processing_options.ptm_score.ptm_threshold}"
-                #end if
-            #end if
-            -ptm_alignment "${processing_options.ptm_alignment}"
-            -ptm_sequence_matching_type "${processing_options.ptm_sequence_matching_type}"
-            -protein_fraction_mw_confidence "${processing_options.protein_fraction_mw_confidence}"
-        #end if
-
-        ##Optional filtering parameters:
-        #if $filtering_options.filtering_options_selector == "yes":
-            -import_peptide_length_min "${filtering_options.min_peptide_length}"
-            -import_peptide_length_max "${filtering_options.max_peptide_length}"
-            -import_precurosor_mz "${filtering_options.max_precursor_error}"
-            -import_precurosor_mz_ppm "${filtering_options.max_precursor_error_type}"
-            ##-max_xtandem_e "${filtering_options.max_xtandem_e}"
-            ##-max_omssa_e "${filtering_options.max_omssa_e}"
-            ##-max_mascot_e "${filtering_options.max_mascot_e}"
-            -exclude_unknown_ptms "${filtering_options.exclude_unknown_ptms}"
-        #end if
 
         ##################################
         ## mzidCLI options ##
@@ -94,19 +99,19 @@
         #if $exporting_options.mzidentml_conditional.mzidentml_creation == 1:
             -output_file \$cwd/output.mzid
             -include_sequences ${exporting_options.mzidentml_conditional.include_sequences}
-            #if $contact_options.contact_options_selector == "yes":
-                -contact_first_name "$contact_options.contact_first_name"
-                -contact_last_name "$contact_options.contact_last_name"
-                -contact_email "$contact_options.contact_email"
-                -contact_address "$contact_options.contact_address"
-                #if str($contact_options.contact_url).strip() != '':
-                    -contact_url = "$contact_options.contact_url"
+            #if $exporting_options.mzidentml_conditional.contact_options.contact_options_selector == "yes":
+                -contact_first_name "$exporting_options.mzidentml_conditional.contact_options.contact_first_name"
+                -contact_last_name "$exporting_options.mzidentml_conditional.contact_options.contact_last_name"
+                -contact_email "$exporting_options.mzidentml_conditional.contact_options.contact_email"
+                -contact_address "$exporting_options.mzidentml_conditional.contact_options.contact_address"
+                #if str($exporting_options.mzidentml_conditional.contact_options.contact_url).strip() != '':
+                    -contact_url = "$exporting_options.mzidentml_conditional.contact_options.contact_url"
                 #end if
-                -organization_name "$contact_options.organization_name"
-                -organization_email "$contact_options.organization_email"
-                -organization_address "$contact_options.organization_address"
-                #if str($contact_options.organization_url).strip() != '':
-                    -organization_url = "$contact_options.organization_url"
+                -organization_name "$exporting_options.mzidentml_conditional.contact_options.organization_name"
+                -organization_email "$exporting_options.mzidentml_conditional.contact_options.organization_email"
+                -organization_address "$exporting_options.mzidentml_conditional.contact_options.organization_address"
+                #if str($exporting_options.mzidentml_conditional.contact_options.organization_url).strip() != '':
+                    -organization_url = "$exporting_options.mzidentml_conditional.contact_options.organization_url"
                 #end if
             #else:
                 -contact_first_name "Proteomics"
@@ -119,23 +124,84 @@
             #end if
         #end if
 
-        ##################################
-        ## PeptideShaker Report options ##
-        ##################################
+        ####################################################################
+        ##    PeptideShaker Identification Features Reports options       ##
+        ####################################################################
         ## Generate Reports if the user has selected one of the 11 additional reports
         #if len($output_reports_list) > 0
                 -out_reports \$cwd/output_reports
                 -reports #echo ','.join($output_reports_list)#
         #end if
 
+        ####################################################
+        ##    PeptideShaker Follow-Up Analysis options    ##
+        ####################################################
+        ## TODO: When done in the app, export graph databases, TPP export, recalibrate espectra
+
+        #if $exporting_options.followup_conditional.followup_conditional_selector == "yes"
+            #if $exporting_options.followup_conditional.followup_export_spectra != "off"
+                #set $exporting_followup_boolean = True
+                -spectrum_folder \$cwd/output_reports -psm_type $exporting_options.followup_conditional.followup_export_spectra
+            #end if
+            #if $exporting_options.followup_conditional.followup_export_accession_numbers != "off"
+                #set $exporting_followup_boolean = True
+                -accessions_file \$cwd/output_reports/proteins_accession_numbers.txt -accessions_type $exporting_options.followup_conditional.followup_export_accession_numbers
+            #end if
+            #if $exporting_options.followup_conditional.followup_export_sequences != "off"
+                #set $exporting_followup_boolean = True
+                -sequences_file \$cwd/output_reports/proteins_sequences.fasta -sequences_type $exporting_options.followup_conditional.followup_export_sequences
+            #end if
+            #if $exporting_options.followup_conditional.followup_export_proteoforms != "off"
+                #set $exporting_followup_boolean = True
+                -proteoforms_file \$cwd/output_reports/proteins_proteoforms.txt
+            #end if
+            #if $exporting_options.followup_conditional.followup_export_progenesis_conditional.followup_export_progenesis_selector != "off"
+                #set $exporting_followup_boolean = True
+                -progenesis_file \$cwd/output_reports/progenesis.txt -progenesis_type $exporting_options.followup_conditional.followup_export_progenesis_conditional.followup_export_progenesis_selector
+                #if $exporting_options.followup_conditional.followup_export_progenesis_conditional.followup_export_progenesis_selector == "3"
+                  #set $progenesis_ptms = $exporting_options.followup_conditional.followup_export_progenesis_conditional.followup_export_progenesis_ptms or ''
+                  #if $progenesis_ptms
+                    -progenesis_ptms "$progenesis_ptms"
+                  #end if
+                #end if
+            #end if
+            #if $exporting_options.followup_conditional.followup_export_inclusion_list_conditional.followup_export_inclusion_list_selector != "off"
+                #set $exporting_followup_boolean = True
+                -inclusion_list_file \$cwd/output_reports/inclusion_list.txt -inclusion_list_format $exporting_options.followup_conditional.followup_export_inclusion_list_conditional.followup_export_inclusion_list_selector
+                #set $peptide_filters = $exporting_options.followup_conditional.followup_export_inclusion_list_conditional.followup_export_inclusion_list_peptide_filters or ''
+                #if $peptide_filters
+                  -inclusion_list_peptide_filters "$peptide_filters"
+                #end if
+                #set $protein_filters = $exporting_options.followup_conditional.followup_export_inclusion_list_conditional.followup_export_inclusion_list_protein_filters or ''
+                #if $protein_filters
+                  -inclusion_list_protein_filters "$protein_filters"
+                #end if
+                #if $exporting_options.followup_conditional.followup_export_inclusion_list_conditional.followup_export_inclusion_list_rt_window
+                  -inclusion_list_rt_window $exporting_options.followup_conditional.followup_export_inclusion_list_conditional.followup_export_inclusion_list_rt_window
+                #end if
+            #end if
+        #end if
+
         2>> $temp_stderr)
 
         ## If the user chose to zip the results but also export reports out of the zip, we have to unzip them
-        #if $exporting_options.zip_conditional.zip_output_boolean == 'zip' and $exporting_options.zip_conditional.export_reports_when_zip:
-            && unzip \$cwd/peptideshaker_output.zip 'reports/*' -d \$cwd/output_reports
+        #if $exporting_options.zip_conditional.zip_output_boolean == 'zip' and $exporting_options.zip_conditional.export_reports_when_zip and (len(output_reports_list)>0 or $exporting_followup_boolean):
+            ## This unzipping command creates a reports folder into the current folder!
+            && unzip \$cwd/peptideshaker_output.zip "reports/*" -d \$cwd
+            && mv reports/* output_reports
+            && rm -r reports
         #end if
 
-        #if len($output_reports_list)>0:
+        ## If the user chose to export mgf file/s out of the zip file
+        #if $exporting_options.zip_conditional.zip_output_boolean == 'zip' and $exporting_options.zip_conditional.export_mgf_when_zip:
+          && mkdir output_mgf
+          && mkdir output_cui
+          && mv \$cwd/*.mgf output_mgf
+          && mv \$cwd/*.cui output_cui
+	      #end if
+
+        ## Renaming identification features reports to findable names and moving them to the root folder
+	      #if len(output_reports_list)>0:
             #if '0' in $output_reports_list:
                 && find \$cwd/output_reports -name '*Certificate_of_Analysis.txt' -exec bash -c 'mv "$0" "certificate.txt"' {} \;
             #end if
@@ -174,6 +240,25 @@
             #end if
         #end if
 
+        ## Moving followup analysis to the root folder (it is necessary if zip option was not chosen, or it was chosen but also exporting out of the zip)
+        #if $exporting_options.followup_conditional.followup_conditional_selector == "yes" and ($exporting_options.zip_conditional.zip_output_boolean != 'zip' or ($exporting_options.zip_conditional.zip_output_boolean == 'zip' and $exporting_options.zip_conditional.export_reports_when_zip)):
+            ## Spectrum analysis are already expected to be into the output_reports folder itself
+            #if $exporting_options.followup_conditional.followup_export_accession_numbers != "off"
+                && mv \$cwd/output_reports/proteins_accession_numbers.txt \$cwd/proteins_accession_numbers.txt
+            #end if
+            #if $exporting_options.followup_conditional.followup_export_sequences != "off"
+                && mv \$cwd/output_reports/proteins_sequences.fasta \$cwd/proteins_sequences.fasta
+            #end if
+            #if $exporting_options.followup_conditional.followup_export_proteoforms != "off"
+                && mv \$cwd/output_reports/proteins_proteoforms.txt \$cwd/proteins_proteoforms.txt
+            #end if
+            #if $exporting_options.followup_conditional.followup_export_progenesis_conditional.followup_export_progenesis_selector != "off"
+                && mv \$cwd/output_reports/progenesis.txt \$cwd/progenesis.txt
+            #end if
+            #if $exporting_options.followup_conditional.followup_export_inclusion_list_conditional.followup_export_inclusion_list_selector != "off"
+                && mv \$cwd/output_reports/inclusion_list.txt \$cwd/inclusion_list.txt
+            #end if
+        #end if
         && cat $temp_stderr 2>&1;
 ]]>
     </command>
@@ -184,120 +269,202 @@
                 <filter type="add_value" value="@SEARCHGUI_MAJOR_VERSION@" />
             </options>
         </param>
-        <conditional name="processing_options">
-            <param name="processing_options_selector" type="select" label="Specify Advanced PeptideShaker Processing Options">
-                <option value="no" selected="True">Default Processing Options</option>
-                <option value="yes">Advanced Processing Options</option>
-            </param>
-            <when value="no" />
-            <when value="yes">
-                <param name="protein_fdr" label="FDR at the protein level" help="In percent (default 1% FDR: '1')" value="1" type="float" />
-                <param name="peptide_fdr" label="FDR at the peptide level" help="In percent (default 1% FDR: '1')" value="1" type="float" />
-                <param name="psm_fdr" label="FDR at the PSM level" help="In percent (default 1% FDR: '1')" value="1" type="float" />
-                <param name="protein_fraction_mw_confidence" value="95.0" type="float" label="Minimum confidence required for a protein in the fraction MW plot"
-                    help="default 95%: '95.0'" />
-                <conditional name="ptm_score">
-                    <param name="ptm_score_selector" type="select" label="The PTM probabilistic score to use for PTM localization">
-                        <option value="0">A-score</option>
-                        <option value="1" selected="True">PhosphoRS</option>
-                        <option value="2">None</option>
-                    </param>
-                    <when value="0" />
-                    <when value="1">
-                        <param name="score_neutral_losses" label="Include Neutral Losses in A Score" type="boolean" truevalue="1" falsevalue="0" />
-                        <param name="ptm_threshold" label="The threshold to use for the PTM scores" optional="true" value="" type="float"
-                            help="Automatic mode will be used if not set" />
-                    </when>
-                    <when value="2" />
-                </conditional>
-                <param name="ptm_sequence_matching_type" type="select" label="The PTM to peptide sequence matching type">
-                     <option value="0">Character Sequence</option>
-                     <option value="1" selected="true">Amino Acids</option>
-                     <option value="2">Indistinguishable Amino Acids</option>
-                </param>
-                <param name="ptm_alignment" label="Align peptide ambiguously localized PTMs on confident sites" type="boolean" truevalue="1" falsevalue="0" checked="true"/>
-                <!-- SKIPPING -protein_fraction_mw_confidence ${processing_options.protein_fraction_mw_confidence} -->
-            </when>
-        </conditional>
-        <conditional name="filtering_options">
-            <param name="filtering_options_selector" type="select" label="Specify Advanced Filtering Options"
-                help="Filter based on peptide lengths, precursor mass error, E value errors from X! Tandem and OMSSA, and include/exclude unknown PTM’s">
-                <option value="no" selected="True">Default Filtering Options</option>
-                <option value="yes">Advanced Filtering Options</option>
-            </param>
-            <when value="no" />
-            <when value="yes">
-                <param name="min_peptide_length" type="integer" label="Minimum Peptide Length" value="6" />
-                <param name="max_peptide_length" type="integer" label="Maximum Peptide Length" value="30" />
-                <param name="max_precursor_error" type="float" label="Maximum Precursor Error" value="10"
-                    help="Next option specifies units (Da or ppm)" />
-                <param name="max_precursor_error_type" label="Maximum Precursor Error Type" type="select">
-                    <option value="1">ppm</option>
-                    <option value="0">Daltons</option>
-                </param>
-                <!--param name="max_xtandem_e" label="Maximum X! Tandem e-value" value="100" type="float" help="" /-->
-                <!--param name="max_omssa_e" label="Maximum OMSSA e-value" value="100" type="float" help="" /-->
-                <!--param name="max_mascot_e" label="Maximum Mascot e-value filter" value="100" type="float" help="" /-->
-                <param name="exclude_unknown_ptms" label="Exclude Unknown PTMs" type="boolean" truevalue="1" falsevalue="0" checked="true" />
-            </when>
-        </conditional>
-        <conditional name="contact_options">
-            <param name="contact_options_selector" type="select" label="Specify Contact Information for mzIdendML"
-                help="Create a Galaxy workflow to save these values">
-                <option value="no" selected="True">GalaxyP Project contact (Not suitable for PRIDE submission)</option>
-                <option value="yes">Specify Contact Information</option>
-            </param>
-            <when value="no" />
-            <when value="yes">
-                <param name="contact_first_name" type="text" value="" label="Contact first name.">
-                    <validator type="regex" message="">\S+.*</validator>
-                </param>
-                <param name="contact_last_name" type="text" value="" label="Contact last name.">
-                    <validator type="regex" message="">\S+.*</validator>
-                </param>
-                <param name="contact_email" type="text" value="" label="Contact e-mail.">
-                    <validator type="regex" message="">\S+@\S+</validator>
-                </param>
-                <param name="contact_address" type="text" value="" label="Contact address.">
-                    <validator type="regex" message="">\S+.*</validator>
-                </param>
-                <param name="contact_url" type="text" value="" optional="true" label="Contact URL.">
-                </param>
-                <param name="organization_name" type="text" value="" label="Organization name.">
-                    <validator type="regex" message="">\S+.*</validator>
-                </param>
-                <param name="organization_email" type="text" value="" label="Organization e-mail.">
-                    <validator type="regex" message="">\S+@\S+</validator>
-                </param>
-                <param name="organization_address" type="text" value="" label="Organization address.">
-                    <validator type="regex" message="">\S+.*</validator>
-                </param>
-                <param name="organization_url" type="text" value="" optional="true" label="Organization URL.">
-                </param>
-            </when>
-        </conditional>
 
-        <section name="exporting_options" expanded="true" title="Exporting options">
+        <section name="optional_main_parameters" expanded="false" title="Optional main parameters">
+              <param format="json" name="input_optional_identification_parameters" type="data" label="Identification parameters" optional="true" help="This optional parameter file will be used instead of the default one"/>
+              <param format="fasta" name="input_fasta_file" type="data" label="Fasta file" optional="true" help="This optional fasta file will be used instead of the one included in the SearchGUI file (if it exists). If the SearchGUI file does not include the fasta file, this parameter is must be considered as mandatory."/>
+              <param format="mgf,mzml" name="input_optional_spectrum_files" type="data" label="Spectrum files" optional="true" multiple="true" help="Optional spectrum files will be used together with spectra included in the SearchGUI output"/>
+        </section>
+
+        <section name="exporting_options" expanded="true" title="Exporting options" help="All different outputs PeptideShaker may produce">
+
+            <conditional name="zip_conditional">
+                <param name="zip_output_boolean" type="boolean" truevalue="zip" falsevalue="separate" checked="false" label="Compress results into a single zip file" />
+                <when value="separate">
+                    <param name="export_psdb" type="boolean" truevalue="1" falsevalue="0" checked="false" label="Exports PeptideShakers‘ .psdb file" />
+                </when>
+                <when value="zip">
+                    <param name="export_reports_when_zip" type="boolean" truevalue="1" falsevalue="0" checked="false" label="Also export reports out of the zip" />
+                    <param name="export_mgf_when_zip" type="boolean" truevalue="1" falsevalue="0" checked="false" label="Also export mgf file/s out of the zip" help=".cui index files are exported as a different collection too" />
+                </when>
+            </conditional>
 
             <conditional name="mzidentml_conditional">
                 <param name="mzidentml_creation" type="boolean" truevalue="1" falsevalue="0" checked="true" label="Creates a mzIdentML file" />
                 <when value="1">
               	     <param name="include_sequences" type="boolean" truevalue="1" falsevalue="0" checked="false" label="Include the protein sequences in the mzIdentML file" />
+
+                     <conditional name="contact_options">
+                         <param name="contact_options_selector" type="select" label="Contact Information"
+                             help="Create a Galaxy workflow to save these values">
+                             <option value="no" selected="True">GalaxyP Project contact (Not suitable for PRIDE submission)</option>
+                             <option value="yes">Specify Contact Information</option>
+                         </param>
+                         <when value="no" />
+                         <when value="yes">
+                             <param name="contact_first_name" type="text" value="" label="Contact first name.">
+                                 <validator type="regex" message="">\S+.*</validator>
+                             </param>
+                             <param name="contact_last_name" type="text" value="" label="Contact last name.">
+                                 <validator type="regex" message="">\S+.*</validator>
+                             </param>
+                             <param name="contact_email" type="text" value="" label="Contact e-mail.">
+                                 <validator type="regex" message="">\S+@\S+</validator>
+                             </param>
+                             <param name="contact_address" type="text" value="" label="Contact address.">
+                                 <validator type="regex" message="">\S+.*</validator>
+                             </param>
+                             <param name="contact_url" type="text" value="" optional="true" label="Contact URL.">
+                             </param>
+                             <param name="organization_name" type="text" value="" label="Organization name.">
+                                 <validator type="regex" message="">\S+.*</validator>
+                             </param>
+                             <param name="organization_email" type="text" value="" label="Organization e-mail.">
+                                 <validator type="regex" message="">\S+@\S+</validator>
+                             </param>
+                             <param name="organization_address" type="text" value="" label="Organization address.">
+                                 <validator type="regex" message="">\S+.*</validator>
+                             </param>
+                             <param name="organization_url" type="text" value="" optional="true" label="Organization URL.">
+                             </param>
+                         </when>
+                     </conditional>
+
                 </when>
                 <when value="0" />
             </conditional>
 
-            <conditional name="zip_conditional">
-                <param name="zip_output_boolean" type="boolean" truevalue="zip" falsevalue="separate" checked="false" label="Compress results into a single zip file" />
-                <when value="separate">
-                    <param name="export_cps" type="boolean" truevalue="1" falsevalue="0" checked="false" label="Exports the CPS file" />
-                </when>
-                <when value="zip">
-                    <param name="export_reports_when_zip" type="boolean" truevalue="1" falsevalue="0" checked="false" label="Also export reports out of the zip" />
+            <!-- FOLLOW-UP REPORTS  -->
+            <conditional name="followup_conditional">
+                <param name="followup_conditional_selector" type="select" label="Follow-up analysis export options">
+                    <option value="yes">Export follow-up analysis</option>
+                    <option value="no" selected="True">Do not export</option>
+                </param>
+                <when value="no" />
+                <when value="yes">
+                    <param name="followup_export_spectra" label="Spectra: Export spectrum files as MGF" type="select" help="Commonly: spectra of Non-Validated PSMs">
+                        <option value="0" >Spectra of Non-Validated PSMs</option>
+                        <option value="1" >Spectra of Non-Validated Peptides</option>
+                        <option value="2" >Spectra of Non-Validated Proteins</option>
+                        <option value="3" >Spectra of Validated PSMs</option>
+                        <option value="4" >Spectra of Validated PSMs of Validated Peptides</option>
+                        <option value="5" >Spectra of validated PSMs of Validated Peptides of Validated Proteins</option>
+                        <option value="off" selected="True">Do not export</option>
+                    </param>
+                    <param name="followup_export_accession_numbers" label="Proteins: Export accession numbers as TXT" type="select" help="Commonly: Main Accession of Validated Protein Groups">
+                        <option value="0" >Main Accession of Validated Protein Groups</option>
+                        <option value="1" >All Accessions of Validated Protein Groups</option>
+                        <option value="2" >Non-Validated Accessions</option>
+                        <option value="off" selected="True">Do not export</option>
+                    </param>
+                    <param name="followup_export_sequences" label="Proteins: Export protein details/sequences in fasta format" type="select" help="Commonly: Main Accession of Validated Protein Groups">
+                        <option value="0" >Main Accession of Validated Protein Groups</option>
+                        <option value="1" >All Accessions of Validated Protein Groups</option>
+                        <option value="2" >Non-Validated Accessions</option>
+                        <option value="off" selected="True">Do not export</option>
+                    </param>
+                    <param name="followup_export_proteoforms" label="Proteins: Export proteoforms as TXT" type="select">
+                        <option value="on">Export</option>
+                        <option value="off" selected="True">Do not export</option>
+                    </param>
+                    <conditional name="followup_export_progenesis_conditional">
+                        <param name="followup_export_progenesis_selector" label="Label free quantification: Exports identification results in Progenesis LC-MS compatible format as TXT" type="select" help="Commonly: Validated PSMs of Validated Peptides of Validated Proteins">
+                            <option value="0">Validated PSMs of Validated Peptides of Validated Proteins</option>
+                            <option value="1">Validated PSMs of Validated Peptides</option>
+                            <option value="2">Validated PSMs</option>
+                            <option value="3">Confidently localized PTMs of Validated PSMs of Validated Peptides of Validated Proteins</option>
+                            <option value="off" selected="True">Do not export</option>
+                        </param>
+                        <when value="0"/>
+                        <when value="1"/>
+                        <when value="2"/>
+                        <when value="3">
+                            <param name="followup_export_progenesis_ptms" type="select" label="Targeted PTMs" multiple="true"
+                                help="">
+                                <expand macro="modifications"/>
+                            </param>
+                        </when>
+                        <when value="off"/>
+                    </conditional>
+                    <conditional name="followup_export_inclusion_list_conditional">
+                        <param name="followup_export_inclusion_list_selector" label="Inclusion/Exclusion list: Exports a file for an inclusion list of validated hits" type="select" help="Commonly: Thermo">
+                            <option value="0" >Thermo</option>
+                            <option value="1" >ABI</option>
+                            <option value="2" >Bruker</option>
+                            <option value="3" >MassLynx</option>
+                            <option value="off" selected="True">Do not export</option>
+                        </param>
+                        <when value="0">
+                            <param name="followup_export_inclusion_list_peptide_filters" type="select" label="Peptide Filters" multiple="true" optional="true" display="checkboxes"
+                                help="">
+                                <option value="0">Miscleaved Peptides</option>
+                                <option value="1">Reactive Peptides</option>
+                                <option value="2">Degenerated Peptides</option>
+                            </param>
+                            <param name="followup_export_inclusion_list_protein_filters" type="select" label="Protein Filters" multiple="true" optional="true" display="checkboxes"
+                                help="">
+                                <option value="1">Related Proteins</option>
+                                <option value="2">Related and Unrelated Proteins</option>
+                                <option value="3">Unrelated Proteins</option>
+                            </param>
+                            <param name="followup_export_inclusion_list_rt_window" type="integer" value="20" label="Retention time window for the inclusion list export (in seconds)"
+                                help=""/>
+                        </when>
+                        <when value="1">
+                            <param name="followup_export_inclusion_list_peptide_filters" type="select" label="Peptide Filters" multiple="true" optional="true" display="checkboxes"
+                                help="">
+                                <option value="0">Miscleaved Peptides</option>
+                                <option value="1">Reactive Peptides</option>
+                                <option value="2">Degenerated Peptides</option>
+                            </param>
+                            <param name="followup_export_inclusion_list_protein_filters" type="select" label="Protein Filters" multiple="true" optional="true" display="checkboxes"
+                                help="">
+                                <option value="1">Related Proteins</option>
+                                <option value="2">Related and Unrelated Proteins</option>
+                                <option value="3">Unrelated Proteins</option>
+                            </param>
+                            <param name="followup_export_inclusion_list_rt_window" type="integer" value="20" label="Retention time window for the inclusion list export (in seconds)"
+                                help=""/>
+                        </when>
+                        <when value="2">
+                            <param name="followup_export_inclusion_list_peptide_filters" type="select" label="Peptide Filters" multiple="true" optional="true" display="checkboxes"
+                                help="">
+                                <option value="0">Miscleaved Peptides</option>
+                                <option value="1">Reactive Peptides</option>
+                                <option value="2">Degenerated Peptides</option>
+                            </param>
+                            <param name="followup_export_inclusion_list_protein_filters" type="select" label="Protein Filters" multiple="true" optional="true" display="checkboxes"
+                                help="">
+                                <option value="1">Related Proteins</option>
+                                <option value="2">Related and Unrelated Proteins</option>
+                                <option value="3">Unrelated Proteins</option>
+                            </param>
+                            <param name="followup_export_inclusion_list_rt_window" type="integer" value="20" label="Retention time window for the inclusion list export (in seconds)"
+                                help=""/>
+                        </when>
+                        <when value="3">
+                            <param name="followup_export_inclusion_list_peptide_filters" type="select" label="Peptide Filters" multiple="true" optional="true" display="checkboxes"
+                                help="">
+                                <option value="0">Miscleaved Peptides</option>
+                                <option value="1">Reactive Peptides</option>
+                                <option value="2">Degenerated Peptides</option>
+                            </param>
+                            <param name="followup_export_inclusion_list_protein_filters" type="select" label="Protein Filters" multiple="true" optional="true" display="checkboxes"
+                                help="">
+                                <option value="1">Related Proteins</option>
+                                <option value="2">Related and Unrelated Proteins</option>
+                                <option value="3">Unrelated Proteins</option>
+                            </param>
+                            <param name="followup_export_inclusion_list_rt_window" type="integer" value="20" label="Retention time window for the inclusion list export (in seconds)"
+                                help=""/>
+                        </when>
+                        <when value="off"/>
+                    </conditional>
                 </when>
             </conditional>
 
-            <param name="output_reports" type="select" display="checkboxes" multiple="True" optional="true" label="Reports to be generated">
+            <!-- IDENTIFICATION FEATURES REPORTS  -->
+            <param name="output_reports" type="select" display="checkboxes" multiple="True" optional="true" label="Identification features reports to be generated">
                 <option value="3">PSM Report</option>
                 <option value="4">PSM Report with non-validated matches</option>
                 <option value="2">PSM Phosphorylation Report</option>
@@ -316,99 +483,189 @@
 
     </inputs>
     <outputs>
-        <data format="mzid" name="mzidentML" from_work_dir="output.mzid" label="${tool.name} on ${on_string}: mzidentML file">
-            <filter>exporting_options['zip_conditional']['zip_output_boolean'] is False and exporting_options['mzidentml_conditional']['mzidentml_creation'] is True</filter>
-        </data>
-        <data format="peptideshaker_archive" name="output_cps" from_work_dir="peptideshaker_output.cpsx" label="${tool.name} on ${on_string}: CPS file">
-            <filter>exporting_options['zip_conditional']['zip_output_boolean'] is False and exporting_options['zip_conditional']['export_cps'] is True</filter>
-        </data>
         <data format="zip" name="output_zip" from_work_dir="peptideshaker_output.zip" label="${tool.name} on ${on_string}: Archive">
             <filter>exporting_options['zip_conditional']['zip_output_boolean'] is True</filter>
         </data>
-	<!--
-        <data format="tabular" name="reports">
-            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.txt" format="tabular" directory="output_reports" visible="true" assign_primary_output="true" />
+        <data format="mzid" name="mzidentML" from_work_dir="output.mzid" label="${tool.name} on ${on_string}: mzidentML file">
+            <filter>exporting_options['zip_conditional']['zip_output_boolean'] is False and exporting_options['mzidentml_conditional']['mzidentml_creation'] is True</filter>
         </data>
-        -->
-	      <data format="txt" name="output_certificate" from_work_dir="certificate.txt" label="${tool.name} on ${on_string}: Parameters">
-            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or (exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_reports_when_zip'] is True) ) and str(exporting_options['output_reports']) != 'None' and '0' in exporting_options['output_reports']</filter>
+        <data format="peptideshaker_archive" name="output_psdb" from_work_dir="peptideshaker_output.psdb" label="${tool.name} on ${on_string}: PSDB file">
+            <filter>exporting_options['zip_conditional']['zip_output_boolean'] is False and exporting_options['zip_conditional']['export_psdb'] is True</filter>
+        </data>
+        <collection name="output_mgf" type="list" label="${tool.name} on ${on_string}: Mgf" >
+            <filter>exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_mgf_when_zip'] is True</filter>
+            <discover_datasets pattern="__name_and_ext__" directory="output_mgf" ext="mgf"/>
+        </collection>
+        <collection name="output_cui" type="list" label="${tool.name} on ${on_string}: Cui" >
+            <filter>exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_mgf_when_zip'] is True</filter>
+            <discover_datasets pattern="__name_and_ext__" directory="output_cui" ext="cui"/>
+        </collection>
+
+        <!-- Follow-up analysis -->
+        <collection name="output_spectra" type="list" label="${tool.name} on ${on_string}: Spectra" >
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or exporting_options['zip_conditional']['export_reports_when_zip'] is True) and exporting_options['followup_conditional']['followup_conditional_selector'] == 'yes' and exporting_options['followup_conditional']['followup_export_spectra'] != 'off' </filter>
+            <discover_datasets pattern="__name_and_ext__" directory="output_reports" ext="mgf"/>
+        </collection>
+        <data format="txt" name="output_proteins_accessions" from_work_dir="proteins_accession_numbers.txt" label="${tool.name} on ${on_string}: Proteins Accession Numbers">
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or exporting_options['zip_conditional']['export_reports_when_zip'] is True) and exporting_options['followup_conditional']['followup_conditional_selector'] == 'yes' and exporting_options['followup_conditional']['followup_export_accession_numbers'] != 'off' </filter>
+        </data>
+        <data format="fasta" name="output_proteins_sequences" from_work_dir="proteins_sequences.fasta" label="${tool.name} on ${on_string}: Proteins Sequences">
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or exporting_options['zip_conditional']['export_reports_when_zip'] is True) and exporting_options['followup_conditional']['followup_conditional_selector'] == 'yes' and exporting_options['followup_conditional']['followup_export_sequences'] != 'off' </filter>
+        </data>
+        <data format="txt" name="output_proteoforms" from_work_dir="proteins_proteoforms.txt" label="${tool.name} on ${on_string}: Proteins Proteoforms">
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or exporting_options['zip_conditional']['export_reports_when_zip'] is True) and exporting_options['followup_conditional']['followup_conditional_selector'] == 'yes' and exporting_options['followup_conditional']['followup_export_proteoforms'] != 'off' </filter>
+        </data>
+        <data format="txt" name="output_progenesis" from_work_dir="progenesis.txt" label="${tool.name} on ${on_string}: Progenesis">
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or exporting_options['zip_conditional']['export_reports_when_zip'] is True) and exporting_options['followup_conditional']['followup_conditional_selector'] == 'yes' and exporting_options['followup_conditional']['followup_export_progenesis_conditional']['followup_export_progenesis_selector'] != 'off' </filter>
+        </data>
+        <data format="txt" name="output_inclusion_list" from_work_dir="inclusion_list.txt" label="${tool.name} on ${on_string}: Inclusion/Exclusion List">
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or exporting_options['zip_conditional']['export_reports_when_zip'] is True) and exporting_options['followup_conditional']['followup_conditional_selector'] == 'yes' and exporting_options['followup_conditional']['followup_export_inclusion_list_conditional']['followup_export_inclusion_list_selector'] != 'off' </filter>
+        </data>
+
+        <!-- Identification Features outputs -->
+	      <data format="txt" name="output_certificate" from_work_dir="certificate.txt" label="${tool.name} on ${on_string}: Certificate of Analysis">
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or exporting_options['zip_conditional']['export_reports_when_zip'] is True) and str(exporting_options['output_reports']) != 'None' and str(exporting_options['output_reports']) != '' and '0' in exporting_options['output_reports']</filter>
         </data>
         <data format="tabular" name="output_hierarchical" from_work_dir="hierarchical.txt" label="${tool.name} on ${on_string}: Hierarchical Report">
-            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or (exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_reports_when_zip'] is True) ) and str(exporting_options['output_reports']) != 'None' and '1' in exporting_options['output_reports']</filter>
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or exporting_options['zip_conditional']['export_reports_when_zip'] is True) and str(exporting_options['output_reports']) != 'None' and str(exporting_options['output_reports']) != '' and '1' in exporting_options['output_reports']</filter>
         </data>
         <data format="tabular" name="output_psm_phosphorylation" from_work_dir="psm_phospho.txt" label="${tool.name} on ${on_string}: PSM Phosphorylation Report">
-            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or (exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_reports_when_zip'] is True) ) and str(exporting_options['output_reports']) != 'None' and '2' in exporting_options['output_reports']</filter>
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or exporting_options['zip_conditional']['export_reports_when_zip'] is True) and str(exporting_options['output_reports']) != 'None' and str(exporting_options['output_reports']) != '' and '2' in exporting_options['output_reports']</filter>
         </data>
         <data format="tabular" name="output_psm" from_work_dir="psm.txt" label="${tool.name} on ${on_string}: PSM Report">
-            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or (exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_reports_when_zip'] is True) ) and str(exporting_options['output_reports']) != 'None' and '3' in exporting_options['output_reports']</filter>
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or exporting_options['zip_conditional']['export_reports_when_zip'] is True) and str(exporting_options['output_reports']) != 'None' and str(exporting_options['output_reports']) != '' and '3' in exporting_options['output_reports']</filter>
         </data>
         <data format="tabular" name="output_psm_nonvalidated" from_work_dir="psm_nonvalidated.txt" label="${tool.name} on ${on_string}: PSM Report with non-validated matches">
-            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or (exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_reports_when_zip'] is True) ) and str(exporting_options['output_reports']) != 'None' and '4' in exporting_options['output_reports']</filter>
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or exporting_options['zip_conditional']['export_reports_when_zip'] is True) and str(exporting_options['output_reports']) != 'None' and str(exporting_options['output_reports']) != '' and '4' in exporting_options['output_reports']</filter>
         </data>
         <data format="tabular" name="output_extended_psm" from_work_dir="psmx.txt" label="${tool.name} on ${on_string}: Extended PSM Report">
-            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or (exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_reports_when_zip'] is True) ) and str(exporting_options['output_reports']) != 'None' and '11' in exporting_options['output_reports']</filter>
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or exporting_options['zip_conditional']['export_reports_when_zip'] is True) and str(exporting_options['output_reports']) != 'None' and str(exporting_options['output_reports']) != '' and '11' in exporting_options['output_reports']</filter>
         </data>
         <data format="tabular" name="output_peptides_phosphorylation" from_work_dir="peptides_phospho.txt" label="${tool.name} on ${on_string}: Peptide Phosphorylation Report">
-            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or (exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_reports_when_zip'] is True) ) and str(exporting_options['output_reports']) != 'None' and '5' in exporting_options['output_reports']</filter>
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or exporting_options['zip_conditional']['export_reports_when_zip'] is True) and str(exporting_options['output_reports']) != 'None' and str(exporting_options['output_reports']) != '' and '5' in exporting_options['output_reports']</filter>
         </data>
         <data format="tabular" name="output_peptides" from_work_dir="peptides.txt" label="${tool.name} on ${on_string}: Peptide Report">
-            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or (exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_reports_when_zip'] is True) ) and str(exporting_options['output_reports']) != 'None' and '6' in exporting_options['output_reports']</filter>
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or exporting_options['zip_conditional']['export_reports_when_zip'] is True) and str(exporting_options['output_reports']) != 'None' and str(exporting_options['output_reports']) != '' and '6' in exporting_options['output_reports']</filter>
         </data>
         <data format="tabular" name="output_peptides_nonvalidated" from_work_dir="peptides_nonvalidated.txt" label="${tool.name} on ${on_string}: Peptide Report with non-validated matches">
-            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or (exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_reports_when_zip'] is True) ) and str(exporting_options['output_reports']) != 'None' and '7' in exporting_options['output_reports']</filter>
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or exporting_options['zip_conditional']['export_reports_when_zip'] is True) and str(exporting_options['output_reports']) != 'None' and str(exporting_options['output_reports']) != '' and '7' in exporting_options['output_reports']</filter>
         </data>
         <data format="tabular" name="output_proteins_phosphorylation" from_work_dir="proteins_phospho.txt" label="${tool.name} on ${on_string}: Protein Phosphorylation Report">
-            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or (exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_reports_when_zip'] is True) ) and str(exporting_options['output_reports']) != 'None' and '8' in exporting_options['output_reports']</filter>
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or exporting_options['zip_conditional']['export_reports_when_zip'] is True) and str(exporting_options['output_reports']) != 'None' and str(exporting_options['output_reports']) != '' and '8' in exporting_options['output_reports']</filter>
         </data>
         <data format="tabular" name="output_proteins" from_work_dir="proteins.txt" label="${tool.name} on ${on_string}: Protein Report">
-            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or (exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_reports_when_zip'] is True) ) and str(exporting_options['output_reports']) != 'None' and '9' in exporting_options['output_reports']</filter>
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or exporting_options['zip_conditional']['export_reports_when_zip'] is True) and str(exporting_options['output_reports']) != 'None' and str(exporting_options['output_reports']) != '' and '9' in exporting_options['output_reports']</filter>
         </data>
-        <data format="tabular" name="output_proteins_nonvalidated" from_work_dir="proteins_nonvalidated.txt" label="${tool.name} on ${on_string}: Protein Repor with non-validated matches">
-            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or (exporting_options['zip_conditional']['zip_output_boolean'] is True and exporting_options['zip_conditional']['export_reports_when_zip'] is True) ) and str(exporting_options['output_reports']) != 'None' and '10' in exporting_options['output_reports']</filter>
+        <data format="tabular" name="output_proteins_nonvalidated" from_work_dir="proteins_nonvalidated.txt" label="${tool.name} on ${on_string}: Protein Report with non-validated matches">
+            <filter>(exporting_options['zip_conditional']['zip_output_boolean'] is False or exporting_options['zip_conditional']['export_reports_when_zip'] is True) and str(exporting_options['output_reports']) != 'None' and str(exporting_options['output_reports']) != '' and '10' in exporting_options['output_reports']</filter>
         </data>
     </outputs>
+
     <tests>
-        <test expect_num_outputs="1">
-            <param name="searchgui_input" value="tiny_searchgui_modifications_result1.zip" ftype="searchgui_archive"/>
-            <param name="processing_options_selector" value="no"/>
-            <param name="filtering_options_selector" value="no"/>
-            <param name="mzidentml_creation" value="0"/>
-            <param name="zip_output_boolean" value="zip"/>
-            <param name="export_cps" value="1"/>
-            <output name="output_zip" file="peptide_shaker_modifications_result1.zip" ftype="zip" compare="sim_size" delta="3000" />
-        </test>
-        <test expect_num_outputs="12">
-            <param name="searchgui_input" value="tiny_searchgui_modifications_result1.zip" ftype="searchgui_archive"/>
-            <param name="processing_options_selector" value="no"/>
-            <param name="filtering_options_selector" value="yes"/>
-            <param name="min_peptide_length" value="1"/>
-            <param name="mzidentml_creation" value="0"/>
-            <param name="zip_output_boolean" value="separate"/>
-            <param name="output_reports" value="0,1,2,3,4,5,6,7,8,9,10,11"/>
-            <output name="output_certificate" file="peptide_shaker_modifications_result1.output_certificate" ftype="txt" lines_diff="8"/>
-            <output name="output_hierarchical" file="peptide_shaker_modifications_result1.output_hierarchical" ftype="tabular"/>
-            <output name="output_extended_psm" file="peptide_shaker_modifications_result1.output_extended_psm" ftype="tabular"/>
-            <output name="output_psm" file="peptide_shaker_modifications_result1.output_psm" ftype="tabular"/>
-            <output name="output_psm_phosphorylation" file="peptide_shaker_modifications_result1.output_psm_phosphorylation" ftype="tabular"/>
-            <output name="output_psm_nonvalidated" file="peptide_shaker_modifications_result1.output_psm_nonvalidated" ftype="tabular"/>
-            <output name="output_peptides" file="peptide_shaker_modifications_result1.output_peptides" ftype="tabular"/>
-            <output name="output_peptides_phosphorylation" file="peptide_shaker_modifications_result1.output_peptides_phosphorylation" ftype="tabular"/>
-            <output name="output_peptides_nonvalidated" file="peptide_shaker_modifications_result1.output_peptides_nonvalidated" ftype="tabular"/>
-            <output name="output_proteins" file="peptide_shaker_modifications_result1.output_proteins" ftype="tabular"/>
-            <output name="output_proteins_phosphorylation" file="peptide_shaker_modifications_result1.output_proteins_phosphorylation" ftype="tabular"/>
-            <output name="output_proteins_nonvalidated" file="peptide_shaker_modifications_result1.output_proteins_nonvalidated" ftype="tabular"/>
-        </test>
-        <test expect_num_outputs="2">
-            <param name="searchgui_input" value="tiny_searchgui_modifications_result1.zip" ftype="searchgui_archive"/>
-            <param name="processing_options_selector" value="no"/>
-            <param name="filtering_options_selector" value="no"/>
-            <param name="mzidentml_creation" value="0"/>
-            <param name="zip_output_boolean" value="separate"/>
-            <param name="export_cps" value="1"/>
-            <param name="output_reports" value="3"/>
-            <output name="output_cps" file="peptide_shaker_modifications_result1.cpsx" ftype="peptideshaker_archive" compare="sim_size" delta="3000"/>
-	          <output name="output_psm" file="peptide_shaker_modifications_result1.output_psm" ftype="tabular"/>
-        </test>
+      <!-- Basic test: default identification parameters, searchgui_tinydb1.fasta, 4 search engines xx-->
+      <test expect_num_outputs="1">
+          <param name="searchgui_input" value="searchgui_tiny_result_default_4engines.zip" ftype="searchgui_archive"/>
+          <param name="mzidentml_creation" value="0"/>
+          <param name="export_psdb" value="1"/>
+          <output name="output_psdb" ftype="peptideshaker_archive">
+              <assert_contents>
+                  <has_size value="122880" delta="3000"/>
+              </assert_contents>
+          </output>
+      </test>
+
+      <!-- Modifications test: default identification parameters with modifications, searchgui_tinydb1.fasta, 4 search engines -->
+      <test expect_num_outputs="1">
+          <param name="searchgui_input" value="searchgui_tiny_result_default_4engines_modifications.zip" ftype="searchgui_archive"/>
+          <param name="mzidentml_creation" value="0"/>
+          <param name="export_psdb" value="1"/>
+          <output name="output_zip" ftype="peptideshaker_archive">
+              <assert_contents>
+                  <has_size value="126976" delta="3000"/>
+              </assert_contents>
+          </output>
+      </test>
+
+      <!-- Reports tests: default identification parameters, small spectra, some search engines (XTandem,MSGF+, OMSSA), all identification reports -->
+      <test expect_num_outputs="12">
+          <param name="searchgui_input" value="searchgui_smallsearch_default_somesearchengines_modifications.zip" ftype="searchgui_archive"/>
+          <param name="mzidentml_creation" value="0"/>
+          <param name="zip_output_boolean" value="separate"/>
+          <param name="export_psdb" value="0"/>
+          <param name="output_reports" value="0,1,2,3,4,5,6,7,8,9,10,11"/>
+          <output name="output_certificate" file="peptideshaker_reports_output_certificate.txt" ftype="txt" lines_diff="8"/>
+          <output name="output_hierarchical" file="peptideshaker_reports_output_hierarchical.tabular" ftype="tabular"/>
+          <output name="output_extended_psm" file="peptideshaker_reports_output_extendedpsm.tabular" ftype="tabular"/>
+          <output name="output_psm" file="peptideshaker_reports_output_psm.tabular" ftype="tabular"/>
+          <output name="output_psm_phosphorylation" file="peptideshaker_reports_output_psmphosphorylation.tabular" ftype="tabular"/>
+          <output name="output_psm_nonvalidated" file="peptideshaker_reports_output_psmnonvalidated.tabular" ftype="tabular"/>
+          <output name="output_peptides" file="peptideshaker_reports_output_peptides.tabular" ftype="tabular"/>
+          <output name="output_peptides_phosphorylation" file="peptideshaker_reports_output_peptidesphosphorylation.tabular" ftype="tabular"/>
+          <output name="output_peptides_nonvalidated" file="peptideshaker_reports_output_peptidesnonvalidated.tabular" ftype="tabular"/>
+          <output name="output_proteins" file="peptideshaker_reports_output_proteins.tabular" ftype="tabular"/>
+          <output name="output_proteins_phosphorylation" file="peptideshaker_reports_output_proteinsphosphorylation.tabular" ftype="tabular"/>
+          <output name="output_proteins_nonvalidated" file="peptideshaker_reports_output_proteinsnonvalidated.tabular" ftype="tabular"/>
+      </test>
+
+      <!-- followup analysis tests: default identification parameters, small spectra, some search engines (XTandem,MSGF+, OMSSA), all followup analysis -->
+      <test expect_num_outputs="5">
+          <param name="searchgui_input" value="searchgui_smallsearch_default_somesearchengines_modifications.zip" ftype="searchgui_archive"/>
+          <param name="mzidentml_creation" value="0"/>
+          <param name="zip_output_boolean" value="separate"/>
+          <param name="export_psdb" value="0"/>
+          <param name="followup_conditional_selector" value="yes"/>
+          <param name="followup_export_spectra" value="0"/>
+          <param name="followup_export_accession_numbers" value="0"/>
+          <param name="followup_export_sequences" value="0"/>
+          <param name="followup_export_proteoforms" value="on"/>
+          <param name="followup_export_progenesis_selector" value="0"/>
+          <output_collection name="output_spectra" type="list">
+              <element name="searchgui_smallspectra_non_validated_PSMs" ftype="mgf">
+                  <assert_contents>
+                      <has_line_matching expression="236.0470428 11.674492836"/>
+                      <has_line_matching expression="520.9862671 4666.4399414063"/>
+                      <has_line_matching expression="267.4349976 50.7710571289"/>
+                      <has_line_matching expression="665.7418213 3.8165459633"/>
+                      <has_line_matching expression="672.2329102 146.2656707764"/>
+                      <has_line_matching expression="634.7792969 2367.6374511719"/>
+                  </assert_contents>
+              </element>
+          </output_collection>
+          <output name="output_proteins_accessions" ftype="txt">
+              <assert_contents>
+                  <has_line_matching expression="cds.comp41779_c0_seq1"/>
+                  <has_line_matching expression="cds.comp41890_c0_seq1"/>
+                  <has_line_matching expression="cds.comp41890_c0_seq1_REVERSED"/>
+                  <has_line_matching expression="cds.comp8310_c0_seq2"/>
+              </assert_contents>
+          </output>
+          <output name="output_proteins_sequences" ftype="fasta">
+              <assert_contents>
+                  <has_line_matching expression=">generic|cds.comp41779_c0_seq1|m.9429 RecName: Full=70 kDa neurofilament protein; 1051067 GO:0005882 GO:0005198 Identity: 30.62 EValue:7.0e-6"/>
+                  <has_line_matching expression="METTKERKEKSTVVTKRQSMGATAHVQPKFIQVNRRSHVVGAGLGGGSMGSMNQSMSLHGGRASLGMAAGVAGGIATKDMGTMKVKREGEKKDMQNLNDRFAGYIAKVRSLQAENEQLRLKLSKKRREFDVEPLKEAYQAEIDEAKNLLLDANKENGELKISITTYEEEIEDLHATARINEDRIDELQDKVNKLIDENSHREAECSMLHKKLDELEKQVAHWRAKYNEVNTQLQATRADLKDETQQRIFLQQKVGNLEEELEFLRSVTDAEIKEYKAMLSKEDDTGTNVSAAWNNEMSNCMKELREEYDQRLADISDEMSARYESQLSQIRQSAHAEPVAAVHTKSEKSTGMVSVQKDMRIKELESQLERMKMEIITITNQLQRSNEDLENEKDLRTTEVNKLHVEMESMIEELQMLMDAKLSLELEIAAYRKLLEGEENRISTGYITENIGGFRSEAGDNLANILEFGSGGGGGGGGGGSGSGSGSGLAGDSASTSTLTGRLTIQRSSKSVISIGEVESEGQYVTLENTSSGRSKTSVNMKGWKLDRLISATSISPEHKIDFLFKDPVVLEGEQSIKIWAKNYQKMAKKGDIIATVDEWGPVNRNSVFSLYDEKDALKANLSTKVVT"/>
+                  <has_line_matching expression="generic|cds.comp41890_c0_seq1_REVERSED|m.9546 RecName: Full=70 kDa neurofilament protein; 1051067 GO:0005882 GO:0005198 Identity: 38.58 EValue:4.0e-20-REVERSED"/>
+                  <has_line_matching expression="LNYTTELNYTAKEDGRTNLLVTNVKAGVGLRSKNHWVLDGSNPDGMGNAWVKAFGGPKLVLNEIEYESIDINDSNQMIKWGSLDVTHSNSTNELLIFSGDRDTESIAVPGKNNKRYTSHEQLEGKVLAPTPSQY"/>
+              </assert_contents>
+          </output>
+          <output name="output_proteoforms" ftype="txt">
+              <assert_contents>
+                  <has_line_matching expression="cds.comp8310_c0_seq2"/>
+                  <has_line_matching expression="cds.comp41890_c0_seq1_REVERSED"/>
+                  <has_line_matching expression="cds.comp41779_c0_seq1"/>
+                  <has_line_matching expression="cds.comp41779_c0_seq2"/>
+                  <has_line_matching expression="cds.comp41779_c0_seq3"/>
+              </assert_contents>
+          </output>
+          <output name="output_progenesis" ftype="txt">
+              <assert_contents>
+                  <has_text_matching expression="NLVAEESMNMLKNK\t:::::::::::::::\t100.0\tcds.comp8310_c0_seq2\tm.1138 RecName: Full=70 kDa neurofilament protein; 1051067 GO:0005882 GO:0005198 Identity: 22.01 EValue:2.0e-16\tsmall.17.17."/>
+                  <has_text_matching expression="LDRLISATSISPEHKIDFLFK\t::::::::::::::::::::::\t100.0\tcds.comp41779_c0_seq1\tm.9429 RecName: Full=70 kDa neurofilament protein; 1051067 GO:0005882 GO:0005198 Identity: 30.62 EValue:7.0e-67\tsmall.3.3."/>
+                  <has_n_columns n="8" />
+              </assert_contents>
+          </output>
+
+      </test>
+
     </tests>
     <help>
 **What it does**
@@ -419,144 +676,386 @@ http://compomics.github.io/projects/peptide-shaker.html
 
 ----
 
-Reports
+Outputs
 =======
 
+*zip*
+------
+
+When choosing zip option, all other outputs are compressed and included into the zip file and, by default, no other file is shown in the Galaxy history. This last behaviour may be changed in order to have all other outputs also available in the history.
+
+*psdb*
+------
+
+psdb is the native format used by PeptideShaker. It contains all the information required by PeptideShaker to run.
+
+*mzIdentML*
+-----------
+
+PeptideShaker can load results from virtually any identification algorithm in the mzIdentML format as long as the minimal peptide to spectrum match information is present in the file.
+
+The following is required:
+
+• Spectrum file format has to be mgf.
+• Each PSM has a score or e-value as a PSM score CV term.
+
+
+*Follow-up analysis*
+--------------------
+
+Spectra
+'''''''
+
+Exports the spectra according to the category of the PSMs:
+
+• Spectra of Non-Validated PSMs
+• Spectra of Non-Validated Peptides
+• Spectra of Non-Validated Proteins
+• Spectra of Validated PSMs
+• Spectra of Validated PSMs of Validated Peptides
+• Spectra of validated PSMs of Validated Peptides of Validated Proteins.
+
+Exported results are in mgf format.
+
+Proteins: Accession numbers
+'''''''''''''''''''''''''''
+
+Export the protein accessions according to the category of the proteins:
+
+• Main Accession of Validated Protein Groups
+• All Accessions of Validated Protein Groups
+• Non-Validated Accessions
+
+Exported protein accessions are text format as TXT.
+
+
+Proteins: Sequences
+'''''''''''''''''''
+
+Exports the protein details according to a category of proteins:
+
+• Main Accession of Validated Protein Groups
+• All Accessions of Validated Protein Groups
+• Non-Validated Accessions.
+
+Exported protein details are in fasta format.
+
+
+Proteins: Proteoforms
+'''''''''''''''''''''
+
+Exports all possible proteoforms of the validated proteins.
+
+Exported results are in text format as TXT.
+Results file can be easily imported and used by PathwayMatcher_ tool.
+
+.. _PathwayMatcher: https://toolshed.g2.bx.psu.edu/repository?repository_id=6d75f02b86acc421
+
+
+Label free quantification
+'''''''''''''''''''''''''
+
+Exports the spectra from different categories of PSMs according to the export type:
+
+• Validated PSMs of Validated Peptides of Validated Proteins
+• Validated PSMs of Validated Peptides
+• Validated PSMs
+• Confidently localized PTMs of Validated PSMs of Validated Peptides of Validated Proteins
+
+Exported identification results are in Progenesis LC-MS compatible format as TXT.
+
+
+Inclusion/Exclusion list
+''''''''''''''''''''''''
+
+Exports an inclusion list of validated hits.
+
+Inclusion list may be filtered according to peptide types:
+
+• Miscleaved Peptides
+• Reactive Peptides
+• Degenerated Peptides.
+
+and also according to protein inferences:
+
+• Related Proteins
+• Related and Unrelated Proteins
+• Unrelated Proteins.
+
+Finally, a retention time window may be established as a final filter.
+
+Exported results can be in Thermo, ABI, Bruker or MassLynx formats.
+
+
+
+*Identification Features Reports*
+---------------------------------
 
 PSM Report
-----------
+''''''''''
+=============================  ========================================
+  Column                        Description
+=============================  ========================================
+ Protein(s)                     Protein(s) to which the peptide can be attached
+ Sequence                       Sequence of the peptide
+ AAs Before                     The amino acids before the sequence
+ AAs After                      The amino acids after the sequence
+ Position                       Position of the peptide in the protein sequence(s).
+ Modified Sequence              The amino acids sequence annotated with variable modifications.
+ Variable Modifications         The variable modifications
+ Fixed Modifications            The fixed modifications.
+ Spectrum File                  The spectrum file.
+ Spectrum Title                 The title of the spectrum.
+ Spectrum Scan Number           The spectrum scan number.
+ RT                             Retention time
+ m/z                            Measured m/z
+ Measured Charge                The charge as given in the spectrum file.
+ Identification Charge          The charge as inferred by the search engine.
+ Theoretical Mass               The theoretical mass of the peptide.
+ Isotope Number                 The isotope number targetted by the instrument.
+ Precursor m/z Error [ppm]      The precursor m/z matching error.
+ Localization Confidence        The confidence in variable PTM localization.
+ probabilistic PTM score        The probabilistic score (e.g. A-score or PhosphoRS) used for variable PTM localization.
+ D-score                        D-score for variable PTM localization
+ Confidence                     Confidence in percent associated to the retained PSM.
+ Validation                     Indicates the validation level of the protein group.
+=============================  ========================================
 
-* Protein(s):                Protein(s) to which the peptide can be attached
-* Sequence:                  Sequence of the peptide
-* Variable Modifications:   The variable modifications
-* D-score:	                D-score for variable PTM localization
-* probabilistic PTM score:	The probabilistic score (e.g. A-score or PhosphoRS) used for variable PTM localization.
-* Localization Confidence:	The confidence in variable PTM localization.
-* Fixed Modifications:	    The fixed modifications.
-* Spectrum File:	The spectrum file.
-* Spectrum Title:	The title of the spectrum.
-* Spectrum Scan Number:	The spectrum scan number.
-* RT:	Retention time
-* m/z:	Measured m/z
-* Measured Charge:	The charge as given in the spectrum file.
-* Identification Charge:	The charge as inferred by the search engine.
-* Theoretical Mass:	The theoretical mass of the peptide.
-* Isotope Number:	The isotope number targetted by the instrument.
-* Precursor m/z Error:	The precursor m/z matching error.
-* Score:	Score of the retained peptide as a combination of the algorithm scores (used to rank PSMs).
-* Confidence:	Confidence in percent associated to the retained PSM.
-* Decoy:	Indicates whether the peptide is a decoy (1: yes, 0: no).
-* Validation: Indicates the validation level of the protein group.
+
+PSM Report with non-validated matches
+'''''''''''''''''''''''''''''''''''''
+
+Same columns as the original PSM report but also includes non-validated matches.
 
 
-Protein Report
---------------
+PSM Phosphorylation Report
+''''''''''''''''''''''''''
+=============================  =========================================================
+  Column                        Description
+=============================  =========================================================
+Protein(s)                     Protein(s) to which the peptide can be attached
+Sequence                       Sequence of the peptide
+Variable Modifications         The variable modifications
+Fixed Modifications            The fixed modifications.
+Spectrum File                  The spectrum file.
+Spectrum Title                 The title of the spectrum.
+Spectrum Scan Number           The spectrum scan number.
+RT                             Retention time
+m/z                            Measured m/z
+Measured Charge                The charge as given in the spectrum file.
+Identification Charge          The charge as inferred by the search engine.
+Theoretical Mass               The theoretical mass of the peptide.
+Isotope Number                 The isotope number targetted by the instrument.
+Precursor m/z Error [ppm]      The precursor m/z matching error.
+Localization Confidence        The confidence in variable PTM localization.
+probabilistic PTM score        The probabilistic score (e.g. A-score or PhosphoRS) used for variable PTM localization.
+D-score                        D-score for variable PTM localization
+Confident Phosphosites	       List of the sites where a phosphorylation was confidently localized.
+#Confident Phosphosites        Number of confidently localized phosphorylations.
+Ambiguous Phosphosites	       List of the sites where a phosphorylation was ambiguously localized.
+#Ambiguous Phosphosites	       Number of ambiguously localized phosphorylations.
+Confidence [%]                 Confidence in percent associated to the retained PSM.
+Validation                     Indicates the validation level of the protein group.
+=============================  =========================================================
 
-* Main Accession:	Main accession of the protein group.
-* Description:	Description of the protein designed by the main accession.
-* Gene Name:	The gene names of the Ensembl gene ID associated to the main accession.
-* Chromosome:	The chromosome of the Ensembl gene ID associated to the main accession.
-* PI:	Protein Inference status of the protein group.
-* Secondary Accessions:	Other accessions in the protein group (alphabetical order).
-* Protein Group:	The complete protein group (alphabetical order).
-* #Peptides:	Total number of peptides.
-* #Validated Peptides:	Number of validated peptides.
-* #Unique:	Total number of peptides unique to this protein group.
-* #PSMs:	Number of PSMs
-* #Validated PSMs:	Number of validated PSMs
-* Coverage (%):	Sequence coverage in percent of the protein designed by the main accession.
-* Possible Coverage (%):	Possible sequence coverage in percent of the protein designed by the main accession according to the search settings.
-* MW (kDa):	Molecular Weight.
-* Spectrum Counting NSAF: 	Normalized Spectrum Abundance Factor (NSAF)
-* Spectrum Counting emPAI:	exponentially modified Protein Abundance Index (emPAI)
-* Confident Modification Sites: Number of Confident Modification Sites	List of the sites where a variable modification was confidently localized.
-* Other Modification Sites: Number of other Modification Sites	List of the non*confident sites where a variable modification was localized.
-* Score:	Score of the protein group.
-* Confidence:	Confidence in percent associated to the protein group.
-* Decoy:	Indicates whether the protein group is a decoy (1: yes, 0: no).
-* Validation:	Indicates the validation level of the protein group.
+
+Extended PSM Report
+'''''''''''''''''''
+
+Same as the ordinary PSM report but adds a ``Decoy`` column and lacks the ``Confidence`` column.
+
+=============================  =========================================================
+  Extra column                  Description
+=============================  =========================================================
+  Decoy	                        Indicates whether the peptide is a decoy (1: yes, 0: no).
+
+=============================  =========================================================
+
 
 
 Peptide Report
---------------
+''''''''''''''
+
+==========================================  =====================================================
+  Column                                     Description
+==========================================  =====================================================
+Protein(s):		                               Protein(s) to which this peptide can be attached.
+Protein Group(s)                             List of identified protein groups this peptide can map to with associated validation level.
+#Validated Protein Group(s)	                 Indicates the number of protein groups this peptide maps to.
+Unique Group	                               Indicates whether the peptide maps to a unique protein group.
+Sequence	                                   Sequence of the peptide.
+Modified Sequence	                           The peptide sequence annotated with variable modifications.
+Position	                                   Position of the peptide in the protein sequence(s).
+AAs Before	                                 The amino acids before the sequence.
+AAs After                                    The amino acids after the sequence.
+Variable Modifications	                     The variable modifications.
+Fixed Modifications	                         The fixed modifications.
+Localization Confidence                      The confidence in PTMs localization.
+#Validated PSMs	                             Number of validated PSMs.
+#PSMs	                                       Number of PSMs.
+Confidence [%]	                             Confidence in percent associated to the peptide.
+Validation	                                 Indicates the validation level of the peptide.
+==========================================  =====================================================
 
 
-* Protein(s):	Protein(s) to which this peptide can be attached.
-* AAs Before:	The amino-acids before the sequence.
-* Sequence:	Sequence of the peptide.
-* AAs After:	The amino-acids after the sequence.
-* Modified Sequence:	The peptide sequence annotated with variable modifications.
-* Variable Modifications:	The variable modifications.
-* Localization Confidence:	The confidence in PTMs localization.
-* Fixed Modifications:	The fixed modifications.
-* #Validated PSMs:	Number of validated PSMs.
-* #PSMs:	Number of PSMs.
-* Score:	Score of the peptide.
-* Confidence:	Confidence in percent associated to the peptide.
-* Decoy:	Indicates whether the peptide is a decoy (1: yes, 0: no).
-* Validation:	Indicates the validation level of the protein group.
+Peptide Report with non-validated matches
+'''''''''''''''''''''''''''''''''''''''''
+
+Same columns as the original Peptide report but also includes non-validated matches.
+
+
+Peptide Phosphorylation Report
+''''''''''''''''''''''''''''''
+
+==========================================  =====================================================
+  Column                                     Description
+==========================================  =====================================================
+Protein(s):		                               Protein(s) to which this peptide can be attached.
+Protein Group(s)                             List of identified protein groups this peptide can map to with associated validation level.
+#Validated Protein Group(s)	                 Indicates the number of protein groups this peptide maps to.
+Unique Group	                               Indicates whether the peptide maps to a unique protein group.
+Sequence	                                   Sequence of the peptide.
+Modified Sequence	                           The peptide sequence annotated with variable modifications.
+AAs Before	                                 The amino acids before the sequence.
+AAs After                                    The amino acids after the sequence.
+Variable Modifications	                     The variable modifications.
+Fixed Modifications	                         The fixed modifications.
+Localization Confidence                      The confidence in PTMs localization.
+Confident Phosphosites	                     List of the sites where a phosphorylation was confidently localized.
+#Confident Phosphosites	                     Number of confidently localized phosphorylations.
+Ambiguous Phosphosites	                     List of the sites where a phosphorylation was ambiguously localized.
+#Ambiguous Phosphosites	                     Number of ambiguously localized phosphorylations.
+#Validated PSMs	                             Number of validated PSMs.
+#PSMs	                                       Number of PSMs.
+Confidence [%]	                             Confidence in percent associated to the peptide.
+Validation	                                 Indicates the validation level of the peptide.
+==========================================  =====================================================
+
+
+Protein Report
+''''''''''''''
+
+==========================================  =====================================================
+  Column                                     Description
+==========================================  =====================================================
+Main Accession	                             Main accession of the protein group.
+Description	                                 Description of the protein designed by the main accession.
+Gene Name                                    The gene names of the Ensembl gene ID associated to the main accession.
+Chromosome	                                 The chromosome of the Ensembl gene ID associated to the main accession.
+MW (kDa)                                     Molecular Weight.
+Possible Coverage (%)                        Possible sequence coverage in percent of the protein designed by the main accession according to the search settings.
+Coverage (%)	                               Sequence coverage in percent of the protein designed by the main accession.
+Spectrum Counting                            The selected spectrum counting metric.
+Confidently Localized Modification Sites	   List of the sites where a variable modification was confidently localized.
+# Confidently Localized Modification Sites	 Number of sites where a variable modification was confidently localized.
+Ambiguously Localized Modification Sites	   List of the sites where ambiguously localized variable modification could possibly be located.
+#Ambiguously Localized Modification Sites	   Number of ambiguously localized modifications.
+Protein Inference	                           Protein Inference status of the protein group.
+Secondary Accessions                         Other accessions in the protein group (alphabetical order).
+Protein Group                                The complete protein group (alphabetical order).
+#Validated Peptides                          Number of validated peptides.
+#Peptides                                    Total number of peptides.
+#Unique                                      Total number of peptides unique to this protein group.
+#Validated Unique	                           Total number of peptides unique to this protein group.
+#Validated PSMs                              Number of validated PSMs.
+#PSMs                                        Number of PSMs.
+Confidence [%]	                             Confidence in percent associated to the protein group.
+Validation                                   Indicates the validation level of the protein group.
+==========================================  =====================================================
+
+
+Protein Report with non-validated matches
+'''''''''''''''''''''''''''''''''''''''''
+
+Same columns as the original Protein report but also includes non-validated matches.
+
+
+Protein Phosphorylation Report
+''''''''''''''''''''''''''''''
+
+==========================================  =====================================================
+  Column                                     Description
+==========================================  =====================================================
+Main Accession	                             Main accession of the protein group.
+Description	                                 Description of the protein designed by the main accession.
+Gene Name                                    The gene names of the Ensembl gene ID associated to the main accession.
+Chromosome	                                 The chromosome of the Ensembl gene ID associated to the main accession.
+MW (kDa)                                     Molecular Weight.
+Possible Coverage (%)                        Possible sequence coverage in percent of the protein designed by the main accession according to the search settings.
+Coverage (%)	                               Sequence coverage in percent of the protein designed by the main accession.
+Spectrum Counting NSAF	                     Raw Normalized Spectrum Abundance Factor (NSAF).
+Confident Phosphosites	                     List of the sites where a phosphorylation was confidently localized.
+#Confident Phosphosites	                     Number of sites where a phosphorylation was confidently localized.
+Ambiguous Phosphosites	                     List of the sites where a phosphorylation was ambiguously localized.
+#Ambiguous Phosphosites	                     Number of sites where a phosphorylation was ambiguously localized.
+Protein Inference	                           Protein Inference status of the protein group.
+Secondary Accessions                         Other accessions in the protein group (alphabetical order).
+Protein Group                                The complete protein group (alphabetical order).
+#Validated Peptides                          Number of validated peptides.
+#Peptides                                    Total number of peptides.
+#Unique                                      Total number of peptides unique to this protein group.
+#Validated Unique	                           Total number of peptides unique to this protein group.
+#Validated PSMs                              Number of validated PSMs.
+#PSMs                                        Number of PSMs.
+Confidence [%]	                             Confidence in percent associated to the protein group.
+Validation                                   Indicates the validation level of the protein group.
+==========================================  =====================================================
+
+
+Certificate of Analysis
+'''''''''''''''''''''''
+
+Presents a summary of the most important statistics of the search, grouped by:
+
+* Project Details:
+    ‣ PeptideShaker Version, Date, Experiment, Sample, Replicate Number, Identification Algorithms.
+* Database Search Parameters:
+    ‣ Precursor Tolerance Unit, Precursor Ion m/z Tolerance, Fragment Ion Tolerance Unit, Fragment Ion m/z Tolerance, Cleavage, Enzyme, Missed Cleavages, Specificity, Database, Forward Ion, Rewind Ion, Fixed Modifications, Variable Modifications, Refinement Variable Modifications, Refinement Fixed Modifications.
+* Input Filters:
+    ‣ Minimal Peptide Length, Maximal Peptide Length, Precursor m/z Tolerance, Precursor m/z Tolerance Unit, Unrecognized Modifications Discarded.
+* Validation Summary:
+    • Proteins:
+        ‣ #Validated, Total Possible TP, FDR Limit [%], FNR Limit [%], Confidence Limit, PEP Limit [%], Confidence Accuracy [%].
+    • Peptides:
+        ‣ #Validated, Total Possible TP, FDR Limit [%], FNR Limit [%], Confidence Limit [%], PEP Limit [%], Confidence Accuracy [%].
+    • PSMs:
+        ‣ #Validated PSM, Total Possible TP, FDR Limit [%]: PSMs, Confidence Limit [%], PEP Limit [%], Confidence Accuracy [%].
+* PTM Scoring Settings:
+    ‣ Probabilistic Score, Accounting for Neutral Losses, Threshold.
+* Spectrum Counting Parameters:
+    ‣ Method, Validated Matches Only
+* Annotation Settings:
+    ‣ Intensity Limit, Automatic Annotation, Selected Ions, Neutral Losses, Neutral Losses Sequence Dependence, Fragment Ion m/z Tolerance.
 
 
 Hierachical Report
-------------------
+''''''''''''''''''
 
-* Main Accession:	Main accession of the protein group.
-* Description:	Description of the protein designed by the main accession.
-* PI:	Protein Inference status of the protein group.
-* Secondary Accessions:	Other accessions in the protein group (alphabetical order).
-* Protein Group:	The complete protein group (alphabetical order).
-* #Peptides:	Total number of peptides.
-* #Validated Peptides:	Number of validated peptides.
-* #Unique:	Total number of peptides unique to this protein group.
-* #PSMs:	Number of PSMs
-* #Validated PSMs:	Number of validated PSMs
-* Coverage (%):	Sequence coverage in percent of the protein designed by the main accession.
-* Possible Coverage (%):	Possible sequence coverage in percent of the protein designed by the main accession according to the search settings.
-* MW (kDa):	Molecular Weight.
-* Spectrum Counting NSAF: 	Normalized Spectrum Abundance Factor (NSAF)
-* Spectrum Counting emPAI:	exponentially modified Protein Abundance Index (emPAI)
-* Confident Modification Sites: # Confident Modification Sites	List of the sites where a variable modification was confidently localized.
-* Other Modification Sites: # Other Modification Sites	List of the non-confident sites where a variable modification was localized.
-* Score:	Score of the protein group.
-* Confidence:	Confidence in percent associated to the protein group.
-* Decoy:	Indicates whether the protein group is a decoy (1: yes, 0: no).
-* Validation:	Indicates the validation level of the protein group.
-* Protein(s):	Protein(s) to which this peptide can be attached.
-* AAs Before:	The amino-acids before the sequence.
-* Sequence:	Sequence of the peptide.
-* AAs After:	The amino-acids after the sequence.
-* Variable Modifications:	The variable modifications.
-* Localization Confidence:	The confidence in PTMs localization.
-* Fixed Modifications:	The fixed modifications.
-* #Validated PSMs:	Number of validated PSMs.
-* #PSMs:	Number of PSMs.
-* Score:	Score of the peptide.
-* Confidence:	Confidence in percent associated to the peptide.
-* Decoy:	Indicates whether the peptide is a decoy (1: yes, 0: no).
-* Validation:	Indicates the validation level of the protein group.
-* Protein(s):	Protein(s) to which the peptide can be attached.
-* Sequence:	Sequence of the peptide.
-* Modified Sequence:	The peptide sequence annotated with variable modifications.
-* Variable Modifications:	The variable modifications.
-* D-score:	D-score for variable PTM localization.
-* probabilistic PTM score:	The probabilistic score (e.g. A-score or PhosphoRS) used for variable PTM localization.
-* Localization Confidence:	The confidence in variable PTM localization.
-* Fixed Modifications:	The fixed modifications.
-* Spectrum File:	The spectrum file.
-* Spectrum Title:	The title of the spectrum.
-* Spectrum Scan Number:	The spectrum scan number.
-* RT:	Retention time
-* m/z:	Measured m/z
-* Measured Charge:	The charge as given in the spectrum file.
-* Identification Charge:	The charge as inferred by the search engine.
-* Theoretical Mass:	The theoretical mass of the peptide.
-* Isotope Number:	The isotope number targetted by the instrument.
-* Precursor m/z Error:	The precursor m/z matching error.
-* Score:	Score of the retained peptide as a combination of the algorithm scores (used to rank PSMs).
-* Confidence:	Confidence in percent associated to the retained PSM.
-* Decoy:	Indicates whether the peptide is a decoy (1: yes, 0: no).
-* Validation:	Indicates the validation level of the protein group.
-
+==========================================  =====================================================
+  Column                                     Description
+==========================================  =====================================================
+Main Accession                               Main accession of the protein group.
+Description	                                 Description of the protein designed by the main accession.
+MW (kDa)                                     Molecular Weight.
+Possible Coverage (%)                        Possible sequence coverage in percent of the protein designed by the main accession according to the search settings.
+Coverage (%)                                 Sequence coverage in percent of the protein designed by the main accession.
+Spectrum Counting NSAF                       Normalized Spectrum Abundance Factor (NSAF)
+Confidently Localized Modification Sites	   List of the sites where a variable modification was confidently localized.
+# Confidently Localized Modification Sites	 Number of sites where a variable modification was confidently localized.
+Ambiguously Localized Modification Sites	   List of the sites where ambiguously localized variable modification could possibly be located.
+#Ambiguously Localized Modification Sites	   Number of ambiguously localized modifications.
+Protein Inference	                           Protein Inference status of the protein group.
+Secondary Accessions                         Other accessions in the protein group (alphabetical order).
+Protein Group                                The complete protein group (alphabetical order).
+#Validated Peptides                          Number of validated peptides.
+#Peptides                                    Total number of peptides.
+#Unique                                      Total number of peptides unique to this protein group.
+#Validated PSMs                              Number of validated PSMs
+#PSMs                                        Number of PSMs
+Confidence                                   Confidence in percent associated to the protein group.
+Decoy                                        Indicates whether the protein group is a decoy (1: yes, 0: no).
+Validation                                   Indicates the validation level of the protein group.
+==========================================  =====================================================
 
 ------
 

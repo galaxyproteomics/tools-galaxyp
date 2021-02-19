@@ -1,4 +1,4 @@
-<tool id="cardinal_spectra_plots" name="MSI plot spectra" version="@VERSION@.0">
+<tool id="cardinal_spectra_plots" name="MSI plot spectra" version="@VERSION@.3">
     <description>
         mass spectrometry imaging mass spectra plots
     </description>
@@ -6,9 +6,9 @@
         <import>macros.xml</import>
     </macros>
     <expand macro="requirements">
-        <requirement type="package" version="3.2.1">r-ggplot2</requirement>
+        <requirement type="package" version="3.3.2">r-ggplot2</requirement>
         <requirement type="package" version="2.3">r-gridextra</requirement>
-        <requirement type="package" version="1.0.0">r-scales</requirement>
+        <requirement type="package" version="1.1.1">r-scales</requirement>
     </expand>
     <command detect_errors="exit_code">
     <![CDATA[
@@ -66,24 +66,28 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
         ## read and extract x,y, optional annotation information
         spectra_tabular = read.delim("$pixel_conditional.pixel_file", header = $pixel_conditional.tabular_pixel_header, stringsAsFactors = FALSE)
 
-        #if $pixel_conditional.column_pixel_annotation:
+        #if str($pixel_conditional.single_or_overlaid.plot_type) == 'overlaid_plots':
 
-                spectra_input = spectra_tabular[,c($pixel_conditional.column_pixel_x, $pixel_conditional.column_pixel_y, $pixel_conditional.column_pixel_annotation)]
+                spectra_input = spectra_tabular[,c($pixel_conditional.column_pixel_x, $pixel_conditional.column_pixel_y, $pixel_conditional.single_or_overlaid.column_pixel_annotation)]
                 colnames(spectra_input) = c("x", "y", "annotation")
-
+                spectra_input\$annotation = as.character(spectra_input\$annotation)
+                
+                ## keeping only spectra with annotations
                 input_pixels = paste(spectra_input[,1], spectra_input[,2], sep="_")
                 dataset_pixels = paste(coord(msidata)\$x, coord(msidata)\$y, sep="_")
                 pixelsofinterest = dataset_pixels %in% input_pixels
                 msidata = msidata[,pixelsofinterest]
 
-                ## merge with coordinate information of msidata
                 msidata_coordinates = data.frame(coord(msidata)\$x, coord(msidata)\$y, c(1:ncol(msidata)))
                 colnames(msidata_coordinates) = c("x", "y", "pixel_index")
                 merged_annotation = merge(msidata_coordinates, spectra_input, by=c("x", "y"), all.x=TRUE)
                 merged_annotation[is.na(merged_annotation)] = "NA"
                 merged_annotation = merged_annotation[order(merged_annotation\$pixel_index),]
-                msidata\$annotation = as.factor(merged_annotation[,4])
-
+                msidata\$annotation = factor(merged_annotation[,4], levels = unique(as.character(merged_annotation[,4]))) ## keep the right order
+                
+print(msidata\$annotation)
+print(merged_annotation)
+                 
                     ## overview plot over annotated samples
                     number_combined = length(levels(msidata\$annotation))
 
@@ -100,9 +104,23 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                         legend_size = 6
                     }
 
+                    ## colours selection:
+
+                    #if str($pixel_conditional.single_or_overlaid.colour_conditional.colour_type) == "manual_colour"
+                        #set $color_string = ','.join(['"%s"' % $color.annotation_color for $color in $pixel_conditional.single_or_overlaid.colour_conditional.colours])
+                        colourvector = c($color_string)
+
+                    #elif str($pixel_conditional.single_or_overlaid.colour_conditional.colour_type) == "colourpalette"
+
+                    	number_levels = (length(levels(msidata\$annotation)))
+                    
+        	    	colourvector = noquote($pixel_conditional.single_or_overlaid.colour_conditional.palettes)(number_levels)
+
+                    #end if
+                    
                     position_df = data.frame(coord(msidata)\$x, coord(msidata)\$y, as.factor(msidata\$annotation))
                     colnames(position_df) = c("x", "y", "sample_name")
-
+print(position_df)
                     combine_plot = ggplot(position_df, aes(x=x, y=y, fill=sample_name))+
                            geom_tile(height = 1, width=1)+
                            coord_fixed()+
@@ -111,15 +129,17 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                            theme(plot.title = element_text(hjust = 0.5))+
                            theme(text=element_text(family="ArialMT", face="bold", size=12))+
                            theme(legend.position="bottom",legend.direction="vertical")+
-                           theme(legend.key.size = unit(0.2, "line"), legend.text = element_text(size = 6))+
-                           guides(fill=guide_legend(ncol=4,byrow=TRUE))
+                           theme(legend.key.size = unit(0.2, "line"), legend.text = element_text(size = 10))+
+                           guides(fill=guide_legend(ncol=4,byrow=TRUE))+
+                           scale_discrete_manual(aesthetics = c("colour", "fill"), values = colourvector)
 
-                   coord_labels = aggregate(cbind(x,y)~sample_name, data=position_df, mean, na.rm=TRUE, na.action="na.pass")
-                   coord_labels\$file_number = 1:length(levels(position_df\$sample_name))
+                       coord_labels = aggregate(cbind(x,y)~sample_name, data=position_df, mean, na.rm=TRUE, na.action="na.pass")
+                       coord_labels\$file_number = 1:nrow(coord_labels)
 
                     for(file_count in 1:nrow(coord_labels))
-                    {combine_plot = combine_plot + annotate("text",x=coord_labels[file_count,"x"],
-                    y=coord_labels[file_count,"y"],label=toString(coord_labels[file_count,4]))}
+                    	{combine_plot = combine_plot + annotate("text",x=coord_labels[file_count,"x"],
+                    	y=coord_labels[file_count,"y"],label=toString(coord_labels[file_count,4]))
+                    }
 
                     print(combine_plot)
 
@@ -130,12 +150,11 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
 
                 #if $fullmz:
                 ## plot single tabular mz, average per annotation
-                    print(plot(msidata, run="infile", pixel.groups=msidata\$annotation, key=key_legend, col=hue_pal()(length(levels(msidata\$annotation))),superpose=TRUE, strip=FALSE, grid=$grid_variable), main="Average spectrum per group")
+                    print(plot(msidata, run="infile", pixel.groups=msidata\$annotation, key=key_legend,superpose=TRUE, strip=FALSE, grid=$grid_variable, col = colourvector), main="Average spectrum per group")
                 #end if
 
                     pixeldf = data.frame(table(msidata\$annotation))
                     colnames(pixeldf) = c("sample name", "number of pixels")
-
 
             ##################### II) Sample: plot zoom-in mass spectrum ##########
 
@@ -165,9 +184,9 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                     )   
 
                         ## plot single tabular mz, average per annotation, manual zoom
-                        print(plot(msidata[minmasspixel:maxmasspixel,], run="infile", strip=FALSE,
+                        print(plot(msidata[minmasspixel:maxmasspixel,], run="infile", strip=FALSE, col = colourvector,
                         xlim= c($token.xlimmin,$token.xlimmax),pixel.groups=msidata\$annotation, grid = $grid_variable,
-                        key=key_legend,col=hue_pal()(length(levels(msidata\$annotation))), superpose=TRUE, main="Average spectrum per group"))
+                        key=key_legend, superpose=TRUE, main="Average spectrum per group"))
                     #end for
 
                 #elif str($mz_range.mz_range_options) == "tabular_mz":
@@ -186,17 +205,18 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
 
                             ## plot single tabular mz, average per annotation, tabular zoom
                             print(plot(msidata[minmasspixel:maxmasspixel,], run="infile", strip=FALSE, main="Average spectrum per group",
-                            xlim= c(xlimmin,xlimmax),pixel.groups=msidata\$annotation, grid = $grid_variable,
-                            key=key_legend,col=hue_pal()(length(levels(msidata\$annotation))), superpose=TRUE))
+                            xlim= c(xlimmin,xlimmax),pixel.groups=msidata\$annotation, grid = $grid_variable, col = colourvector,
+                            key=key_legend, superpose=TRUE))
+
                         }
                     }
 
                 #end if
+        #elif str($pixel_conditional.single_or_overlaid.plot_type) == 'separate_plots':
 
-        #elif str($pixel_conditional.column_pixel_annotation)== "None":
 
-                spectra_tabular = spectra_tabular[,c($pixel_conditional.column_pixel_x, $pixel_conditional.column_pixel_y)]
-                colnames(spectra_tabular) = c("x", "y")
+            spectra_tabular = spectra_tabular[,c($pixel_conditional.column_pixel_x, $pixel_conditional.column_pixel_y)]
+            colnames(spectra_tabular) = c("x", "y")
 
             dataset_pixels = data.frame(coord(msidata)\$x, coord(msidata)\$y)
             colnames(dataset_pixels) = c("x", "y")
@@ -214,7 +234,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
 
                     #if $fullmz:
                     ## plot full mz for single tabular mz
-                        print(plot(msidata, coord=list(x=x_coord, y=y_coord), key=TRUE, grid = $grid_variable))
+                        print(plot(msidata, coord=list(x=x_coord, y=y_coord), key=TRUE, grid = $grid_variable, col="black"))
                     #end if
 
                     pixelname = paste0("x = ", x_coord,", ", "y = ", y_coord)
@@ -261,7 +281,17 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                 }
 
                     ## print single tabular mz; manual zoom
-                    print(plot(msidata[minmasspixel:maxmasspixel,], grid = $grid_variable, coord=list(x=x_coord, y=y_coord), key=TRUE, xlim= c($token.xlimmin,$token.xlimmax)))
+
+                    tryCatch(
+                        {
+                        print(plot(msidata[minmasspixel:maxmasspixel,], grid = $grid_variable, coord=list(x=x_coord, y=y_coord), key=TRUE, xlim= c($token.xlimmin,$token.xlimmax), col="black"))
+                        }
+                        ,
+                        error=function(cond) {
+                        ## if there are no intensities > 0 in the chosen plotting window, write a warning
+                        text(0.5,0.5,labels = c(paste("No peaks in the spectrum with the coordinates x =", x_coord, ", y =", y_coord, sep=" ")))
+                        }
+                   )
 
                 #end for
 
@@ -306,7 +336,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                             }
 
                                 ## print single tabular mz; tabular zoom
-                                print(plot(msidata[minmasspixel:maxmasspixel,], grid = $grid_variable, coord=list(x=x_coord, y=y_coord), key=TRUE, xlim= c(xlimmin,xlimmax)))
+                                print(plot(msidata[minmasspixel:maxmasspixel,], grid = $grid_variable, coord=list(x=x_coord, y=y_coord), key=TRUE, xlim= c(xlimmin,xlimmax), col="black"))
                             }
                         }
 
@@ -329,7 +359,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
 
                     #if $fullmz:
 
-                        print(plot(msidata, run="infile", key=TRUE, strip=FALSE, main="Average spectrum", grid = $grid_variable))
+                        print(plot(msidata, run="infile", key=TRUE, strip=FALSE, main="Average spectrum", grid = $grid_variable, col="black"))
                     #end if
 
         ##################### II) Sample: plot zoom-in mass spectrum ##########
@@ -366,7 +396,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                         }
                 }
 
-                    print(plot(msidata[minmasspixel:maxmasspixel,], grid = $grid_variable, main="Average spectrum", run = "infile", strip=FALSE, key=TRUE, xlim= c($token.xlimmin,$token.xlimmax)))
+                    print(plot(msidata[minmasspixel:maxmasspixel,], grid = $grid_variable, main="Average spectrum", run = "infile", strip=FALSE, key=TRUE, xlim= c($token.xlimmin,$token.xlimmax), col="black"))
 
             #end for
 
@@ -401,7 +431,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                                     }
                                 )   
 
-                        print(plot(msidata[minmasspixel:maxmasspixel,], grid = $grid_variable, run="infile", key=TRUE, strip=FALSE, main="Average spectrum", xlim= c(xlimmin,xlimmax)))
+                        print(plot(msidata[minmasspixel:maxmasspixel,], grid = $grid_variable, run="infile", key=TRUE, strip=FALSE, main="Average spectrum", xlim= c(xlimmin,xlimmax), col="black"))
                 }
             }
 
@@ -456,17 +486,53 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
         <expand macro="reading_msidata"/>
         <expand macro="pdf_filename"/>
         <conditional name="pixel_conditional">
-            <param name="pixel_type" type="select" label="Choose spectra (pixel)">
-                <option value="all_pixel" selected="True" >All spectra</option>
-                <option value="tabular_pixel">Single spectra</option>
+            <param name="pixel_type" type="select" label="Choose spectra">
+                <option value="all_pixel" selected="True" >Plot mean spectra based on all spectra</option>
+                <option value="tabular_pixel">Plot single spectra (separate or overlaid)</option>
             </param>
             <when value="tabular_pixel">
                 <param name="pixel_file" type="data" format="tabular" label="Load tabular file with pixel coordinates"
                 help="Two or three columns: x values, y values, optionally annotations"/>
                 <param name="column_pixel_x" data_ref="pixel_file" label="Column with x values" type="data_column"/>
                 <param name="column_pixel_y" data_ref="pixel_file" label="Column with y values" type="data_column"/>
-                <param name="column_pixel_annotation" data_ref="pixel_file" optional="True" label="Column with annotations" type="data_column"/>
                 <param name="tabular_pixel_header" type="boolean" label="Tabular files contain a header line" truevalue="TRUE" falsevalue="FALSE"/>
+                <conditional name="single_or_overlaid">
+		    <param name="plot_type" type="select" label="Separate plot per spectrum or overlaid plot with average spectra per annotation group">
+		        <option value="separate_plots" selected="True" >Separate spectra plots</option>
+		        <option value="overlaid_plots">Overlaid spectra plots</option>
+		    </param>
+		    <when value="separate_plots"/>
+		    <when value="overlaid_plots">
+		    <param name="column_pixel_annotation" data_ref="pixel_file" label="Select column with annotations" type="data_column"/>
+		    <conditional name="colour_conditional">
+		        <param name="colour_type" type="select" label="Choose a colour scheme">
+			    <option value="colourpalette" selected="True" >Colour palette</option>
+			    <option value="manual_colour">Manual selection</option>
+			</param>
+			<when value="manual_colour">
+			   <repeat name="colours" title="Colours for the plots" min="1" max="50">
+			   <param name="annotation_color" type="color" label="Colours" value="#ff00ff" help="Numbers of colours should be the same as number of components">
+			   <sanitizer>
+			       <valid initial="string.letters,string.digits">
+			       <add value="#" />
+			       </valid>
+			   </sanitizer>
+			   </param>
+			   </repeat>
+			</when>
+			<when value="colourpalette">
+			    <param name="palettes" type="select" display="radio" label="Select a colourpalette">
+			        <option value="hue_pal()" selected="True">hue</option>
+			        <option value="rainbow">rainbow</option>
+				<option value="heat.colors">heat colors</option>
+				<option value="terrain.colors">terrain colors</option>
+				<option value="topo.colors">topo colors</option>
+				<option value="cm.colors">cm colors</option>
+			    </param>
+			</when>
+		    </conditional>
+                    </when>
+                </conditional>
             </when>
             <when value="all_pixel">
             </when>
@@ -554,19 +620,33 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                 <param name="pixel_file" value="annotations.tabular"/>
                 <param name="column_pixel_x" value="1"/>
                 <param name="column_pixel_y" value="2"/>
-                <param name="column_pixel_annotation" value="4"/>
                 <param name="tabular_pixel_header" value="TRUE"/>
-            </conditional>
-                <param name="fullmz" value="FALSE"/>
-                <conditional name="mz_range">
-                    <param name="mz_range_options" value="manual_mz"/>
-                    <repeat name="zoomed_sample">
-                        <param name="xlimmin" value="1250"/>
-                        <param name="xlimmax" value="1270"/>
-                    </repeat>
+
+                <conditional name="single_or_overlaid">
+                    <param name="plot_type" value="overlaid_plots"/>
+                    <param name="column_pixel_annotation" value="4"/>
+                    <param name="colour_type" value="manual_colour"/>
+                    <repeat name="colours">
+                        <param name="annotation_color" value="#0000FF"/>
+		    </repeat>
+		    <repeat name="colours">
+			<param name="annotation_color" value="#00C957"/>
+		    </repeat>
+		    <repeat name="colours">
+			<param name="annotation_color" value="#B0171F"/>
+		    </repeat>
                 </conditional>
-                <param name="grid_variable" value="FALSE"/>
-            <output name="plots" file="Plot_analyze75_allpixels.pdf" compare="sim_size"/>
+            </conditional>
+		<param name="fullmz" value="FALSE"/>
+		<conditional name="mz_range">
+		    <param name="mz_range_options" value="manual_mz"/>
+		    <repeat name="zoomed_sample">
+		        <param name="xlimmin" value="1250"/>
+		        <param name="xlimmax" value="1270"/>
+		    </repeat>
+		</conditional>
+		<param name="grid_variable" value="FALSE"/>
+	    <output name="plots" file="Plot_analyze75_allpixels.pdf" compare="sim_size"/>
         </test>
         <test>
             <param name="infile" value="3_files_combined.RData" ftype="rdata"/>
@@ -588,7 +668,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             <expand macro="processed_infile_imzml"/>
             <conditional name="processed_cond">
                 <param name="processed_file" value="processed"/>
-                <param name="accuracy" value="50"/>
+                <param name="accuracy" value="100"/>
                 <param name="units" value="ppm"/>
             </conditional>
             <conditional name="pixel_conditional">

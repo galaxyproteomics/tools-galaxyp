@@ -1,19 +1,23 @@
 #!/usr/bin/env python
 import os
-import sys
 import re
+import sys
+
 
 class Sequence:
     ''' Holds protein sequence information '''
+
     def __init__(self):
         self.header = ""
         self.accession = ""
         self.sequence = ""
 
+
 class FASTAReader:
     """
         FASTA db iterator. Returns a single FASTA sequence object.
     """
+
     def __init__(self, fasta_name, accession_parser):
         self.fasta_file = open(fasta_name)
         self.accession_parser = accession_parser
@@ -31,11 +35,11 @@ class FASTAReader:
                 break
 
         seq = Sequence()
-        seq.header = line.rstrip().replace('\n','').replace('\r','')
+        seq.header = line.rstrip().replace('\n', '').replace('\r', '')
 
         m = re.search(self.accession_parser, seq.header)
         if not m or len(m.groups()) < 1 or len(m.group(1)) == 0:
-          sys.exit("Could not parse accession from '%s'" % seq.header)
+            sys.exit("Could not parse accession from '%s'" % seq.header)
         seq.accession = m.group(1)
 
         while True:
@@ -46,7 +50,7 @@ class FASTAReader:
             if line[0] == '>':
                 self.fasta_file.seek(tail)
                 break
-            seq.sequence = seq.sequence + line.rstrip().replace('\n','').replace('\r','')
+            seq.sequence = seq.sequence + line.rstrip().replace('\n', '').replace('\r', '')
         return seq
 
     # Python 2/3 compat
@@ -66,8 +70,8 @@ def main():
         sys.exit("2nd argument must be 'sequence' or 'accession'")
 
     accession_parser = sys.argv[3]
-    for key, value in { '\'' :'__sq__', '\\' : '__backslash__' }.items():
-      accession_parser = accession_parser.replace(value, key)
+    for key, value in {'\'': '__sq__', '\\': '__backslash__'}.items():
+        accession_parser = accession_parser.replace(value, key)
 
     for fasta_file in sys.argv[4:]:
         print("Reading entries from '%s'" % fasta_file)
@@ -94,6 +98,7 @@ def main():
             out_file.write(protein.sequence)
             out_file.write(os.linesep)
     out_file.close()
+
 
 if __name__ == "__main__":
     main()

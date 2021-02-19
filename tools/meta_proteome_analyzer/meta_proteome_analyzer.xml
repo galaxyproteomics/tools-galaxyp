@@ -1,21 +1,38 @@
-<tool id="meta_proteome_analyzer" name="MetaProteomeAnalyzer" version="1.4.1+galaxy1">
+<tool id="meta_proteome_analyzer" name="MetaProteomeAnalyzer" version="@TOOL_VERSION@+galaxy@WRAPPER_VERSION@">
     <description>
         functional and taxonomic characterization of proteins
     </description>
+    <macros>
+        <token name="@TOOL_VERSION@">2.0.0</token>
+        <token name="@WRAPPER_VERSION@">2</token>
+        <xml name="test_output" token_name="" token_has_text="">
+            <output name="output_PSMs">
+               <assert_contents>
+                    <has_text text="A2SPK1" />
+               </assert_contents>
+               <yield/>
+            </output>
+        </xml>
+    </macros>
     <requirements>
-        <requirement type="package" version="1.4.1">mpa-portable</requirement>
+        <requirement type="package" version="@TOOL_VERSION@">mpa-portable</requirement>
     </requirements>
-    <command>
+    <stdio>
+        <regex match="Could not allocate metaspace" source="both" level="fatal_oom" description="Insufficient memory" />
+        <regex match="OutOfMemoryError" source="both" level="fatal_oom" description="Insufficient memory" />
+		    
+    </stdio>
+    <command detect_errors="exit_code">
 <![CDATA[
-        cwd=`pwd` &&
         mkdir -p output_dir &&
         ## copy mpa conf dir to working dir
         jar_dir=`mpa-portable -get_jar_dir` &&
+
         cp -R \$jar_dir/conf . &&
 
         ## echo the search engines to run
-        #set $search_engines = str($search_engines_options.engines).split(',')
-        echo "$search_engines_options.engines" &&
+        #set $search_engines = str($engines).split(',')
+        echo "$engines" &&
         echo "DB: ${input_database.display_name} sequences: ${input_database.metadata.sequences}" &&
 
         #for $mgf in $peak_lists:
@@ -29,8 +46,8 @@
         ######################
         ## MPA ##
         ######################
-        mpa-portable de.mpa.cli.CmdLineInterface -Djava.awt.headless=true -Xmx2048m
-            -spectrum_files \$cwd
+        mpa-portable de.mpa.cli.CmdLineInterface --exec_dir=exec_dir
+            -spectrum_files "\$(pwd)"
             -database input_database.fasta
             -missed_cleav $missed_cleavages
             -prec_tol ${precursor_options.prec_tol}${precursor_options.prec_tol_units}
@@ -38,10 +55,18 @@
             -xtandem #if 'X!Tandem' in $search_engines then 1 else 0#
             -comet #if 'Comet' in $search_engines then 1 else 0#
             -msgf #if 'MSGF' in $search_engines then 1 else 0#
+            -generate_metaproteins $generate_metaproteins
+            -iterative_search $iterative_search
+            -fragment_method $fragment_method
+            -peptide_index $peptide_index
+            -fdr_threshold $fdr_threshold
+            -semi_tryptic $semi_tryptic
             -output_folder output_dir
             -threads "\${GALAXY_SLOTS:-12}" &&
-        mv ./output_dir/*_metaproteins.csv metaproteins.csv &&
-        mv ./output_dir/*_metaprotein_taxa.csv metaprotein_taxa.csv &&
+        #if $generate_metaproteins == "1"
+            mv ./output_dir/*_metaproteins.csv metaproteins.csv &&
+            mv ./output_dir/*_metaprotein_taxa.csv metaprotein_taxa.csv &&
+        #end if
         mv ./output_dir/*_peptides.csv peptides.csv &&
         mv ./output_dir/*_proteins.csv proteins.csv &&
         mv ./output_dir/*_psms.csv psms.csv &&
@@ -67,25 +92,22 @@
                 help="Provide error value for fragment ions, based on instrument used"/>
         </section>
         <!-- Search Engine Selection -->
-        <section name="search_engines_options" expanded="false" title="Search Engine Options">
-            <param name="engines" type="select" display="checkboxes" multiple="True" label="DB-Search Engines">
-                <help>Comet and Tide shouldn't both be selected since they use a similar algoritm.</help>
-                <option value="X!Tandem" selected="True">X!Tandem</option>
-                <option value="MSGF">MS-GF+</option>
-                <option value="Comet">Comet</option>
-            </param>
-        </section>
-
-<!--
--generate_metaproteins  Turn meta-protein generation (aka. protein grouping) on or off (1: on, 0: off, default is '1').
--peptide_rule           The peptide rule chosen for meta-protein generation (-1: off, 0: share-one-peptide, 1: shared-peptide-subset, default is '0').
--cluster_rule           The sequence cluster rule chosen for meta-protein generation (-1: off, 0: UniRef100, 1: UniRef90, 2: UniRef50, default is '-1').
--taxonomy_rule          The taxonomy rule chosen for meta-protein generation (-1: off, 0: on superkingdom or lower, 1: on kingdom or lower, 2: on phylum or lower, 3: on class or lower, 4: on order or lower, 5: on family or lower, 6: on genus or lower, 7: on species or lower, 8: on subspecies, default is '-1').
--iterative_search       Turn iterative (aka. two-step) searching on or off (1: on, 0: off, default is '0').
--fdr_threshold          The applied FDR threshold for filtering the results (default is 0.05 == 5% FDR).
--->
-
-
+        <param name="engines" type="select" display="checkboxes" multiple="True" label="DB-Search Engines">
+            <help>Comet and Tide shouldn't both be selected since they use a similar algoritm.</help>
+            <option value="X!Tandem" selected="True">X!Tandem</option>
+            <option value="MSGF">MS-GF+</option>
+            <option value="Comet">Comet</option>
+        </param>
+        <param argument="-generate_metaproteins" type="boolean" truevalue="1" falsevalue="0" checked="true" label="Meta-protein generation" help="aka. protein grouping"/>
+        <param argument="-iterative_search" type="boolean" truevalue="1" falsevalue="0" checked="true" label="Iterative searching" help="aka. two-step searching"/>
+        <param argument="-semi_tryptic" type="boolean" truevalue="1" falsevalue="0" checked="false" label="" help="Semi-tryptic cleavage"/>
+        <param argument="-fragment_method" type="select" label="Fragmentation method" help="for the MS instrument">
+            <option value="1" selected="true">CID</option>
+            <option value="2">HCD</option>
+            <option value="3">ETD</option>
+        </param>
+        <param argument="-peptide_index" type="boolean" truevalue="1" falsevalue="0" checked="true" label="Peptide indexing (of FASTA database)" help=""/>
+        <param argument="-fdr_threshold" type="float" value="0.05" min="0" max="1" label="FDR threshold for filtering" help=""/>
     </inputs>
     <outputs>
         <data format="tabular" name="output_proteins" from_work_dir="proteins.csv" label="${tool.name} on ${on_string}: proteins">
@@ -113,12 +135,14 @@
             </actions>
         </data>
         <data format="tabular" name="output_metaproteins" from_work_dir="metaproteins.csv" label="${tool.name} on ${on_string}: metaproteins">
+            <filter>generate_metaproteins</filter>
             <actions>
                 <action name="comment_lines" type="metadata" default="1" />
                 <action name="column_names" type="metadata" default="Meta-Protein_Num,Meta-Protein_Accession,Meta-Protein_Description,Meta-Protein_Taxonomy,Meta-Protein_UniRef100,Meta-Protein_UniRef90,Meta-Protein_UniRef50,Meta-Protein_KO,Meta-Protein_EC,Peptide_Count,Spectral_Count,Proteins,Peptides" />
             </actions>
         </data>
         <data format="tabular" name="output_metaprotein_taxa" from_work_dir="metaprotein_taxa.csv" label="${tool.name} on ${on_string}: metaprotein_taxa">
+            <filter>generate_metaproteins</filter>
             <actions>
                 <action name="comment_lines" type="metadata" default="1" />
                 <action name="column_names" type="metadata" default="Unclassified,Superkingdom,Kingdom,Phylum,Class,Order,Family,Genus,Species,Subspecies,Num_Peptides,Spectral_Count" />
@@ -126,7 +150,7 @@
         </data>
     </outputs>
     <tests>
-        <test>
+        <test expect_num_outputs="6">
             <param name="peak_lists" value="Test416Ebendorf.mgf" ftype="mgf"/>
             <param name="input_database" value="searchdb.fa" ftype="fasta"/>
             <param name="missed_cleavages" value="2"/>
@@ -134,11 +158,36 @@
             <param name="prec_tol" value="10"/>
             <param name="frag_tol" value="0.5"/>
             <param name="engines" value="X!Tandem,MSGF,Comet"/>
-            <output name="output_PSMs">
-               <assert_contents>
-                    <has_text text="A2SPK1" />
+            <expand macro="test_output" name="output_proteins" has_text="B8GJQ7"/>
+            <expand macro="test_output" name="output_peptides" has_text="B8GJQ7"/>
+            <expand macro="test_output" name="output_PSMs" has_text="B8GJQ7">
+                <assert_contents>
+                    <has_text text="X!Tandem" />
                 </assert_contents>
-            </output>
+            </expand>
+            <expand macro="test_output" name="output_spectrum_ids" has_text="B8GJQ7"/>
+            <expand macro="test_output" name="output_metaproteins" has_text="B8GJQ7"/>
+            <expand macro="test_output" name="output_metaprotein_taxa" has_text="Unknown Superkingdomq"/>
+        </test>
+        <test expect_num_outputs="4">
+            <param name="peak_lists" value="Test416Ebendorf.mgf" ftype="mgf"/>
+            <param name="input_database" value="searchdb.fa" ftype="fasta"/>
+            <param name="missed_cleavages" value="2"/>
+            <param name="prec_tol" value="ppm"/>
+            <param name="prec_tol" value="10"/>
+            <param name="frag_tol" value="0.5"/>
+            <param name="engines" value="MSGF,Comet"/>
+            <param name="generate_metaproteins" value="0"/>
+            <expand macro="test_output" name="output_proteins" has_text="B8GJQ7"/>
+            <expand macro="test_output" name="output_peptides" has_text="B8GJQ7"/>
+            <expand macro="test_output" name="output_PSMs" has_text="B8GJQ7">
+                <assert_contents>
+                    <not_has_text text="X!Tandem" />
+                </assert_contents>
+            </expand>
+            <expand macro="test_output" name="output_spectrum_ids" has_text="B8GJQ7"/>
+            <expand macro="test_output" name="output_metaproteins" has_text="B8GJQ7"/>
+            <expand macro="test_output" name="output_metaprotein_taxa" has_text="Unknown Superkingdomq"/>
         </test>
     </tests>
     <help>
@@ -163,10 +212,6 @@ MPA generates 6 tabular outputs:
 * spectrum_ids
 * metaproteins
 * metaprotein_taxa
-
-
-------
-
     </help>
     <citations>
         <citation type="doi">10.1021/pr501246w</citation>

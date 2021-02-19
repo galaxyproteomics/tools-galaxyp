@@ -1,4 +1,4 @@
-<tool id="metaquantome_viz" name="metaQuantome: visualize" version="@GVERSION@">
+<tool id="metaquantome_viz" name="metaQuantome: visualize" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@">
     <description>taxonomic analysis, functional analysis, and function-taxonomy analysis results</description>
     <macros>
         <import>macros.xml</import>
@@ -31,6 +31,9 @@
           <param argument="--fc_name" type="text" label="Name of the fold change column in the stat dataframe">
                   <validator type="empty_field"/>
           </param>
+          <param argument="--fc_corr_p" type="text" label="Name of the Corrected p-value column in the stat dataframe">
+                  <validator type="empty_field"/>
+          </param>
           <param argument="--textannot" type="text" optional="true" label="Name of the annotation column"
               help="Provides text annotatation for the plot.  Optional. If missing, no text will be plotted."/>
           <param argument="--flip_fc" type="boolean" truevalue="--flip_fc" falsevalue="" checked="false"
@@ -44,11 +47,16 @@
               <param argument="--alpha" type="float"
               value="0.05" min="0.0" max="1.0"
               label="The q-value significance level"/>
+              <param argument="--fc_corr_p" type="text" label="Name of the Corrected p-value column in the stat dataframe">
+                <validator type="empty_field"/>
+              </param>
             </when>
             <when value="false">
               <!-- do nothing -->
             </when>
           </conditional>
+          <param argument="--feature_cluster_size" value="2" type="integer" label="For tabular output. Number of clusters 'k' to cut the feature dendrogram tree."/>
+          <param argument="--sample_cluster_size"  value="2" type="integer" label="For tabular output. Number of clusters 'k' to cut the sample dendrogram tree."/>
         </xml>
         <xml name="pca_calcsep">
           <param argument="--calculate_sep" type="boolean" truevalue="--calculate_sep" falsevalue="" checked="false"
@@ -69,13 +77,17 @@
     </macros>
     <expand macro="requirements" />
     <command detect_errors="exit_code"><![CDATA[
+	#import re
+	#set $safename = re.sub('[^\w\-_\.]', '_', $infile.element_identifier)
+	ln -s '$infile' '$safename'
+        &&
         metaquantome viz
         --samps '$samps'
         --mode '$mode_args.mode'
         #if str($mode_args.mode) == 'f'
             --ontology='$mode_args.ontology'
         #end if
-        --infile='$infile'
+        --infile='$safename'
         --plottype='$mode_args.plot.plottype'
         #if $mode_args.plot.plottype == 'bar':
             #if str($mode_args.mode) == 't':
@@ -93,6 +105,7 @@
             --barcol=$mode_args.plot.barcol
         #elif $mode_args.plot.plottype == 'volcano':
             --fc_name='$mode_args.plot.fc_name'
+            --fc_corr_p='$mode_args.plot.fc_corr_p'
             #if $mode_args.plot.textannot:
                 --textannot='$mode_args.plot.textannot'
             #end if
@@ -104,6 +117,13 @@
             #if $mode_args.plot.heatmap.filter_to_sig:
               --filter_to_sig
               --alpha=$mode_args.plot.heatmap.alpha
+              --fc_corr_p='$mode_args.plot.heatmap.fc_corr_p'
+            #end if
+            #if $mode_args.plot.feature_cluster_size:
+                --feature_cluster_size='$mode_args.plot.feature_cluster_size'
+            #end if
+            #if $mode_args.plot.sample_cluster_size:
+                --sample_cluster_size='$mode_args.plot.sample_cluster_size'
             #end if
         #elif $mode_args.plot.plottype == 'pca':
             $mode_args.plot.calculate_sep
@@ -145,7 +165,11 @@
               the easiest fix is to increase the plot dimensions
             </p>
           </body>
-        </html>" > wrapped_outfile.html
+        </html>" > wrapped_outfile.html &&
+        if test -f 'feature_cluster_${infile.name}.txt'; then mv 'feature_cluster_${infile.name}.txt' feature_cluster_data.txt; fi && 
+        if test -f 'sample_cluster_${infile.name}.txt'; then mv 'sample_cluster_${infile.name}.txt' sample_cluster_data.txt; fi &&
+        if test -f 'PC_Data_${infile.name}.txt'; then mv 'PC_Data_${infile.name}.txt' PC_Data.txt; fi
+
     ]]></command>
     <inputs>
       <param argument="--infile" type="data"
@@ -311,13 +335,31 @@
           label="${tool.name} on ${on_string} ${mode_args.plot.plottype}.html"
           from_work_dir="wrapped_outfile.html"/>
       <data format="tabular" name="plotdata"
-        label="${tool.name} ${on_string} ${mode_args.plot.plottype}: plot data"
+        label="${tool.name} on ${on_string} ${mode_args.plot.plottype}: plot data"
         from_work_dir="plotdata.tab">
         <filter>mode_args['plot']['plottype'] in ["bar", "volcano"]</filter>
       </data>
+      
+      <data format="tabular" name="heatmap_feature_cluster"
+        label="${mode_args.plot.plottype}: feature cluster data"
+        from_work_dir="feature_cluster_data.txt">
+        <filter>mode_args['plot']['plottype'] in ["heatmap"]</filter>
+      </data>
+      <data format="tabular" name="heatmap_sample_cluster"
+        label="${mode_args.plot.plottype}: sample cluster data"
+        from_work_dir="sample_cluster_data.txt">
+        <filter>mode_args['plot']['plottype'] in ["heatmap"]</filter>
+      </data>
+      
+      <data format="tabular" name="pca_sample_cluster"
+        label="${mode_args.plot.plottype}: sample cluster data"
+        from_work_dir="PC_Data.txt">
+        <filter>mode_args['plot']['plottype'] in ["pca"]</filter>
+      </data>
+      
     </outputs>
     <tests>
-        <test>
+        <test expect_num_outputs="2">
              <param name="infile" value="tax_filt_out.tab" ftype="tabular"/>
              <param name="mode" value="t" />
              <param name="samps" value="rudney_samples.tab" ftype="tabular"/>
@@ -330,13 +372,14 @@
                 </assert_contents>
             </output>
         </test>
-        <test>
+        <test expect_num_outputs="2">
              <param name="infile" value="tax_test_out.tab" ftype="tabular"/>
              <param name="mode" value="t" />
              <param name="samps" value="rudney_samples.tab" ftype="tabular"/>
              <param name="plottype" value="volcano" />
              <param name="target_rank" value="genus" />
              <param name="fc_name" value="log2fc_NS_over_WS" />
+             <param name="fc_corr_p" value="corrected_p_NS_over_WS"/>
              <param name="textannot" value="taxon_name" />
              <output name="wrapped_outfile">
                 <assert_contents>
@@ -344,18 +387,28 @@
                 </assert_contents>
             </output>
         </test>
-        <test>
-             <param name="infile" value="tax_test_out.tab" ftype="tabular"/>
-             <param name="mode" value="t" />
-             <param name="samps" value="rudney_samples.tab" ftype="tabular"/>
-             <param name="plottype" value="heatmap" />
-             <output name="wrapped_outfile">
-                <assert_contents>
-                    <has_text text="To download the image" />
-                </assert_contents>
+        <test expect_num_outputs="3">
+            <param name="infile" value="tax_test_out.tab" ftype="tabular"/>
+            <param name="mode" value="t" />
+            <param name="samps" value="rudney_samples.tab" ftype="tabular"/>
+            <param name="plottype" value="heatmap" />
+            <param name="filter_to_sig" />
+            <param name="alpha" value="0.05" />
+            <param name="fc_corr_p" value="corrected_p_NS_over_WS" />
+            <param name="feature_cluster_size" value="2" />
+            <param name="sample_cluster_size" value="2" />
+            <output name="wrapped_outfile">
+              <assert_contents>
+                  <has_text text="To download the image" />
+              </assert_contents>
+            </output>
+            <output name="heatmap_feature_cluster">
+              <assert_contents>
+                  <has_text text="481" />
+              </assert_contents>
             </output>
         </test>
-        <test>
+        <test expect_num_outputs="2">
              <param name="infile" value="tax_test_out.tab" ftype="tabular"/>
              <param name="mode" value="t" />
              <param name="samps" value="rudney_samples.tab" ftype="tabular"/>
@@ -364,9 +417,9 @@
                 <assert_contents>
                     <has_text text="To download the image" />
                 </assert_contents>
-            </output>
+              </output>
         </test>
-        <test>
+        <test expect_num_outputs="2">
              <param name="infile" value="func_full_test_out.tab" ftype="tabular"/>
              <param name="mode" value="f" />
              <param name="ontology" value="go" />
@@ -380,20 +433,21 @@
                 </assert_contents>
             </output>
         </test>
-        <test>
+        <test expect_num_outputs="2">
              <param name="infile" value="func_full_test_out.tab" ftype="tabular"/>
              <param name="mode" value="f" />
              <param name="ontology" value="go"/>
              <param name="samps" value="rudney_samples.tab" ftype="tabular"/>
              <param name="plottype" value="volcano" />
              <param name="fc_name" value="log2fc_NS_over_WS" />
+             <param name="fc_corr_p" value="corrected_p_NS_over_WS"/>
              <output name="wrapped_outfile">
                 <assert_contents>
                     <has_text text="To download the image" />
                 </assert_contents>
             </output>
         </test>
-        <test>
+        <test expect_num_outputs="1">
              <param name="infile" value="tf_filt_out.tab" ftype="tabular"/>
              <param name="mode" value="ft" />
              <param name="samps" value="rudney_samples.tab" ftype="tabular"/>
