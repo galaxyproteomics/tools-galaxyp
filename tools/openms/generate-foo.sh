@@ -83,7 +83,7 @@ function get_tests2 {
         #echo python3 fill_ctd_clargs.py --ctd $ini $cli
         # using eval: otherwise for some reason quoted values are not used properly ('A B' -> ["'A", "B'"])
         # >&2 echo "python3 fill_ctd_clargs.py --ctd $ini $cli"
-        eval "python3 fill_ctd_clargs.py --ctd $ini $cli" > "$ctdtmp"
+        eval "python3 fill_ctd_clargs.py --ini_file $ini --ctd_file ctd/$tool_id.ctd $cli" > "$ctdtmp"
         # echo $ctdtmp
         # >&2 cat $ctdtmp
         testtmp=$(mktemp)

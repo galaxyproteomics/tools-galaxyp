@@ -1,8 +1,8 @@
 <tool id="msstatstmt" name="MSstatsTMT" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@">
     <description>protein significance analysis in shotgun mass spectrometry-based proteomic experiments with tandem mass tag (TMT) labeling</description>
     <macros>
-        <token name="@TOOL_VERSION@">1.8.0</token>
-        <token name="@GALAXY_VERSION@">0</token>
+        <token name="@TOOL_VERSION@">1.8.2</token>
+        <token name="@GALAXY_VERSION@">1</token>
         <xml name="input_options_shared">
             <param name="useUniquePeptide" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="true" label="Use unique peptide" help="Yes (default) removes peptides that are assigned for more than one protein. We assume to use unique peptide for each protein." />
             <param name="rmPSM_withMissing_withinRun" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="false" label="Remove PSM with missing value within run" help="Yes will remove PSM with any missing value within each run. Default is No." />
@@ -22,6 +22,7 @@
     <configfiles>
         <configfile name="msstatstmt_script"><![CDATA[
 library(MSstatsTMT, warn.conflicts = F, quietly = T, verbose = F)
+library(MSstats)
 
 #if $input.input_src == 'MSstatsTMT'
     input <- read.table("$input.msstatstmt_input", sep="\t", header=TRUE)
@@ -51,6 +52,21 @@ library(MSstatsTMT, warn.conflicts = F, quietly = T, verbose = F)
                                       rmPSM_withfewMea_withinRun = $input.input_options.rmPSM_withfewMea_withinRun,
                                       rmProtein_with1Feature = $input.input_options.rmProtein_with1Feature,
                                       summaryforMultiplePSMs = $input.input_options.summaryforMultiplePSMs)
+
+#elif $input.input_src == 'PD'
+    PSM.pd <- read.table("$input.PSM", sep="\t", header=TRUE)
+    annotation.pd <- read.table("$input.annotation", sep="\t", header=TRUE)
+
+    input <- PDtoMSstatsTMTFormat(PSM.pd,
+                                  annotation = annotation.pd,
+                                  which.proteinid = "$input.proteinID",
+                                  useNumProteinsColumn = $input.input_options.useNumProteinsColumn,
+                                  useUniquePeptide = $input.input_options.useUniquePeptide,
+                                  rmPSM_withMissing_withinRun = $input.input_options.rmPSM_withMissing_withinRun,
+                                  rmPSM_withfewMea_withinRun = $input.input_options.rmPSM_withfewMea_withinRun,
+                                  rmProtein_with1Feature = $input.input_options.rmProtein_with1Feature,
+                                  summaryforMultipleRows = $input.input_options.summaryforMultipleRows)
+
 #end if
 
 quant <- proteinSummarization(input,
@@ -71,24 +87,35 @@ quant <- proteinSummarization(input,
         dataProcessPlotsTMT(input,
                             quant,
                             type = '$plot_type',
-                            ylimUp = $out_plots_opt.ylimUp,
-                            ylimDown = $out_plots_opt.ylimDown,
-                            x.axis.size = $out_plots_opt.x_axis_size,
-                            y.axis.size = $out_plots_opt.y_axis_size,
-                            text.size = $out_plots_opt.text_size,
-                            text.angle = $out_plots_opt.text_angle,
-                            legend.size = $out_plots_opt.legend_size,
-                            dot.size.profile = $out_plots_opt.dot_size_profile,
-                            ncol.guide = $out_plots_opt.ncol_guide,
+                            ylimUp = $out_plots_opt.adv.ylimUp,
+                            ylimDown = $out_plots_opt.adv.ylimDown,
+                            x.axis.size = $out_plots_opt.adv.x_axis_size,
+                            y.axis.size = $out_plots_opt.adv.y_axis_size,
+                            text.size = $out_plots_opt.adv.text_size,
+                            text.angle = $out_plots_opt.adv.text_angle,
+                            legend.size = $out_plots_opt.adv.legend_size,
+                            dot.size.profile = $out_plots_opt.adv.dot_size_profile,
+                            ncol.guide = $out_plots_opt.adv.ncol_guide,
                             width = $out_plots_opt.width,
                             height = $out_plots_opt.height,
                             #if $out_plots_opt.which_Protein.select != 'list'
+                            #if $out_plots_opt.which_Protein.select == "allonly" and $plot_type == "ProfilePlot"
+                            which.Protein = "all",
+                            #else
                             which.Protein = "$out_plots_opt.which_Protein.select",
+                            #end if
                             #else
                             which.Protein = unlist(read.table("$out_plots_opt.which_Protein.protein_list", sep = "\n", header = FALSE), use.names = FALSE),
                             #end if
-                            originalPlot = $out_plots_opt.originalPlot,
-                            summaryPlot = $out_plots_opt.summaryPlot)
+                            originalPlot = $out_plots_opt.adv.originalPlot,
+                            summaryPlot = $out_plots_opt.adv.summaryPlot)
+    #elif $plot_type == "quant"
+        write.table(quant,
+                "Quant.tsv",
+                sep = "\t",
+                quote = F,
+                row.names = F,
+                dec = ".")
     #end if
 #end for
 
@@ -116,18 +143,60 @@ quant <- proteinSummarization(input,
                 quote = F,
                 row.names = F,
                 dec = ".")
+
+    #for $plot_type in $group.selected_group_outputs
+       #if $plot_type == "VolcanoPlot" or $plot_type == "Heatmap" or $plot_type == "ComparisonPlot"
+        groupComparisonPlots(data = comparisons,
+                             type = "$plot_type",
+                             sig = $group.comparison_plots_opt.sig,
+                             #if $group.comparison_plots_opt.FCcutoff:
+                             FCcutoff = $group.comparison_plots_opt.FCcutoff,
+                             #end if
+                             logBase.pvalue = $group.comparison_plots_opt.logBase_pvalue,
+                             #if $group.comparison_plots_opt.ylimUp:
+                             ylimUp = $group.comparison_plots_opt.ylimUp,
+                             #end if
+                             #if $group.comparison_plots_opt.ylimDown:
+                             ylimDown = $group.comparison_plots_opt.ylimDown,
+                             #end if
+                             x.axis.size = $group.comparison_plots_opt.x_axis_size,
+                             y.axis.size = $group.comparison_plots_opt.y_axis_size,
+                             dot.size = $group.comparison_plots_opt.dot_size,
+                             text.size = $group.comparison_plots_opt.text_size,
+                             text.angle = $group.comparison_plots_opt.text_angle,
+                             legend.size = $group.comparison_plots_opt.legend_size,
+                             ProteinName = $group.comparison_plots_opt.ProteinName,
+                             colorkey = $group.comparison_plots_opt.colorkey,
+                             numProtein = $group.comparison_plots_opt.numProtein,
+                             clustering = "$group.comparison_plots_opt.clustering",
+                             width = $group.comparison_plots_opt.width,
+                             height =  $group.comparison_plots_opt.height,
+                             #if $group.comparison_plots_opt.which_Protein.select != 'list'
+                             which.Protein = "$group.comparison_plots_opt.which_Protein.select",
+                             #else
+                             which.Protein = unlist(read.table("$group.comparison_plots_opt.which_Protein.protein_list", sep = "\n", header = FALSE), use.names = FALSE),
+                             #end if
+                             #if $group.comparison_plots_opt.which_Comparison.select != 'list'
+                             which.Comparison = "$group.comparison_plots_opt.which_Comparison.select",
+                             #else
+                             which.Comparison = unlist(read.table("$group.comparison_plots_opt.which_Comparison.comparison_list", sep = "\n", header = FALSE), use.names = FALSE),
+                             #end if
+                             address="MSstats_group_")
+         #end if
+    #end for
 #end if
         ]]></configfile>
     </configfiles>
     <inputs>
         <conditional name="input">
             <param name="input_src" type="select" label="Input Source">
-                <option value="MSstatsTMT">MStatsTMT (11 column format)</option>
+                <option value="MSstatsTMT">MSstatsTMT (11 column format)</option>
                 <option value="MaxQuant">MaxQuant</option>
                 <option value="OpenMS">OpenMS</option>
+                <option value="PD">Proteome Discoverer</option>
             </param>
             <when value="MSstatsTMT">
-                <param name="msstatstmt_input" type="data" format="tabular" label="MStatsTMT (11 column format)"/>
+                <param name="msstatstmt_input" type="data" format="tabular" label="MSstatsTMT (11 column format)"/>
             </when>
             <when value="MaxQuant">
                 <param name="evidence" type="data" format="tabular" label="evidence.txt - feature-level data"/>
@@ -156,8 +225,24 @@ quant <- proteinSummarization(input,
                     </param>
                 </section>
             </when>
+            <when value="PD">
+                <param name="PSM" type="data" format="tabular" label="PSM output" help=""/>
+                <param name="annotation" type="data" format="tabular" label="annotation" help="Data frame contains column Run, Fraction, TechRepMixture, Mixture, Channel, BioReplicate, Condition." />
+                <param name="proteinID" type="select" label="Select Protein ID">
+                    <option value="Protein.Accessions">Protein.Accessions column</option>
+                    <option value="Master.Protein.Accessions">Master.Protein.Accessions</option>
+                </param>
+                <section name="input_options" title="PDtoMSstatsTMTFormat Options" expanded="false">
+                    <param name="useNumProteinsColumn" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="true" label="Remove shared peptides by information of # Proteins column in PSM sheet." help="" />
+                    <expand macro="input_options_shared"/>
+                    <param name="summaryforMultipleRows" type="select" label="Summary for multiple rows" help="When there are multiple measurements for certain feature in certain run, select the feature with the largest summation or maximal value.">
+                        <option value="max">max</option>
+                        <option value="sum" selected="true">sum</option>
+                    </param>
+                </section>
+            </when>
         </conditional>
-        <section name="proteinSummarization" title="proteinSummarization Options" expanded="false">
+        <section name="proteinSummarization" title="Summarize peptides into proteins" expanded="false">
                 <param name="method" type="select" multiple="false" label="Select method">
                     <option value="msstats" selected="true">msstats</option>
                     <option value="MedianPolish">MedianPolish</option>
@@ -170,6 +255,35 @@ quant <- proteinSummarization(input,
                 <param name="remove_empty_channel" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="true" label="Remove ’Empty’ channels from protein level data"/>
                 <param name="MBimpute" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="true" label="MBimpute" help="Only for 'method = msstats'. Yes (default) imputes missing values by accelerated failure time (AFT) model. No uses minimum value to impute the missing value for each peptide precursor ion."/>
                 <param name="maxQuantileforCensored" type="float" optional="true" min="0" max="0.999" value="" label="Maximum quantile for deciding censored missing value" help="We assume missing values are censored. maxQuantileforCensored is maximum quantile for deciding censored missing value, for instance, 0.999. Default is empty"/>
+        </section>
+        <section name="out_plots_opt" title="Plot Output Options" expanded="false">
+            <conditional name="which_Protein">
+                <param name="select" type="select" label="Select protein IDs to draw plots">
+                    <option value="all" selected="true">generate all plots for each protein</option>
+                    <option value="allonly">Option for QC plot: "allonly" will generate one QC plot with all proteins</option>
+                    <option value="list">Protein IDs as tabular input</option>
+                </param>
+                <when value="all"/>
+                <when value="allonly"/>
+                <when value="list">
+                    <param name="protein_list" type="data" format="tabular" label="List of proteins"/>
+                </when>
+            </conditional>
+            <param name="width" type="integer" min="1" value="10" label="Width of the saved pdf file"/>
+            <param name="height" type="integer" min="1" value="10" label="Height of the saved pdf file"/>
+            <section name="adv" title="Advanced options" expanded="false">
+                <param name="ylimUp" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="false" label="Upper limit for y-axis in the log scale" help="No (Default) for Profile Plot and QC Plot uses the upper limit as rounded off maximum of log2(intensities) after normalization + 3."/>
+                <param name="ylimDown" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="false" label="Lower limit for y-axis in the log scale" help="No (Default) for Profile Plot and QCPlot uses 0."/>
+                <param name="x_axis_size" type="integer" min="1" value="10" label="Size of x-axis labeling"/>
+                <param name="y_axis_size" type="integer" min="1" value="10" label="Size of y-axis labeling"/>
+                <param name="text_size" type="integer" min="1" value="4" label="Size of labels represented each condition at the top"/>
+                <param name="text_angle" type="integer" min="0" max="360" value="90" label="Angle of labels represented each condition at the top"/>
+                <param name="legend_size" type="integer" min="1" value="7" label="Size of legend above Profile plot"/>
+                <param name="dot_size_profile" type="integer" min="1" value="2" label="Size of dots in Profile plot"/>
+                <param name="ncol_guide" type="integer" min="1" value="5" label="Number of columns for legends at the top of plot"/>
+                <param name="originalPlot" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="true" label="Draw original profile plots without normalization"/>
+                <param name="summaryPlot" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="true" label="Draw profile plots with protein summarization for each channel and MS run"/>
+            </section>
         </section>
         <conditional name="group">
             <param name="group_comparison" type="select" label="Compare Groups">
@@ -201,52 +315,85 @@ quant <- proteinSummarization(input,
                 </param>
                 <param name="remove_norm_channel" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="true" label="Remove ’Norm’ channels from protein level data"/>
                 <param name="remove_empty_channel" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="true" label="Remove ’Empty’ channels from protein level data"/>
+                <param name="selected_group_outputs" type="select" multiple="true" label="Select outputs">
+                    <help>Heatmap requires more than one comparison</help>
+                    <option value="comparison_result" selected="true">Group Comparison</option>
+                    <option value="VolcanoPlot" selected="true">MSstats Volcano Plot</option>
+                    <option value="Heatmap" selected="false">MSstats Heatmap</option>
+                    <option value="ComparisonPlot" selected="true">MSstats Comparison Plot</option>
+                </param>
+                <section name="comparison_plots_opt" title="Comparison Plot Options" expanded="false">
+                    <param name="sig" type="float" min="0" max="1" value="0.05" label="FDR cutoff for the adjusted p-values in heatmap and volcano plot" help="Level of significance for comparison plot. 100(1-sig)% confidence interval will be drawn."/>
+                    <param name="FCcutoff" type="float" optional="true" label="Involve fold change cutoff or not for volcano plot or heatmap." help="Empty (default) means no fold change cutoff is applied for significance analysis. Specific value means specific fold change cutoff is applied"/>
+                    <param name="logBase_pvalue" type="select" label="For volcano plot or heatmap, logarithm transformation of adjusted p-valuewith base 2 or 10">
+                        <option value="2">2</option>
+                        <option value="10" selected="true">10</option>
+                    </param>
+                    <param name="ylimUp" type="float" optional="true" label="For all three plots, upper limit for y-axis." help="Empty (default) for volcano plot/heatmap use maximum of -log2 (adjusted p-value) or -log10 (adjusted p-value), for comparison plot uses maximum of log-fold change + CI. Alternatively, insert specific value of y-axis limit. "/>
+                    <param name="ylimDown" type="float" optional="true" label="For all tree plots, lower limit for y-axis in the log scale" help="Empty (default) for volcano plot/heatmap use minimum of -log2 (adjusted p-value) or -log10 (adjusted p-value), for comparison plot uses minimum of log-fold change - CI. Alternatively, insert specific value of y-axis limit.  "/>
+                    <param name="xlimUp" type="float" optional="true" label="For Volcano plot, the limit for x-axis" help="Empty (default) for use maximum for absolute value of log-fold change or 3 as default if maximum for absolute value of log-fold change is less than 3. Alternatively, insert specific value of y-axis limit."/>
+                    <param name="axis_size" type="integer" min="1" value="10" label="Size of axes labels for Residual and QQ Plots"/>
+                    <param name="x_axis_size" type="integer" min="1" value="10" label="Size of x-axis labeling"/>
+                    <param name="y_axis_size" type="integer" min="1" value="10" label="Size of y-axis labeling"/>
+                    <param name="dot_size" type="integer" min="1" value="3" label="Size of dots in residual plots, QQPlots, volcano plot and comparison plot."/>
+                    <param name="text_size" type="integer" min="1" value="4" label="Size  of Protein Name label in the graph for Volcano Plot."/>
+                    <param name="text_angle" type="integer" min="0" max="360" value="90" label="Angle of x-axis labels represented each comparison at the bottom of graph incomparison plot."/>
+                    <param name="legend_size" type="integer" min="1" value="7" label="Size of legend for color at the bottom of volcano plot. "/>
+                    <param name="ProteinName" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="true" label="Display protein names in Volcano Plot." help="Yes (default) means protein names, which are significant, are displayed next to the points. No means no protein names are displayed."/>
+                    <param name="colorkey" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="true" label="Show colour key"/>
+                    <param name="numProtein" type="integer" min="1" value="100" max="180" label="Number of proteins which will be presented in each heatmap."/>
+                    <param name="clustering" type="select" label="Determines how to order proteins and comparisons. Hierarchical cluster analysis with Ward method(minimum variance) is performed.">
+                        <help>’protein’ means that protein dendrogram is computed and reordered based on protein means (the order of row is changed). ’comparison’ means comparison dendrogram is computed and reordered based on comparison means (the order of comparison is changed). ’both’ means to reorder both protein and comparison.</help>
+                        <option value="protein" selected="true">protein</option>
+                        <option value="comparison">comparison</option>
+                        <option value="both">both</option>
+                    </param>
+                    <param name="width" type="integer" min="1" value="8" label="Width of the saved pdf file"/>
+                    <param name="height" type="integer" min="1" value="5" label="Height of the saved pdf file"/>
+                    <conditional name="which_Protein">
+                        <param name="select" type="select" label="Select protein IDs to draw plots">
+                            <option value="all" selected="true">generate all plots for each protein</option>
+                            <option value="list">Protein IDs as tabular input</option>
+                        </param>
+                        <when value="all"/>
+                        <when value="list">
+                            <param name="protein_list" type="data" format="tabular" label="List of proteins"/>
+                        </when>
+                    </conditional>
+                    <conditional name="which_Comparison">
+                        <param name="select" type="select" label="Select comparisons to draw plots">
+                            <option value="all" selected="true">Generate all plots for each comparison</option>
+                            <option value="list">Comparison names as tabular input</option>
+                        </param>
+                        <when value="all"/>
+                        <when value="list">
+                            <param name="comparison_list" type="data" format="tabular" label="List of comparisons"/>
+                        </when>
+                    </conditional>
+                </section>
             </when>
         </conditional>
         <param name="selected_outputs" type="select" multiple="true" optional="false" label="Select Outputs">
             <option value="msstats_log" selected="true">MSstats log</option>
             <option value="msstatstmt_log" selected="true">MSstatsTMT log</option>
             <option value="r_script" selected="false">MSstats Rscript</option>
+            <option value="quant" selected="true">Protein abundance</option>
             <option value="ProfilePlot" selected="false">Profile Plot</option>
             <option value="QCPlot" selected="false">QC Plot</option>
         </param>
-        <section name="out_plots_opt" title="Plot Output Options" expanded="false">
-            <param name="ylimUp" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="false" label="Upper limit for y-axis in the log scale" help="No (Default) for Profile Plot and QC Plot uses the upper limit as rounded off maximum of log2(intensities) after normalization + 3."/>
-            <param name="ylimDown" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="false" label="Lower limit for y-axis in the log scale" help="No (Default) for Profile Plot and QCPlot uses 0."/>
-            <param name="x_axis_size" type="integer" min="1" value="10" label="Size of x-axis labeling"/>
-            <param name="y_axis_size" type="integer" min="1" value="10" label="Size of y-axis labeling"/>
-            <param name="text_size" type="integer" min="1" value="4" label="Size of labels represented each condition at the top"/>
-            <param name="text_angle" type="integer" min="0" max="360" value="90" label="Angle of labels represented each condition at the top"/>
-            <param name="legend_size" type="integer" min="1" value="7" label="Size of legend above Profile plot"/>
-            <param name="dot_size_profile" type="integer" min="1" value="2" label="Size of dots in Profile plot"/>
-            <param name="ncol_guide" type="integer" min="1" value="5" label="Number of columns for legends at the top of plot"/>
-            <param name="width" type="integer" min="1" value="10" label="Width of the saved pdf file"/>
-            <param name="height" type="integer" min="1" value="10" label="Height of the saved pdf file"/>
-            <conditional name="which_Protein">
-                <param name="select" type="select" label="Select protein IDs to draw plots">
-                    <option value="all" selected="true">generate all plots for each protein</option>
-                    <option value="allonly">Option for QC plot: "allonly" will generate one QC plot with all proteins</option>
-                    <option value="list">Protein IDs as tabular input</option>
-                </param>
-                <when value="all"/>
-                <when value="allonly"/>
-                <when value="list">
-                    <param name="protein_list" type="data" format="tabular" label="List of proteins"/>
-                </when>
-            </conditional>
-            <param name="originalPlot" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="true" label="Draw original profile plots without normalization"/>
-            <param name="summaryPlot" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="true" label="Draw profile plots with protein summarization for each channel and MS run"/>
-        </section>
     </inputs>
     <outputs>
-        <data name="out_msstats_log" format="txt" label="${tool.name} on ${on_string}: MSstats log">
+        <data name="out_msstats_log" from_work_dir="msstats.log" format="txt" label="${tool.name} on ${on_string}: MSstats log">
             <filter>'msstats_log' in selected_outputs</filter>
         </data>
-        <data name="out_msstatstmt_log" format="txt" label="${tool.name} on ${on_string}: MSstatsTMT log">
+        <data name="out_msstatstmt_log" from_work_dir="msstatstmt.log" format="txt" label="${tool.name} on ${on_string}: MSstatsTMT log">
             <filter>'msstatstmt_log' in selected_outputs</filter>
         </data>
         <data name="out_r_script" format="txt" label="${tool.name} on ${on_string}: Rscript">
             <filter>'r_script' in selected_outputs</filter>
+        </data>
+        <data name="out_quant" from_work_dir="Quant.tsv" format="tabular" label="${tool.name} on ${on_string}: Protein abundance">
+            <filter>'quant' in selected_outputs</filter>
         </data>
         <data name="out_profile_plot" from_work_dir="ProfilePlot.pdf" format="pdf" label="${tool.name} on ${on_string}: Profile Plot">
             <filter>'ProfilePlot' in selected_outputs</filter>
@@ -254,8 +401,17 @@ quant <- proteinSummarization(input,
         <data name="out_qc_plot" from_work_dir="QCPlot.pdf" format="pdf" label="${tool.name} on ${on_string}: QC Plot">
             <filter>'QCPlot' in selected_outputs</filter>
         </data>
-        <data name="out_group_comp" from_work_dir="ComparisonResult.tsv" format="tsv" label="${tool.name} on ${on_string}: Group Comparison">
-            <filter>group['group_comparison'] == 'true'</filter>
+        <data name="out_group_comp" from_work_dir="ComparisonResult.tsv" format="tabular" label="${tool.name} on ${on_string}: Group Comparison">
+            <filter>group['group_comparison'] == 'true' and 'comparison_result' in group['selected_group_outputs']</filter>
+        </data>
+        <data name="out_group_volcano_plot" from_work_dir="MSstats_group_VolcanoPlot.pdf" format="pdf" label="${tool.name} on ${on_string}: Group Comparison - Volcano Plot">
+            <filter>group['group_comparison'] == 'true' and 'VolcanoPlot' in group['selected_group_outputs']</filter>
+        </data>
+        <data name="out_group_heatmap" from_work_dir="MSstats_group_Heatmap.pdf" format="pdf" label="${tool.name} on ${on_string}: Group Comparison - Heatmap">
+            <filter>group['group_comparison'] == 'true' and 'Heatmap' in group['selected_group_outputs']</filter>
+        </data>
+        <data name="out_group_comp_plot" from_work_dir="MSstats_group_ComparisonPlot.pdf" format="pdf" label="${tool.name} on ${on_string}: Group Comparison - Comparison Plot">
+            <filter>group['group_comparison'] == 'true' and 'ComparisonPlot' in group['selected_group_outputs']</filter>
         </data>
     </outputs>
     <tests>
@@ -277,13 +433,13 @@ quant <- proteinSummarization(input,
             </output>
             <output name="out_r_script">
                 <assert_contents>
-                    <has_n_lines n="51" />
+                    <has_n_lines n="52" />
                 </assert_contents>
             </output>
             <output name="out_profile_plot" file="ProfilePlot.pdf" compare="sim_size"/>
             <output name="out_qc_plot" file="QCPlot.pdf" compare="sim_size"/>
         </test>
-        <test expect_num_outputs="2">
+        <test expect_num_outputs="4">
             <conditional name="input">
                 <param name="input_src" value="MaxQuant"/>
                 <param name="evidence" ftype="tabular" value="evidence.txt"/>
@@ -296,6 +452,7 @@ quant <- proteinSummarization(input,
                     <param name="select" value="true"/>
                     <param name="comparison_matrix" ftype="tabular" value="comparison_matrix.txt"/>
                 </conditional>
+                <param name="selected_group_outputs" value="comparison_result,VolcanoPlot,ComparisonPlot"/>
             </conditional>
             <param name="selected_outputs" value="ProfilePlot"/>
             <conditional name="which_Protein">
@@ -312,16 +469,24 @@ quant <- proteinSummarization(input,
                 </assert_contents>
             </output>
             <output name="out_profile_plot" file="ProfilePlot_list.pdf" compare="sim_size"/>
+            <output name="out_group_volcano_plot" file="MSstats_group_VolcanoPlot.pdf" compare="sim_size"/>
+            <output name="out_group_comp_plot" file="MSstats_group_ComparisonPlot.pdf" compare="sim_size"/>
         </test>
-        <test expect_num_outputs="2">
+        <test expect_num_outputs="3">
             <conditional name="input">
                 <param name="input_src" value="OpenMS"/>
                 <param name="oms_input" ftype="tabular" value="input.oms.txt"/>
             </conditional>
             <conditional name="group">
                 <param name="group_comparison" value="true"/>
+                <param name="selected_group_outputs" value="comparison_result,Heatmap"/>
             </conditional>
-            <param name="selected_outputs" value="msstats_log"/>
+            <param name="selected_outputs" value="r_script"/>
+            <output name="out_r_script">
+                <assert_contents>
+                    <has_n_lines n="58" />
+                </assert_contents>
+            </output>
             <output name="out_group_comp">
                 <assert_contents>
                     <has_n_lines n="51" />
@@ -330,6 +495,36 @@ quant <- proteinSummarization(input,
                     <has_text text="sp|O35226|PSMD4_MOUSE" />
                 </assert_contents>
             </output>
+            <output name="out_group_heatmap" file="MSstats_group_Heatmap.pdf" compare="sim_size"/>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="input">
+                <param name="input_src" value="PD"/>
+                <param name="PSM" ftype="tabular" value="input.pd.txt"/>
+                <param name="annotation" ftype="tabular" value="annotation.pd.txt"/>
+            </conditional>
+            <param name="selected_outputs" value="quant"/>
+            <output name="out_quant">
+                <assert_contents>
+                    <has_n_lines n="1575" />
+                    <has_n_columns n="8" />
+                    <has_text text="PAMI-176_Mouse_A-J_1" />
+                    <has_text text="Long_LF" />
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="input">
+                <param name="input_src" value="MaxQuant"/>
+                <param name="evidence" ftype="tabular" value="evidence.txt"/>
+                <param name="annotation" ftype="tabular" value="annotation.txt"/>
+                <param name="proteinGroups" ftype="tabular" value="proteinGroups.txt"/>
+            </conditional>
+            <param name="selected_outputs" value="ProfilePlot"/>
+            <conditional name="which_Protein">
+                <param name="select" value="allonly"/>
+            </conditional>
+            <output name="out_profile_plot" file="ProfilePlot_allonly.pdf" compare="sim_size"/>
         </test>
     </tests>
     <help><![CDATA[
