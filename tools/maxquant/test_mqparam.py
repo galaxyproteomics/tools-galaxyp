@@ -2,8 +2,9 @@
 create a new parameter file using '<MAXQUANT_CMD> -c ./mqpar.xml'
 """
 
-import pytest
 import xml.etree.ElementTree as ET
+
+import pytest
 from mqparam import MQParam, ParamGroup
 
 TEMPLATE_PATH = './test-data/template.xml'
