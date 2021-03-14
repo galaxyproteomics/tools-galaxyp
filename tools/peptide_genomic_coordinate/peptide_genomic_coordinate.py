@@ -1,154 +1,124 @@
 #!/usr/bin/env python
-# 
+#
 # Author: Praveen Kumar
 # University of Minnesota
 #
-# Get peptide's genomic coordinate from the protein's genomic mapping sqlite file (which is derived from the https://toolshed.g2.bx.psu.edu/view/galaxyp/translate_bed/038ecf54cbec)
-# 
+# Get peptide's genomic coordinate from the protein's genomic mapping sqlite file
+# (which is derived from the https://toolshed.g2.bx.psu.edu/view/galaxyp/translate_bed/038ecf54cbec)
+#
 # python peptideGenomicCoordinate.py <peptide_list> <mz_to_sqlite DB> <genomic mapping file DB> <output.bed>
-# 
-import sys
+#
+import argparse
 import sqlite3
+import sys
+
+
+pep_stmt = """\
+SELECT dBSequence_ref, start, end, peptide_ref \
+FROM peptide_evidence e JOIN peptides p on e.peptide_ref = p.id \
+WHERE isDecoy = 'false' AND p.sequence = ?\
+"""
+
+map_stmt = """
+SELECT name, chrom, start, end, strand, cds_start, cds_end \
+FROM feature_cds_map \
+WHERE name = ? \
+AND cds_end >= ? AND cds_start <= ? \
+ORDER BY cds_start\
+"""
 
 
 def main():
-    conn = sqlite3.connect(sys.argv[2])
-    c = conn.cursor()
-    c.execute("DROP table if exists novel")
-    conn.commit()
-    c.execute("CREATE TABLE novel(peptide text)")
-    pepfile = open(sys.argv[1],"r")
-    
-    pep_seq = []
+    parser = argparse.ArgumentParser(description='BED file for peptides')
+    parser.add_argument('peptides_file',
+                        metavar='peptides.tabular',
+                        type=argparse.FileType('r'),
+                        help='List of peptides, one per line')
+    parser.add_argument('mz_to_sqlite',
+                        metavar='mz.sqlite',
+                        help='mz_to_sqlite sqlite database')
+    parser.add_argument('genome_mapping',
+                        metavar='genome_mapping.sqlite',
+                        help='genome_mapping sqlite database')
+    parser.add_argument('bed_file',
+                        metavar='peptides.bed',
+                        type=argparse.FileType('w'),
+                        help='BED file of peptide genomic locations')
+    parser.add_argument('-a', '--accession',
+                        action='store_true',
+                        help='Append the accession to the peptide for BED name')
+    parser.add_argument('-d', '--debug',
+                        action='store_true',
+                        help='Debug')
+    args = parser.parse_args()
+
+    pconn = sqlite3.connect(args.mz_to_sqlite)
+    pc = pconn.cursor()
+    mconn = sqlite3.connect(args.genome_mapping)
+    mc = mconn.cursor()
+    outfh = args.bed_file
+    pepfile = args.peptides_file
     for seq in pepfile.readlines():
         seq = seq.strip()
-        pep_seq.append(tuple([seq]))
-    
-    c.executemany("insert into novel(peptide) values(?)", pep_seq)
-    conn.commit()
-    
-    c.execute("SELECT distinct psm.sequence, ps.id, ps.sequence from db_sequence ps, psm_entries psm, novel n, proteins_by_peptide pbp where psm.sequence = n.peptide and pbp.peptide_ref = psm.id and pbp.id = ps.id")
-    rows = c.fetchall()
-
-    conn1 = sqlite3.connect(sys.argv[3])
-    c1 = conn1.cursor()
-
-    outfh = open(sys.argv[4], "w")
-
-    master_dict = {}
-    for each in rows:
-        peptide = each[0]
-        acc = each[1]
-        acc_seq = each[2]
-    
-        c1.execute("SELECT chrom,start,end,name,strand,cds_start,cds_end FROM feature_cds_map map WHERE map.name = '"+acc+"'")
-        coordinates = c1.fetchall()
-    
-        if len(coordinates) != 0:
-            pep_start = 0
-            pep_end = 0
-            flag = 0
-            splice_flag = 0
-            spliced_peptide = []
-            for each_entry in coordinates:
-                chromosome = each_entry[0]
-                start = int(each_entry[1])
-                end = int(each_entry[2])
-                strand = each_entry[4]
-                cds_start = int(each_entry[5])
-                cds_end = int(each_entry[6])
-                pep_pos_start = (acc_seq.find(peptide)*3)
-                pep_pos_end = pep_pos_start + (len(peptide)*3)
-                if pep_pos_start >= cds_start and pep_pos_end <= cds_end:
-                    if strand == "+":
-                        pep_start = start + pep_pos_start - cds_start
-                        pep_end = start + pep_pos_end - cds_start
-                        pep_thick_start = 0
-                        pep_thick_end = len(peptide)
-                        flag == 1
-                    else:
-                        pep_end = end - pep_pos_start + cds_start
-                        pep_start = end - pep_pos_end + cds_start
-                        pep_thick_start = 0
-                        pep_thick_end = len(peptide)
-                        flag == 1
-                    spliced_peptide = []
-                    splice_flag = 0
+        pc.execute(pep_stmt, (seq,))
+        pep_refs = pc.fetchall()
+        for pep_ref in pep_refs:
+            (acc, pep_start, pep_end, pep_seq) = pep_ref
+            cds_start = (pep_start - 1) * 3
+            cds_end = pep_end * 3
+            if args.debug:
+                print('%s\t%s\t%s\t%d\t%d' % (acc, pep_start, pep_end, cds_start, cds_end), file=sys.stdout)
+            mc.execute(map_stmt, (acc, cds_start, cds_end))
+            exons = mc.fetchall()
+            if args.debug:
+                print('\n'.join([str(e) for e in exons]), file=sys.stdout)
+            if exons:
+                chrom = exons[0][1]
+                strand = exons[0][4]
+                if strand == '+':
+                    start = exons[0][2] + cds_start
+                    end = exons[-1][2] + cds_end - exons[-1][5]
+                    blk_start = []
+                    blk_size = []
+                    for exon in exons:
+                        offset = cds_start if cds_start > exon[5] else 0
+                        bstart = exon[2] + offset
+                        bsize = min(cds_end, exon[6]) - max(cds_start, exon[5])
+                        if args.debug:
+                            print('bstart %d\tbsize %d\t %d' % (bstart, bsize, offset), file=sys.stdout)
+                        blk_start.append(bstart - start)
+                        blk_size.append(bsize)
                 else:
-                    if flag == 0:
-                        if strand == "+":
-                            if pep_pos_start >= cds_start and pep_pos_start <= cds_end and pep_pos_end > cds_end:
-                                pep_start = start + pep_pos_start - cds_start
-                                pep_end = end
-                                pep_thick_start = 0
-                                pep_thick_end = (pep_end-pep_start)
-                                spliced_peptide.append([pep_start,pep_end,pep_thick_start,pep_thick_end])
-                                splice_flag = splice_flag + 1
-                                if splice_flag == 2:
-                                    flag = 1
-                            elif pep_pos_end >= cds_start and pep_pos_end <= cds_end and pep_pos_start < cds_start:
-                                pep_start = start
-                                pep_end = start + pep_pos_end - cds_start
-                                pep_thick_start = (len(peptide)*3)-(pep_end-pep_start)
-                                pep_thick_end = (len(peptide)*3)
-                                spliced_peptide.append([pep_start,pep_end,pep_thick_start,pep_thick_end])
-                                splice_flag = splice_flag + 1
-                                if splice_flag == 2:
-                                    flag = 1
-                            else:
-                                pass
-                        else:
-                            if pep_pos_start >= cds_start and pep_pos_start <= cds_end and pep_pos_end >= cds_end:
-                                pep_start = start
-                                pep_end = end - pep_pos_start - cds_start
-                                pep_thick_start = 0
-                                pep_thick_end = (pep_end-pep_start)
-                                spliced_peptide.append([pep_start,pep_end,pep_thick_start,pep_thick_end])
-                                splice_flag = splice_flag + 1
-                                if splice_flag == 2:
-                                    flag = 1
-                            elif pep_pos_end >= cds_start and pep_pos_end <= cds_end and pep_pos_start <= cds_start:
-                                pep_start = end - pep_pos_end + cds_start
-                                pep_end = end
-                                pep_thick_start = (len(peptide)*3)-(pep_end-pep_start)
-                                pep_thick_end = (len(peptide)*3)
-                                spliced_peptide.append([pep_start,pep_end,pep_thick_start,pep_thick_end])
-                                splice_flag = splice_flag + 1
-                                if splice_flag == 2:
-                                    flag = 1
-                            else:
-                                pass
-
-            if len(spliced_peptide) == 0:
-                if strand == "+":
-                    bed_line = [chromosome, str(pep_start), str(pep_end), peptide, "255", strand, str(pep_start), str(pep_end), "0", "1", str(pep_end-pep_start), "0"]
-                else:
-                    bed_line = [chromosome, str(pep_start), str(pep_end), peptide, "255", strand, str(pep_start), str(pep_end), "0", "1", str(pep_end-pep_start), "0"]
-                outfh.write("\t".join(bed_line)+"\n")
-            else:
-                if strand == "+":
-                    pep_entry = spliced_peptide
-                    pep_start = min([pep_entry[0][0], pep_entry[1][0]])
-                    pep_end = max([pep_entry[0][1], pep_entry[1][1]])
-                    blockSize = [str(min([pep_entry[0][3], pep_entry[1][3]])),str(max([pep_entry[0][3], pep_entry[1][3]])-min([pep_entry[0][3], pep_entry[1][3]]))]
-                    blockStarts = ["0", str(pep_end-pep_start-(max([pep_entry[0][3], pep_entry[1][3]])-min([pep_entry[0][3], pep_entry[1][3]])))]
-                    bed_line = [chromosome, str(pep_start), str(pep_end), peptide, "255", strand, str(pep_start), str(pep_end), "0", "2", ",".join(blockSize), ",".join(blockStarts)]
-                    outfh.write("\t".join(bed_line)+"\n")
-                else:
-                    pep_entry = spliced_peptide
-                    pep_start = min([pep_entry[0][0], pep_entry[1][0]])
-                    pep_end = max([pep_entry[0][1], pep_entry[1][1]])
-                    blockSize = [str(min([pep_entry[0][3], pep_entry[1][3]])),str(max([pep_entry[0][3], pep_entry[1][3]])-min([pep_entry[0][3], pep_entry[1][3]]))]
-                    blockStarts = ["0", str(pep_end-pep_start-(max([pep_entry[0][3], pep_entry[1][3]])-min([pep_entry[0][3], pep_entry[1][3]])))]
-                    bed_line = [chromosome, str(pep_start), str(pep_end), peptide, "255", strand, str(pep_start), str(pep_end), "0", "2", ",".join(blockSize), ",".join(blockStarts)]
-                    outfh.write("\t".join(bed_line)+"\n")
-    c.execute("DROP table novel")
-    conn.commit()
-    conn.close()
-    conn1.close()
+                    start = exons[-1][2] + exons[-1][6] - cds_end
+                    end = exons[0][3] - cds_start + exons[0][5]
+                    blk_start = []
+                    blk_size = []
+                    for exon in reversed(exons):
+                        bstart = exon[2] + exon[6] - min(exon[6], cds_end)
+                        bsize = min(cds_end, exon[6]) - max(cds_start, exon[5])
+                        # bend = exon[3] - (exon[5] - max(exon[5], cds_start))
+                        bend = exon[3] - min(cds_start - exon[5], cds_start)
+                        bend = exon[3] - bsize
+                        if args.debug:
+                            print('bstart %d\tbsize %d\tbend %d' % (bstart, bsize, bend), file=sys.stdout)
+                        blk_start.append(bstart - start)
+                        blk_size.append(bsize)
+                bed_line = [str(chrom), str(start), str(end),
+                            '_'.join([seq, acc]) if args.accession else seq,
+                            '255', strand,
+                            str(start), str(end),
+                            '0,0,0',
+                            str(len(blk_start)),
+                            ','.join([str(b) for b in blk_size]),
+                            ','.join([str(b) for b in blk_start])]
+                if args.debug:
+                    print('\t'.join(bed_line), file=sys.stdout)
+                outfh.write('\t'.join(bed_line) + '\n')
+    pconn.close()
+    mconn.close()
     outfh.close()
     pepfile.close()
-    
-    return None
-if __name__ == "__main__":
+
+
+if __name__ == '__main__':
     main()
