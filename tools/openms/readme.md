@@ -74,10 +74,15 @@ The tools work by:
 
 Preprocessing:
 
-- For each input / output data set parameter a directory is crated (named by
-  the parameter)
 - For input data set parameters the links to the actual location of the data
-  sets are created
+  sets are created, the link names are `element_identifier`.`EXT`, where `EXT`
+  is an extension that is known by OpenMS
+- In order to avoid name collisions for the created links each is placed in a
+  unique directory: `PARAM_NAME/DATASET_ID`, where `PARAM_NAME` is the name
+  of the parameter and `DATASET_ID` is the id of the Galaxy dataset 
+- the same happens for output parameters that are in 1:1 correspondence with
+  an input parameter
+
 
 Main:
 

@@ -6,10 +6,11 @@ import copy
 import ntpath
 import os
 import re
-import yaml
 import xml.etree.ElementTree as ET
 from itertools import zip_longest
 from xml.dom import minidom
+
+import yaml
 
 
 def et_add_child(el, name, text, attrib=None):

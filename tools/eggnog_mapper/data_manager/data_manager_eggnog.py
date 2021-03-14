@@ -39,11 +39,18 @@ def main():
     # params = json.loads(open(args.config_file).read())
     dm_dict = {}
     dm_dict['data_tables'] = dm_dict.get('data_tables', {})
-    data_table = 'eggnog_mapper_db'
+    data_table = 'eggnog_mapper_db_versioned'
     dm_dict['data_tables'][data_table]\
         = dm_dict['data_tables'].get(data_table, [])
+    # Versionning is super confusing:
+    # eggnog-mapper 1.* needed a db v4.5 (based on eggnog v4.5)
+    # eggnog-mapper 2.0 needs a db v2.0 (based on eggnog v5.0)
+    # db v4.5 are not compatible with eggnog-mapper 2.0
+    version = "2.0"
+    if "4.5" in db_version:
+        version = "1.0"
     data_table_entry = dict(value=db_version, name=db_version,
-                            path=args.install_path)
+                            path=args.install_path, version=version)
     dm_dict['data_tables'][data_table].append(data_table_entry)
 
     # save info to json file
