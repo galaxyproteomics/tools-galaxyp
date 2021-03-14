@@ -27,6 +27,7 @@ AND cds_end >= ? AND cds_start <= ? \
 ORDER BY cds_start\
 """
 
+
 def main():
     parser = argparse.ArgumentParser(description='BED file for peptides')
     parser.add_argument('peptides_file',
@@ -50,7 +51,6 @@ def main():
                         action='store_true',
                         help='Debug')
     args = parser.parse_args()
-
 
     pconn = sqlite3.connect(args.mz_to_sqlite)
     pc = pconn.cursor()
