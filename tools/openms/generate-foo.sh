@@ -87,7 +87,7 @@ function get_tests2 {
         # echo $ctdtmp
         # >&2 cat $ctdtmp
         testtmp=$(mktemp)
-        python3 $CTDCONVERTER/convert.py galaxy -i $ctdtmp -o $testtmp -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib > /dev/null
+        CTDConverter galaxy -i $ctdtmp -o $testtmp -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib > /dev/null
         cat $testtmp | grep -v '<output.*file=""' # | grep -v 'CHEMISTRY/'
         rm $ctdtmp $testtmp
 

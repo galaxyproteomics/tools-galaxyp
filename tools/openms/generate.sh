@@ -56,7 +56,7 @@ fi
 find . -maxdepth 0 -name "[A-Z]*xml" -delete
 source $(dirname $(which conda))/../etc/profile.d/conda.sh
 conda activate OpenMS$VERSION-env
-python $CTDCONVERTER/convert.py galaxy -i ctd/*ctd -o ./ -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --test-macros macros_autotest.xml --test-macros-prefix autotest_  --test-macros macros_test.xml --test-macros-prefix manutest_ --tool-version $VERSION --tool-profile $PROFILE --bump-file bump.json > convert.out 2> convert.err
+CTDConverter galaxy -i ctd/*ctd -o ./ -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --test-macros macros_autotest.xml --test-macros-prefix autotest_  --test-macros macros_test.xml --test-macros-prefix manutest_ --tool-version $VERSION --tool-profile $PROFILE --bump-file bump.json > convert.out 2> convert.err
 if [[ "$?" -ne "0" ]]; then >&2 echo 'CTD -> XML conversion failed'; >&2 echo -e "stderr:\n$(cat convert.err)"; fi
 conda deactivate
 
