@@ -45,7 +45,7 @@ eval "$(conda shell.bash hook)"
 
 echo "Clone OpenMS $VERSION sources"
 if [[ ! -d $OPENMSGIT ]]; then
-	git clone -b release/$VERSION.0 https://github.com/OpenMS/OpenMS.git $OPENMSGIT
+	git clone --depth 1 -b release/$VERSION.0 https://github.com/OpenMS/OpenMS.git $OPENMSGIT
 	cd $OPENMSGIT
 	git submodule init
 	git submodule update
@@ -84,11 +84,10 @@ fi
 ###############################################################################
 echo "Clone CTDConverter"
 if [[ ! -d $CTDCONVERTER ]]; then
-	#git clone https://github.com/WorkflowConversion/CTDConverter.git CTDConverter
-	git clone -b topic/fix-selects https://github.com/bernt-matthias/CTDConverter.git $CTDCONVERTER
+	git clone --depth 1 -b master https://github.com/WorkflowConversion/CTDConverter.git $CTDCONVERTER
 else
 	cd $CTDCONVERTER
-	git pull origin topic/fix-selects
+	git pull origin master
 	cd -
 fi
 
@@ -105,25 +104,27 @@ cp -r $OPENMSGIT/share/OpenMS/MAPPING/ test-data/
 cp -r $OPENMSGIT/share/OpenMS/CHEMISTRY test-data/
 cp -r $OPENMSGIT/share/OpenMS/examples/ test-data/
 if [[ ! -f test-data/MetaboliteSpectralDB.mzML ]]; then 
-	wget -nc https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Tutorials/Data/latest/Example_Data/Metabolomics/databases/MetaboliteSpectralDB.mzML
-	mv MetaboliteSpectralDB.mzML test-data/
+	if [[ ! -f $tmp/MetaboliteSpectralDB.mzML ]]; then 
+		wget -nc https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Tutorials/Data/latest/Example_Data/Metabolomics/databases/MetaboliteSpectralDB.mzML -O $tmp/MetaboliteSpectralDB.mzML
+	fi
+	cp $tmp/MetaboliteSpectralDB.mzML test-data/
 fi
-ln -fs TOFCalibration_ref_masses test-data/TOFCalibration_ref_masses.txt
-ln -fs TOFCalibration_const test-data/TOFCalibration_const.csv
+ln -fs TOFCalibration_ref_masses.tsv test-data/TOFCalibration_ref_masses.txt
+ln -fs TOFCalibration_const.tsv test-data/TOFCalibration_const.csv
 
 if [ ! -d test-data/pepnovo_models/ ]; then
-	mkdir -p /tmp/pepnovo
-	wget -nc http://proteomics.ucsd.edu/Software/PepNovo/PepNovo.20120423.zip
-	unzip PepNovo.20120423.zip -d /tmp/pepnovo/
-	mv /tmp/pepnovo/Models test-data/pepnovo_models/
-	rm PepNovo.20120423.zip
-	rm -rf /tmp/pepnovo
+	if [ ! -d $tmp/pepnovo/ ]; then
+		git clone --depth 1 -b master https://github.com/jmchilton/pepnovo.git $tmp/pepnovo/
+	fi
+	cp -r $tmp/pepnovo/Models test-data/pepnovo_models/
 fi
 ###############################################################################
 ## generate ctd files using the binaries in the conda package 
 ###############################################################################
 echo "Create CTD files"
 conda activate $OPENMSENV
+python3 -m pip install --no-deps --no-cache-dir --force-reinstall $CTDCONVERTER
+
 rm -rf ctd
 mkdir -p ctd
 
@@ -262,7 +263,7 @@ conda deactivate
 ## remove broken symlinks in test-data
 find test-data/ -xtype l -delete
 
-# if [ ! -z "$created" ]; then
-# 	echo "Removing temporary directory"
-# 	rm -rf "$tmp"
-# fi
+if [ ! -z "$created" ]; then
+	echo "Removing temporary directory"
+	rm -rf "$tmp"
+fi
