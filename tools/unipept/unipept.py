@@ -102,7 +102,7 @@ ec_name_dict = {
 }
 pept2lca_column_order = ['peptide', 'taxon_rank', 'taxon_id', 'taxon_name']
 pept2lca_extra_column_order = ['peptide', 'superkingdom', 'kingdom', 'subkingdom', 'superphylum', 'phylum', 'subphylum', 'superclass', 'class', 'subclass', 'infraclass', 'superorder', 'order', 'suborder', 'infraorder', 'parvorder', 'superfamily', 'family', 'subfamily', 'tribe', 'subtribe', 'genus', 'subgenus', 'species_group', 'species_subgroup', 'species', 'subspecies', 'varietas', 'forma']
-pept2lca_all_column_order = pept2lca_column_order + pept2lca_extra_column_order[1:]
+pept2lca_all_column_order = pept2lca_column_order + pept2lca_extra_column_order[2:]
 pept2prot_column_order = ['peptide', 'uniprot_id', 'taxon_id']
 pept2prot_extra_column_order = pept2prot_column_order + ['taxon_name', 'ec_references', 'go_references', 'refseq_ids', 'refseq_protein_ids', 'insdc_ids', 'insdc_protein_ids']
 pept2ec_column_order = [['peptide', 'total_protein_count'], ['ec_number', 'protein_count']]
@@ -487,6 +487,8 @@ def __main__():
     parser.add_option('-C', '--csv', dest='csv', default=None, help='Output file path for Comma-separated-values (.csv) formatted results')
     parser.add_option('-U', '--unmatched', dest='unmatched', default=None, help='Output file path for peptide with no matches')
     parser.add_option('-u', '--url', dest='url', default='http://api.unipept.ugent.be/api/v1/', help='unipept url http://api.unipept.ugent.be/api/v1/')
+    parser.add_option('-P', '--peptide_match', dest='peptide_match', choices=['best', 'full', 'report'], default='best', help='Match whole peptide')
+    parser.add_option('--unmatched_aa', dest='unmatched_aa', default=None, help='Show unmatched AA in peptide as')
     # debug
     parser.add_option('-g', '--get', dest='get', action='store_true', default=False, help='Use GET instead of POST')
     parser.add_option('-d', '--debug', dest='debug', action='store_true', default=False, help='Turning on debugging')
@@ -495,6 +497,16 @@ def __main__():
     if options.version:
         print('%s' % version)
         sys.exit(0)
+
+    def tryptic_match_string(peptide, tryptic_matches):
+        if options.unmatched_aa:
+            p = peptide.lower()
+            for m in tryptic_matches:
+                p = p.replace(m.lower(), m)
+            return re.sub('[a-z]', options.unmatched_aa, p)
+        else:
+            return ','.join(tryptic_matches)
+
     invalid_ec = 2 if options.strict else None
     peptides = []
     # Get peptide sequences
@@ -522,7 +534,12 @@ def __main__():
         else:
             column_order = pept2lca_column_order
     # map to tryptic peptides
-    pepToParts = {p: re.split('\n', re.sub(r'(?<=[RK])(?=[^P])', '\n', p)) for p in peptides}
+    if options.peptide_match == 'full':
+        pepToParts = {p: [p] for p in peptides}
+    else:
+        pepToParts = {p: re.split('\n', re.sub(r'(?<=[RK])(?=[^P])', '\n', p)) for p in peptides}
+    if options.debug:
+        print("column_order: %s\n" % (column_order), file=sys.stderr)
     partToPeps = {}
     for peptide, parts in pepToParts.items():
         if options.debug:
@@ -591,8 +608,10 @@ def __main__():
         for peptide in peptides:
             # Get the intersection of matches to the tryptic parts
             keyToMatch = None
+            tryptic_match = []
             for part in pepToParts[peptide]:
                 if part in mapping:
+                    tryptic_match.append(part)
                     temp = {match[dupkey]: match for match in mapping[part]}
                     if keyToMatch:
                         dkeys = set(keyToMatch.keys()) - set(temp.keys())
@@ -605,6 +624,7 @@ def __main__():
                 unmatched_peptides.append(peptide)
             else:
                 for key, match in keyToMatch.items():
+                    match['tryptic_match'] = tryptic_match_string(peptide, tryptic_match)
                     match['tryptic_peptide'] = match['peptide']
                     match['peptide'] = peptide
                     peptideMatches.append(match)
@@ -614,14 +634,17 @@ def __main__():
         # map resp back to peptides
         for peptide in peptides:
             matches = list()
+            tryptic_match = []
             for part in pepToParts[peptide]:
                 if part in respMap:
+                    tryptic_match.append(part)
                     matches.append(respMap[part])
             match = best_match(peptide, matches)
             if not match:
                 unmatched_peptides.append(peptide)
                 longest_tryptic_peptide = sorted(pepToParts[peptide], key=lambda x: len(x))[-1]
                 match = {'peptide': longest_tryptic_peptide}
+            match['tryptic_match'] = tryptic_match_string(peptide, tryptic_match)
             match['tryptic_peptide'] = match['peptide']
             match['peptide'] = peptide
             peptideMatches.append(match)
@@ -630,14 +653,17 @@ def __main__():
         # map resp back to peptides
         for peptide in peptides:
             matches = list()
+            tryptic_match = []
             for part in pepToParts[peptide]:
                 if part in respMap and 'total_protein_count' in respMap[part]:
+                    tryptic_match.append(part)
                     matches.append(respMap[part])
             match = best_match(peptide, matches)
             if not match:
                 unmatched_peptides.append(peptide)
                 longest_tryptic_peptide = sorted(pepToParts[peptide], key=lambda x: len(x))[-1]
                 match = {'peptide': longest_tryptic_peptide}
+            match['tryptic_match'] = tryptic_match_string(peptide, tryptic_match)
             match['tryptic_peptide'] = match['peptide']
             match['peptide'] = peptide
             peptideMatches.append(match)
@@ -686,6 +712,10 @@ def __main__():
                 total_protein_count = str(pdict['total_protein_count']) if 'total_protein_count' in pdict else '0'
                 column_names = ['peptide', 'total_protein_count']
                 vals = [peptide, total_protein_count]
+                if options.peptide_match == 'report':
+                    column_names = ['peptide', 'tryptic_match', 'total_protein_count']
+                    tryptic_match = pdict.get('tryptic_match', '')
+                    vals = [peptide, tryptic_match, total_protein_count]
                 if ec_dict:
                     vals += ec_dict[peptide]
                     column_names += ec_cols
@@ -700,11 +730,11 @@ def __main__():
                     column_names += taxon_cols[1:]
                 rows.append(vals)
         elif options.unipept in ['pept2lca', 'pept2taxa', 'pept2prot']:
+            if options.peptide_match == 'report':
+                column_order.insert(1, 'tryptic_match')
             (taxa, taxon_cols) = get_taxon_dict(resp, column_order, extra=options.extra, names=options.names)
             column_names = taxon_cols
             rows = list(taxa.values())
-            for peptide, vals in taxa.items():
-                rows.append(vals)
         if options.tsv:
             with open(options.tsv, 'w') as outputFile:
                 if column_names:
