@@ -9,8 +9,8 @@
 """
 import json
 import optparse
-import sys
 import re
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
