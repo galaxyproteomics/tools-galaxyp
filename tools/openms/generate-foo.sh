@@ -47,7 +47,7 @@ function get_tests2 {
         grep -iE "add_test\(\"(TOPP|UTILS)_.*/$id " | egrep -v "_prepare\"|_convert|WRITEINI|WRITECTD|INVALIDVALUE"  | while read -r line
     do
         line=$(echo "$line" | sed 's/add_test("\([^"]\+\)"/\1/; s/)$//; s/\${TOPP_BIN_PATH}\///g;s/\${DATA_DIR_TOPP}\///g; s#THIRDPARTY/##g')
-        # >&2 echo $line
+        >&2 echo === $line
         test_id=$(echo "$line" | cut -d" " -f 1)
         tool_id=$(echo "$line" | cut -d" " -f 2)
         if [[ $test_id =~ _out_?[0-9]? ]]; then
@@ -66,8 +66,9 @@ function get_tests2 {
         fi
         tes="  <test>\n"
         line=$(fix_tmp_files "$line")
+        >&2 echo == $line
         line=$(unique_files "$line")
-        # >&2 echo $line
+        >&2 echo = $line
         #if there is an ini file then we use this to generate the test
         #otherwise the ctd file is used
         #other command line parameters are inserted later into this xml
@@ -82,13 +83,14 @@ function get_tests2 {
         ctdtmp=$(mktemp)
         #echo python3 fill_ctd_clargs.py --ctd $ini $cli
         # using eval: otherwise for some reason quoted values are not used properly ('A B' -> ["'A", "B'"])
-        # >&2 echo "python3 fill_ctd_clargs.py --ctd $ini $cli"
+        >&2 echo "python3 fill_ctd_clargs.py --ctd $ini $cli"
         eval "python3 fill_ctd_clargs.py --ini_file $ini --ctd_file ctd/$tool_id.ctd $cli" > "$ctdtmp"
         # echo $ctdtmp
-        # >&2 cat $ctdtmp
+        >&2 cat $ctdtmp
         testtmp=$(mktemp)
-        python3 $CTDCONVERTER/convert.py galaxy -i $ctdtmp -o $testtmp -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib > /dev/null
-        cat $testtmp | grep -v '<output.*file=""' # | grep -v 'CHEMISTRY/'
+        >&2 CTDConverter galaxy -i $ctdtmp -o $testtmp -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib # > /dev/null
+        >&2 cat $testtmp
+	cat $testtmp | grep -v '<output.*file=""' # | grep -v 'CHEMISTRY/'
         rm $ctdtmp $testtmp
 
         #> /dev/null

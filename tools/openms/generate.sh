@@ -1,21 +1,22 @@
 #!/usr/bin/env bash
 
-VERSION=2.6
+VERSION=2.7
 FILETYPES="filetypes.txt"
 PROFILE="20.05"
 ## FILETYPES_RE=$(grep -v "^#" $FILETYPES | grep -v "^$" | cut -f 1 -d" " | tr '\n' '|' | sed 's/|$//'| sed 's/|/\\|/g')
 
-export tmp=$(mktemp -d)
+export tmp="/tmp/openms-stuff/"
+# TODO export tmp=$(mktemp -d)
 
 export CTDCONVERTER="$tmp/CTDConverter"
 export PYTHONPATH="$CTDCONVERTER"
 ###############################################################################
 ## reset old data
 ###############################################################################
-# rm $(ls *xml |grep -v macros)
-# rm -rf ctd
-# mkdir -p ctd
-# echo "" > prepare_test_data.sh
+rm $(ls *xml |grep -v macros)
+rm -rf ctd
+mkdir -p ctd
+echo "" > prepare_test_data.sh
 
 ###############################################################################
 ## generate tests
@@ -46,8 +47,8 @@ bash ./test-data.sh ./macros_autotest.xml
 # 	git clone -b topic/no-1-2x https://github.com/bernt-matthias/CTDopts CTDopts
 # fi
 if [ ! -d $CTDCONVERTER ]; then
-	#git clone https://github.com/WorkflowConversion/CTDConverter.git CTDConverter
-	git clone -b topic/fix-selects https://github.com/bernt-matthias/CTDConverter.git $CTDCONVERTER
+	git clone https://github.com/WorkflowConversion/CTDConverter.git CTDConverter
+	# git clone -b topic/fix-selects https://github.com/bernt-matthias/CTDConverter.git $CTDCONVERTER
 fi
 ###############################################################################
 ## conversion ctd->xml 
@@ -56,7 +57,7 @@ fi
 find . -maxdepth 0 -name "[A-Z]*xml" -delete
 source $(dirname $(which conda))/../etc/profile.d/conda.sh
 conda activate OpenMS$VERSION-env
-python $CTDCONVERTER/convert.py galaxy -i ctd/*ctd -o ./ -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --test-macros macros_autotest.xml --test-macros-prefix autotest_  --test-macros macros_test.xml --test-macros-prefix manutest_ --tool-version $VERSION --tool-profile $PROFILE --bump-file bump.json > convert.out 2> convert.err
+CTDConverter galaxy -i ctd/*ctd -o ./ -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --test-macros macros_autotest.xml --test-macros-prefix autotest_  --test-macros macros_test.xml --test-macros-prefix manutest_ --tool-version $VERSION --tool-profile $PROFILE --bump-file bump.json > convert.out 2> convert.err
 if [[ "$?" -ne "0" ]]; then >&2 echo 'CTD -> XML conversion failed'; >&2 echo -e "stderr:\n$(cat convert.err)"; fi
 conda deactivate
 
