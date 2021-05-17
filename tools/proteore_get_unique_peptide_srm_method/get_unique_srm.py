@@ -103,7 +103,7 @@ def one_id_one_line(input_file, nb_col, header):
             if ";" in line[nb_col]:
                 ids = line[nb_col].split(";")
                 for id in ids:
-                    new_file.append(line[:nb_col]+[id]+line[nb_col+1:])
+                    new_file.append(line[:nb_col] + [id] + line[nb_col + 1:])
                     ids_list.append(id)
             else:
                 new_file.append(line)
@@ -142,10 +142,10 @@ def retrieve_srm_features(srm_atlas, ids):
 
 
 def create_header(input_file, ncol, features):
-    col_names = list(range(1, len(input_file[0])+1))
-    col_names = ["col"+str(e) for e in col_names]
+    col_names = list(range(1, len(input_file[0]) + 1))
+    col_names = ["col" + str(e) for e in col_names]
     col_names[ncol] = "Uniprot-AC"
-    col_names = col_names+features
+    col_names = col_names + features
     return(col_names)
 
 
@@ -188,13 +188,13 @@ def main():
 
         # write header
         if header:
-            writer.writerow(input_file[0]+features)
+            writer.writerow(input_file[0] + features)
             input_file = input_file[1:]
         elif args.input_type == "file":
             col_names = [create_header(input_file, column_number, features)]
             writer.writerow(col_names)
         else:
-            writer.writerow(["Uniprot-AC"]+features)
+            writer.writerow(["Uniprot-AC"] + features)
 
         # write lines
         previous_line = ""
