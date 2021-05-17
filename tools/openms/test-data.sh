@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-VERSION=2.6
+VERSION=2.7
 FILETYPES="filetypes.txt"
-CONDAPKG="https://anaconda.org/bioconda/openms/2.6.0/download/linux-64/openms-2.6.0-h4afb90d_0.tar.bz2"
+CONDAPKG="https://anaconda.org/OpenMS/openms/2.7.0pre/download/linux-64/openms-2.7.0pre-h4afb90d_0.tar.bz2"
 
 # import the magic
 . ./generate-foo.sh
@@ -12,6 +12,8 @@ if [ -z "$tmp" ]; then
 	tmp=$(mktemp -d)
 	created="yes"
 fi
+#TODO
+export tmp="/tmp/openms-stuff/"
 
 export OPENMSGIT="$tmp/OpenMS$VERSION.0-git"
 export OPENMSPKG="$tmp/OpenMS$VERSION-pkg/"
@@ -45,14 +47,16 @@ eval "$(conda shell.bash hook)"
 
 echo "Clone OpenMS $VERSION sources"
 if [[ ! -d $OPENMSGIT ]]; then
-	git clone -b release/$VERSION.0 https://github.com/OpenMS/OpenMS.git $OPENMSGIT
+	git clone -b develop https://github.com/OpenMS/OpenMS.git $OPENMSGIT
+	#TODO git clone -b release/$VERSION.0 https://github.com/OpenMS/OpenMS.git $OPENMSGIT
 	cd $OPENMSGIT
 	git submodule init
 	git submodule update
 	cd -
 else
 	cd $OPENMSGIT
-	git pull origin release/$VERSION.0
+	git pull origin develop
+	#TODO git pull origin release/$VERSION.0
 	cd -
 fi
 
@@ -62,7 +66,8 @@ echo "Create OpenMS $VERSION conda env"
 if conda env list | grep "$OPENMSENV"; then
 	true
 else
-	conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults -n $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION ctdopts=1.4 lxml
+	conda create -y --quiet --override-channels --channel OpenMS --channel iuc --channel conda-forge --channel bioconda --channel defaults -n $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION ctdopts lxml
+	#TODO conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults -n $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION ctdopts lxml
 # chmod -R u-w $OPENMSENV 
 fi
 ###############################################################################
@@ -84,41 +89,47 @@ fi
 ###############################################################################
 echo "Clone CTDConverter"
 if [[ ! -d $CTDCONVERTER ]]; then
-	#git clone https://github.com/WorkflowConversion/CTDConverter.git CTDConverter
-	git clone -b topic/fix-selects https://github.com/bernt-matthias/CTDConverter.git $CTDCONVERTER
+	git clone https://github.com/WorkflowConversion/CTDConverter.git CTDConverter
 else
 	cd $CTDCONVERTER
-	git pull origin topic/fix-selects
+	git pull origin master
 	cd -
 fi
 
+# install CTDconverter (TODO integrate in conda create once package is available)
+conda activate $OPENMSENV
+cd $CTDCONVERTER
+python --version
+python -m pip install . --no-deps -vv
+cd -
+conda deactivate
 ###############################################################################
 ## copy all the test data files to test-data
 ## most of it (outputs) will be overwritten later, but its needed for
 ## prepare_test_data
 ###############################################################################
-echo "Get test data"
-find test-data -type f,l,d ! -name "*fa"  ! -name "*loc" -delete
-
-cp $(find $OPENMSGIT/src/tests/topp/ -type f | grep -Ev "third_party_tests.cmake|CMakeLists.txt|check_ini") test-data/
-cp -r $OPENMSGIT/share/OpenMS/MAPPING/ test-data/
-cp -r $OPENMSGIT/share/OpenMS/CHEMISTRY test-data/
-cp -r $OPENMSGIT/share/OpenMS/examples/ test-data/
-if [[ ! -f test-data/MetaboliteSpectralDB.mzML ]]; then 
-	wget -nc https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Tutorials/Data/latest/Example_Data/Metabolomics/databases/MetaboliteSpectralDB.mzML
-	mv MetaboliteSpectralDB.mzML test-data/
-fi
-ln -fs TOFCalibration_ref_masses test-data/TOFCalibration_ref_masses.txt
-ln -fs TOFCalibration_const test-data/TOFCalibration_const.csv
-
-if [ ! -d test-data/pepnovo_models/ ]; then
-	mkdir -p /tmp/pepnovo
-	wget -nc http://proteomics.ucsd.edu/Software/PepNovo/PepNovo.20120423.zip
-	unzip PepNovo.20120423.zip -d /tmp/pepnovo/
-	mv /tmp/pepnovo/Models test-data/pepnovo_models/
-	rm PepNovo.20120423.zip
-	rm -rf /tmp/pepnovo
-fi
+# echo "Get test data"
+# find test-data -type f,l,d ! -name "*fa"  ! -name "*loc" -delete
+# 
+# cp $(find $OPENMSGIT/src/tests/topp/ -type f | grep -Ev "third_party_tests.cmake|CMakeLists.txt|check_ini") test-data/
+# cp -r $OPENMSGIT/share/OpenMS/MAPPING/ test-data/
+# cp -r $OPENMSGIT/share/OpenMS/CHEMISTRY test-data/
+# cp -r $OPENMSGIT/share/OpenMS/examples/ test-data/
+# if [[ ! -f test-data/MetaboliteSpectralDB.mzML ]]; then 
+# 	wget -nc https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Tutorials/Data/latest/Example_Data/Metabolomics/databases/MetaboliteSpectralDB.mzML
+# 	mv MetaboliteSpectralDB.mzML test-data/
+# fi
+# ln -fs TOFCalibration_ref_masses test-data/TOFCalibration_ref_masses.txt
+# ln -fs TOFCalibration_const test-data/TOFCalibration_const.csv
+# 
+# if [ ! -d test-data/pepnovo_models/ ]; then
+# 	mkdir -p /tmp/pepnovo
+# 	wget -nc http://proteomics.ucsd.edu/Software/PepNovo/PepNovo.20120423.zip
+# 	unzip PepNovo.20120423.zip -d /tmp/pepnovo/
+# 	mv /tmp/pepnovo/Models test-data/pepnovo_models/
+# 	rm PepNovo.20120423.zip
+# 	rm -rf /tmp/pepnovo
+# fi
 ###############################################################################
 ## generate ctd files using the binaries in the conda package 
 ###############################################################################
