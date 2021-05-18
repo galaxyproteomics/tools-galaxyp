@@ -12,8 +12,8 @@ if [ -z "$tmp" ]; then
 	tmp=$(mktemp -d)
 	created="yes"
 fi
-#TODO
-export tmp="/tmp/openms-stuff/"
+##TODO
+#export tmp="/tmp/openms-stuff/"
 
 export OPENMSGIT="$tmp/OpenMS$VERSION.0-git"
 export OPENMSPKG="$tmp/OpenMS$VERSION-pkg/"
