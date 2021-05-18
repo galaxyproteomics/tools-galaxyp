@@ -89,7 +89,7 @@ fi
 ###############################################################################
 echo "Clone CTDConverter"
 if [[ ! -d $CTDCONVERTER ]]; then
-	git clone https://github.com/WorkflowConversion/CTDConverter.git CTDConverter
+	git clone https://github.com/WorkflowConversion/CTDConverter.git $CTDConverter
 else
 	cd $CTDCONVERTER
 	git pull origin master
