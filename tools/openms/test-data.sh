@@ -108,28 +108,28 @@ conda deactivate
 ## most of it (outputs) will be overwritten later, but its needed for
 ## prepare_test_data
 ###############################################################################
-# echo "Get test data"
-# find test-data -type f,l,d ! -name "*fa"  ! -name "*loc" -delete
-# 
-# cp $(find $OPENMSGIT/src/tests/topp/ -type f | grep -Ev "third_party_tests.cmake|CMakeLists.txt|check_ini") test-data/
-# cp -r $OPENMSGIT/share/OpenMS/MAPPING/ test-data/
-# cp -r $OPENMSGIT/share/OpenMS/CHEMISTRY test-data/
-# cp -r $OPENMSGIT/share/OpenMS/examples/ test-data/
-# if [[ ! -f test-data/MetaboliteSpectralDB.mzML ]]; then 
-# 	wget -nc https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Tutorials/Data/latest/Example_Data/Metabolomics/databases/MetaboliteSpectralDB.mzML
-# 	mv MetaboliteSpectralDB.mzML test-data/
-# fi
-# ln -fs TOFCalibration_ref_masses test-data/TOFCalibration_ref_masses.txt
-# ln -fs TOFCalibration_const test-data/TOFCalibration_const.csv
-# 
-# if [ ! -d test-data/pepnovo_models/ ]; then
-# 	mkdir -p /tmp/pepnovo
-# 	wget -nc http://proteomics.ucsd.edu/Software/PepNovo/PepNovo.20120423.zip
-# 	unzip PepNovo.20120423.zip -d /tmp/pepnovo/
-# 	mv /tmp/pepnovo/Models test-data/pepnovo_models/
-# 	rm PepNovo.20120423.zip
-# 	rm -rf /tmp/pepnovo
-# fi
+echo "Get test data"
+find test-data -type f,l,d ! -name "*fa"  ! -name "*loc" -delete
+
+cp $(find $OPENMSGIT/src/tests/topp/ -type f | grep -Ev "third_party_tests.cmake|CMakeLists.txt|check_ini") test-data/
+cp -r $OPENMSGIT/share/OpenMS/MAPPING/ test-data/
+cp -r $OPENMSGIT/share/OpenMS/CHEMISTRY test-data/
+cp -r $OPENMSGIT/share/OpenMS/examples/ test-data/
+if [[ ! -f test-data/MetaboliteSpectralDB.mzML ]]; then 
+	wget -nc https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Tutorials/Data/latest/Example_Data/Metabolomics/databases/MetaboliteSpectralDB.mzML
+	mv MetaboliteSpectralDB.mzML test-data/
+fi
+ln -fs TOFCalibration_ref_masses test-data/TOFCalibration_ref_masses.txt
+ln -fs TOFCalibration_const test-data/TOFCalibration_const.csv
+
+if [ ! -d test-data/pepnovo_models/ ]; then
+	mkdir -p /tmp/pepnovo
+	wget -nc http://proteomics.ucsd.edu/Software/PepNovo/PepNovo.20120423.zip
+	unzip PepNovo.20120423.zip -d /tmp/pepnovo/
+	mv /tmp/pepnovo/Models test-data/pepnovo_models/
+	rm PepNovo.20120423.zip
+	rm -rf /tmp/pepnovo
+fi
 ###############################################################################
 ## generate ctd files using the binaries in the conda package 
 ###############################################################################
