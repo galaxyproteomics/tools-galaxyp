@@ -4,10 +4,10 @@ VERSION=2.7
 FILETYPES="filetypes.txt"
 CONDAPKG="https://anaconda.org/OpenMS/openms/2.7.0pre/download/linux-64/openms-2.7.0pre-h4afb90d_0.tar.bz2"
 
-# import the magic
+import the magic
 . ./generate-foo.sh
 
-# install conda
+install conda
 if [ -z "$tmp" ]; then
 	tmp=$(mktemp -d)
 	created="yes"
@@ -61,14 +61,14 @@ else
 fi
 
 echo "Create OpenMS $VERSION conda env"
-# TODO currently add lxml (needed by CTDConverter)
-# TODO for some reason a to recent openjdk is used
+TODO currently add lxml (needed by CTDConverter)
+TODO for some reason a to recent openjdk is used
 if conda env list | grep "$OPENMSENV"; then
 	true
 else
 	conda create -y --quiet --override-channels --channel OpenMS --channel iuc --channel conda-forge --channel bioconda --channel defaults -n $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION ctdopts lxml
 	#TODO conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults -n $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION ctdopts lxml
-# chmod -R u-w $OPENMSENV 
+chmod -R u-w $OPENMSENV 
 fi
 ###############################################################################
 ## get the 
@@ -96,7 +96,7 @@ else
 	cd -
 fi
 
-# install CTDconverter (TODO integrate in conda create once package is available)
+install CTDconverter (TODO integrate in conda create once package is available)
 conda activate $OPENMSENV
 cd $CTDCONVERTER
 python --version
@@ -108,28 +108,28 @@ conda deactivate
 ## most of it (outputs) will be overwritten later, but its needed for
 ## prepare_test_data
 ###############################################################################
-# echo "Get test data"
-# find test-data -type f,l,d ! -name "*fa"  ! -name "*loc" -delete
-# 
-# cp $(find $OPENMSGIT/src/tests/topp/ -type f | grep -Ev "third_party_tests.cmake|CMakeLists.txt|check_ini") test-data/
-# cp -r $OPENMSGIT/share/OpenMS/MAPPING/ test-data/
-# cp -r $OPENMSGIT/share/OpenMS/CHEMISTRY test-data/
-# cp -r $OPENMSGIT/share/OpenMS/examples/ test-data/
-# if [[ ! -f test-data/MetaboliteSpectralDB.mzML ]]; then 
-# 	wget -nc https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Tutorials/Data/latest/Example_Data/Metabolomics/databases/MetaboliteSpectralDB.mzML
-# 	mv MetaboliteSpectralDB.mzML test-data/
-# fi
-# ln -fs TOFCalibration_ref_masses test-data/TOFCalibration_ref_masses.txt
-# ln -fs TOFCalibration_const test-data/TOFCalibration_const.csv
-# 
-# if [ ! -d test-data/pepnovo_models/ ]; then
-# 	mkdir -p /tmp/pepnovo
-# 	wget -nc http://proteomics.ucsd.edu/Software/PepNovo/PepNovo.20120423.zip
-# 	unzip PepNovo.20120423.zip -d /tmp/pepnovo/
-# 	mv /tmp/pepnovo/Models test-data/pepnovo_models/
-# 	rm PepNovo.20120423.zip
-# 	rm -rf /tmp/pepnovo
-# fi
+echo "Get test data"
+find test-data -type f,l,d ! -name "*fa"  ! -name "*loc" -delete
+
+cp $(find $OPENMSGIT/src/tests/topp/ -type f | grep -Ev "third_party_tests.cmake|CMakeLists.txt|check_ini") test-data/
+cp -r $OPENMSGIT/share/OpenMS/MAPPING/ test-data/
+cp -r $OPENMSGIT/share/OpenMS/CHEMISTRY test-data/
+cp -r $OPENMSGIT/share/OpenMS/examples/ test-data/
+if [[ ! -f test-data/MetaboliteSpectralDB.mzML ]]; then 
+	wget -nc https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Tutorials/Data/latest/Example_Data/Metabolomics/databases/MetaboliteSpectralDB.mzML
+	mv MetaboliteSpectralDB.mzML test-data/
+fi
+ln -fs TOFCalibration_ref_masses test-data/TOFCalibration_ref_masses.txt
+ln -fs TOFCalibration_const test-data/TOFCalibration_const.csv
+
+if [ ! -d test-data/pepnovo_models/ ]; then
+	mkdir -p /tmp/pepnovo
+	wget -nc http://proteomics.ucsd.edu/Software/PepNovo/PepNovo.20120423.zip
+	unzip PepNovo.20120423.zip -d /tmp/pepnovo/
+	mv /tmp/pepnovo/Models test-data/pepnovo_models/
+	rm PepNovo.20120423.zip
+	rm -rf /tmp/pepnovo
+fi
 ###############################################################################
 ## generate ctd files using the binaries in the conda package 
 ###############################################################################
@@ -138,8 +138,8 @@ conda activate $OPENMSENV
 rm -rf ctd
 mkdir -p ctd
 
-# TODO because of https://github.com/OpenMS/OpenMS/issues/4641
-# this needs to be done from within test-data
+TODO because of https://github.com/OpenMS/OpenMS/issues/4641
+this needs to be done from within test-data
 cd test-data
 for i in $OPENMSPKG/bin/*
 do
@@ -246,16 +246,16 @@ echo "</macros>" >> "$autotests"
 echo "Create test data links"
 link_tmp_files
 
-# tests for tools using output_prefix parameters can not be auto generated
-# hence we output the tests for manual curation in macros_test.xml
-# and remove them from the autotests
-# -> OpenSwathFileSplitter IDRipper MzMLSplitter
+tests for tools using output_prefix parameters can not be auto generated
+hence we output the tests for manual curation in macros_test.xml
+and remove them from the autotests
+-> OpenSwathFileSplitter IDRipper MzMLSplitter
 #
-# Furthermore we remove tests for tools without binaries in conda
-# -> MSFragger MaRaClusterAdapter NovorAdapter 
+Furthermore we remove tests for tools without binaries in conda
+-> MSFragger MaRaClusterAdapter NovorAdapter 
 #
-# not able to specify composite test data  
-# -> SpectraSTSearchAdapter 
+not able to specify composite test data  
+-> SpectraSTSearchAdapter 
 if [[ ! -z "$1" ]]; then
 	echo "" > macros_discarded_auto.xml
 	for i in OpenSwathFileSplitter IDRipper MzMLSplitter MSFraggerAdapter MaRaClusterAdapter NovorAdapter SpectraSTSearchAdapter
@@ -273,7 +273,7 @@ conda deactivate
 ## remove broken symlinks in test-data
 find test-data/ -xtype l -delete
 
-# if [ ! -z "$created" ]; then
-# 	echo "Removing temporary directory"
-# 	rm -rf "$tmp"
-# fi
+if [ ! -z "$created" ]; then
+	echo "Removing temporary directory"
+	rm -rf "$tmp"
+fi
