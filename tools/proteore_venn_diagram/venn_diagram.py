@@ -144,7 +144,7 @@ def write_text_venn(json_result):
     for key in result:
         line = result[key]
         if len(line) < nb_lines_max:
-            line.extend(['']*(nb_lines_max-len(line)))
+            line.extend([''] * (nb_lines_max - len(line)))
         line = [column_dict[key]] + line     # add header
         lines.append(line)
     # transpose tsv
