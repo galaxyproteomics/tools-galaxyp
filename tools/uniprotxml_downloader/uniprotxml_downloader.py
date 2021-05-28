@@ -18,6 +18,32 @@ from urllib import (
     parse,
     request
 )
+import requests
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
+
+DEFAULT_TIMEOUT = 5  # seconds
+retry_strategy = Retry(
+    total=5,
+    backoff_factor=2,
+    status_forcelist=[429, 500, 502, 503, 504],
+    allowed_methods=["HEAD", "GET", "OPTIONS", "POST"]
+)
+
+
+class TimeoutHTTPAdapter(HTTPAdapter):
+    def __init__(self, *args, **kwargs):
+        self.timeout = DEFAULT_TIMEOUT
+        if "timeout" in kwargs:
+            self.timeout = kwargs["timeout"]
+            del kwargs["timeout"]
+        super().__init__(*args, **kwargs)
+
+    def send(self, request, **kwargs):
+        timeout = kwargs.get("timeout")
+        if timeout is None:
+            kwargs["timeout"] = self.timeout
+        return super().send(request, **kwargs)
 
 
 def __main__():
@@ -29,7 +55,6 @@ def __main__():
     parser.add_option('-r', '--reviewed', dest='reviewed', help='Only uniprot reviewed entries')
     parser.add_option('-f', '--format', dest='format', choices=['xml', 'fasta'], default='xml', help='output format')
     parser.add_option('-o', '--output', dest='output', help='file path for the downloaded uniprot xml')
-    parser.add_option('-v', '--verbose', dest='verbose', action='store_true', default=False, help='Print UniProt Info')
     parser.add_option('-d', '--debug', dest='debug', action='store_true', default=False, help='Turn on wrapper debugging to stderr')
     (options, args) = parser.parse_args()
     taxids = set(options.taxon)
@@ -57,12 +82,14 @@ def __main__():
         if options.debug:
             print("%s ? %s" % (url, params), file=sys.stderr)
         data = parse.urlencode(params)
-        (fname, msg) = request.urlretrieve(url, filename=dest_path, data=data.encode())
-        headers = {j[0]: j[1].strip() for j in [i.split(':', 1) for i in str(msg).strip().splitlines()]}
-        if 'Content-Length' in headers and headers['Content-Length'] == 0:
-            print(url, file=sys.stderr)
-            print(msg, file=sys.stderr)
-            exit(1)
+        print(f"Retrieving: {url+data}")
+        adapter = TimeoutHTTPAdapter(max_retries=retry_strategy)
+        http = requests.Session()
+        http.mount("https://", adapter)
+        response = http.post(url, data=params)
+        http.close()
+        with open(dest_path, 'w') as fh:
+            fh.write(response.text)
         if options.format == 'xml':
             with open(dest_path, 'r') as contents:
                 while True:
@@ -80,15 +107,13 @@ def __main__():
                     else:
                         print("failed: Not a uniprot xml file", file=sys.stderr)
                         exit(1)
-        if options.verbose:
-            print("NCBI Taxon ID:%s" % taxids, file=sys.stdout)
-            if 'X-UniProt-Release' in headers:
-                print("UniProt-Release:%s" % headers['X-UniProt-Release'], file=sys.stdout)
-            if 'X-Total-Results' in headers:
-                print("Entries:%s" % headers['X-Total-Results'], file=sys.stdout)
-            print("%s" % url, file=sys.stdout)
+        print("NCBI Taxon ID:%s" % taxids, file=sys.stdout)
+        if 'X-UniProt-Release' in response.headers:
+            print("UniProt-Release:%s" % response.headers['X-UniProt-Release'], file=sys.stdout)
+        if 'X-Total-Results' in response.headers:
+            print("Entries:%s" % response.headers['X-Total-Results'], file=sys.stdout)
     except Exception as e:
-        print("failed: %s" % e, file=sys.stderr)
+        exit("%s" % e)
 
 
 if __name__ == "__main__":
