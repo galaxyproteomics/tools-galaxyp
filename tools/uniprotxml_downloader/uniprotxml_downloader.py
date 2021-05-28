@@ -14,8 +14,8 @@
 import sys
 import re
 import optparse
-import urllib
-import urllib2
+import urllib.request, urllib.parse, urllib.error
+import urllib.request, urllib.error, urllib.parse
 
 
 def __main__():
@@ -55,20 +55,22 @@ def __main__():
         query = "%s%s" % (taxon_query, reviewed)
         params = {'query' : query, 'force' : 'yes' , 'format' : options.format}
         if options.debug:
-            print >> sys.stderr, "%s ? %s" % (url,params)
-        data = urllib.urlencode(params)
-        (fname, msg) = urllib.urlretrieve(url, dest_path,reporthook,data)
+            print("%s ? %s" % (url,params), file=sys.stderr)
+        data = urllib.parse.urlencode(params)
+        print(f"url {url} dest_path {dest_path} data {data}")
+        (fname, msg) = urllib.request.urlretrieve(url, dest_path, reporthook, data.encode())
+        print("retrieved")
         headers = {j[0]: j[1].strip() for j in [i.split(':', 1) for i in str(msg).strip().splitlines()]}
         if 'Content-Length' in headers and headers['Content-Length'] == 0:
-            print >> sys.stderr, url
-            print >> sys.stderr, msg
+            print(url, file=sys.stderr)
+            print(msg, file=sys.stderr)
             exit(1)
         if options.format == 'xml':
             with open(dest_path, 'r') as contents:
                 while True:
                     line = contents.readline()
                     if options.debug:
-                        print >> sys.stderr, line
+                        print(line, file=sys.stderr)
                     if line is None:
                         break
                     if line.startswith('<?'):
@@ -78,17 +80,17 @@ def __main__():
                     if re.match(pattern, line):
                         break
                     else:
-                        print >> sys.stderr, "failed: Not a uniprot xml file"
+                        print("failed: Not a uniprot xml file", file=sys.stderr)
                         exit(1)
         if options.verbose:
-            print >> sys.stdout, "NCBI Taxon ID:%s" % taxids
+            print("NCBI Taxon ID:%s" % taxids, file=sys.stdout)
             if 'X-UniProt-Release' in headers:
-                print >> sys.stdout, "UniProt-Release:%s" % headers['X-UniProt-Release']
+                print("UniProt-Release:%s" % headers['X-UniProt-Release'], file=sys.stdout)
             if 'X-Total-Results' in headers:
-                print >> sys.stdout, "Entries:%s" % headers['X-Total-Results']
-            print >> sys.stdout, "%s" % url
-    except Exception, e:
-        print >> sys.stderr, "failed: %s" % e
+                print("Entries:%s" % headers['X-Total-Results'], file=sys.stdout)
+            print("%s" % url, file=sys.stdout)
+    except Exception as e:
+        print("failed: %s" % e, file=sys.stderr)
 
 
 if __name__ == "__main__":
