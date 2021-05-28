@@ -11,18 +11,20 @@
 #
 #------------------------------------------------------------------------------
 """
-import sys
-import re
 import optparse
-import urllib.request, urllib.parse, urllib.error
-import urllib.request, urllib.error, urllib.parse
+import re
+import sys
+from urllib import (
+    parse,
+    request
+)
 
 
 def __main__():
     # Parse Command Line
     parser = optparse.OptionParser()
     parser.add_option('-i', '--input', dest='input', default=None, help='Tabular file containing a column of NCBI Taxon IDs')
-    parser.add_option('-c', '--column', dest='column', type='int', default=0, help='The column (zero-based) in the tabular file that contains Taxon IDs' )
+    parser.add_option('-c', '--column', dest='column', type='int', default=0, help='The column (zero-based) in the tabular file that contains Taxon IDs')
     parser.add_option('-t', '--taxon', dest='taxon', action='append', default=[], help='NCBI taxon ID to download')
     parser.add_option('-r', '--reviewed', dest='reviewed', help='Only uniprot reviewed entries')
     parser.add_option('-f', '--format', dest='format', choices=['xml', 'fasta'], default='xml', help='output format')
@@ -32,15 +34,15 @@ def __main__():
     (options, args) = parser.parse_args()
     taxids = set(options.taxon)
     if options.input:
-        with open(options.input,'r') as inputFile:
-            for linenum,line in enumerate(inputFile):
+        with open(options.input, 'r') as inputFile:
+            for linenum, line in enumerate(inputFile):
                 if line.startswith('#'):
                     continue
                 fields = line.rstrip('\r\n').split('\t')
                 if len(fields) > abs(options.column):
                     taxid = fields[options.column].strip()
                     if taxid:
-                      taxids.add(taxid)
+                        taxids.add(taxid)
     taxon_queries = ['taxonomy:"%s"' % taxid for taxid in taxids]
     taxon_query = ' OR '.join(taxon_queries)
     if options.output:
@@ -49,16 +51,16 @@ def __main__():
         dest_path = "uniprot_%s.xml" % '_'.join(taxids)
     reviewed = " reviewed:%s" % options.reviewed if options.reviewed else ''
     try:
-        def reporthook(n1,n2,n3):
-            pass   
+        def reporthook(n1, n2, n3):
+            pass
         url = 'https://www.uniprot.org/uniprot/'
         query = "%s%s" % (taxon_query, reviewed)
-        params = {'query' : query, 'force' : 'yes' , 'format' : options.format}
+        params = {'query': query, 'force': 'yes', 'format': options.format}
         if options.debug:
-            print("%s ? %s" % (url,params), file=sys.stderr)
-        data = urllib.parse.urlencode(params)
+            print("%s ? %s" % (url, params), file=sys.stderr)
+        data = parse.urlencode(params)
         print(f"url {url} dest_path {dest_path} data {data}")
-        (fname, msg) = urllib.request.urlretrieve(url, dest_path, reporthook, data.encode())
+        (fname, msg) = request.urlretrieve(url, dest_path, reporthook, data.encode())
         print("retrieved")
         headers = {j[0]: j[1].strip() for j in [i.split(':', 1) for i in str(msg).strip().splitlines()]}
         if 'Content-Length' in headers and headers['Content-Length'] == 0:
@@ -76,7 +78,7 @@ def __main__():
                     if line.startswith('<?'):
                         continue
                     # pattern match <root or <ns:root for any ns string
-                    pattern = '^<(\w*:)?uniprot'
+                    pattern = r'^<(\w*:)?uniprot'
                     if re.match(pattern, line):
                         break
                     else:
