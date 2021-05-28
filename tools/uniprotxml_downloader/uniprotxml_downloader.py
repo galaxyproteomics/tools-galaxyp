@@ -51,17 +51,13 @@ def __main__():
         dest_path = "uniprot_%s.xml" % '_'.join(taxids)
     reviewed = " reviewed:%s" % options.reviewed if options.reviewed else ''
     try:
-        def reporthook(n1, n2, n3):
-            pass
         url = 'https://www.uniprot.org/uniprot/'
         query = "%s%s" % (taxon_query, reviewed)
         params = {'query': query, 'force': 'yes', 'format': options.format}
         if options.debug:
             print("%s ? %s" % (url, params), file=sys.stderr)
         data = parse.urlencode(params)
-        print(f"url {url} dest_path {dest_path} data {data}")
-        (fname, msg) = request.urlretrieve(url, dest_path, reporthook, data.encode())
-        print("retrieved")
+        (fname, msg) = request.urlretrieve(url, filename=dest_path, data=data.encode())
         headers = {j[0]: j[1].strip() for j in [i.split(':', 1) for i in str(msg).strip().splitlines()]}
         if 'Content-Length' in headers and headers['Content-Length'] == 0:
             print(url, file=sys.stderr)
