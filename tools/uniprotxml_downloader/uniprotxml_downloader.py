@@ -14,10 +14,8 @@
 import optparse
 import re
 import sys
-from urllib import (
-    parse,
-    request
-)
+from urllib import parse
+
 import requests
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
