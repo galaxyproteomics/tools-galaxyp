@@ -71,7 +71,7 @@ def one_id_one_line(input_file, nb_col, header):
             if ";" in line[nb_col]:
                 ids = line[nb_col].split(";")
                 for id in ids:
-                    new_file.append(line[:nb_col]+[id]+line[nb_col+1:])
+                    new_file.append(line[:nb_col] + [id] + line[nb_col + 1:])
                     ids_list.append(id)
             else:
                 new_file.append(line)
@@ -115,7 +115,7 @@ def output_one_id_one_line(line, convert_ids, target_ids):
 # getting all possibilities between lists of ids
     res = itertools.product(*convert_ids)
     res = [list(e) for e in res]   # convert to lists
-    res = [line+list(ids) for ids in res]   # adding the rest of the line
+    res = [line + list(ids) for ids in res]   # adding the rest of the line
 
     return(res)
 
@@ -182,10 +182,10 @@ def create_ids_dictionary(ids_list):
 
 
 def create_header(input_file, ncol, id_type, target_ids):
-    col_names = list(range(1, len(input_file[0])+1))
-    col_names = ["col"+str(e) for e in col_names]
+    col_names = list(range(1, len(input_file[0]) + 1))
+    col_names = ["col" + str(e) for e in col_names]
     col_names[ncol] = id_type
-    col_names = col_names+target_ids
+    col_names = col_names + target_ids
     return(col_names)
 
 
@@ -248,14 +248,14 @@ def main():
 
         # write header
         if header:
-            writer.writerow(input_file[0]+target_ids)
+            writer.writerow(input_file[0] + target_ids)
             input_file = input_file[1:]
         elif args.input_type == "file":
             col_names = create_header(input_file, args.column_number,
                                       args.id_type, target_ids)
             writer.writerow(col_names)
         else:
-            writer.writerow([args.id_type]+target_ids)
+            writer.writerow([args.id_type] + target_ids)
 
         # write lines
         previous_line = ""
