@@ -50,7 +50,7 @@ def str_to_bool(v):
 
 def proper_ncol(ncol, file):
     if ncol not in range(len(file[0])):
-        print("Column "+str(ncol+1)+" not found in input file")
+        print("Column " + str(ncol + 1) + " not found in input file")
         # traceback.print_exc(file=sys.stdout)
         sys.exit(1)
 
@@ -204,7 +204,7 @@ def sort_by_column(tab, sort_col, reverse, header):
 
         tab.extend(unsorted_tab)
         if header is True:
-            tab = [head]+tab
+            tab = [head] + tab
 
     return tab
 
@@ -355,7 +355,7 @@ def filter_value(csv_file, header, results_dict, filter_value, ncol, opt):
 
     # if there's no numeric value in the column
     if nb_string == nb_lines:
-        print('No numeric values found in the column '+str(ncol+1))
+        print('No numeric values found in the column ' + str(ncol + 1))
         print('The filter "'+str(opt)+' '+str(filter_value)+'" can not be applied on the column '+str(ncol+1))  # noqa 501
 
     return results_dict
@@ -405,7 +405,7 @@ def filter_values_range(csv_file, header, results_dict, bottom_value, top_value,
 
     # if there's no numeric value in the column
     if nb_string == nb_lines:
-        print('No numeric values found in the column '+str(ncol+1))
+        print('No numeric values found in the column ' + str(ncol + 1))
         if inclusive:
             print ('The filter "'+str(bottom_value)+' <= x <= '+str(top_value)+'" can not be applied on the column '+str(ncol+1))  # noqa 501
         else:
