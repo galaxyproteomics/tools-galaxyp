@@ -222,4 +222,3 @@ main <- function() {
 if (!interactive()) {
   main()
 }
-
