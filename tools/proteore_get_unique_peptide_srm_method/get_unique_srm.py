@@ -1,5 +1,6 @@
 import argparse
 import csv
+import gzip
 import re
 
 
@@ -160,7 +161,7 @@ def main():
         header = str2bool(args.header)
 
     # Get reference file (Human SRM Atlas)
-    with open(args.ref_file, "r") as csv_file:
+    with gzip.open(args.ref_file, "rt", newline='') as csv_file:
         srm_atlas_csv = csv.reader(csv_file, delimiter='\t')
         srm_atlas_csv = [line for line in srm_atlas_csv]
 
