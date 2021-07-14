@@ -1,1 +1,0 @@
-../../data_manager/data_manager_eggnog.py
