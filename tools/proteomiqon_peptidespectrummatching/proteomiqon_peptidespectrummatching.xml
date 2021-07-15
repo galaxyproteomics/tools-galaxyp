@@ -1,0 +1,195 @@
+<tool id="proteomiqon_peptidespectrummatching" name="ProteomIQon PeptideSpectrumMatching" version="@VERSION@" profile="20.05">
+    <description>
+        iterates across all MS/MS scans in an MS run, determines precursor charge states and possible peptide spectrum matches.
+    </description>
+    <macros>
+        <token name="@VERSION@">0.0.7</token>
+    </macros>
+    <requirements>
+        <requirement type="package" version="@VERSION@">proteomiqon-peptidespectrummatching</requirement>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        #import re
+        #set basename = $re.sub(r'[^\w ,.\-+]','_',$instrumentOutput.element_identifier)
+        #if $outputParamfile:
+            cat '$paramfile' >> '$out_paramfile' &&
+        #end if
+        ln -s '$instrumentOutput' '${basename}.mzlite' &&
+        ln -s '$out_psm' '${basename}.psm' &&
+        proteomiqon-peptidespectrummatching -i './${basename}.mzlite' -d '$peptideDB' -p '$paramfile' -o ./
+    ]]>
+    </command>
+    <configfiles>
+        <configfile name="paramfile">
+        <![CDATA[
+        {
+            "ChargeStateDeterminationParams": {
+                "ExpectedMinimalCharge": ${ChargeStateDeterminationParams.ExpectedMinimalCharge},
+                "ExpectedMaximumCharge": ${ChargeStateDeterminationParams.ExpectedMaximumCharge},
+                "Width": ${ChargeStateDeterminationParams.Width},
+                "MinIntensity": ${ChargeStateDeterminationParams.MinIntensity},
+                "DeltaMinIntensity": ${ChargeStateDeterminationParams.DeltaMinIntensity},
+                "NrOfRndSpectra": ${ChargeStateDeterminationParams.NrOfRndSpectra}
+            },
+            "LookUpPPM": ${LookUpPPM},
+            "nTerminalSeries": { "Case": "${nTerminalSeries}" },
+            "cTerminalSeries": { "Case": "${cTerminalSeries}" },
+            "Andromeda": {
+                "PMinPMax": {
+                "Item1": ${Andromeda.PMin},
+                "Item2": ${Andromeda.PMax}
+                },
+                "MatchingIonTolerancePPM": ${Andromeda.MatchingIonTolerancePPM}
+            }
+        }
+        ]]>
+        </configfile>
+    </configfiles>
+    <inputs>
+    <param name="instrumentOutput" type="data" format="sqlite" label="Instrument output" help="Specify mass spectrometry data you want to analyze."/>
+    <param name="peptideDB" type="data" format="sqlite" label="Peptide database" help="Specify the peptide data base."/>
+    <section name="ChargeStateDeterminationParams" title="Charge state determination parameters" >
+        <param name="ExpectedMinimalCharge" type="integer" min="1" max="8" value="2" label="Expected minimal charge" help="Specify the minimum peptide ion charge state to consider."/>
+        <param name="ExpectedMaximumCharge" type="integer" min="1" max="8" value="5" label="Expected maximum charge" help="Specify the maximum peptide ion charge state to consider."/>
+        <param name="Width" type="float" value="1.1" label="Width" help="Specify the width around the picked precursor ion used in charge state determination."/>
+        <param name="MinIntensity" type="float" value="0.15" label="Min intensity" help="Specify minimum relative intensity within an putative isotopic envelope to be included when performing charge state determination."/>
+        <param name="DeltaMinIntensity" type="float" value="0.3" label="Delta min intensity" help="Specify minimum relative intensity to the prior peak when iterating through peak lists while performing charge state determination."/>
+        <param name="NrOfRndSpectra" type="integer" value="10000" label="Number of random spectra" help="When performing charge state determination we compared measured envelopes to the distribution of randomly generated spectra. This parameter tunes the size of the generated data set."/>
+    </section> 
+    <param name="LookUpPPM" type="float" value="30" label="Lookup PPM" help="Specify the width of the search space when retrieving in silico generated peptide ions from the peptide data base. The width is calculated relative to the precursor mz in ppm."/> 
+    <param name="nTerminalSeries" type="select" optional="false" label="N-terminal series" help="Specify the types of N-terminal charged ion fragments included in the generation of in silico fragment spectra." multiple="true" display="checkboxes">
+        <option value="A">A</option>
+        <option value="B" selected="true">B</option>
+        <option value="C">C</option>
+    </param>
+    <param name="cTerminalSeries" type="select" optional="false" label="C-terminal Series" help="Specify the types of C-terminal charged ion fragments included in the generation of in silico fragment spectra." multiple="true" display="checkboxes">
+        <option value="X">X</option>
+        <option value="Y" selected="true">Y</option>
+        <option value="Z">Z</option>
+    </param>
+    <section name="Andromeda" title="Andromeda">
+        <param name="PMin" type="integer" value="4" label="P min" help="Specify the minimum N of the top N most abundand peaks within a 100 Da window used to compute the Andromeda score."/>
+        <param name="PMax" type="integer" value="10" label="P max" help="Specify the maximum N of the top N most abundand peaks within a 100 Da window used to compute the Andromeda score."/>
+        <param name="MatchingIonTolerancePPM" type="float" value="100.0" label="Matching ion tolerance PPM" help="Specify the minimum m/z difference between a measured and an in silico generated peak during peak matching. The width is calculated relative to the m/z of the measured peak in ppm."/>
+    </section>
+    <param name="outputParamfile" type="boolean" value="false" label="Output parameter file"/>
+    </inputs>
+    <outputs>
+        <data format="tabular" name="out_psm" />
+        <data format="json" name="out_paramfile">
+            <filter>outputParamfile</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <param name="instrumentOutput" value="sample.mzlite"/>
+            <param name="peptideDB" value="sample.db"/>
+            <param name="LookUpPPM" value="30"/>
+            <param name="nTerminalSeries" value="A"/>
+            <param name="cTerminalSeries" value="X"/>
+            <section name="ChargeStateDeterminationParams">
+                <param name="ExpectedMinimalCharge" value="2"/>
+                <param name="ExpectedMaximumCharge" value="5"/>
+                <param name="Width" value="1.1"/>
+                <param name="MinIntensity" value="0.15"/>
+                <param name="DeltaMinIntensity" value="0.3"/>
+                <param name="NrOfRndSpectra" value="10000"/>
+            </section>
+            <section name="Andromeda">
+                <param name="PMin" value="4"/>
+                <param name="PMax" value="10"/>
+                <param name="MatchingIonTolerancePPM" value="100.0"/>
+            </section>
+            <param name="outputParamfile" value="false"/>
+        </test>
+        <test expect_num_outputs="2">
+            <param name="instrumentOutput" value="sample.mzlite"/>
+            <param name="peptideDB" value="sample.db"/>
+            <param name="LookUpPPM" value="30"/>
+            <param name="nTerminalSeries" value="B"/>
+            <param name="cTerminalSeries" value="Y"/>
+            <section name="ChargeStateDeterminationParams">
+                <param name="ExpectedMinimalCharge" value="2"/>
+                <param name="ExpectedMaximumCharge" value="5"/>
+                <param name="Width" value="1.1"/>
+                <param name="MinIntensity" value="0.15"/>
+                <param name="DeltaMinIntensity" value="0.3"/>
+                <param name="NrOfRndSpectra" value="10000"/>
+            </section>
+            <section name="Andromeda">
+                <param name="PMin" value="4"/>
+                <param name="PMax" value="10"/>
+                <param name="MatchingIonTolerancePPM" value="100.0"/>
+            </section>
+            <param name="outputParamfile" value="true"/>
+            <output name="out_paramfile" file="result_1.json"/>
+        </test>
+        <test expect_num_outputs="2">
+            <param name="instrumentOutput" value="sample.mzlite"/>
+            <param name="peptideDB" value="sample.db"/>
+            <param name="LookUpPPM" value="30"/>
+            <param name="nTerminalSeries" value="A"/>
+            <param name="cTerminalSeries" value="Z"/>
+            <section name="ChargeStateDeterminationParams">
+                <param name="ExpectedMinimalCharge" value="2"/>
+                <param name="ExpectedMaximumCharge" value="5"/>
+                <param name="Width" value="1.1"/>
+                <param name="MinIntensity" value="0.15"/>
+                <param name="DeltaMinIntensity" value="0.3"/>
+                <param name="NrOfRndSpectra" value="10000"/>
+            </section>
+            <section name="Andromeda">
+                <param name="PMin" value="4"/>
+                <param name="PMax" value="10"/>
+                <param name="MatchingIonTolerancePPM" value="100.0"/>
+            </section>
+            <param name="outputParamfile" value="true"/>
+            <output name="out_paramfile" file="result_2.json"/>
+        </test>
+        <test expect_num_outputs="2">
+            <param name="instrumentOutput" value="sample.mzlite"/>
+            <param name="peptideDB" value="sample.db"/>
+            <param name="LookUpPPM" value="30"/>
+            <param name="nTerminalSeries" value="C"/>
+            <param name="cTerminalSeries" value="X"/>
+            <section name="ChargeStateDeterminationParams">
+                <param name="ExpectedMinimalCharge" value="2"/>
+                <param name="ExpectedMaximumCharge" value="5"/>
+                <param name="Width" value="1.1"/>
+                <param name="MinIntensity" value="0.15"/>
+                <param name="DeltaMinIntensity" value="0.3"/>
+                <param name="NrOfRndSpectra" value="10000"/>
+            </section>
+            <section name="Andromeda">
+                <param name="PMin" value="4"/>
+                <param name="PMax" value="10"/>
+                <param name="MatchingIonTolerancePPM" value="100.0"/>
+            </section>
+            <param name="outputParamfile" value="true"/>
+            <output name="out_paramfile" file="result_3.json"/>
+        </test>
+    </tests>
+    <help>
+    <![CDATA[
+What It Does
+------------
+**Disclaimer** this tool needs a peptide database to query against, if you did not create one yet you can do so by using the `PeptideDB <https://csbiology.github.io/ProteomIQon/tools/PeptideDB.html>`_ tool.
+
+Given raw a MS run in the mzite format, this tool iterates accross all recorded MS/MS scans and determines the charge state of precursor ions which were selected for fragmentation. 
+With this it is possible to query the peptide data base for every precursor ion mass +/- a tolerance (which defines the so called 'search space') and retrieve peptides that are 
+theoretical candidates for a match. For each of the peptide candidates we create an theoretical spectrum in silico and compare it to the measured MS/MS scan.
+
+.. image:: PSM.png
+            :width: 768pt
+            :height: 563pt
+
+To measure similarity we use our own implementations of three established search enginge scores: SEQUEST, Andromeda and XTandem. 
+The search space is extended by so called decoys. Decoys are reversed counterparts of peptides within the search space and allow 
+us to assign a false discovery rate to each scored peptide using the `PSMStatistics <https://csbiology.github.io/ProteomIQon/tools/PSMStatistics.html>`_ tool.
+
+Further Reading
+---------------
+Additional information about the tool can be found in the `documentation <https://csbiology.github.io/ProteomIQon/tools/PeptideSpectrumMatching.html>`_.  
+    ]]>
+    </help>
+</tool>
