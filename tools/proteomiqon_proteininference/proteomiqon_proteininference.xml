@@ -10,13 +10,19 @@
     </requirements>
     <command detect_errors="exit_code"><![CDATA[
         #import re
-        #set basename = $re.sub(r'[^\w ,.\-+]','_',$scoredPSMs.element_identifier)
+        #if $PSMInputModeCond.PSMInputMode == "single"
+            #set basename = $re.sub(r'[^\w ,.\-+]','_',$PSMInputModeCond.scoredPSMs.element_identifier)
+            ln -s '$scoredPSMs' '${basename}.qpsm' &&
+        #elif $PSMInputModeCond.PSMInputMode == "multi"
+            #for $psmfile in $PSMInputModeCond.scoredPSMs
+                #set basename = $re.sub(r'[^\w ,.\-+]','_',$psmfile.element_identifier)
+                ln -s '$psmfile' '${basename}.qpsm' &&
+            #end for
+        #end if
         #if $outputParamfile:
             cat '$paramfile' >> '$out_paramfile' &&
         #end if
-        ln -s '$scoredPSMs' '${basename}.qpsm' &&
-        ln -s '$out_prot' '${basename}.prot' &&
-        proteomiqon-proteininference -i './${basename}.qpsm' -d '$peptideDB' -p '$paramfile' -o ./
+        proteomiqon-proteininference -i './' -d '$peptideDB' -p '$paramfile' -o './out'
     ]]>
     </command>
     <configfiles>
@@ -51,7 +57,18 @@
     </configfiles>
     <inputs>
         <param name="peptideDB" type="data" format="sqlite" label="Peptide database" help="Specify the peptide data base."/>
-        <param name="scoredPSMs" type="data" format="tabular" label="Scored PSM file" help="Specify list of peptide identifications."/>
+        <conditional name="PSMInputModeCond">
+            <param name="PSMInputMode" type="select" label="PSM file input mode">
+                <option value="single">Single File</option>
+                <option value="multi">Multiple Files</option>
+            </param>
+            <when value="single">
+                <param name="scoredPSMs" type="data" format="tabular" label="Scored PSM file" help="Specify peptide identifications." />
+            </when>
+            <when value="multi">
+                <param name="scoredPSMs" type="data" format="tabular" label="Scored PSM files" help="Specify list of peptide identifications." multiple="true"/>
+            </when>
+        </conditional>
         <param name="ProteinIdentifierRegex" type="text" value="id" label="Protein identifier regex pattern" help="Fasta headers do often contain additional information in addition to your protein identifier, by specifying a regex pattern the tool can extract the protein IDs. If you fasta headers are already cleaned you can leave this field empty.">
                 <sanitizer sanitize="false" />
         </param>
@@ -82,7 +99,9 @@
         <param name="outputParamfile" type="boolean" value="false" label="Output parameter file"/>
     </inputs>
     <outputs>
-        <data format="tabular" name="out_prot" />
+        <data format="tabular" name="out_prot" >
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.prot" ext="tabular" directory="out" visible="true"  assign_primary_output="true" />
+        </data>
         <data format="json" name="out_paramfile">
             <filter>outputParamfile</filter>
         </data>
