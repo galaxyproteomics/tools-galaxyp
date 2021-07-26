@@ -1,8 +1,8 @@
 <tool id="msstatstmt" name="MSstatsTMT" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@">
     <description>protein significance analysis in shotgun mass spectrometry-based proteomic experiments with tandem mass tag (TMT) labeling</description>
     <macros>
-        <token name="@TOOL_VERSION@">1.8.2</token>
-        <token name="@GALAXY_VERSION@">1</token>
+        <token name="@TOOL_VERSION@">2.0.0</token>
+        <token name="@GALAXY_VERSION@">0</token>
         <xml name="input_options_shared">
             <param name="useUniquePeptide" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="true" label="Use unique peptide" help="Yes (default) removes peptides that are assigned for more than one protein. We assume to use unique peptide for each protein." />
             <param name="rmPSM_withMissing_withinRun" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="false" label="Remove PSM with missing value within run" help="Yes will remove PSM with any missing value within each run. Default is No." />
@@ -16,8 +16,24 @@
     <command detect_errors="exit_code"><![CDATA[
         cat '$msstatstmt_script' > '$out_r_script' &&
         Rscript '$msstatstmt_script'
-        && cat msstats*.log > '$out_msstats_log'
-        && cat msstatstmt.log > '$out_msstatstmt_log'
+
+        && cat MSstatsTMT_summarization_log*.log > '$out_msstatstmt_sum_log'
+        && cat MSstatsTMT_summarization_MSstats*.log > '$out_msstatstmt_sum_ms'
+
+        #if $input.input_src != 'MSstatsTMT':
+            && cat MSstatsTMT_converter_log*.log > '$out_msstatstmt_conv_log'
+        #else:
+            && echo "MSstatsTMT input. No conversion needed." > '$out_msstatstmt_conv_log'
+        #end if
+
+        #if $group.group_comparison == 'true':
+            && cat MSstatsTMT_log_groupComparison*.log > '$out_msstatstmt_group_log'
+            && cat MSstats_log*.log > '$out_msstats_gc_log'
+        #else:
+            && echo "No groupComparison was performed." > '$out_msstatstmt_group_log'
+            && echo "No groupComparison was performed." > '$out_msstats_gc_log'
+        #end if
+
     ]]></command>
     <configfiles>
         <configfile name="msstatstmt_script"><![CDATA[
@@ -84,8 +100,7 @@ quant <- proteinSummarization(input,
 
 #for $plot_type in $selected_outputs
     #if $plot_type[-4:] == "Plot"
-        dataProcessPlotsTMT(input,
-                            quant,
+        dataProcessPlotsTMT(quant,
                             type = '$plot_type',
                             ylimUp = $out_plots_opt.adv.ylimUp,
                             ylimDown = $out_plots_opt.adv.ylimDown,
@@ -110,7 +125,7 @@ quant <- proteinSummarization(input,
                             originalPlot = $out_plots_opt.adv.originalPlot,
                             summaryPlot = $out_plots_opt.adv.summaryPlot)
     #elif $plot_type == "quant"
-        write.table(quant,
+        write.table(quant\$ProteinLevelData,
                 "Quant.tsv",
                 sep = "\t",
                 quote = F,
@@ -125,7 +140,7 @@ quant <- proteinSummarization(input,
 
         comparison <- comp_matrix[,-1]
         row.names(comparison) <- as.character(comp_matrix[,1])
-        comparison <- as.matrix(comparison[levels(quant\$Condition)])
+        comparison <- as.matrix(comparison[levels(quant\$ProteinLevelData\$Condition)])
     #end if
 
     comparisons <- groupComparisonTMT(data = quant,
@@ -137,7 +152,7 @@ quant <- proteinSummarization(input,
                                       remove_norm_channel = $group.remove_norm_channel,
                                       remove_empty_channel = $group.remove_empty_channel)
 
-    write.table(comparisons,
+    write.table(comparisons\$ComparisonResult,
                 "ComparisonResult.tsv",
                 sep = "\t",
                 quote = F,
@@ -146,7 +161,12 @@ quant <- proteinSummarization(input,
 
     #for $plot_type in $group.selected_group_outputs
        #if $plot_type == "VolcanoPlot" or $plot_type == "Heatmap" or $plot_type == "ComparisonPlot"
-        groupComparisonPlots(data = comparisons,
+
+        ## Workaround for missing option "MSstatsLog" (getOption("MSstatsLog") returns NULL)
+        MSstatsConvert::MSstatsLogsSettings()
+        #############################################
+
+        groupComparisonPlots(data = comparisons\$ComparisonResult,
                              type = "$plot_type",
                              sig = $group.comparison_plots_opt.sig,
                              #if $group.comparison_plots_opt.FCcutoff:
@@ -374,8 +394,11 @@ quant <- proteinSummarization(input,
             </when>
         </conditional>
         <param name="selected_outputs" type="select" multiple="true" optional="false" label="Select Outputs">
-            <option value="msstats_log" selected="true">MSstats log</option>
-            <option value="msstatstmt_log" selected="true">MSstatsTMT log</option>
+            <option value="msstatstmt_conv_log" selected="false">MSstatsTMT converter log</option>
+            <option value="msstatstmt_sum_log" selected="true">MSstatsTMT summarization log</option>
+            <option value="msstatstmt_sum_ms" selected="true">MSstatsTMT summarization MSstats</option>
+            <option value="msstatstmt_group_log" selected="false">MSstatsTMT groupComparison log</option>
+            <option value="msstats_gc_log" selected="false">MSstats log (groupComparison)</option>
             <option value="r_script" selected="false">MSstats Rscript</option>
             <option value="quant" selected="true">Protein abundance</option>
             <option value="ProfilePlot" selected="false">Profile Plot</option>
@@ -383,11 +406,20 @@ quant <- proteinSummarization(input,
         </param>
     </inputs>
     <outputs>
-        <data name="out_msstats_log" from_work_dir="msstats.log" format="txt" label="${tool.name} on ${on_string}: MSstats log">
-            <filter>'msstats_log' in selected_outputs</filter>
+        <data name="out_msstatstmt_conv_log" from_work_dir="MSstatsTMT_converter_log.log" format="txt" label="${tool.name} on ${on_string}: MSstatsTMT converter log">
+            <filter>'msstatstmt_conv_log' in selected_outputs</filter>
         </data>
-        <data name="out_msstatstmt_log" from_work_dir="msstatstmt.log" format="txt" label="${tool.name} on ${on_string}: MSstatsTMT log">
-            <filter>'msstatstmt_log' in selected_outputs</filter>
+        <data name="out_msstatstmt_sum_log" from_work_dir="MSstatsTMT_summarization_log.log" format="txt" label="${tool.name} on ${on_string}: MSstatsTMT summarization log">
+            <filter>'msstatstmt_sum_log' in selected_outputs</filter>
+        </data>
+        <data name="out_msstatstmt_sum_ms" from_work_dir="MSstatsTMT_summarization_MSstats.log" format="txt" label="${tool.name} on ${on_string}: MSstatsTMT summarization MSstats">
+            <filter>'msstatstmt_sum_ms' in selected_outputs</filter>
+        </data>
+        <data name="out_msstatstmt_group_log" from_work_dir="MSstatsTMT_log_groupComparison.log" format="txt" label="${tool.name} on ${on_string}: MSstatsTMT groupComparison log">
+            <filter>'msstatstmt_group_log' in selected_outputs</filter>
+        </data>
+        <data name="out_msstats_gc_log" from_work_dir="MSstats_log.log" format="txt" label="${tool.name} on ${on_string}: MSstats log (groupComparison)">
+            <filter>'msstats_gc_log' in selected_outputs</filter>
         </data>
         <data name="out_r_script" format="txt" label="${tool.name} on ${on_string}: Rscript">
             <filter>'r_script' in selected_outputs</filter>
@@ -415,31 +447,31 @@ quant <- proteinSummarization(input,
         </data>
     </outputs>
     <tests>
-        <test expect_num_outputs="5">
+        <test expect_num_outputs="6">
             <conditional name="input">
                 <param name="input_src" value="MSstatsTMT"/>
                 <param name="msstatstmt_input" ftype="tabular" value="input.msstatstmt.txt"/>
             </conditional>
-            <param name="selected_outputs" value="msstats_log,msstatstmt_log,r_script,ProfilePlot,QCPlot"/>
-            <output name="out_msstats_log">
+            <param name="selected_outputs" value="msstatstmt_conv_log,msstatstmt_sum_ms,msstatstmt_sum_log,r_script,ProfilePlot,QCPlot"/>
+            <output name="out_msstatstmt_sum_ms">
                 <assert_contents>
-                    <has_text text="1 level of Isotope type labeling in this experiment" />
+                    <has_text text="MSstats - dataProcess function" />
                 </assert_contents>
             </output>
-            <output name="out_msstatstmt_log">
+            <output name="out_msstatstmt_sum_log">
                 <assert_contents>
                     <has_text text="MSstatsTMT - proteinSummarization function" />
                 </assert_contents>
             </output>
             <output name="out_r_script">
                 <assert_contents>
-                    <has_n_lines n="52" />
+                    <has_n_lines n="50" />
                 </assert_contents>
             </output>
             <output name="out_profile_plot" file="ProfilePlot.pdf" compare="sim_size"/>
             <output name="out_qc_plot" file="QCPlot.pdf" compare="sim_size"/>
         </test>
-        <test expect_num_outputs="4">
+        <test expect_num_outputs="6">
             <conditional name="input">
                 <param name="input_src" value="MaxQuant"/>
                 <param name="evidence" ftype="tabular" value="evidence.txt"/>
@@ -454,7 +486,7 @@ quant <- proteinSummarization(input,
                 </conditional>
                 <param name="selected_group_outputs" value="comparison_result,VolcanoPlot,ComparisonPlot"/>
             </conditional>
-            <param name="selected_outputs" value="ProfilePlot"/>
+            <param name="selected_outputs" value="ProfilePlot,msstatstmt_group_log,msstats_gc_log"/>
             <conditional name="which_Protein">
                 <param name="select" value="list"/>
                 <param name="protein_list" ftype="tabular" value="proteinIDs.txt"/>
@@ -484,14 +516,14 @@ quant <- proteinSummarization(input,
             <param name="selected_outputs" value="r_script"/>
             <output name="out_r_script">
                 <assert_contents>
-                    <has_n_lines n="58" />
+                    <has_n_lines n="61" />
                 </assert_contents>
             </output>
             <output name="out_group_comp">
                 <assert_contents>
                     <has_n_lines n="51" />
                     <has_n_columns n="8" />
-                    <has_text text="Long_LF-Short_HF" />
+                    <has_text text="Long_LF vs Short_HF" />
                     <has_text text="sp|O35226|PSMD4_MOUSE" />
                 </assert_contents>
             </output>
@@ -543,7 +575,7 @@ MSstatsTMT is an R-based package for detecting differentially abundant proteins 
     #> 4 sp|Q60854|SPB6_MOUSE .(TMT6plex)AFVEVNEEGTEAAAATAGMM(Oxidation)TVR
     #> 5 sp|Q60854|SPB6_MOUSE .(TMT6plex)AFVEVNEEGTEAAAATAGMM(Oxidation)TVR
     #> 6 sp|Q60854|SPB6_MOUSE .(TMT6plex)AFVEVNEEGTEAAAATAGMM(Oxidation)TVR
-    #>   PrecursorCharge                                             PSM Mixture
+    #>   Charge                                             PSM Mixture
     #> 1               3 .(TMT6plex)AFVEVNEEGTEAAAATAGMM(Oxidation)TVR_3       3
     #> 2               3 .(TMT6plex)AFVEVNEEGTEAAAATAGMM(Oxidation)TVR_3       3
     #> 3               3 .(TMT6plex)AFVEVNEEGTEAAAATAGMM(Oxidation)TVR_3       3
