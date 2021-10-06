@@ -11,7 +11,7 @@
 #
 #------------------------------------------------------------------------------
 """
-import optparse
+import argparse
 import re
 import sys
 from urllib import parse
@@ -20,7 +20,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 
-DEFAULT_TIMEOUT = 5  # seconds
+DEFAULT_TIMEOUT = 3600  # seconds
 retry_strategy = Retry(
     total=5,
     backoff_factor=2,
@@ -46,15 +46,17 @@ class TimeoutHTTPAdapter(HTTPAdapter):
 
 def __main__():
     # Parse Command Line
-    parser = optparse.OptionParser()
-    parser.add_option('-i', '--input', dest='input', default=None, help='Tabular file containing a column of NCBI Taxon IDs')
-    parser.add_option('-c', '--column', dest='column', type='int', default=0, help='The column (zero-based) in the tabular file that contains Taxon IDs')
-    parser.add_option('-t', '--taxon', dest='taxon', action='append', default=[], help='NCBI taxon ID to download')
-    parser.add_option('-r', '--reviewed', dest='reviewed', help='Only uniprot reviewed entries')
-    parser.add_option('-f', '--format', dest='format', choices=['xml', 'fasta'], default='xml', help='output format')
-    parser.add_option('-o', '--output', dest='output', help='file path for the downloaded uniprot xml')
-    parser.add_option('-d', '--debug', dest='debug', action='store_true', default=False, help='Turn on wrapper debugging to stderr')
-    (options, args) = parser.parse_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-i', '--input', dest='input', default=None, help='Tabular file containing a column of NCBI Taxon IDs')
+    parser.add_argument('-c', '--column', dest='column', type=int, default=0, help='The column (zero-based) in the tabular file that contains Taxon IDs')
+    parser.add_argument('-t', '--taxon', dest='taxon', action='append', default=[], help='NCBI taxon ID to download')
+    parser.add_argument('-r', '--reviewed', dest='reviewed', choices=['yes', 'no'], help='Only uniprot reviewed entries (default: reviewed and unreviewed entries)')
+    parser.add_argument('-f', '--format', dest='format', choices=['xml', 'fasta', "tab"], default='xml', help='output format')
+    parser.add_argument('--columns', dest='columns', help='columns for tabular output')
+    parser.add_argument('--include', dest='include', choices=['yes', 'no'], default="no", help='Include isoforms in FASTA output')
+    parser.add_argument('-o', '--output', dest='output', help='file path for the downloaded uniprot xml')
+    parser.add_argument('-d', '--debug', dest='debug', action='store_true', default=False, help='Turn on wrapper debugging to stderr')
+    options = parser.parse_args()
     taxids = set(options.taxon)
     if options.input:
         with open(options.input, 'r') as inputFile:
@@ -72,30 +74,34 @@ def __main__():
         dest_path = options.output
     else:
         dest_path = "uniprot_%s.xml" % '_'.join(taxids)
-    reviewed = " reviewed:%s" % options.reviewed if options.reviewed else ''
+    reviewed = "AND reviewed:%s" % options.reviewed if options.reviewed else ''
     try:
         url = 'https://www.uniprot.org/uniprot/'
-        query = "%s%s" % (taxon_query, reviewed)
+        query = "(%s) %s" % (taxon_query, reviewed)
         params = {'query': query, 'force': 'yes', 'format': options.format}
+        if options.format == "tab" and options.columns:
+            params['columns'] = options.columns
+        if options.format == "fasta":
+            params['include'] = options.include
         if options.debug:
             print("%s ? %s" % (url, params), file=sys.stderr)
         data = parse.urlencode(params)
-        print(f"Retrieving: {url+data}")
+        print(f"Retrieving: {url}?{data}")
         adapter = TimeoutHTTPAdapter(max_retries=retry_strategy)
         http = requests.Session()
         http.mount("https://", adapter)
-        response = http.post(url, data=params)
+        response = http.post(url, data=params, stream=True)
+        if response.encoding is None:
+            response.encoding = 'utf-8'
         http.close()
         with open(dest_path, 'w') as fh:
-            fh.write(response.text)
+            for line in response.iter_lines(decode_unicode=True):
+                fh.write(line + "\n")
         if options.format == 'xml':
             with open(dest_path, 'r') as contents:
-                while True:
-                    line = contents.readline()
+                for line in contents:
                     if options.debug:
                         print(line, file=sys.stderr)
-                    if line is None:
-                        break
                     if line.startswith('<?'):
                         continue
                     # pattern match <root or <ns:root for any ns string

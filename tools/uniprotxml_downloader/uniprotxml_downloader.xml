@@ -1,5 +1,8 @@
 <tool id="uniprotxml_downloader" name="UniProt" version="2.2.0" profile="21.01">
     <description>download proteome as XML or fasta</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
     <requirements>
         <requirement type="package" version="2.25.1">requests</requirement>
     </requirements>
@@ -11,9 +14,6 @@
 python '$__tool_directory__/uniprotxml_downloader.py'
 #if $taxid.input_choice == 'common':
     --taxon $taxid.organism
-    #if $taxid.reviewed:
-        --reviewed=$taxid.reviewed
-    #end if
 #elif $taxid.input_choice == 'taxids':
     #for $id in $taxid.taxons.split(','):
         -t '$id'
@@ -22,10 +22,31 @@ python '$__tool_directory__/uniprotxml_downloader.py'
     --input='${taxid.taxon_file}'
     --column=#echo int(str($taxid.column)) - 1#
 #end if
---format $format
+#if $reviewed:
+    --reviewed=$reviewed
+#end if
+--format $output_cond.out_format
+#if $output_cond.out_format == 'tab'
+    --columns '$output_cond.columns'
+#else if $output_cond.out_format == 'fasta'
+    --include $output_cond.include
+#end if
 --output '${proteome}'
+&& cp '$ext_config' 'galaxy.json'
 ]]>
     </command>
+    <configfiles>
+        <configfile name="ext_config"><![CDATA[{"proteome": {
+  "name": "UniProt.$output_cond.out_format",
+  #if $output_cond.out_format == 'xml'
+    "ext": "uniprotxml"
+  #else if $output_cond.out_format == 'tab'
+    "ext": "tabular"
+  #else
+    "ext": "$output_cond.out_format"
+  #end if
+}}]]></configfile>
+    </configfiles>
     <inputs>
         <conditional name="taxid">
             <param name="input_choice" type="select" label="Select">
@@ -41,17 +62,6 @@ python '$__tool_directory__/uniprotxml_downloader.py'
                         <column name="value" index="1" />
                     </options>
                 </param>
-                <param name="reviewed" type="select" label="filter by reviewed status" optional="true">
-                    <help><![CDATA[
-                    UniProtKB/TrEMBL (unreviewed)is a large, automatically annotated database that may contain 
-                    redundant sequences, but there is a higher chance peptides will be identified. 
-                    UniProtKB/Swiss-Prot (reviewed) is a smaller, manually annotated database with 
-                    less of a chance peptides will be identified but less sequence redundancy
-                    ]]>
-                    </help>
-                    <option value="yes">UniProtKB/Swiss-Prot (reviewed only)</option>
-                    <option value="no">UniProtKB/TrEMBL (unreviewed only)</option>
-                </param>
             </when>
             <when value="taxids">
                 <param name="taxons" type="text" label="NCBI Taxon IDs or names" 
@@ -64,25 +74,46 @@ python '$__tool_directory__/uniprotxml_downloader.py'
                 <param name="column" type="data_column" data_ref="taxon_file" label="Column with Taxon ID/name"/>
             </when>
         </conditional>
-        <param name="format" type="select" label="uniprot output format">
-            <option value="xml">xml</option>
-            <option value="fasta">fasta</option>
+        <param name="reviewed" type="select" label="filter by reviewed status" optional="true">
+            <help><![CDATA[
+                UniProtKB/TrEMBL (unreviewed)is a large, automatically annotated database that may contain 
+                redundant sequences, but there is a higher chance peptides will be identified. 
+                UniProtKB/Swiss-Prot (reviewed) is a smaller, manually annotated database with 
+                less of a chance peptides will be identified but less sequence redundancy.
+                (default: download reviewed and unreviewed entries)
+                ]]>
+            </help>
+            <option value="yes">UniProtKB/Swiss-Prot (reviewed only)</option>
+            <option value="no">UniProtKB/TrEMBL (unreviewed only)</option>
         </param>
+        <conditional name="output_cond">
+            <param name="out_format" type="select" label="uniprot output format">
+                <option value="xml">xml</option>
+                <option value="fasta">fasta</option>
+                <option value="tab">tabular</option>
+            </param>
+            <when value="xml"/>
+            <when value="fasta">
+                <param name="include" type="boolean" truevalue="yes" falsevalue="no" checked="false" label="Include isoforms"/>
+            </when>
+            <when value="tab">
+                <expand macro="tab_columns"/>
+            </when>
+        </conditional>
     </inputs>
     <outputs>
-        <data format="uniprotxml" name="proteome" label="UniProt.${format}">
-            <change_format>
-                <when input="format" value="fasta" format="fasta" />
-            </change_format>
-        </data>
+        <data format="auto" name="proteome"/>
     </outputs>
     <tests>
         <test>
             <param name="input_choice" value="taxids"/>
             <param name="taxons" value="1566990"/>
-            <param name="format" value="xml"/>
-            <output name="proteome">
+            <conditional name="output_cond">
+                <param name="out_format" value="xml"/>
+            </conditional>
+            <output name="proteome" ftype="uniprotxml">
                 <assert_contents>
+                    <is_valid_xml/>
                     <has_text text="&lt;/uniprot&gt;" />
                 </assert_contents>
             </output>
@@ -90,8 +121,11 @@ python '$__tool_directory__/uniprotxml_downloader.py'
         <test>
             <param name="input_choice" value="taxids"/>
             <param name="taxons" value="Shi470,PeCan4"/>
-            <param name="format" value="fasta"/>
-            <output name="proteome">
+            <param name="reviewed" value="no"/>
+            <conditional name="output_cond">
+                <param name="out_format" value="fasta"/>
+            </conditional>
+            <output name="proteome" ftype="fasta">
                 <assert_contents>
                     <has_text text="Shi470" />
                     <has_text text="PeCan4" />
@@ -102,8 +136,10 @@ python '$__tool_directory__/uniprotxml_downloader.py'
             <param name="input_choice" value="history"/>
             <param name="taxon_file" value="Helicobacter_strains.tsv" ftype="tabular"/>
             <param name="column" value="1"/>
-            <param name="format" value="fasta"/>
-            <output name="proteome">
+            <conditional name="output_cond">
+                <param name="out_format" value="fasta"/>
+            </conditional>
+            <output name="proteome" ftype="fasta">
                 <assert_contents>
                     <has_text text="Shi470" />
                     <has_text text="PeCan4" />
@@ -114,9 +150,13 @@ python '$__tool_directory__/uniprotxml_downloader.py'
             <param name="input_choice" value="history"/>
             <param name="taxon_file" value="Helicobacter_strains_ids.tsv" ftype="tabular"/>
             <param name="column" value="2"/>
-            <param name="format" value="fasta"/>
-            <output name="proteome">
+            <conditional name="output_cond">
+                <param name="out_format" value="tab"/>
+                <param name="columns" value="id,entry name,organism"/>
+            </conditional>
+            <output name="proteome" ftype="tabular">
                 <assert_contents>
+                    <has_n_columns n="3"/>
                     <has_text text="Shi470" />
                     <has_text text="PeCan4" />
                 </assert_contents>
