@@ -1,108 +1,218 @@
-<tool id="feature_alignment" name="Feature Alignment" version="0.1">
-    <description>of peakgroups below a FDR</description>
+<tool id="feature_alignment" name="TRIC" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@">
+    <description>integrates information from all available runs via a graph-based alignment strategy</description>
+    <macros>
+        <token name="@TOOL_VERSION@">0.11.0</token>
+        <token name="@GALAXY_VERSION@">0</token>
+        <import>macros.xml</import>
+    </macros>
     <requirements>
-        <requirement type="package" version="2.7">python</requirement>
-        <requirement type="package" version="0.3.2">msproteomicstools</requirement>
+        <requirement type="package" version="@TOOL_VERSION@">msproteomicstools</requirement>
+        <requirement type="package" version="2.8.6">rpy2</requirement>
     </requirements>
-    <stdio>
-        <!-- Anything other than zero is an error -->
-        <exit_code range="1:" />
-        <exit_code range=":-1" />
-        <!-- In case the return code has not been set propery check stderr too -->
-        <regex match="Error:" />
-        <regex match="Exception:" />
-    </stdio>
     <version_command>feature_alignment.py --version</version_command>
-    <command>
-<![CDATA[
+    <command detect_errors="exit_code"><![CDATA[
     feature_alignment.py 
-        --in #echo '" "'.join([ str($file) for $file in $inputs ]) #
-        --file_format $iformat
-        ##if str($iformat) == "openswath":
-            --out $out
-        ##end if
+        --in #echo '' ''.join([ str($file) for $file in $inputs ])
+        --out out.tsv
         --out_matrix out_matrix.tsv
-        --out_ids $out_ids
-        --fdr_cutoff $fdr_cutoff
-        #if $max_fdr_quality:
-            --max_fdr_quality $max_fdr_quality
+        --out_ids out_ids.tsv
+        --file_format '$iformat'
+        --method '$method_sel.method'
+        --matrix_output_method '$matrix_output_method'
+        --realign_method '$realign_method'
+        #if $max_rt_diff_cond.max_rt_diff_sel == 'opt_max_rt_diff_enabled':
+            --max_rt_diff '$max_rt_diff_cond.max_rt_diff'
         #end if
-        #if $max_rt_diff:
-            --max_rt_diff $max_rt_diff
+        #if $iso_max_rt_diff_cond.iso_max_rt_diff_sel == 'opt_iso_max_rt_diff_enabled':
+            --iso_max_rt_diff '$iso_max_rt_diff_cond.iso_max_rt_diff'
         #end if
-        #if $iso_max_rt_diff:
-            --iso_max_rt_diff $iso_max_rt_diff
+        #if $frac_selected_cond.frac_selected_sel == 'opt_frac_selected_enabled':
+            --frac_selected '$frac_selected_cond.frac_selected'
         #end if
-        #if $frac_selected:
-            --frac_selected $frac_selected
+        #if $fdr_cond.fdr_sel == 'opt_target_fdr':
+            --target_fdr '$fdr_cond.target_fdr'
+        #elif $fdr_cond.fdr_sel == 'opt_fdr_cutoff':
+            --fdr_cutoff '$fdr_cond.fdr_cutoff'
+        #else:
+            --target_fdr '0'
         #end if
-        --method $method
-        --matrix_output_method $matrix_output_method
-        --realign_method $realign_method
-        &&
-        mv out_matrix.tsv $out_matrix
+        --max_fdr_quality '$max_fdr_quality'
+        #if $method_sel.method == 'LocalMST' or $method_sel.method == 'LocalMSTAllCluster':
+            --mst:useRTCorrection '$method_sel.mst_useRTCorrection'
+            --mst:Stdev_multiplier '$method_sel.mst_Stdev_multiplier'
+            --mst:useLocalStdev '$method_sel.mst_useLocalStdev'
+            --mst:useReference '$method_sel.mst_useReference'
+        #end if
+        #if $further_params.disable_isotopic_grouping:
+            --disable_isotopic_grouping
+        #end if
+        #if $further_params.dscore_cond.dscore_sel == 'opt_dscore_enabled':
+            --use_dscore_filter
+            --dscore_cutoff '$further_params.dscore_cond.dscore_cutoff'
+        #end if
+        #if $further_params.nr_high_conf_exp_cond.nr_high_conf_exp_sel == 'opt_nr_high_conf_exp_enabled':
+            --nr_high_conf_exp '$further_params.nr_high_conf_exp_cond.nr_high_conf_exp'
+        #end if
+        #if $further_params.readmethod != 'disabled':
+            --readmethod '$further_params.readmethod'
+        #end if
+        #if $further_params.alignment_score_cond.alignment_score_sel == 'opt_alignment_score_enabled':
+            --alignment_score '$further_params.alignment_score_cond.alignment_score'
+        #end if
 
-]]></command>
+    #if $iformat == 'openswath':
+        && cat out.tsv > '$out'
+    #end if
+    && cat out_matrix.tsv > '$out_matrix'
+    && cat out_ids.tsv > '$out_ids'
+    ]]></command>
     <inputs>
-
-        <param name="inputs" type="data" multiple="True" format="txt"
-            label="A list of mProphet output files containing all peakgroups" help="(--in)"/>
+        <param name="inputs" type="data" multiple="True" format="txt" label="Output files containing all peakgroups from OpenSWATH (using either mProphet or pyProphet) or Peakview." help="(--in)"/>
         <param name="iformat" type="select" label="Which input file format is used" help="(--file_format)">
             <option value="openswath" selected="True">OpenSwath</option>
-            <option value="peakview">Peakview</option>
+            <option value="mprophet">mProphet (mQuest)</option>
+            <option value="peakview">PeakView</option>
         </param>
-        <param name="fdr_cutoff" type="float" value="0.01" label="Seeding score cutoff" help="(--fdr_cutoff)" />
-        <param name="max_fdr_quality" type="float" value="-1.0" optional="True"
-            label="Extension score cutoff"
-            help="During the extension phase of the algorithm, peakgroups of this quality will still be considered for alignment (in FDR) - it is possible to give a range in the format lower,higher+stepsize,stepsize - e.g. 0,0.31,0.01 (-1 will set it to fdr_cutoff) (--max_fdr_quality)"/>
-        <param name="max_rt_diff" type="integer" value="30" optional="True"
-            label="Maximal difference in RT for two aligned features" help="(--max_rt_diff)"/>
-        <param name="iso_max_rt_diff" type="integer" value="10" optional="True"
-            label="Maximal difference in RT for two isotopic channels in the same run" help="(--iso_max_rt_diff)" />
-        <param name="frac_selected" type="float" value="0.0" min="0" max="1" optional="True"
-            label="Do not write peakgroup if selected in less than this fraction of runs" help="(--frac_selected)"/>
-        <param name="method" type="select"
-            label="Which method to use for the clustering"
-            help="Note that the MST options will perform a local, MST guided alignment while the other options will use a reference-guided alignment. The global option will also move peaks which are below the selected FDR threshold. (--method)" >
-            <option value='best_overall' selected="True">best_overall</option>
-            <option value='best_cluster_score'>best_cluster_score</option>
-            <option value='global_best_cluster_score'>global_best_cluster_score</option>
-            <option value='global_best_overall'>global_best_overall</option>
-            <option value='LocalMST'>LocalMST</option>
-            <option value='LocalMSTAllCluster'>LocalMSTAllCluster</option>
-        </param>
-
+        <conditional name="method_sel">
+            <param name="method" type="select" label="Which method to use for the clustering"
+                help="Note that the MST options will perform a local, MST guided alignment while the other options will use a reference-guided alignment. The global option will also move peaks which are below the selected FDR threshold. (--method)" >
+                <option value="best_overall" selected="True">best overall</option>
+                <option value="best_cluster_score">best cluster score</option>
+                <option value="global_best_cluster_score">global best cluster score</option>
+                <option value="global_best_overall">global best overall</option>
+                <option value="LocalMST">LocalMST</option>
+                <option value="LocalMSTAllCluster">LocalMSTAllCluster</option>
+            </param>
+            <when value="best_overall"/>
+            <when value="best_cluster_score"/>
+            <when value="global_best_cluster_score"/>
+            <when value="global_best_overall"/>
+            <when value="LocalMST">
+                <expand macro="mst_params"/>
+            </when>
+            <when value="LocalMSTAllCluster">
+                <expand macro="mst_params"/>
+            </when>
+        </conditional>
         <param name="matrix_output_method" type="select"
             label="Which columns are written besides Intensity" help="(--matrix_output_method)">
-            <option value='none' selected="True">None</option>
-            <option value='RT'>RT</option>
-            <option value='score'>Score</option>
-            <option value='source'>Source</option>
-            <option value='full'>Full</option>
+            <option value="none" selected="True">None</option>
+            <option value="RT">RT</option>
+            <option value="score">Score</option>
+            <option value="source">Source</option>
+            <option value="full">Full</option>
         </param>
         <param name="realign_method" type="select" label="How to re-align runs in retention time" help="(--realign_method)">
-            <option value='diRT' selected="True">Use only deltaiRT from the input file</option>
-            <option value='linear'>Perform a linear regression using best peakgroups</option>
-            <!--option value='splineR'>Perform a spline fit using R</option-->
-            <!--option value='splineR_external'>Perform a spline fit using R</option-->
-            <option value='splinePy'>Use Python native spline from scikits.datasmooth (slow!)</option>
-            <option value='lowess'>Use Robust locally weighted regression (lowess smoother)</option>
-            <option value='CVSpline'>Splines with cross-validation</option>
-            <option value='nonCVSpline'>Splines without cross-validation</option>
-            <option value='earth' >Use Multivariate Adaptive Regression Splines using py-earth</option>
+            <option value="diRT" selected="True">Use only deltaiRT (diRT) from the input file</option>
+            <option value="linear">Perform a linear regression using best peakgroups</option>
+            <option value="lowess">Use Robust locally weighted regression (lowess smoother)</option>
+            <option value="splinePy">Use Python native spline from scikits.datasmooth (slow!)</option>
+            <option value="CVSpline">Splines with cross-validation</option>
+            <option value="nonCVSpline">Splines without cross-validation</option>
+            <option value="WeightedNearestNeighbour">WeightedNearestNeighbour</option>
+            <option value="SmoothLLDMedian">SmoothLLDMedian</option>
+            <option value="splineR">Perform a spline fit using R</option>
+            <option value="splineR_external">Perform a spline fit using R (external)</option>
+            <option value="Earth">Use Multivariate Adaptive Regression Splines using py-earth</option>
+            <option value="lowess_cython">lowess_cython</option>
         </param>
+        <conditional name="max_rt_diff_cond">
+            <param name="max_rt_diff_sel" type="select" label="Enable difference in RT for two aligned features" help="Maximal difference in RT for two aligned features">
+                <option value="opt_max_rt_diff_disabled" selected="True">disabled</option>
+                <option value="opt_max_rt_diff_enabled">set difference in RT</option>
+            </param>
+            <when value="opt_max_rt_diff_disabled"/>
+            <when value="opt_max_rt_diff_enabled">
+                <param name="max_rt_diff" type="integer" value="30" label="Difference in RT (in seconds) for two aligned features" help="(--max_rt_diff)"/>
+            </when>
+        </conditional>
+        <conditional name="iso_max_rt_diff_cond">
+            <param name="iso_max_rt_diff_sel" type="select" label="Enable difference in RT for two isotopic channels" help="Maximal difference in RT (in seconds) for two isotopic channels in the same run">
+                <option value="opt_iso_max_rt_diff_disabled" selected="True">disabled</option>
+                <option value="opt_iso_max_rt_diff_enabled">set difference in RT</option>
+            </param>
+            <when value="opt_iso_max_rt_diff_disabled"/>
+            <when value="opt_iso_max_rt_diff_enabled">
+                <param name="iso_max_rt_diff" type="integer" value="30" label="Difference in RT (in seconds) for two isotopic channels." help="(--iso_max_rt_diff)" />
+            </when>
+        </conditional>
+        <conditional name="frac_selected_cond">
+            <param name="frac_selected_sel" type="select" label="Enable fraction of runs" help="Do not write peakgroup if selected in less than this fraction of runs">
+                <option value="opt_frac_selected_disabled" selected="True">disabled</option>
+                <option value="opt_frac_selected_enabled">set fraction of runs</option>
+            </param>
+            <when value="opt_frac_selected_disabled"/>
+            <when value="opt_frac_selected_enabled">
+                <param name="frac_selected" type="float" value="0.0" min="0" max="1" label="Fraction of runs" help="(--frac_selected)"/>
+            </when>
+        </conditional>
+        <conditional name="fdr_cond">
+            <param name="fdr_sel" type="select" label="Choose FDR method" help="">
+                <option value="opt_fdr_disabled">disabled</option>
+                <option value="opt_target_fdr" selected="True">Target FDR</option>
+                <option value="opt_fdr_cutoff">FDR cutoff</option>
+            </param>
+            <when value="opt_fdr_disabled"/>
+            <when value="opt_target_fdr">
+                <param name="target_fdr" type="float" value="0.01" label="Target FDR" help="Refers to the desired FDR on assay level. (--target_fdr)"/>
+            </when>
+            <when value="opt_fdr_cutoff">
+                <param name="fdr_cutoff" type="float" value="0.01" label="Seeding score cutoff" help="A fixed m-score cutoff which does not take into account the number of runs (use target_fdr instead). (--fdr_cutoff)" />
+            </when>
+        </conditional>
+        <param name="max_fdr_quality" type="float" value="0.05" min="0" label="Extension score cutoff"
+               help="During the extension phase of the algorithm, peakgroups of this quality will still be considered for alignment (in FDR) - it is possible to give a range in the format lower,higher+stepsize,stepsize - e.g. 0,0.31,0.01  (-1 will set it to fdr_cutoff) (--max_fdr_quality)"/>
+        <section name="further_params" title="Further parameters" expanded="False">
+            <param name="disable_isotopic_grouping" type="boolean" truevalue="True" falsevalue="False" checked="false" label="Disable grouping of isotopic variants"
+                   help="Disable grouping of isotopic variants by peptide_group_label, thus disabling matching of isotopic variants of the same peptide across channels. If turned off, each isotopic channel will be matched independently of the other. If enabled, the more certain identification will be used to infer the location of the peak in the other channel. (--disable_isotopic_grouping)"/>
+            <conditional name="dscore_cond">
+                <param name="dscore_sel" type="select" label="Enable the filter by d score (this is mainly for speedup)" help="">
+                    <option value="opt_dscore_disabled" selected="True">disabled</option>
+                    <option value="opt_dscore_enabled">Use d score filter</option>
+                </param>
+                <when value="opt_dscore_disabled"/>
+                <when value="opt_dscore_enabled">
+                    <param name="dscore_cutoff" type="float" value="1.96" label="d score cut-off"
+                           help="Quality cutoff to still consider a feature for alignment using the d_score: everything below this d-score is discarded (this is mainly for speedup). (--dscore_cutoff)"/>
+                </when>
+            </conditional>
+            <conditional name="nr_high_conf_exp_cond">
+                <param name="nr_high_conf_exp_sel" type="select" label="Enable the filter by d score (this is mainly for speedup)" help="">
+                    <option value="opt_nr_high_conf_exp_disabled" selected="True">disabled</option>
+                    <option value="opt_nr_high_conf_exp_enabled">Use number of experiments</option>
+                </param>
+                <when value="opt_nr_high_conf_exp_disabled"/>
+                <when value="opt_nr_high_conf_exp_enabled">
+                    <param name="nr_high_conf_exp" type="integer" value="1" optional="True" label="Number of experiments with high confidence"
+                           help="Number of experiments in which the peptide needs to be identified with high confidence (e.g. above fdr_curoff). (--nr_high_conf_exp)"/>
+                </when>
+            </conditional>
+            <param name="readmethod" type="select" label="Read full or minimal transition groups" optional="True" help="(--readmethod)">
+                <option value="disabled" selected="True">disabled</option>
+                <option value="minimal">minimal</option>
+                <option value="full">full</option>
+            </param>
+            <conditional name="alignment_score_cond">
+                <param name="alignment_score_sel" type="select" label="Enable the filter by d score (this is mainly for speedup)" help="">
+                    <option value="opt_alignment_score_disabled" selected="True">disabled</option>
+                    <option value="opt_alignment_score_enabled">Use number of experiments</option>
+                </param>
+                <when value="opt_alignment_score_disabled"/>
+                <when value="opt_alignment_score_enabled">
+                    <param name="alignment_score" type="float" value="0.0001" optional="True" label="Alignment score"
+                           help="Minimal score needed for a feature to be considered for alignment between runs (e.g. score needed to be considered an 'anchor point' for pairwise alignment). (--alignment_score)"/>
+                </when>
+            </conditional>
+        </section>
     </inputs>
     <outputs>
         <!-- Matrix containing one peak group per row -->
         <data format="tabular" name="out_matrix"/>
         <!-- Id file only containing the ids -->
         <data format="tabular" name="out_ids"/>
-        <!-- Output file with filtered peakgroups for quantification (only works for OpenSWATH) -->
+        <!-- Output file with filtered peakgroups for quantification -->
         <data format="tabular" name="out">
-            <!-- according to the documentation this output only works for SWATH, 
-            but it is a requirement argument in python argparse.
-            So we need to output it. -->
-            <!--filter>iformat == 'openswath'</filter-->
+            <filter>iformat == 'openswath'</filter>
         </data>
     </outputs>
     <tests>
@@ -110,59 +220,70 @@
             <param name="inputs" value="feature_alignment_openswath_input_1.csv" ftype="txt" />
             <param name="iformat" value="openswath" />
             <param name="method" value="best_cluster_score" />
+            <param name="fdr_sel" value="opt_fdr_disabled" />
             <param name="max_fdr_quality" value="0.4" />
             <param name="matrix_output_method" value="RT" />
-            <output name="out_matrix" file="feature_alignment_1_openswath_output_matrix.csv" ftype="tabular" />
+            <output name="out_matrix" file="feature_alignment_1_openswath_output_matrix.csv" lines_diff="2" ftype="tabular" />
             <output name="out_ids" file="feature_alignment_1_openswath_output_cluster_ids.csv" ftype="tabular" />
         </test>
         <test>
             <param name="inputs" value="feature_alignment_openswath_input_1.csv" ftype="txt" />
             <param name="iformat" value="openswath" />
             <param name="method" value="best_overall" />
+            <param name="fdr_sel" value="opt_fdr_disabled" />
             <param name="max_fdr_quality" value="0.4" />
             <param name="matrix_output_method" value="RT" />
-            <output name="out_matrix" file="feature_alignment_2_output_2_matrix.csv" ftype="tabular" />
+            <output name="out_matrix" file="feature_alignment_2_output_2_matrix.csv" lines_diff="2" ftype="tabular" />
             <output name="out_ids" file="feature_alignment_2_output_1_ids.csv" ftype="tabular" />
         </test>
-        <!-- needs R dependency; The python equivalent should be enough I guess.
         <test>
             <param name="inputs" value="feature_alignment_3_openswath_input.csv" ftype="txt" />
             <param name="iformat" value="openswath" />
             <param name="realign_method" value="splineR" />
             <param name="method" value="best_cluster_score" />
+            <param name="fdr_sel" value="opt_fdr_disabled" />
             <param name="max_fdr_quality" value="0.4" />
-            <param name="maxtrix_output_method" value="RT" />
-            <output name="out_ids" file="feature_alignment_3_openswath_output_cluster_ids.csv" ftype="tabular" />
+            <param name="matrix_output_method" value="RT" />
+            <output name="out_ids" file="feature_alignment_3_openswath_output_splineR_cluster_ids.csv" ftype="tabular" />
         </test>
-        -->
         <test>
             <param name="inputs" value="feature_alignment_3_openswath_input.csv" ftype="txt" />
             <param name="iformat" value="openswath" />
             <param name="realign_method" value="splinePy" />
             <param name="method" value="best_cluster_score" />
+            <param name="fdr_sel" value="opt_fdr_disabled" />
             <param name="max_fdr_quality" value="0.4" />
             <param name="matrix_output_method" value="RT" />
-            <output name="out_ids" file="feature_alignment_3_openswath_output_cluster_ids.csv" ftype="tabular" />
+            <output name="out_ids" file="feature_alignment_3_openswath_output_splinePy_cluster_ids.csv" ftype="tabular" />
         </test>
         <test>
             <param name="inputs" value="feature_alignment_peakview_input_2.csv" ftype="txt" />
             <param name="iformat" value="peakview" />
             <param name="method" value="best_cluster_score" />
+            <param name="max_rt_diff_sel" value="opt_max_rt_diff_enabled" />
+            <param name="iso_max_rt_diff_sel" value="opt_iso_max_rt_diff_enabled" />
+            <param name="frac_selected_sel" value="opt_frac_selected_enabled" />
+            <param name="disable_isotopic_grouping" value="True" />
+            <param name="nr_high_conf_exp_sel" value="opt_nr_high_conf_exp_enabled" />
+            <param name="alignment_score_sel" value="opt_alignment_score_enabled" />
             <param name="max_fdr_quality" value="0.0001" />
+            <param name="fdr_sel" value="opt_fdr_cutoff" />
             <param name="fdr_cutoff" value="0.000000001" />
             <param name="matrix_output_method" value="RT" />
-            <output name="out_matrix" file="feature_alignment_5_peakview_output_matrix.csv" ftype="tabular" />
+            <output name="out_matrix" file="feature_alignment_5_peakview_output_matrix.csv" lines_diff="2" ftype="tabular" />
         </test>
-
     </tests>
     <help>
 <![CDATA[
 
 **What it does**
 
-This program will select all peakgroups below the FDR cutoff in all files and try to align them to each other.
-If only one file is given, it will act as peakgroup selector (best by m_score)
-and will apply the provided FDR cutoff.
+TRIC uses a graph-based alignment strategy based on non-linear retention time correction to integrate information from all available runs. The input consists of a set of csv files derived from a targeted proteomics experiment generated by OpenSWATH (using either mProphet or pyProphet) or generated by Peakview.
+
+There are two basic running modes available. The first one uses a reference-based alignment where a single run is chosen as a reference and all other runs are aligned to it. This is a useful choice for a small number of runs that are chromatographically similar. The second mode generates a guidance tree based on chromatographic similarity of the input runs and uses this tree to align the targeted proteomics runs (the nodes in the tree are runs and the edges are pairwise alignments). Generally this mode is better for a large number of runs or for chromatographically dissimilar samples.
+
+TRIC is part of msproteomicstools. For additional help please visit the `TRIC documentation <https://github.com/msproteomicstools/msproteomicstools/blob/master/TRIC-README.md>`_
+
 ]]>
     </help>
     <citations>
