@@ -1,0 +1,168 @@
+<tool id="proteomiqon_psmstatistics" name="ProteomIQon PSMStatistics" version="@VERSION@" profile="20.05">
+    <description>
+        utilizes semi supervised machine learning techniques to integrate search engine scores as well as the mentioned quality scores into one single consensus score.
+    </description>
+    <macros>
+        <token name="@VERSION@">0.0.7</token>
+    </macros>
+    <requirements>
+        <requirement type="package" version="@VERSION@">proteomiqon-psmstatistics</requirement>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        #import re
+        #set basename = $re.sub(r'[^\w ,.\-+]','_', $psm.element_identifier)
+        #if $outputParamfile:
+            cat '$paramfile' >> '$out_paramfile' &&
+        #end if
+        ln -s '$psm' '${basename}.psm' &&
+        ln -s '$out_qpsm' '${basename}.qpsm' &&
+        proteomiqon-psmstatistics -i './${basename}.psm' -d '$peptideDB' -p '$paramfile' -o ./
+    ]]>
+    </command>
+    <configfiles>
+        <configfile name="paramfile">
+            <![CDATA[
+            {
+                "Threshold":
+                {
+                    #if $ThresholdCond.ProcessingType == "Estimate"
+                    "Case":"Estimate",
+                    "Fields":
+                    [
+                        {
+                            "QValueThreshold" : $ThresholdCond.QValueThreshold,
+                            "PepValueThreshold" : $ThresholdCond.PepValueThreshold,
+                            "MaxIterations" : $ThresholdCond.MaxIterations,
+                            "MinimumIncreaseBetweenIterations" : $ThresholdCond.MinimumIncreaseBetweenIterations,
+                            "PepValueFittingMethod" : {
+                                "Case":"LinearLogit"
+                            }
+                        }
+                    ]
+                    #else if $ThresholdCond.ProcessingType == "Fixed"
+                    "Case":"Fixed",
+                    "Fields":
+                    [
+                        {
+                            "SequestLike":$ThresholdCond.SequestLike,
+                            "Andromeda":$ThresholdCond.Andromeda
+                        }
+                    ]
+                    #end if
+                },
+                "ParseProteinIDRegexPattern":"${ParseProteinIDRegexPattern}",
+                "KeepTemporaryFiles":false
+            }
+            ]]>
+        </configfile>
+    </configfiles>
+    <inputs>
+        <param name="psm" type="data" format="tabular" label="PSM" help="Specify list of peptide spectrum matches to be scored."/>
+        <param name="peptideDB" type="data" format="sqlite" label="Peptide database" help="Specify the peptide data base."/>
+        <conditional name="ThresholdCond">
+            <param name="ProcessingType" type="select" label="Processing type" help="Specify how PSM thresholds should be estimated using semi supervised machine learning techniques (recommended) or if fixed score values should be used instead.">
+                <option value="Estimate" selected="true">Estimate</option>
+                <option value="Fixed">Fixed</option>
+            </param>
+            <when value="Estimate">
+                <param name="QValueThreshold" type="float" value="0.01" label="Q-Value threshold" />
+                <param name="PepValueThreshold" type="float" value="0.05" label="Pep-Value threshold" />
+                <param name="MaxIterations" type="integer" value="15" label="Max iterations" />
+                <param name="MinimumIncreaseBetweenIterations" type="float" value="0.005" label="Minimum increase between iterations" />
+            </when>
+            <when value="Fixed">
+                <param name="SequestLike" type="float" value="5.0" label="Sequest like" />
+                <param name="Andromeda" type="float" value="40.0" label="Andromeda" />
+            </when>
+        </conditional>
+        <param name="ParseProteinIDRegexPattern" type="text" value="id" label="Parse protein ID regex pattern" help="Fasta headers do often contain additional information in addition to your protein identifier, by specifying a regex pattern the tool can extract the protein IDs. If you fasta headers are already cleaned you can leave this field empty.">
+            <sanitizer sanitize="false" />
+        </param>
+        <param name="outputParamfile" type="boolean" value="false" label="Output parameter file"/>
+    </inputs>
+    <outputs>
+        <data format="tabular" name="out_qpsm" />
+        <data format="json" name="out_paramfile">
+            <filter>outputParamfile</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <param name="psm" value="sample.psm"/>
+            <param name="peptideDB" value="sample.db"/>
+            <param name="ParseProteinIDRegexPattern" value="id"/>
+            <param name="outputParamfile" value="false"/>
+            <conditional name="ThresholdCond">
+                <param name="ProcessingType" value="Estimate"/>
+                <param name="QValueThreshold" value="0.01"/>
+                <param name="PepValueThreshold" value="0.05"/>
+                <param name="MaxIterations" value="15"/>
+                <param name="MinimumIncreaseBetweenIterations" value="0.005"/>
+            </conditional>
+        </test>
+        <test expect_num_outputs="2">
+            <param name="psm" value="sample.psm"/>
+            <param name="peptideDB" value="sample.db"/>
+            <param name="ParseProteinIDRegexPattern" value="id"/>
+            <param name="outputParamfile" value="true"/>
+            <conditional name="ThresholdCond">
+                <param name="ProcessingType" value="Estimate"/>
+                <param name="QValueThreshold" value="0.01"/>
+                <param name="PepValueThreshold" value="0.05"/>
+                <param name="MaxIterations" value="15"/>
+                <param name="MinimumIncreaseBetweenIterations" value="0.005"/>
+            </conditional>
+            <output name="out_paramfile" file="result_1.json"/>
+        </test>
+        <test expect_num_outputs="2">
+            <param name="psm" value="sample.psm"/>
+            <param name="peptideDB" value="sample.db"/>
+            <param name="ParseProteinIDRegexPattern" value="id"/>
+            <param name="outputParamfile" value="true"/>
+            <conditional name="ThresholdCond">
+                <param name="ProcessingType" value="Estimate"/>
+                <param name="QValueThreshold" value="0.01"/>
+                <param name="PepValueThreshold" value="0.05"/>
+                <param name="MaxIterations" value="15"/>
+                <param name="MinimumIncreaseBetweenIterations" value="0.005"/>
+            </conditional>
+            <output name="out_paramfile" file="result_2.json"/>
+        </test>
+        <test expect_num_outputs="2">
+            <param name="psm" value="sample.psm"/>
+            <param name="peptideDB" value="sample.db"/>
+            <param name="ParseProteinIDRegexPattern" value="id"/>
+            <param name="outputParamfile" value="true"/>
+            <conditional name="ThresholdCond">
+                <param name="ProcessingType" value="Fixed"/>
+                <param name="SequestLike" value="5.0"/>
+                <param name="Andromeda" value="40.0"/>
+            </conditional>
+            <output name="out_paramfile" file="result_3.json"/>
+        </test>
+    </tests>
+    <help>
+    <![CDATA[
+What It Does
+------------
+**Disclaimer** Disclaimer this tool needs a `peptide database <https://csbiology.github.io/ProteomIQon/tools/PeptideDB.html>`_ and `peptide spectrum matches <https://csbiology.github.io/ProteomIQon/tools/PeptideSpectrumMatching.html>`_.
+
+An established method to identify acquired MS/MS spectra is the comparison of each spectrum with peptides in a reference database.
+
+To measure the similarity of in silico generated spectra and measured MS/MS scans we use our own implementations of three established search enginge scores: SEQUEST, Andromeda and XTandem. 
+Additionally, we also record quality control parameters such as the mass difference between the precursor ion and the theoretically calulated mass or the uniquness of each score in comparison to 'competing' peptides within the search space. 
+The PSMStatistics tool utilizes semi supervised machine learning techniques to integrate search engine scores as well as the mentioned quality scores into one single consensus score.
+
+.. image:: SemiSupervisedScoring.png
+            :width: 768pt
+            :height: 345pt
+
+Since the search space is extended by so called decoys - reversed counterparts of peptides within the search space - we can estimate the distribution of 'true negatives' and calculate local (PEP values) and global (Q values) false discovery rates at each consensus score. 
+The reported peptides at user defined local and global FDR cutoffs can then be used as inputs for any downstream analysis be it ProteinInference or PSMBasedQuantification.
+
+Further Reading
+---------------
+Additional information about the tool can be found in the `documentation <https://csbiology.github.io/ProteomIQon/tools/PSMStatistics.html>`_.  
+    ]]>
+    </help>
+</tool>

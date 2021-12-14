@@ -1,0 +1,204 @@
+<tool id="maxquant_mqpar" name="MaxQuant (using mqpar.xml)" version="@VERSION@+galaxy@VERSION_SUFFIX_MQPAR@">
+    <macros>
+        <xml name="output" token_format="tabular" token_label="default description" token_name="default">
+            <data format="@FORMAT@" label="@LABEL@ for ${on_string}" name="@NAME@">
+                <filter>'@NAME@' in output</filter>
+            </data>
+        </xml>
+        <xml name="output_from_wdir" token_ext="txt" token_format="tabular" token_label="default description" token_name="default">
+            <data format="@FORMAT@" from_work_dir="combined/txt/@NAME@.@EXT@" label="@LABEL@ for ${on_string}" name="@NAME@">
+                <filter>'@NAME@' in output</filter>
+            </data>
+        </xml>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <command detect_errors="exit_code"><![CDATA[
+    ## link galaxy datasets to filenames accepted by maxquant
+    #import re
+    #set names = [re.sub('@SUBSTITUTION_RX@', '_', str($n.element_identifier)) for $n in $input_opts.infiles]
+    #set names_with_ext = [($name if ($name).lower().endswith(str($input_opts.ftype)) else $name + str($input_opts.ftype)) for $name in $names]
+    #for $target, $link in zip($infiles, $names_with_ext)
+        #if str($input_opts.ftype) == '.thermo.raw':
+        cp '$target' '$link' &&
+        #else:
+        ln -s '$target' '$link' &&
+        #end if
+    #end for
+
+    python3 '$__tool_directory__/modify_mqpar.py'
+    #set inf = ','.join($names_with_ext)
+    --infiles='$inf'
+    --version=@VERSION@
+    --num_threads=\${GALAXY_SLOTS:-1}
+    --substitution_rx='@SUBSTITUTION_RX@'
+    --fasta_files='$fasta_files'
+    --description_parse_rule='$description_parse_rule'
+    --identifier_parse_rule='$identifier_parse_rule'
+    '$mqpar_input'
+
+    &&
+    maxquant mqpar.xml
+    #if 'log' in $output:
+        >> '$log'
+    #end if
+    && mv mqpar.xml combined/txt/mqpar.xml
+    #if 'output_all' in $output:
+        &&
+        tar -zcf '$output_all' ./combined/txt
+    #end if
+  
+    #if $qc.do_it:
+        &&
+        Rscript '$qr' '$qr_yaml'
+        #if 'log' in $output:
+            >> '$log' 2>&1
+        #end if
+        &&
+        cp ./combined/txt/report_v@VERSION_PTXQC@_combined.pdf '$ptxqc_report'
+    #end if
+    ]]></command>
+
+    <configfiles>
+        <expand macro="ptxqc"/>
+    </configfiles>
+
+    <inputs>
+        <conditional name="input_opts">
+            <param name="ftype" type="select" label="choose the type of your input files">
+                <option value=".thermo.raw">thermo.raw</option>
+                <option value=".mzxml">mzXML</option>
+                <option value=".mzml">mzML</option>
+            </param>
+            <when value=".thermo.raw"> 
+                <param multiple="true" name="infiles" type="data"
+                       format="thermo.raw" label="RAW Files"
+                       help="Specify one or more Thermo RAW files" />
+            </when>
+            <when value=".mzxml">
+                <param multiple="true" name="infiles" type="data"
+                       format="mzXML" label="mzXML Files"
+                       help="Specify one or more mzXML files" />
+            </when>
+            <when value=".mzml">
+                <param multiple="true" name="infiles" type="data"
+                       format="mzML" label="mzML Files"
+                       help="Specify one or more mzML files" />
+            </when>
+        </conditional>
+        <param format="fasta" multiple="true" name="fasta_files"
+               type="data" label="FASTA files"
+               help="Specify one or more FASTA databases." />
+        <param name="identifier_parse_rule" type="text"
+               label="identifier parse rule" value="^&gt;.*\|(.*)\|.*$">
+            <sanitizer>
+                <valid initial="string.printable">
+                    <remove value="&apos;"/>
+                </valid>
+            </sanitizer>
+        </param>
+        <param name="description_parse_rule" type="text"
+               label="description parse rule" value="^&gt;.*\|.*\|[^ ]+ (.*) OS.*$"
+               help="Modify parse rules if needed">
+            <sanitizer>
+                <valid initial="string.printable">
+                    <remove value="&apos;"/>
+                </valid>
+            </sanitizer>
+        </param>
+        <param type="data" name="mqpar_input" format="xml"
+               label="mqpar.xml file with your search parameters. RAW file names 
+                      must match the names displayed in galaxy. Their paths 
+                      from the local machine are ignored. E.g. a file named
+                      'test01.raw' in galaxy can either be named 'test01.raw' or
+                      'D:\path\to\test01.raw' in the mqpar.xml."/>
+        <expand macro="ptxqc-opts"/>
+        <param type="select" name="output" label="Select the desired outputs."
+               multiple="true" optional="false">
+            <option value="proteinGroups">Protein Groups</option>
+            <option value="mqpar">mqpar.xml</option>
+            <option value="peptides">Peptides</option>
+            <option value="evidence">Evidence</option>
+            <option value="parameters">Tabular Paramters</option>
+            <option value="msms">MSMS</option>
+            <option value="mzTab">mzTab</option>
+            <option value="allPeptides">all peptides</option>
+            <option value="libraryMatch">library match</option>
+            <option value="matchedFeatures">matched features</option>
+            <option value="modificationSpecificPeptides">modification specific peptides</option>
+            <option value="ms3Scans">ms3 scans</option>
+            <option value="msmsScans">msms scans</option>
+            <option value="mzRange">mz range</option>
+            <option value="peptideSection">peptide section</option>
+            <option value="summary">summary</option>
+            <option value="output_all">complete 'combined/txt/' directory (compressed)</option>
+            <option value="log">MaxQuant and PTXQC log</option>
+        </param>
+    </inputs>
+
+    <expand macro="outputs"/>
+
+    <tests>
+        <test>
+            <param name="ftype" value=".mzxml" />
+            <param name="infiles" value="BSA_min_22,BSA_min_21.mzXML" />
+            <param name="fasta_files" value="bsa.fasta" />
+            <param name="identifier_parse_rule" value="&gt;([^\s]*)" />
+            <param name="description_parse_rule" value="&gt;(.*)" />
+            <param name="mqpar_input" value="mqpar/mqpar.xml" />
+            <param name="output" value="evidence,msms,mzTab,allPeptides,msmsScans,mzRange,parameters,peptides,peptideSection,proteinGroups,summary,modificationSpecificPeptides,mqpar,output_all" />
+            <output name="evidence">
+                <assert_contents>
+                    <has_text text="AEFVEVTK" />
+                </assert_contents>
+            </output>
+            <output name="msms">
+                <assert_contents>
+                    <has_text text="ECCHGDLLECADDR" />
+                </assert_contents>
+            </output>
+            <output name="allPeptides" file="mqpar/txt/allPeptides.txt" lines_diff="32" />
+            <output name="msmsScans">
+                <assert_contents>
+                    <has_text text="LLEEQVFMANGVSLQLQR" />
+                </assert_contents>
+            </output>
+            <output name="mzRange" file="mqpar/txt/mzRange.txt" />
+            <output name="parameters" file="mqpar/txt/parameters.txt" lines_diff="8"/>
+            <output name="peptides">
+                <assert_contents>
+                    <has_text text="VEVTKLVTDLTKVHKECCHGDLLECADDRA" />
+                </assert_contents>
+            </output>
+            <output name="proteinGroups">
+                <assert_contents>
+                    <has_text text="ENSBTAP00000007350" />
+                </assert_contents>
+            </output>
+            <output name="summary" file="mqpar/txt/summary.txt" />
+            <output name="modificationSpecificPeptides">
+                <assert_contents>
+                    <has_text text="ECCHGDLLECADDR" />
+                </assert_contents>
+            </output>
+            <output name="mqpar" file="mqpar/txt/mqpar.xml" lines_diff="8" />
+        </test>
+    </tests>
+    <help><![CDATA[
+MaxQuant is a quantitative proteomics software package designed for analyzing large mass-spectrometric data sets. 
+
+This tool is a wrapper for MaxQuant v@VERSION@. It gets its search parameters from a previously created parameter file (mqpar.xml). A similiar tool that allows the specification of search parameters directly through galaxy is available as well and should be preferred, if possible.
+
+**Input files**
+
+- Thermo raw file or mzXML file
+    - The datatype has to be 'thermo.raw' or 'mzXML'. Make sure to specify the correct datatype either during upload to Galaxy or afterwards (edit attributes --> datatypes)
+- mqpar.xml: 
+    - MaxQuant parameters will be taken from the provided mqpar.xml file. This parameter file MUST be created using the same version of MaxQuant as is used by this tool. The correct version of MaxQuant can be obtained via the bioconda channel for the conda package manager.
+
+**Output files**
+
+Different output file options are available, most of them are part of the MaxQuant txt folder. An additional mztab output option is implemented. 
+    ]]></help>
+    <expand macro="citations"/>
+</tool>
