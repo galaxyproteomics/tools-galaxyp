@@ -42,13 +42,21 @@ def main():
     data_table = 'eggnog_mapper_db_versioned'
     dm_dict['data_tables'][data_table]\
         = dm_dict['data_tables'].get(data_table, [])
-    # Versionning is super confusing:
+    # DB versionning was super confusing for eggnog-mapper 2.0.x:
     # eggnog-mapper 1.* needed a db v4.5 (based on eggnog v4.5)
-    # eggnog-mapper 2.0 needs a db v2.0 (based on eggnog v5.0)
-    # db v4.5 are not compatible with eggnog-mapper 2.0
+    # eggnog-mapper 2.x needed a db v2.0 (based on eggnog v5.0)
+    # (db v4.5 are not compatible with eggnog-mapper 2.0)
+    # Starting with eggnog-mapper 2.1.* db versioning looks better: 2.1.0 requires db v5.0.2
     version = "2.0"
     if "4.5" in db_version:
+        # special case: eggnog-mapper 1.x
         version = "1.0"
+    elif db_version.startswith('2.'):
+        # special case: eggnog-mapper 2.0.x
+        version = "2.0"
+    else:
+        # normal case or eggno-mapper >= 2.1
+        version = db_version
     data_table_entry = dict(value=db_version, name=db_version,
                             path=args.install_path, version=version)
     dm_dict['data_tables'][data_table].append(data_table_entry)
