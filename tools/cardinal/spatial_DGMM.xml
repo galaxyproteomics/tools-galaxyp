@@ -1,0 +1,309 @@
+<tool id="cardinal_single_ion_segmentation" name="MSI single ion segmentation" version="@VERSION@.0">
+    <description>mass spectrometry imaging spatial DGMM</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements">
+        <requirement type="package" version="2.3">r-gridextra</requirement>
+      </expand>
+    <command detect_errors="exit_code">
+    <![CDATA[
+
+        @INPUT_LINKING@
+        cat '${MSI_spatial_DGMM}' &&
+        Rscript '${MSI_spatial_DGMM}'
+
+    ]]>
+    </command>
+    <configfiles>
+        <configfile name="MSI_spatial_DGMM"><![CDATA[
+
+################################# load libraries and read file #################
+
+library(Cardinal)
+library(gridExtra)
+
+@READING_MSIDATA_FULLY_COMPATIBLE@
+
+#if str($sample_groups.group) == "multiple_groups":
+    ## read and extract x,y,annotation information
+    input_tabular <- read.delim("$sample_groups.annotation_file", header = $sample_groups.tabular_header, stringsAsFactors = FALSE)
+    annotation_input <- input_tabular[,c($sample_groups.column_x, $sample_groups.column_y, $sample_groups.column_names)]
+    annotation_name <- colnames(annotation_input)[3] ##extract header for annotations to later export tabular with same name
+    colnames(annotation_input) <- c("x", "y", "annotation") ## rename annotations header to default name "annotation"
+
+    ## merge with coordinate information of msidata
+    msidata_coordinates <- data.frame(coord(msidata)\$x, coord(msidata)\$y, c(1:ncol(msidata)))
+    colnames(msidata_coordinates) <- c("x", "y", "pixel_index")
+    merged_annotation <- merge(msidata_coordinates, annotation_input, by=c("x", "y"), all.x=TRUE)
+    merged_annotation[is.na(merged_annotation)] <- "NA"
+    merged_annotation <- merged_annotation[order(merged_annotation\$pixel_index),]
+    msidata\$annotation <- as.character(merged_annotation[,4])
+#end if
+
+
+@DATA_PROPERTIES_INRAM@
+
+
+## remove duplicated coordinates
+msidata <- msidata[,!duplicated(coord(msidata))]
+
+
+######################################## PDF ###################################
+################################################################################
+################################################################################
+
+
+pdf("single_ion_segmentation.pdf", fonts = "Times", pointsize = 12)
+plot(0,type='n',axes=FALSE,ann=FALSE)
+
+title(main=paste0("Single ion segmentation for file: \n\n", "$infile.display_name"))
+
+grid.table(property_df, rows= NULL)
+
+if (npeaks > 0)
+{
+        
+    ## set seed to make analysis reproducible
+    set.seed($setseed)
+    
+
+    ## single ion segmentation
+    dgmm <- spatialDGMM(msidata, 
+            r = c($r),
+            k = c($k), 
+            #if str($sample_groups.group) == 'single_group':                           
+                groups = as.factor(rep("$infile.display_name", ncol(msidata))),
+            #else
+                groups = msidata\$annotation,                
+            #end if
+            method = "$method",
+            dist = "$dist", 
+            annealing = $annealing,
+            init = "$init", 
+            p0 = $p0,
+            iter.max = $iter_max, 
+            tol = $tol)
+     	  
+    ## Summary results table
+    dgmm_summary <- as.data.frame(summary(dgmm))
+    colnames(dgmm_summary) <- c('r', 'k', 'Feature', 'Classes/group')
+    dgmm_summary\$'m/z' <- mz(msidata)
+    feature_n <- dgmm_summary\$Feature
+    dgmm_summary\$Feature <- NULL
+    dgmm_summary\$Feature <- feature_n
+    write.table(dgmm_summary, file="$dgmm_summary", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+    
+    ## Results images
+    for (dgmm_repeat in 1:nrow(dgmm_summary)){
+    	print(image(dgmm, values="class", model=dgmm_repeat))}
+    dev.off() ## closes pdf file
+  
+    ## optional outputs
+    pixel_names <- paste0("xy_", coord(dgmm)\$x, "_", coord(dgmm)\$y)
+
+    #if $output_probability:
+        dir.create("DGMM_probability")
+        for (dgmm_repeat in 1:nrow(dgmm_summary)){
+            name_repeat <- file.path(paste0("DGMM_probability/probability_r", dgmm_summary\$r[dgmm_repeat], "_k", dgmm_summary\$k[dgmm_repeat], "_mz", dgmm_summary\$`m/z`[dgmm_repeat], ".tabular"))
+            prob_df <- data.frame(coord(dgmm)\$x, coord(dgmm)\$y, pixel_names, resultData(dgmm, dgmm_repeat, "class"), resultData(dgmm, dgmm_repeat, "probability"))
+            colnames(prob_df)[1:4] <- c("x", "y", "pixel_names", "class")
+            write.table(prob_df, file=name_repeat, quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t") 
+        } 
+    #end if
+
+    #if $output_estimates:
+        dir.create("DGMM_estimates")
+        for (dgmm_repeat in 1:nrow(dgmm_summary)){
+            name_repeat <- file.path(paste0("DGMM_estimates/estimates_r", dgmm_summary\$r[dgmm_repeat], "_k", dgmm_summary\$k[dgmm_repeat], "_mz", dgmm_summary\$`m/z`[dgmm_repeat], ".tabular"))
+            est_df <- resultData(dgmm, dgmm_repeat, "estimates")
+            write.table(est_df, file=name_repeat, quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+        }
+    #end if
+
+    #if $output_plots:
+        dir.create("DGMM_plots")
+        for (dgmm_repeat in 1:nrow(dgmm_summary)){
+	    name_repeat <- file.path(paste0("DGMM_plots/plot_r", dgmm_summary\$r[dgmm_repeat], "_k", dgmm_summary\$k[dgmm_repeat], "_mz", dgmm_summary\$`m/z`[dgmm_repeat], ".png"))
+	    png(file=name_repeat)
+	    print(plot(dgmm, model=dgmm_repeat, lwd=2))
+	    dev.off()
+        }
+    #end if
+
+    ## optional output as .RData
+    #if $output_rdata:
+        ## save as (.RData)
+        save(dgmm, file="$dgmm_rdata")
+    #end if
+    
+}else{
+    print("Inputfile has no intensities > 0")
+}
+
+    ]]></configfile>
+    </configfiles>
+    <inputs>
+        <expand macro="reading_msidata"/>
+            <conditional name="sample_groups">
+                <param name="group" type="select" label="Dataset groups" help="Pixels from different groups will be segmented separately. For the validity of
+downstream statistical analysis, it is important that each distinct observational unit (e.g., tissue sample) is assigned to a unique group">
+                    <option value="single_group" selected="True">Dataset is a single group</option>
+                    <option value="multiple_groups">Dataset contains multiple groups</option>
+                </param>
+                <when value="single_group"/>
+                <when value="multiple_groups">
+                    <expand macro="reading_pixel_annotations"/>
+                </when>
+            </conditional>
+	    <param name="r" type="text" value="2"
+                   label="r" help="The spatial neighborhood radius of nearby pixels to consider. Only a single value is allowed">
+                   <expand macro="sanitizer_multiple_digits"/>
+            </param>
+            <param name="k" type="text" value="5"
+                   label="k" help="The maximum number of segments (clusters). The final number of segments may differ. Only a single value is allowed.">
+                   <expand macro="sanitizer_multiple_digits"/>
+            </param>
+            <param name="method" type="select" display="radio"
+                   label="weights method" help="The method to use to calculate the spatial smoothing weights. The 'gaussian' method refers to spatially-aware (SA) weights, and 'adaptive' refers to spatially-aware structurally-adaptive (SASA) weights">
+                    <option value="gaussian" selected="True">gaussian</option>
+                    <option value="adaptive">adaptive</option>
+                </param>
+            <param name="dist" type="select" display="radio"
+                   label="distance metric" help="The type of distance metric to use when calculating neighboring pixels based on r. The options are ‘radial’, ‘manhattan’, ‘minkowski’, and ‘chebyshev’ (the
+default).">
+                    <option value="chebyshev" selected="True">chebyshev</option>
+                    <option value="manhattan">manhattan</option>
+                    <option value="radial">radial</option>
+                    <option value="minkowski">minkowski</option>
+                </param>
+            <param name="annealing" type="boolean" label="annealing" help="Should simulated annealing be used during the optimization process to improve parameter estimates?" truevalue="TRUE" falsevalue="FALSE" />
+            <param name="init" type="select" display="radio"
+                   label="init" help="Should the parameter estimates be initialized using k-means (’kmeans’) or Gaussian mixture model (’gmm’)?">
+                    <option value="kmeans" selected="True">kmeans</option>
+                    <option value="gmm">gmm</option>
+            </param>
+            <param name="p0" type="float" value="0.05" label="p0" help="A regularization parameter applied to estimated posterior class probabilities to avoid singularities. Must be positive for successful gradient descent optimization.Changing this value (within reason) should have only minimal impact on values of parameter estimates, but may greatly affect the algorithm’s speed and stability." />
+            <param name="iter_max" type="integer" value="100" label="iter.max" help="The maximum number of EM-algorithm iterations." />
+	    <param name="tol" type="float" value="0.05" label="tolerance" help="The tolerance convergence criterion for the EM-algorithm. Corresponds to the
+change in log-likelihood."/>
+        <param name="setseed" type="integer" value="1" label="set seed" help="Use same value to reproduce previous results"/>
+        <param name="output_estimates" type="boolean" label="Generate estimates results"/>
+        <param name="output_probability" type="boolean" label="Generate probability and class results"/>
+        <param name="output_plots" type="boolean" label="Generate plots results"/>
+        <param name="output_rdata" type="boolean" label="Results as .RData output"/>
+    </inputs>
+    <outputs>
+        <data format="tabular" name="dgmm_summary" label="${tool.name} on ${on_string}: summary"/>
+        <data format="pdf" name="file_info" from_work_dir="single_ion_segmentation.pdf" label = "${tool.name} on ${on_string}: file_info"/>
+        <data format="rdata" name="dgmm_rdata" label="${tool.name} on ${on_string}: dgmm.RData">
+            <filter>output_rdata</filter>
+        </data>
+        <collection name="estimates_output" type="list" label="${tool.name} logs: ${on_string}: estimates">
+            <filter>output_estimates</filter>
+            <discover_datasets pattern="__designation_and_ext__" directory="DGMM_estimates" format="tabular"/>
+        </collection>
+        <collection name="probability_output" type="list" label="${tool.name} logs: ${on_string}: probability">
+            <filter>output_probability</filter>
+            <discover_datasets pattern="__designation_and_ext__" directory="DGMM_probability" format="tabular"/>
+        </collection>
+        <collection name="plots_output" type="list" label="${tool.name} logs: ${on_string}: plots">
+            <filter>output_plots</filter>
+            <discover_datasets pattern="__designation_and_ext__" directory="DGMM_plots" format="tabular"/>
+        </collection>
+    </outputs>
+    <tests>
+        <test>
+	    <param name="infile" value="" ftype="imzml">
+	        <composite_data value="spatial_DGMM_input.imzML"/>
+	        <composite_data value="spatial_DGMM_input.ibd"/>
+	    </param>
+	    <param name="r" value="1"/>
+	    <param name="k" value="6"/>
+	    <param name="method" value="adaptive"/>
+	    <param name="dist" value="radial"/>
+	    <param name="annealing" value="TRUE"/>
+            <param name="output_estimates" value="True"/>
+            <param name="output_probability" value="True"/>
+	    <output name="file_info" file="dgmm_test1.pdf" compare="sim_size"/>
+	    <output name="dgmm_summary" file="dgmm_summary1.tabular"/>
+	    <output_collection name="estimates_output" type="list" count="10">
+                <element name="estimates_r1_k6_mz1135.93347167969" file="estimates_r1_k6_mz1135.93347167969.tabular"/>
+            </output_collection>
+            <output_collection name="probability_output" type="list" count="10">
+                <element name="probability_r1_k6_mz1023.70806884766" file="probability_r1_k6_mz1023.70806884766.tabular"/>
+            </output_collection>
+        </test>
+        <test>
+        <param name="infile" value="" ftype="imzml">
+            <composite_data value="spatial_DGMM_input.imzML"/>
+            <composite_data value="spatial_DGMM_input.ibd"/>
+        </param>
+        <conditional name="sample_groups">
+            <param name="group" value="multiple_groups"/>
+            <param name="annotation_file" value="DGMM_annotations.tabular"/>
+            <param name="column_x" value="1"/>
+            <param name="column_y" value="2"/>
+            <param name="column_names" value="3"/>
+            <param name="tabular_header" value="True"/>
+        </conditional>
+        <param name="r" value="2"/>
+	<param name="k" value="10"/> 
+	<param name="annealing" value="TRUE"/>
+        <param name="output_estimates" value="True"/>
+        <param name="output_probability" value="True"/>
+        <param name="output_plots" value="True"/>
+        <param name="output_rdata" value="True"/>
+        <output name="file_info" file="dgmm_test2.pdf" compare="sim_size"/>
+        <output name="dgmm_summary" file="dgmm_summary2.tabular"/>
+        <output name="dgmm_rdata" file="dgmm_test2.RData" compare="sim_size"/>
+        <output_collection name="estimates_output" type="list" count="10">
+            <element name="estimates_r2_k10_mz1200.46533203125" file="estimates_r2_k10_mz1200.46533203125.tabular"/>
+        </output_collection>
+        <output_collection name="probability_output" type="list" count="10">
+            <element name="probability_r2_k10_mz1135.93347167969" file="probability_r2_k10_mz1135.93347167969.tabular"/>
+        </output_collection>
+        </test>         
+    </tests>
+    <help>
+        <![CDATA[
+
+@CARDINAL_DESCRIPTION@
+
+-----
+
+This tool fits spatially-aware Dirichlet Gaussian mixture models (DGMM) to each feature and each run in an mass spectrometry imaging
+experiment. Each image is segmented and the means and variances of all Gaussian components are estimated. A linear filter with a spatial kernel is applied to the component probabilities to achieve
+spatial smoothing. Simulated annealing is used in the EM-algorithm to avoid local optima and achieve more accurate parameter estimates.
+
+@MSIDATA_INPUT_DESCRIPTION@
+            - NA intensities are not allowed
+            - duplicated coordinates will be removed
+            - It is highly recommended to use a dataset that is reduced for the number of m/z features e.g. pre-processed, binned, filtered for m/z of interest in order to keep computational times reasonable. In addition, it is beneficial to run the tool first without generating all possible results data and upon inspection of the summary of the results decide on the best tool parameters and m/z features (which can be filtered in the MSI filtering tool). 
+
+@SPECTRA_TABULAR_INPUT_DESCRIPTION@
+
+**Tips**
+
+- The input dataset should contain as few m/z features as possible to keep computational times reasonable. In addition, it is beneficial to run the tool first without generating all possible results data and upon inspection of the summary of the results decide on the best tool parameters and m/z features (which can be filtered in the MSI filtering tool). 
+- Pixels from distinct ovbservational units (e.g. sample, patient) should be assigned to a unique group via the annotation file and segmented separately for the validity of downstream statistical analysis. 
+
+**Output**
+
+- Pdf with file info and an image of the clusters for each m/z feature
+- Tabular file summarizing spatial DGMM performance for each feature
+- (optional) Tabular files for each spatial DGMM run and feature with
+
+    - probabilities (The probability of class membership for each Gaussian component) and classes (The predicted Gaussian component)
+    - estimates (A list giving the parameter estimates for the means and variances for each Gaussian component)
+- (optional) Visualization of features density plots 
+- (optional) .RData file which contains the segmentation results and can be used for further exploration in R using the Cardinal package
+
+        ]]>
+    </help>
+    <citations>
+        <citation type="doi">10.1093/bioinformatics/btv146</citation>
+        <citation type="doi">10.1093/bioinformatics/btz345</citation>
+    </citations>
+
+</tool>
