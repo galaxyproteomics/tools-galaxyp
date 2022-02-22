@@ -1,0 +1,222 @@
+<tool id="cardinal_colocalization" name="MSI colocalization" version="@VERSION@.0">
+    <description>mass spectrometry imaging colocalization</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements">
+        <requirement type="package" version="2.3">r-gridextra</requirement>
+      </expand>
+    <command detect_errors="exit_code">
+    <![CDATA[
+
+        @INPUT_LINKING@
+        cat '${MSI_colocalization}' &&
+        Rscript '${MSI_colocalization}'
+
+    ]]>
+    </command>
+    <configfiles>
+        <configfile name="MSI_colocalization"><![CDATA[
+
+################################# load libraries and read file #################
+
+library(Cardinal)
+library(gridExtra)
+
+@READING_MSIDATA_FULLY_COMPATIBLE@
+
+#if str($reference_type.reference) == "roi_ref":
+    ## read and extract x,y,annotation information
+    input_tabular <- read.delim("$reference_type.annotation_file", header = $reference_type.tabular_header, stringsAsFactors = FALSE)
+    annotation_input <- input_tabular[,c($reference_type.column_x, $reference_type.column_y, $reference_type.column_names)]
+    annotation_name <- colnames(annotation_input)[3] ##extract header for annotations to later export tabular with same name
+    colnames(annotation_input) <- c("x", "y", "annotation") ## rename annotations header to default name "annotation"
+
+    ## merge with coordinate information of msidata
+    msidata_coordinates <- data.frame(coord(msidata)\$x, coord(msidata)\$y, c(1:ncol(msidata)))
+    colnames(msidata_coordinates) <- c("x", "y", "pixel_index")
+    merged_annotation <- merge(msidata_coordinates, annotation_input, by=c("x", "y"), all.x=TRUE)
+    merged_annotation[is.na(merged_annotation)] <- "NA"
+    merged_annotation <- merged_annotation[order(merged_annotation\$pixel_index),]
+    msidata\$annotation <- as.character(merged_annotation[,4])
+    reference_group <- msidata\$annotation == "$reference_type.ref_name"
+#end if
+
+## remove duplicated coordinates
+msidata <- msidata[,!duplicated(coord(msidata))]
+
+
+@DATA_PROPERTIES_INRAM@
+
+
+######################################## PDF ###################################
+################################################################################
+################################################################################
+
+
+pdf("colocalization.pdf", fonts = "Times", pointsize = 12)
+plot(0,type='n',axes=FALSE,ann=FALSE)
+
+title(main=paste0("Colocalization for file: \n\n", "$infile.display_name"))
+
+grid.table(property_df, rows= NULL)
+
+
+if (npeaks > 0 && sum(is.na(spectra(msidata)))==0)
+{
+
+    ## colocalization analysis
+    col_results <- colocalized(msidata, 
+             #if str($reference_type.reference) == "mz_ref":
+                mz = $reference_type.mz_value,
+            #else
+                ref = reference_group,
+            #end if
+            n = $n_tophits,
+            sort.by = "$sort_by",
+            threshold = median)
+
+    ## Summary results table
+    col_results_df <- as.data.frame(col_results)
+
+    write.table(col_results_df, file="$coloc_results", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+    
+    ## visualize top 10 m/z features
+
+    if (nrow(col_results_df) <= 10)
+    {
+        for (mass in col_results_df\$mz){
+	    par(oma=c(0,0,0,1))## margin for image legend
+	    print(image(msidata, mz=mass, plusminus=0.25,
+	    main= paste0(round(mass, digits = 2)),
+	    contrast.enhance = "histogram", strip=FALSE, ylim= c(maximumy,minimumy)))
+        }
+    }else{
+	for (mass in col_results_df\$mz[1:10]){
+	    par(oma=c(0,0,0,1))## margin for image legend
+	    print(image(msidata, mz=mass, plusminus=0.25,
+	    main= paste0(round(mass, digits = 2)),
+	    contrast.enhance = "histogram", strip=FALSE, ylim= c(maximumy,minimumy)))
+	}    
+    }
+    
+
+    dev.off()
+    
+}else{
+    print("Inputfile has no intensities > 0")
+}
+
+    ]]></configfile>
+    </configfiles>
+    <inputs>
+        <expand macro="reading_msidata"/>
+        <conditional name="reference_type">
+            <param name="reference" type="select" label="Reference type" help="Region of interest (selected spectra) or m/z feature.">
+                    <option value="mz_ref" selected="True">m/z feature</option>
+                    <option value="roi_ref">Region of interest (spectra)</option>
+                </param>
+                <when value="mz_ref">
+                    <param name="mz_value" type="float" value="1000" label="m/z feature" help="The m/z closest to this m/z value will be used as a reference."/>    
+                </when>      
+                <when value="roi_ref">
+                    <expand macro="reading_pixel_annotations"/>
+                    <param name="ref_name" type="text" value="reference" label="Reference name" help="Name has to match exactly on of the annotation names in the annotation file"/>    
+                </when>
+        </conditional>
+            <param name="n_tophits" type="integer" value="10" label="Top hits" help="The number of top-ranked colocalized features to return in the tabular file." />
+	    <param name="sort_by" type="select" display="radio"
+                   label="sort.by" help="The colocalization measure used to rank colocalized features. Possible options
+include Pearson’s correlation and Manders’ colocalization coefficients.">
+                    <option value="correlation" selected="True">Pearson's correlation</option>
+                    <option value="M1">Manders' colocalization coefficient 1</option>
+                    <option value="M2">Manders' colocalization coefficient 2</option>
+            </param>
+    </inputs>
+    <outputs>
+        <data format="pdf" name="coloc_pdf" from_work_dir="colocalization.pdf" label = "${tool.name} on ${on_string}: results"/>
+        <data format="tabular" name="coloc_results" label="${tool.name} on ${on_string}: summary"/>
+    </outputs>
+    <tests>
+        <test>
+	    <param name="infile" value="" ftype="imzml">
+	        <composite_data value="spatial_DGMM_input.imzML"/>
+	        <composite_data value="spatial_DGMM_input.ibd"/>
+	    </param>
+	    <conditional name="reference_type">
+	        <param name="reference" value="mz_ref"/>
+	        <param name="mz_value" value="1000"/>
+	    </conditional>
+	    <output name="coloc_pdf" file="coloc1.pdf" compare="sim_size" delta="2000"/>
+            <output name="coloc_results" file="coloc_table1.tabular"/>
+        </test>
+        <test>
+        <param name="infile" value="" ftype="imzml">
+            <composite_data value="spatial_DGMM_input.imzML"/>
+            <composite_data value="spatial_DGMM_input.ibd"/>
+        </param>
+	<conditional name="reference_type">
+            <param name="reference" value="roi_ref"/>
+            <param name="annotation_file" value="DGMM_annotations.tabular"/>
+            <param name="column_x" value="1"/>
+            <param name="column_y" value="2"/>
+            <param name="column_names" value="3"/>
+            <param name="tabular_header" value="True"/>
+            <param name="ref_name" value="circle"/>    
+        </conditional>
+            <param name="n_tophits" value="5"/>
+            <param name="sort_by" value="M2"/>
+	    <output name="coloc_pdf" file="coloc2.pdf" compare="sim_size" delta="2000"/>
+            <output name="coloc_results" file="coloc_table2.tabular"/>
+        </test>
+        <test>
+	    <param name="infile" value="123_combined.RData" ftype="rdata"/>
+	    <conditional name="reference_type">
+	        <param name="reference" value="mz_ref"/>
+	        <param name="mz_value" value="102.0"/>
+	    </conditional> 
+	        <param name="n_tophits" value="50"/>
+	        <param name="sort_by" value="correlation"/>
+	        <output name="coloc_pdf" file="coloc3.pdf" compare="sim_size" delta="2000"/>
+	        <output name="coloc_results" file="coloc_table3.tabular"/>
+        </test>        
+    </tests>
+    <help>
+        <![CDATA[
+
+@CARDINAL_DESCRIPTION@
+
+-----
+
+This tool finds colocalized features in an imaging dataset. Use it to find m/z features that are colocalized with another m/z feature or regions of interests. 
+
+@MSIDATA_INPUT_DESCRIPTION@
+
+    - NA intensities are not allowed
+    - duplicated coordinates will be removed
+    - it is highly recommended to use a dataset that is reduced for the number of m/z features e.g. pre-processed and optionally filtered for m/z of interest in order to keep computational times reasonable.
+
+
+**Options**
+
+- The reference can be either a single m/z feature or a region of interest provided via the annotation file. 
+
+	- For single m/z features the closest m/z to the m/z value that is used as reference is used
+	- For regions of interest as a reference the name of the region that should be used as a reference has to be written exactly in the way in which it appears in the annotation file input. 
+	    @SPECTRA_TABULAR_INPUT_DESCRIPTION@
+	
+- By default, pearson correlation is used to rank the colocalized features. Manders’ colocalization coefficients (M1 and M2) are also provided.
+
+**Output**
+
+- Pdf with file info and the ion images of the top 10 m/z features (to plot the ion images for more m/z features use the MSI mz images tool)
+- Tabular file with the top m/z features and their correlation values (pearson, Manders 1 and Manders 2) with the reference
+
+
+        ]]>
+    </help>
+    <citations>
+        <citation type="doi">10.1093/bioinformatics/btv146</citation>
+    </citations>
+
+</tool>
