@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-VERSION=2.6
+VERSION=2.8
 FILETYPES="filetypes.txt"
-CONDAPKG="https://anaconda.org/bioconda/openms/2.6.0/download/linux-64/openms-2.6.0-h4afb90d_0.tar.bz2"
+CONDAPKG="https://anaconda.org/bioconda/openms/2.8.0/download/linux-64/openms-2.8.0-h7ca0330_0.tar.bz2"
 
 # import the magic
 . ./generate-foo.sh
@@ -62,7 +62,7 @@ echo "Create OpenMS $VERSION conda env"
 if conda env list | grep "$OPENMSENV"; then
 	true
 else
-	conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults -n $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION ctdopts=1.4 lxml
+	conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults -n $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION omssa=2.1.9 ctdopts=1.5 lxml
 # chmod -R u-w $OPENMSENV 
 fi
 ###############################################################################
@@ -91,12 +91,18 @@ else
 	git pull origin topic/fix-selects
 	cd -
 fi
+conda activate $OPENMSENV
+cd $CTDCONVERTER
+python -m pip install . --no-deps -vv
+cd -
+conda deactivate
 
-###############################################################################
-## copy all the test data files to test-data
-## most of it (outputs) will be overwritten later, but its needed for
-## prepare_test_data
-###############################################################################
+
+# ###############################################################################
+# ## copy all the test data files to test-data
+# ## most of it (outputs) will be overwritten later, but its needed for
+# ## prepare_test_data
+# ###############################################################################
 echo "Get test data"
 find test-data -type f,l,d ! -name "*fa"  ! -name "*loc" -delete
 
@@ -104,7 +110,7 @@ cp $(find $OPENMSGIT/src/tests/topp/ -type f | grep -Ev "third_party_tests.cmake
 cp -r $OPENMSGIT/share/OpenMS/MAPPING/ test-data/
 cp -r $OPENMSGIT/share/OpenMS/CHEMISTRY test-data/
 cp -r $OPENMSGIT/share/OpenMS/examples/ test-data/
-if [[ ! -f test-data/MetaboliteSpectralDB.mzML ]]; then 
+if [ ! -f test-data/MetaboliteSpectralDB.mzML ]; then 
 	wget -nc https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Tutorials/Data/latest/Example_Data/Metabolomics/databases/MetaboliteSpectralDB.mzML
 	mv MetaboliteSpectralDB.mzML test-data/
 fi
@@ -225,6 +231,7 @@ cd - || exit
 ###############################################################################
 echo "Write test macros to $autotests"
 echo "<macros>" > "$autotests"
+
 for i in $(ls *xml |grep -v macros)
 do
 	b=$(basename "$i" .xml)

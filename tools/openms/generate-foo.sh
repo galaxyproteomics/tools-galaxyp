@@ -80,14 +80,14 @@ function get_tests2 {
         cli=$(echo $line |cut -d" " -f3- | sed 's/-ini [^ ]\+//')
 
         ctdtmp=$(mktemp)
-        #echo python3 fill_ctd_clargs.py --ctd $ini $cli
         # using eval: otherwise for some reason quoted values are not used properly ('A B' -> ["'A", "B'"])
-        # >&2 echo "python3 fill_ctd_clargs.py --ctd $ini $cli"
+        # >&2 echo "python3 fill_ctd_clargs.py --ini_file $ini --ctd_file ctd/$tool_id.ctd $cli" 
         eval "python3 fill_ctd_clargs.py --ini_file $ini --ctd_file ctd/$tool_id.ctd $cli" > "$ctdtmp"
         # echo $ctdtmp
         # >&2 cat $ctdtmp
         testtmp=$(mktemp)
-        python3 $CTDCONVERTER/convert.py galaxy -i $ctdtmp -o $testtmp -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib > /dev/null
+        # >&2 echo CTDConverter galaxy -i $ctdtmp -o $testtmp -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib
+        CTDConverter galaxy -i $ctdtmp -o $testtmp -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib > /dev/null
         cat $testtmp | grep -v '<output.*file=""' # | grep -v 'CHEMISTRY/'
         rm $ctdtmp $testtmp
 
@@ -176,11 +176,10 @@ function link_tmp_files {
         fi
         ln -f -s $in1 test-data/$in2
     done
-    for i in test-data/*.tmp
+    for i in $(find test-data/ -name "*.tmp" -print0)
     do
         if [ ! -e test-data/$(basename $i .tmp) ]; then
             ln -s $(basename $i) test-data/$(basename $i .tmp)
-            #ln -s $(basename $i) test-data/$(basename $i .tmp)
         else
             ln -fs $(basename $i) test-data/$(basename $i .tmp)
         fi
@@ -201,7 +200,7 @@ function prepare_test_data {
         grep add_test | 
         egrep "TOPP|UTILS" |
         sed 's@${DATA_DIR_SHARE}/@@g;'|
-        sed 's@${TMP_RIP_PATH}@dummy2.tmp@g'|
+        sed 's@${TMP_RIP_PATH}@./@g'|
         sed 's@TOFCalibration_ref_masses @TOFCalibration_ref_masses.txt @g; s@TOFCalibration_const @TOFCalibration_const.csv @'| 
 	sed 's/\("TOPP_SiriusAdapter_4".*\)-sirius:database all\(.*\)/\1-sirius:database pubchem\2/' |
     while read line

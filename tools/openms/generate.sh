@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-VERSION=2.6
+VERSION=2.8
 FILETYPES="filetypes.txt"
 PROFILE="20.05"
 ## FILETYPES_RE=$(grep -v "^#" $FILETYPES | grep -v "^$" | cut -f 1 -d" " | tr '\n' '|' | sed 's/|$//'| sed 's/|/\\|/g')
@@ -8,7 +8,6 @@ PROFILE="20.05"
 export tmp=$(mktemp -d)
 
 export CTDCONVERTER="$tmp/CTDConverter"
-export PYTHONPATH="$CTDCONVERTER"
 ###############################################################################
 ## reset old data
 ###############################################################################
@@ -56,19 +55,20 @@ fi
 find . -maxdepth 0 -name "[A-Z]*xml" -delete
 source $(dirname $(which conda))/../etc/profile.d/conda.sh
 conda activate OpenMS$VERSION-env
-python $CTDCONVERTER/convert.py galaxy -i ctd/*ctd -o ./ -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --test-macros macros_autotest.xml --test-macros-prefix autotest_  --test-macros macros_test.xml --test-macros-prefix manutest_ --tool-version $VERSION --tool-profile $PROFILE --bump-file bump.json > convert.out 2> convert.err
+CTDConverter galaxy -i ctd/*ctd -o ./ -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --test-macros macros_autotest.xml --test-macros-prefix autotest_  --test-macros macros_test.xml --test-macros-prefix manutest_ --tool-version $VERSION --tool-profile $PROFILE --bump-file bump.json > convert.out 2> convert.err
 if [[ "$?" -ne "0" ]]; then >&2 echo 'CTD -> XML conversion failed'; >&2 echo -e "stderr:\n$(cat convert.err)"; fi
 conda deactivate
 
-patch PepNovoAdapter.xml < PepNovoAdapter.patch
-patch OMSSAAdapter.xml < OMSSAAdapter.patch
-# this should not be necessary from 2.7 https://github.com/OpenMS/OpenMS/pull/5087
-patch PSMFeatureExtractor.xml < PSMFeatureExtractor.patch
+# TODO reenable
+# patch PepNovoAdapter.xml < PepNovoAdapter.patch
+# patch OMSSAAdapter.xml < OMSSAAdapter.patch
+# # this should not be necessary from 2.7 https://github.com/OpenMS/OpenMS/pull/5087
+# patch PSMFeatureExtractor.xml < PSMFeatureExtractor.patch
 
-# https://github.com/OpenMS/OpenMS/pull/4984
-sed -i -e 's@http://www.openms.de/documentation/@http://www.openms.de/doxygen/release/2.6.0/html/@' ./*xml
-# https://github.com/OpenMS/OpenMS/pull/4984#issuecomment-702641976
-patch -p0 <404-urls.patch
+# # https://github.com/OpenMS/OpenMS/pull/4984
+# sed -i -e 's@http://www.openms.de/documentation/@http://www.openms.de/doxygen/release/2.6.0/html/@' ./*xml
+# # https://github.com/OpenMS/OpenMS/pull/4984#issuecomment-702641976
+# patch -p0 < 404-urls.patch
 
 # #-b version log debug test in_type executable pepnovo_executable param_model_directory rt_concat_trafo_out param_id_pool
 
