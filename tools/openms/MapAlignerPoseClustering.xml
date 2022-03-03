@@ -17,8 +17,12 @@
 
 ## Preprocessing
 mkdir in &&
-mkdir ${' '.join(["'in/%s'" % (i) for i, f in enumerate($in) if f])} && 
-${' '.join(["ln -s '%s' 'in/%s/%s.%s' && " % (f, i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in) if f])}
+#if $in_cond.in_select == "no"
+mkdir ${' '.join(["'in/%s'" % (i) for i, f in enumerate($in_cond.in) if f])} && 
+${' '.join(["ln -s '%s' 'in/%s/%s.%s' && " % (f, i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in_cond.in) if f])}
+#else
+ln -s '$in_cond.in' 'in/${re.sub("[^\w\-_]", "_", $in_cond.in.element_identifier)}.$gxy2omsext($in_cond.in.ext)' &&
+#end if
 #if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
   mkdir out &&
   mkdir ${' '.join(["'out/%s'" % (i) for i, f in enumerate($in) if f])} && 
@@ -39,7 +43,11 @@ set -o pipefail &&
 python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
 @EXECUTABLE@ -ini @EXECUTABLE@.ctd
 -in
-${' '.join(["'in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in) if f])}
+#if $in_cond.in_select == "no"
+${' '.join(["'in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in_cond.in) if f])}
+#else
+'in/${re.sub("[^\w\-_]", "_", $in_cond.in.element_identifier)}.$gxy2omsext($in_cond.in.ext)'
+#end if
 #if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
   -out
   ${' '.join(["'out/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), f.ext) for i, f in enumerate($in) if f])}
@@ -68,52 +76,63 @@ ${' '.join(["'in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $
     <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
   </configfiles>
   <inputs>
-    <param argument="-in" type="data" format="featurexml,mzml" multiple="true" optional="false" label="Input files to align (all must have the same file type)" help=" select featurexml,mzml data sets(s)"/>
+    <conditional name="in_cond">
+      <param name="in_select" type="select" label="Run tool in batch mode for -in">
+        <option value="no">No: process all datasets jointly</option>
+        <option value="yes">Yes: process each dataset in an independent job</option>
+      </param>
+      <when value="no">
+        <param argument="-in" type="data" format="featurexml,mzml" multiple="true" optional="false" label="Input files to align (all must have the same file type)" help=" select featurexml,mzml data sets(s)"/>
+      </when>
+      <when value="yes">
+        <param argument="-in" type="data" format="featurexml,mzml" multiple="false" optional="false" label="Input files to align (all must have the same file type)" help=" select featurexml,mzml data sets(s)"/>
+      </when>
+    </conditional>
     <section name="reference" title="Options to define a reference file (use either 'file' or 'index', not both)" help="" expanded="false">
-      <param argument="-reference:file" type="data" format="featurexml,mzml" optional="true" label="File to use as reference (same file format as input files required)" help=" select featurexml,mzml data sets(s)"/>
-      <param argument="-reference:index" type="integer" optional="false" min="0" value="0" label="Use one of the input files as reference ('1' for the first file, etc.)" help="If '0', no explicit reference is set - the algorithm will select a reference"/>
+      <param name="file" argument="-reference:file" type="data" format="featurexml,mzml" optional="true" label="File to use as reference (same file format as input files required)" help=" select featurexml,mzml data sets(s)"/>
+      <param name="index" argument="-reference:index" type="integer" optional="false" min="0" value="0" label="Use one of the input files as reference ('1' for the first file, etc.)" help="If '0', no explicit reference is set - the algorithm will select a reference"/>
     </section>
     <section name="algorithm" title="Algorithm parameters section" help="" expanded="false">
-      <param argument="-algorithm:max_num_peaks_considered" type="integer" optional="false" min="-1" value="1000" label="The maximal number of peaks/features to be considered per map" help="To use all, set to '-1'"/>
+      <param name="max_num_peaks_considered" argument="-algorithm:max_num_peaks_considered" type="integer" optional="false" min="-1" value="1000" label="The maximal number of peaks/features to be considered per map" help="To use all, set to '-1'"/>
       <section name="superimposer" title="" help="" expanded="false">
-        <param argument="-algorithm:superimposer:mz_pair_max_distance" type="float" optional="false" min="0.0" value="0.5" label="Maximum of m/z deviation of corresponding elements in different maps" help="This condition applies to the pairs considered in hashing"/>
-        <param argument="-algorithm:superimposer:rt_pair_distance_fraction" type="float" optional="false" min="0.0" max="1.0" value="0.1" label="Within each of the two maps, the pairs considered for pose clustering must be separated by at least this fraction of the total elution time interval" help="(i.e., max - min).  "/>
-        <param argument="-algorithm:superimposer:num_used_points" type="integer" optional="false" min="-1" value="2000" label="Maximum number of elements considered in each map (selected by intensity)" help="Use this to reduce the running time and to disregard weak signals during alignment.  For using all points, set this to -1"/>
-        <param argument="-algorithm:superimposer:scaling_bucket_size" type="float" optional="false" min="0.0" value="0.005" label="The scaling of the retention time interval is being hashed into buckets of this size during pose clustering" help="A good choice for this would be a bit smaller than the error you would expect from repeated runs"/>
-        <param argument="-algorithm:superimposer:shift_bucket_size" type="float" optional="false" min="0.0" value="3.0" label="The shift at the lower (respectively, higher) end of the retention time interval is being hashed into buckets of this size during pose clustering" help="A good choice for this would be about the time between consecutive MS scans"/>
-        <param argument="-algorithm:superimposer:max_shift" type="float" optional="false" min="0.0" value="1000.0" label="Maximal shift which is considered during histogramming (in seconds)" help="This applies for both directions"/>
-        <param argument="-algorithm:superimposer:max_scaling" type="float" optional="false" min="1.0" value="2.0" label="Maximal scaling which is considered during histogramming" help="The minimal scaling is the reciprocal of this"/>
-        <param argument="-algorithm:superimposer:dump_buckets" type="text" optional="true" value="" label="[DEBUG] If non-empty, base filename where hash table buckets will be dumped to" help="A serial number for each invocation will be appended automatically">
+        <param name="mz_pair_max_distance" argument="-algorithm:superimposer:mz_pair_max_distance" type="float" optional="false" min="0.0" value="0.5" label="Maximum of m/z deviation of corresponding elements in different maps" help="This condition applies to the pairs considered in hashing"/>
+        <param name="rt_pair_distance_fraction" argument="-algorithm:superimposer:rt_pair_distance_fraction" type="float" optional="false" min="0.0" max="1.0" value="0.1" label="Within each of the two maps, the pairs considered for pose clustering must be separated by at least this fraction of the total elution time interval" help="(i.e., max - min).  "/>
+        <param name="num_used_points" argument="-algorithm:superimposer:num_used_points" type="integer" optional="false" min="-1" value="2000" label="Maximum number of elements considered in each map (selected by intensity)" help="Use this to reduce the running time and to disregard weak signals during alignment.  For using all points, set this to -1"/>
+        <param name="scaling_bucket_size" argument="-algorithm:superimposer:scaling_bucket_size" type="float" optional="false" min="0.0" value="0.005" label="The scaling of the retention time interval is being hashed into buckets of this size during pose clustering" help="A good choice for this would be a bit smaller than the error you would expect from repeated runs"/>
+        <param name="shift_bucket_size" argument="-algorithm:superimposer:shift_bucket_size" type="float" optional="false" min="0.0" value="3.0" label="The shift at the lower (respectively, higher) end of the retention time interval is being hashed into buckets of this size during pose clustering" help="A good choice for this would be about the time between consecutive MS scans"/>
+        <param name="max_shift" argument="-algorithm:superimposer:max_shift" type="float" optional="false" min="0.0" value="1000.0" label="Maximal shift which is considered during histogramming (in seconds)" help="This applies for both directions"/>
+        <param name="max_scaling" argument="-algorithm:superimposer:max_scaling" type="float" optional="false" min="1.0" value="2.0" label="Maximal scaling which is considered during histogramming" help="The minimal scaling is the reciprocal of this"/>
+        <param name="dump_buckets" argument="-algorithm:superimposer:dump_buckets" type="text" optional="true" value="" label="[DEBUG] If non-empty, base filename where hash table buckets will be dumped to" help="A serial number for each invocation will be appended automatically">
           <expand macro="list_string_san" name="dump_buckets"/>
         </param>
-        <param argument="-algorithm:superimposer:dump_pairs" type="text" optional="true" value="" label="[DEBUG] If non-empty, base filename where the individual hashed pairs will be dumped to (large!)" help="A serial number for each invocation will be appended automatically">
+        <param name="dump_pairs" argument="-algorithm:superimposer:dump_pairs" type="text" optional="true" value="" label="[DEBUG] If non-empty, base filename where the individual hashed pairs will be dumped to (large!)" help="A serial number for each invocation will be appended automatically">
           <expand macro="list_string_san" name="dump_pairs"/>
         </param>
       </section>
       <section name="pairfinder" title="" help="" expanded="false">
-        <param argument="-algorithm:pairfinder:second_nearest_gap" type="float" optional="false" min="1.0" value="2.0" label="Only link features whose distance to the second nearest neighbors (for both sides) is larger by 'second_nearest_gap' than the distance between the matched pair itself" help=""/>
-        <param argument="-algorithm:pairfinder:use_identifications" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Never link features that are annotated with different peptides (features without ID's always match; only the best hit per peptide identification is considered)" help=""/>
-        <param argument="-algorithm:pairfinder:ignore_charge" type="boolean" truevalue="true" falsevalue="false" checked="false" label="false [default]: pairing requires equal charge state (or at least one unknown charge '0'); true: Pairing irrespective of charge state" help=""/>
-        <param argument="-algorithm:pairfinder:ignore_adduct" type="boolean" truevalue="true" falsevalue="false" checked="true" label="true [default]: pairing requires equal adducts (or at least one without adduct annotation); true: Pairing irrespective of adducts" help=""/>
+        <param name="second_nearest_gap" argument="-algorithm:pairfinder:second_nearest_gap" type="float" optional="false" min="1.0" value="2.0" label="Only link features whose distance to the second nearest neighbors (for both sides) is larger by 'second_nearest_gap' than the distance between the matched pair itself" help=""/>
+        <param name="use_identifications" argument="-algorithm:pairfinder:use_identifications" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Never link features that are annotated with different peptides (features without ID's always match; only the best hit per peptide identification is considered)" help=""/>
+        <param name="ignore_charge" argument="-algorithm:pairfinder:ignore_charge" type="boolean" truevalue="true" falsevalue="false" checked="false" label="false [default]: pairing requires equal charge state (or at least one unknown charge '0'); true: Pairing irrespective of charge state" help=""/>
+        <param name="ignore_adduct" argument="-algorithm:pairfinder:ignore_adduct" type="boolean" truevalue="true" falsevalue="false" checked="true" label="true [default]: pairing requires equal adducts (or at least one without adduct annotation); true: Pairing irrespective of adducts" help=""/>
         <section name="distance_RT" title="Distance component based on RT differences" help="" expanded="false">
-          <param argument="-algorithm:pairfinder:distance_RT:max_difference" type="float" optional="false" min="0.0" value="100.0" label="Never pair features with a larger RT distance (in seconds)" help=""/>
-          <param argument="-algorithm:pairfinder:distance_RT:exponent" type="float" optional="false" min="0.0" value="1.0" label="Normalized RT differences ([0-1], relative to 'max_difference') are raised to this power (using 1 or 2 will be fast, everything else is REALLY slow)" help=""/>
-          <param argument="-algorithm:pairfinder:distance_RT:weight" type="float" optional="false" min="0.0" value="1.0" label="Final RT distances are weighted by this facto" help=""/>
+          <param name="max_difference" argument="-algorithm:pairfinder:distance_RT:max_difference" type="float" optional="false" min="0.0" value="100.0" label="Never pair features with a larger RT distance (in seconds)" help=""/>
+          <param name="exponent" argument="-algorithm:pairfinder:distance_RT:exponent" type="float" optional="false" min="0.0" value="1.0" label="Normalized RT differences ([0-1], relative to 'max_difference') are raised to this power (using 1 or 2 will be fast, everything else is REALLY slow)" help=""/>
+          <param name="weight" argument="-algorithm:pairfinder:distance_RT:weight" type="float" optional="false" min="0.0" value="1.0" label="Final RT distances are weighted by this facto" help=""/>
         </section>
         <section name="distance_MZ" title="Distance component based on m/z differences" help="" expanded="false">
-          <param argument="-algorithm:pairfinder:distance_MZ:max_difference" type="float" optional="false" min="0.0" value="0.3" label="Never pair features with larger m/z distance (unit defined by 'unit')" help=""/>
-          <param argument="-algorithm:pairfinder:distance_MZ:unit" type="select" optional="false" label="Unit of the 'max_difference' paramete" help="">
+          <param name="max_difference" argument="-algorithm:pairfinder:distance_MZ:max_difference" type="float" optional="false" min="0.0" value="0.3" label="Never pair features with larger m/z distance (unit defined by 'unit')" help=""/>
+          <param name="unit" argument="-algorithm:pairfinder:distance_MZ:unit" type="select" optional="false" label="Unit of the 'max_difference' paramete" help="">
             <option value="Da" selected="true">Da</option>
             <option value="ppm">ppm</option>
             <expand macro="list_string_san" name="unit"/>
           </param>
-          <param argument="-algorithm:pairfinder:distance_MZ:exponent" type="float" optional="false" min="0.0" value="2.0" label="Normalized ([0-1], relative to 'max_difference') m/z differences are raised to this power (using 1 or 2 will be fast, everything else is REALLY slow)" help=""/>
-          <param argument="-algorithm:pairfinder:distance_MZ:weight" type="float" optional="false" min="0.0" value="1.0" label="Final m/z distances are weighted by this facto" help=""/>
+          <param name="exponent" argument="-algorithm:pairfinder:distance_MZ:exponent" type="float" optional="false" min="0.0" value="2.0" label="Normalized ([0-1], relative to 'max_difference') m/z differences are raised to this power (using 1 or 2 will be fast, everything else is REALLY slow)" help=""/>
+          <param name="weight" argument="-algorithm:pairfinder:distance_MZ:weight" type="float" optional="false" min="0.0" value="1.0" label="Final m/z distances are weighted by this facto" help=""/>
         </section>
         <section name="distance_intensity" title="Distance component based on differences in relative intensity (usually relative to highest peak in the whole data set)" help="" expanded="false">
-          <param argument="-algorithm:pairfinder:distance_intensity:exponent" type="float" optional="false" min="0.0" value="1.0" label="Differences in relative intensity ([0-1]) are raised to this power (using 1 or 2 will be fast, everything else is REALLY slow)" help=""/>
-          <param argument="-algorithm:pairfinder:distance_intensity:weight" type="float" optional="false" min="0.0" value="0.0" label="Final intensity distances are weighted by this facto" help=""/>
-          <param argument="-algorithm:pairfinder:distance_intensity:log_transform" type="select" optional="false" label="Log-transform intensities" help="If disabled, d = |int_f2 - int_f1| / int_max. If enabled, d = |log(int_f2 + 1) - log(int_f1 + 1)| / log(int_max + 1))">
+          <param name="exponent" argument="-algorithm:pairfinder:distance_intensity:exponent" type="float" optional="false" min="0.0" value="1.0" label="Differences in relative intensity ([0-1]) are raised to this power (using 1 or 2 will be fast, everything else is REALLY slow)" help=""/>
+          <param name="weight" argument="-algorithm:pairfinder:distance_intensity:weight" type="float" optional="false" min="0.0" value="0.0" label="Final intensity distances are weighted by this facto" help=""/>
+          <param name="log_transform" argument="-algorithm:pairfinder:distance_intensity:log_transform" type="select" optional="false" label="Log-transform intensities" help="If disabled, d = |int_f2 - int_f1| / int_max. If enabled, d = |log(int_f2 + 1) - log(int_f1 + 1)| / log(int_max + 1))">
             <option value="enabled">enabled</option>
             <option value="disabled" selected="true">disabled</option>
             <expand macro="list_string_san" name="log_transform"/>

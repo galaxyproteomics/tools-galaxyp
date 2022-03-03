@@ -137,9 +137,9 @@ function fix_tmp_files {
             ret="$ret $a"
             continue
         fi
-#        >&2 echo "    a "$a
+    #    >&2 echo "    a "$a
         g=$(cat $OPENMSGIT/src/tests/topp/CMakeLists.txt $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake | awk '{printf("%s@NEWLINE@", $0)}' | sed 's/)@NEWLINE@/)\n/g' | sed 's/@NEWLINE@/ /g' | grep '\${DIFF}.*'"$a")
-#        >&2 echo "    g "$g
+    #    >&2 echo "    g "$g
         in1=$(sed 's/.*-in1 \([^ ]\+\).*/\1/' <<<$g)
         # >&2 echo "    in1 "$in1
         if [[  "$a" != "$in1" ]]; then
@@ -176,8 +176,9 @@ function link_tmp_files {
         fi
         ln -f -s $in1 test-data/$in2
     done
-    for i in $(find test-data/ -name "*.tmp" -print0)
-    do
+    
+    find test-data/ -name "*.tmp" -print0 | 
+    while IFS= read -r -d '' i; do 
         if [ ! -e test-data/$(basename $i .tmp) ]; then
             ln -s $(basename $i) test-data/$(basename $i .tmp)
         else

@@ -17,8 +17,12 @@
 
 ## Preprocessing
 mkdir in &&
-mkdir ${' '.join(["'in/%s'" % (i) for i, f in enumerate($in) if f])} && 
-${' '.join(["ln -s '%s' 'in/%s/%s.%s' && " % (f, i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in) if f])}
+#if $in_cond.in_select == "no"
+mkdir ${' '.join(["'in/%s'" % (i) for i, f in enumerate($in_cond.in) if f])} && 
+${' '.join(["ln -s '%s' 'in/%s/%s.%s' && " % (f, i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in_cond.in) if f])}
+#else
+ln -s '$in_cond.in' 'in/${re.sub("[^\w\-_]", "_", $in_cond.in.element_identifier)}.$gxy2omsext($in_cond.in.ext)' &&
+#end if
 mkdir out &&
 #if "trafo_out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
   mkdir rt_concat_trafo_out &&
@@ -32,7 +36,11 @@ set -o pipefail &&
 python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
 @EXECUTABLE@ -ini @EXECUTABLE@.ctd
 -in
-${' '.join(["'in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in) if f])}
+#if $in_cond.in_select == "no"
+${' '.join(["'in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in_cond.in) if f])}
+#else
+'in/${re.sub("[^\w\-_]", "_", $in_cond.in.element_identifier)}.$gxy2omsext($in_cond.in.ext)'
+#end if
 -out
 'out/output.${out_type}'
 #if "trafo_out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
@@ -56,7 +64,18 @@ ${' '.join(["'in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $
     <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
   </configfiles>
   <inputs>
-    <param argument="-in" type="data" format="consensusxml,dta,dta2d,fasta,featurexml,mgf,mzdata,mzml,mzxml,traml" multiple="true" optional="false" label="Input files separated by blank" help=" select consensusxml,dta,dta2d,fasta,featurexml,mgf,mzdata,mzml,mzxml,traml data sets(s)"/>
+    <conditional name="in_cond">
+      <param name="in_select" type="select" label="Run tool in batch mode for -in">
+        <option value="no">No: process all datasets jointly</option>
+        <option value="yes">Yes: process each dataset in an independent job</option>
+      </param>
+      <when value="no">
+        <param argument="-in" type="data" format="consensusxml,dta,dta2d,fasta,featurexml,mgf,mzdata,mzml,mzxml,traml" multiple="true" optional="false" label="Input files separated by blank" help=" select consensusxml,dta,dta2d,fasta,featurexml,mgf,mzdata,mzml,mzxml,traml data sets(s)"/>
+      </when>
+      <when value="yes">
+        <param argument="-in" type="data" format="consensusxml,dta,dta2d,fasta,featurexml,mgf,mzdata,mzml,mzxml,traml" multiple="false" optional="false" label="Input files separated by blank" help=" select consensusxml,dta,dta2d,fasta,featurexml,mgf,mzdata,mzml,mzxml,traml data sets(s)"/>
+      </when>
+    </conditional>
     <param name="out_type" type="select" optional="false" label="File type of output out (Output file)">
       <option value="mzML">mzml</option>
       <option value="featureXML">featurexml</option>
@@ -71,15 +90,15 @@ ${' '.join(["'in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $
       <expand macro="list_string_san" name="append_method"/>
     </param>
     <section name="rt_concat" title="Options for concatenating files in the retention time (RT) dimension" help="The RT ranges of inputs are adjusted so they don't overlap in the merged file (traML input not supported)" expanded="false">
-      <param argument="-rt_concat:gap" type="float" optional="false" value="0.0" label="The amount of gap (in seconds) to insert between the RT ranges of different input files" help="RT concatenation is enabled if a value &gt; 0 is set"/>
+      <param name="gap" argument="-rt_concat:gap" type="float" optional="false" value="0.0" label="The amount of gap (in seconds) to insert between the RT ranges of different input files" help="RT concatenation is enabled if a value &gt; 0 is set"/>
     </section>
     <section name="raw" title="Options for raw data input/output (primarily for DTA files)" help="" expanded="false">
-      <param argument="-raw:rt_auto" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Assign retention times automatically (integers starting at 1)" help=""/>
-      <param argument="-raw:rt_custom" type="text" optional="true" value="" label="List of custom retention times that are assigned to the files" help="The number of given retention times must be equal to the number of input files (space separated list, in order to allow for spaces in list items surround them by single quotes)">
+      <param name="rt_auto" argument="-raw:rt_auto" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Assign retention times automatically (integers starting at 1)" help=""/>
+      <param name="rt_custom" argument="-raw:rt_custom" type="text" optional="true" value="" label="List of custom retention times that are assigned to the files" help="The number of given retention times must be equal to the number of input files (space separated list, in order to allow for spaces in list items surround them by single quotes)">
         <expand macro="list_float_valsan" name="rt_custom"/>
       </param>
-      <param argument="-raw:rt_filename" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Try to guess the retention time of a file based on the filename" help="This option is useful for merging DTA files, where filenames should contain the string 'rt' directly followed by a floating point number, e.g. 'my_spectrum_rt2795.15.dta'"/>
-      <param argument="-raw:ms_level" type="integer" optional="false" value="0" label="If 1 or higher, this number is assigned to spectra as the MS level" help="This option is useful for DTA files which do not contain MS level information"/>
+      <param name="rt_filename" argument="-raw:rt_filename" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Try to guess the retention time of a file based on the filename" help="This option is useful for merging DTA files, where filenames should contain the string 'rt' directly followed by a floating point number, e.g. 'my_spectrum_rt2795.15.dta'"/>
+      <param name="ms_level" argument="-raw:ms_level" type="integer" optional="false" value="0" label="If 1 or higher, this number is assigned to spectra as the MS level" help="This option is useful for DTA files which do not contain MS level information"/>
     </section>
     <expand macro="adv_opts_macro">
       <param argument="-test" type="hidden" optional="false" value="False" label="Enables the test mode (needed for internal use only)" help="">

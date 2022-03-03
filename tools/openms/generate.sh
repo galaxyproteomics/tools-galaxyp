@@ -47,8 +47,9 @@ bash ./test-data.sh ./macros_autotest.xml
 # fi
 if [ ! -d $CTDCONVERTER ]; then
 	#git clone https://github.com/WorkflowConversion/CTDConverter.git CTDConverter
-	git clone -b topic/fix-selects https://github.com/bernt-matthias/CTDConverter.git $CTDCONVERTER
+	git clone -b topic/fix-selects2 https://github.com/bernt-matthias/CTDConverter.git $CTDCONVERTER
 fi
+
 ###############################################################################
 ## conversion ctd->xml 
 ###############################################################################

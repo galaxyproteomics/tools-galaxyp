@@ -85,10 +85,10 @@ fi
 echo "Clone CTDConverter"
 if [[ ! -d $CTDCONVERTER ]]; then
 	#git clone https://github.com/WorkflowConversion/CTDConverter.git CTDConverter
-	git clone -b topic/fix-selects https://github.com/bernt-matthias/CTDConverter.git $CTDCONVERTER
+	git clone -b topic/fix-selects2 https://github.com/bernt-matthias/CTDConverter.git $CTDCONVERTER
 else
 	cd $CTDCONVERTER
-	git pull origin topic/fix-selects
+	git pull origin topic/fix-selects2
 	cd -
 fi
 conda activate $OPENMSENV
