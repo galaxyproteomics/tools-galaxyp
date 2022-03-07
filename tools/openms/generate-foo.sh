@@ -19,6 +19,7 @@ function get_tests2 {
     # - OpenSwathAnalyzer 9/10: cachedMzML (not supported yet)
     # - FeatureFinderIdentification name clash of two tests https://github.com/OpenMS/OpenMS/pull/5002
     # - TODO SiriusAdapter https://github.com/OpenMS/OpenMS/pull/5010
+    # - OpenMS 2.8 remove test SiriusAdapter_10 https://github.com/OpenMS/OpenMS/issues/5869
     CMAKE=$(cat $OPENMSGIT/src/tests/topp/CMakeLists.txt $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake  |
         sed 's@${DATA_DIR_SHARE}/@@g' |
         grep -v 'OpenSwathMzMLFileCacher .*-convert_back' |
@@ -28,8 +29,9 @@ function get_tests2 {
         sed 's@degenerate_cases/@@g' |
         grep -v 'TOPP_SeedListGenerator_3"' | 
         egrep -v 'TOPP_OpenSwathAnalyzer_test_3"|TOPP_OpenSwathAnalyzer_test_4"' |
-	egrep -v '"TOPP_FeatureFinderIdentification_4"' | 
-	sed 's/\("TOPP_SiriusAdapter_4".*\)-sirius:database all\(.*\)/\1-sirius:database pubchem\2/')
+        egrep -v '"TOPP_FeatureFinderIdentification_4"' | 
+        sed 's/\("TOPP_SiriusAdapter_4".*\)-sirius:database all\(.*\)/\1-sirius:database pubchem\2/' |
+        grep -v '"TOPP_SiriusAdapter_10"')
 
 
 #         grep -v 'FileFilter.*-spectra:select_polarity ""' |
@@ -67,7 +69,7 @@ function get_tests2 {
         tes="  <test>\n"
         line=$(fix_tmp_files "$line")
         line=$(unique_files "$line")
-        # >&2 echo $line
+        # >&2 echo LINE $line
         #if there is an ini file then we use this to generate the test
         #otherwise the ctd file is used
         #other command line parameters are inserted later into this xml
@@ -86,8 +88,9 @@ function get_tests2 {
         # echo $ctdtmp
         # >&2 cat $ctdtmp
         testtmp=$(mktemp)
+        # >&2 cat $ctdtmp
         # >&2 echo CTDConverter galaxy -i $ctdtmp -o $testtmp -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib
-        CTDConverter galaxy -i $ctdtmp -o $testtmp -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib > /dev/null
+        CTDConverter galaxy -i $ctdtmp -o $testtmp -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib # > /dev/null
         cat $testtmp | grep -v '<output.*file=""' # | grep -v 'CHEMISTRY/'
         rm $ctdtmp $testtmp
 

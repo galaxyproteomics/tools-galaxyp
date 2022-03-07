@@ -231,7 +231,6 @@ cd - || exit
 ###############################################################################
 echo "Write test macros to $autotests"
 echo "<macros>" > "$autotests"
-
 for i in $(ls *xml |grep -v macros)
 do
 	b=$(basename "$i" .xml)
