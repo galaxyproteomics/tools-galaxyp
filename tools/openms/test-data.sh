@@ -244,7 +244,10 @@ link_tmp_files
 # tests for tools using output_prefix parameters can not be auto generated
 # hence we output the tests for manual curation in macros_test.xml
 # and remove them from the autotests
-# -> OpenSwathFileSplitter IDRipper MzMLSplitter
+# -> OpenSwathFileSplitter IDRipper MzMLSplitter SeedListGenerator
+# TODO reevaluate in 2.9 
+# - https://github.com/OpenMS/OpenMS/pull/5873
+# - https://github.com/OpenMS/OpenMS/pull/5912
 #
 # Furthermore we remove tests for tools without binaries in conda
 # -> MSFragger MaRaClusterAdapter NovorAdapter 
@@ -253,7 +256,7 @@ link_tmp_files
 # -> SpectraSTSearchAdapter 
 if [[ ! -z "$1" ]]; then
 	echo "" > macros_discarded_auto.xml
-	for i in OpenSwathFileSplitter IDRipper MzMLSplitter MSFraggerAdapter MaRaClusterAdapter NovorAdapter SpectraSTSearchAdapter
+	for i in OpenSwathFileSplitter IDRipper MzMLSplitter SeedListGenerator MSFraggerAdapter MaRaClusterAdapter NovorAdapter SpectraSTSearchAdapter
 	do
 		echo "<xml name=\"manutest_$i\">" >>  macros_discarded_auto.xml
 		xmlstarlet sel -t -c "/macros/xml[@name='autotest_$i']/test" macros_autotest.xml >>  macros_discarded_auto.xml

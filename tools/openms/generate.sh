@@ -65,8 +65,6 @@ conda deactivate
 # TODO reenable
 # patch PepNovoAdapter.xml < PepNovoAdapter.patch
 # patch OMSSAAdapter.xml < OMSSAAdapter.patch
-# # this should not be necessary from 2.7 https://github.com/OpenMS/OpenMS/pull/5087
-# patch PSMFeatureExtractor.xml < PSMFeatureExtractor.patch
 
 # https://github.com/OpenMS/OpenMS/pull/4984
 sed -i -e 's@http://www.openms.de/doxygen/nightly/html/@http://www.openms.de/doxygen/release/2.8.0/html/@' ./*xml

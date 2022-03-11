@@ -15,7 +15,6 @@ function get_tests2 {
     # - MaRaCluster with -consensus_out (parameter blacklister: https://github.com/OpenMS/OpenMS/issues/4456)
     # - FileMerger with mixed dta dta2d input (ftype can not be specified in the test, dta can not be sniffed)
     # - some input files are originally in a subdir (degenerated cases/), but not in test-data
-    # - SeedListGenerator: https://github.com/OpenMS/OpenMS/issues/4404
     # - OpenSwathAnalyzer 9/10: cachedMzML (not supported yet)
     # - FeatureFinderIdentification name clash of two tests https://github.com/OpenMS/OpenMS/pull/5002
     # - TODO SiriusAdapter https://github.com/OpenMS/OpenMS/pull/5010
@@ -27,7 +26,6 @@ function get_tests2 {
         grep -v "MaRaClusterAdapter.*-consensus_out"|
         grep -v "FileMerger_1_input1.dta2d.*FileMerger_1_input2.dta " |
         sed 's@degenerate_cases/@@g' |
-        grep -v 'TOPP_SeedListGenerator_3"' | 
         egrep -v 'TOPP_OpenSwathAnalyzer_test_3"|TOPP_OpenSwathAnalyzer_test_4"' |
         egrep -v '"TOPP_FeatureFinderIdentification_4"' | 
         sed 's/\("TOPP_SiriusAdapter_4".*\)-sirius:database all\(.*\)/\1-sirius:database pubchem\2/' |
