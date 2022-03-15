@@ -62,9 +62,8 @@ CTDConverter galaxy -i ctd/*ctd -o ./ -s tools_blacklist.txt -f "$FILETYPES" -m 
 if [[ "$?" -ne "0" ]]; then >&2 echo 'CTD -> XML conversion failed'; >&2 echo -e "stderr:\n$(cat convert.err)"; fi
 conda deactivate
 
-# TODO reenable
-# patch PepNovoAdapter.xml < PepNovoAdapter.patch
-# patch OMSSAAdapter.xml < OMSSAAdapter.patch
+patch PepNovoAdapter.xml < PepNovoAdapter.patch
+patch OMSSAAdapter.xml < OMSSAAdapter.patch
 
 # https://github.com/OpenMS/OpenMS/pull/4984
 sed -i -e 's@http://www.openms.de/doxygen/nightly/html/@http://www.openms.de/doxygen/release/2.8.0/html/@' ./*xml
