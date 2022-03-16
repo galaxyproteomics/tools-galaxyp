@@ -133,17 +133,13 @@ conda activate $OPENMSENV
 rm -rf ctd
 mkdir -p ctd
 
-# TODO because of https://github.com/OpenMS/OpenMS/issues/4641
-# this needs to be done from within test-data
-cd test-data
 for i in $OPENMSPKG/bin/*
 do
 	b=$(basename $i)
 	echo $b
-	$b -write_ctd ../ctd/
-	sed -i -e 's/²/^2/' ../ctd/$b.ctd
+	$b -write_ctd ctd/
+	sed -i -e 's/²/^2/' ctd/$b.ctd
 done
-cd -
 ###############################################################################
 ## fix ini files: OpenMS test data contains ini files with outdated ini files.
 ## e.g. variables might be in different nodes, outdated variables present, new

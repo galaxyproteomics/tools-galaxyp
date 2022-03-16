@@ -17,8 +17,8 @@ function get_tests2 {
     # - some input files are originally in a subdir (degenerated cases/), but not in test-data
     # - OpenSwathAnalyzer 9/10: cachedMzML (not supported yet)
     # - FeatureFinderIdentification name clash of two tests https://github.com/OpenMS/OpenMS/pull/5002
-    # - TODO SiriusAdapter https://github.com/OpenMS/OpenMS/pull/5010
-    # - OpenMS 2.8 remove test SiriusAdapter_10 https://github.com/OpenMS/OpenMS/issues/5869
+    # - SiriusAdapter_4 depends on online service which may timeout .. so keep disabled https://github.com/OpenMS/OpenMS/pull/5010
+    # - SiriusAdapter_10 should work in >2.8 https://github.com/OpenMS/OpenMS/issues/5869
     CMAKE=$(cat $OPENMSGIT/src/tests/topp/CMakeLists.txt $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake  |
         sed 's@${DATA_DIR_SHARE}/@@g' |
         grep -v 'OpenSwathMzMLFileCacher .*-convert_back' |
@@ -30,15 +30,6 @@ function get_tests2 {
         egrep -v '"TOPP_FeatureFinderIdentification_4"' | 
         sed 's/\("TOPP_SiriusAdapter_4".*\)-sirius:database all\(.*\)/\1-sirius:database pubchem\2/' |
         grep -v '"TOPP_SiriusAdapter_10"')
-
-
-#         grep -v 'FileFilter.*-spectra:select_polarity ""' |
-#         grep -v 'MassTraceExtractor_2.ini ' |
-#         grep -v "FileMerger_6_input2.mzML.*FileMerger_6_input2.mzML" |
-#         grep -v "IDMerger_1_input1.idXML.*IDMerger_1_input1.idXML" |
-#         grep -v "degenerated_empty.idXML.*degenerated_empty.idXML" |
-#         grep -v "FeatureLinkerUnlabeledKD_1_output.consensusXML.*FeatureLinkerUnlabeledKD_1_output.consensusXML" |
-#         grep -v "FeatureLinkerUnlabeledQT_1_output.consensusXML.*FeatureLinkerUnlabeledQT_1_output.consensusXML" |
 
     # 1st part is a dirty hack to join lines containing a single function call, e.g.
     # addtest(....

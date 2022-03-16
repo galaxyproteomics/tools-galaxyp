@@ -32,7 +32,7 @@ def mergeDicts(d, e):
     for k, v in e.items():
         if (k in d and isinstance(d[k], dict) and isinstance(e[k], collections.abc.Mapping)):
             mergeDicts(d[k], e[k])
-        elif k not in d and not isinstance(e[k], collections.abc.Mapping):
+        elif k not in d:
             d[k] = e[k]
         else:
             sys.stderr.write("fill_ctd.py: could not merge key %s for %s in %s" % (k, d, e))
