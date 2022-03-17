@@ -209,14 +209,13 @@ cd ./test-data || exit
 cd - || exit
 
 
-###############################################################################
-## create/update test data for the manually generated tests
-## - run convert once with the manual tests only and 
-## - update test-data (needs to run 2x)
-###############################################################################
+# ###############################################################################
+# ## create/update test data for the manually generated tests
+# ## - run convert once with the manual tests only and 
+# ## - update test-data (needs to run 2x)
+# ###############################################################################
 echo "Execute test shell script for manually curated tests"
 chmod u+x prepare_test_data_manual.sh
-
 cd ./test-data || exit
 ../prepare_test_data_manual.sh
 cd - || exit
@@ -234,7 +233,8 @@ do
 done
 echo "</macros>" >> "$autotests"
 
-echo "Create test data links"
+# echo "Create test data links"
+# TODO disable? Breaks DecoyDatabase
 link_tmp_files
 
 # tests for tools using output_prefix parameters can not be auto generated
