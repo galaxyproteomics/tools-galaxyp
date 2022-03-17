@@ -77,9 +77,9 @@ function get_tests2 {
         # echo $ctdtmp
         # >&2 cat $ctdtmp
         testtmp=$(mktemp)
-        # >&2 cat $ctdtmp
         # >&2 echo CTDConverter galaxy -i $ctdtmp -o $testtmp -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib
         CTDConverter galaxy -i $ctdtmp -o $testtmp -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib > /dev/null
+        echo "<!-- $test_id -->"
         cat $testtmp | grep -v '<output.*file=""' # | grep -v 'CHEMISTRY/'
         rm $ctdtmp $testtmp
 
