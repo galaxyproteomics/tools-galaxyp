@@ -235,7 +235,7 @@ echo "</macros>" >> "$autotests"
 
 # echo "Create test data links"
 # TODO disable? Breaks DecoyDatabase
-link_tmp_files
+# link_tmp_files
 
 # tests for tools using output_prefix parameters can not be auto generated
 # hence we output the tests for manual curation in macros_test.xml
