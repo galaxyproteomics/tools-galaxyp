@@ -234,14 +234,14 @@ done
 echo "</macros>" >> "$autotests"
 
 # echo "Create test data links"
-# TODO disable? Breaks DecoyDatabase
+# Breaks DecoyDatabase
 # link_tmp_files
 
 # tests for tools using output_prefix parameters can not be auto generated
 # hence we output the tests for manual curation in macros_test.xml
 # and remove them from the autotests
 # -> OpenSwathFileSplitter IDRipper MzMLSplitter SeedListGenerator
-# TODO reevaluate in 2.9 
+# TODO reevaluate in >2.8 
 # - https://github.com/OpenMS/OpenMS/pull/5873
 # - https://github.com/OpenMS/OpenMS/pull/5912
 #
