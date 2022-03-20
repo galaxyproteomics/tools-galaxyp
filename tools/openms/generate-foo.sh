@@ -38,6 +38,7 @@ function get_tests2 {
         # >&2 echo $line
         test_id=$(echo "$line" | cut -d" " -f 1)
         tool_id=$(echo "$line" | cut -d" " -f 2)
+        # >&2 echo "test_id $test_id"
         if [[ $test_id =~ _out_?[0-9]? ]]; then
             >&2 echo "    skip $test_id $line"
             continue
@@ -71,15 +72,15 @@ function get_tests2 {
         # using eval: otherwise for some reason quoted values are not used properly ('A B' -> ["'A", "B'"])
         # >&2 echo "python3 fill_ctd_clargs.py --ini_file $ini $cli" 
         eval "python3 fill_ctd_clargs.py --ini_file $ini $cli" > "$ctdtmp"
-        # echo $ctdtmp
+        # >&2 echo $ctdtmp
         # >&2 cat $ctdtmp
         testtmp=$(mktemp)
         # >&2 echo CTDConverter galaxy -i $ctdtmp -o $testtmp -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib
-        CTDConverter galaxy -i $ctdtmp -o $testtmp -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib > /dev/null
+        CTDConverter galaxy -i $ctdtmp -o $testtmp -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib --test-condition "compare=sim_size" "delta_frac=0.05" > /dev/null
         echo "<!-- $test_id -->"
         cat $testtmp | grep -v '<output.*file=""' # | grep -v 'CHEMISTRY/'
 
-        ./regexify.py "$ctdtmp"
+        # ./regexify.py --ini_file "$ctdtmp"
         rm "$ctdtmp" "$testtmp"
 
         #> /dev/null
