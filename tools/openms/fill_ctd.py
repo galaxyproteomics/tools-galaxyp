@@ -135,9 +135,10 @@ with open(sys.argv[3]) as fh:
 # insert the hc_args into the args
 mergeDicts(args, hc_args)
 
-if "adv_opts_cond" in args:
-    args.update(args["adv_opts_cond"])
-    del args["adv_opts_cond"]
+# put the contents of the advanced options section into the main dict
+if "adv_opts" in args:
+    args.update(args["adv_opts"])
+    del args["adv_opts"]
 
 # IDMapper has in and spectra:in params, in is used in out as format_source",
 # which does not work in Galaxy: https://github.com/galaxyproject/galaxy/pull/9493"

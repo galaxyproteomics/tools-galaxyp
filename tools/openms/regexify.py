@@ -3,6 +3,7 @@
 # into files that can be used in Galaxy regex comparisons
 
 import re
+import sys
 from argparse import ArgumentParser
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from CTDopts.CTDopts import (
     CTDModel,
     ModelTypeError,
     Parameters,
+    _Null,
     _OutFile,
     _OutPrefix,
 )
@@ -19,19 +21,37 @@ TEST_DATA = sorted(
     reverse=True
 )
 
-def process(fname):
-    with open(fname) as fh:
-        content = fh.read()
-        content = re.escape(content)
 
+def process(fname):
+    path = Path('test-data/') / Path(str(fname))
+    with open(path) as fh:
+        try:
+            content = fh.read()
+        except UnicodeDecodeError:
+            return
+        content = re.escape(content)
+    wd = str(Path.cwd() / Path("test-data/"))
+    wd = re.escape(wd)
+    content = content.replace(wd, ".*")
     for td in TEST_DATA:
         td = re.escape(td)
         content = content.replace(td, ".*")
-
-    with open(fname, "w") as fh:
+    # varying offsets in (indexed)MzML
+    # - <offset idRef="spectrum=1">8283</offset>
+    # - <offset idRef="index=0">3751</offset>
+    content = re.sub(r'<offset\\ idRef="(spectrum|index)=(\d+)">\d+<', r'<offset\\ idRef="\1=\2">\\d+<', content)
+    # - <indexListOffset>15169</indexListOffset>
+    content = re.sub(r'<indexListOffset>\d+</indexListOffset>', r'<indexListOffset>\\d+</indexListOffset>', content)
+    # mzXML
+    # - <offset id = "1" >1617</offset>
+    content = re.sub(r'<offset\\ id\\ =\\ ?"(\d+)"\\ >\d+<', r'<offset\\ id\\ =\\ "\1"\\ >\\d+<', content)
+    # - <indexOffset>39125</indexOffset>
+    content = re.sub(r'<indexOffset>\d+</indexOffset>', r'<indexOffset>\\d+</indexOffset>', content)
+    with open(path, "w") as fh:
         fh.write(content)
 
-def __main__():
+
+if __name__ == "__main__":
     parser = ArgumentParser(prog="regexify",
                             description="TODO")
     parser.add_argument("--ini_file", dest="ini_file", help="input ini file",
@@ -53,7 +73,15 @@ def __main__():
         if param.default is None or type(param.default) is _Null:
             continue
         if param.type is _OutFile:
-            process(param.default)
+            try:
+                if isinstance(param.default, list):
+                    for d in param.default:
+                        process(d)
+                else:
+                    process(str(param.default))
+            except Exception:
+                sys.stderr.write(f"\tcould not regexify {param.name}={param.default}\n")
+                raise
         elif param.type is _OutPrefix:
             
             continue
