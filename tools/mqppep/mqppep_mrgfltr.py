@@ -707,15 +707,13 @@ def __main__():
                     "dephosphorylated phosphopeptide not found in DephosphoPep_UniProtSeq_LUT",
                 )
             if (
-                dephospho_pep
-                != PhosphoPep_UniProtSeq_LUT[(phospho_pep, DEPHOSPHOPEP)]
+                dephospho_pep != PhosphoPep_UniProtSeq_LUT[(phospho_pep, DEPHOSPHOPEP)]
             ):
-                raise PreconditionError(
-                    dephospho_pep,
-                    "dephosphorylated phosphopeptide does not match "
-                    + "PhosphoPep_UniProtSeq_LUT[(phospho_pep,DEPHOSPHOPEP)] = "
-                    + PhosphoPep_UniProtSeq_LUT[(phospho_pep, DEPHOSPHOPEP)],
-                )
+                my_err_msg = "dephosphorylated phosphopeptide does not match "
+                my_err_msg += "PhosphoPep_UniProtSeq_LUT[(phospho_pep,DEPHOSPHOPEP)] = "
+                my_err_msg += PhosphoPep_UniProtSeq_LUT[(phospho_pep, DEPHOSPHOPEP)]
+                raise PreconditionError(dephospho_pep, my_err_msg)
+
             result[SEQUENCE] = [dephospho_pep]
             result[UNIPROT_ID] = DephosphoPep_UniProtSeq_LUT[
                 (dephospho_pep, UNIPROT_ID)
@@ -822,17 +820,13 @@ def __main__():
                     # add Sequence10
                     if psite < 10:  # phospho_pep at N terminus
                         seq10 = (
-                            str(UniProtSeq)[:psite]
-                            + "p"
-                            + str(UniProtSeq)[psite: psite + 11]
+                            str(UniProtSeq)[:psite] + "p" + str(UniProtSeq)[psite: psite + 11]
                         )
                     elif (
                         len(UniProtSeq) - psite < 11
                     ):  # phospho_pep at C terminus
                         seq10 = (
-                            str(UniProtSeq)[psite - 10: psite]
-                            + "p"
-                            + str(UniProtSeq)[psite:]
+                            str(UniProtSeq)[psite - 10: psite] + "p" + str(UniProtSeq)[psite:]
                         )
                     else:
                         seq10 = str(UniProtSeq)[psite - 10: psite + 11]
