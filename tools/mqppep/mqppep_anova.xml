@@ -1,0 +1,230 @@
+<tool id="mqppep_anova" name="MaxQuant Phosphopeptide ANOVA" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" python_template_version="3.5">
+    <description>Perform ANOVA on merged and filtered data from phospho-peptide enrichment/MaxQuant pipeline</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <!--
+      The weird invocation used here is because knitr and install_tinytex
+      both need access to a writeable directory, but most directories in a
+      biocontainer are read-only, so this builds a pseudo-home under /tmp
+    -->
+    <command detect_errors="exit_code"><![CDATA[
+      export OLD_PWD=\$(dirname \$(pwd));
+      export HOME=/tmp\${OLD_PWD};
+      mkdir -p \$HOME/bin;
+      mkdir -p \$HOME/tmp;
+      export TEMP=\$HOME/tmp;
+      export TMPDIR=\$TEMP;
+      cd \$TEMP;
+      cp '$__tool_directory__/mqppep_anova_script.Rmd' . || exit 0;
+      cp '$__tool_directory__/mqppep_anova.R' . || exit 0;
+      \${CONDA_PREFIX}/bin/Rscript \$TEMP/mqppep_anova.R
+        --inputFile '$input_file'
+        --alphaFile '$alpha_file'
+        --firstDataColumn $intensity_column_regex_f
+        --imputationMethod $imputation.imputation_method
+        #if $imputation.imputation_method == "random"
+          --meanPercentile '$imputation.meanPercentile'
+          --sdPercentile   '$imputation.sdPercentile'
+        #end if
+        --regexSampleNames $sample_names_regex_f
+        --regexSampleGrouping $sample_grouping_regex_f
+        --imputedDataFile $imputed_data_file
+        --imputedQNLTDataFile '$imp_qn_lt_file'
+        --reportFile '$report_file';
+      export RESULT=\$?;
+      cd \${OLD_PWD};
+      rm -rf \$HOME;
+      exit \${RESULT}
+    ]]></command>
+    <configfiles>
+      <configfile name="sample_names_regex_f">
+        $sample_names_regex
+      </configfile>
+      <configfile name="sample_grouping_regex_f">
+        $sample_grouping_regex
+      </configfile>
+      <configfile name="intensity_column_regex_f">
+        $intensity_column_regex
+      </configfile>
+    </configfiles>
+    <inputs>
+        <param name="input_file" type="data" format="tabular" label="Filtered Phosphopeptide Intensities"
+               help="[input_file] Phosphopeptide intensities filtered for minimal quality.  First column label 'Phosphopeptide'; sample-intensities must begin in column 10 and must have column labels to match argument [sample_names_regex]"
+        />
+        <param name="alpha_file" type="data" format="tabular" label="alpha cutoff level"
+               help="[alpha_file] List of alpha cutoff values for significance testing; text file having one column and no header"
+        />
+        <param name="intensity_column_regex" type="text" value="^Intensity[^_]"
+               label="Intensity-column pattern"
+               help="[intensity_column_regex] Pattern matching columns that have peptide intensity data (PERL-compatible regular expression matching column label)"
+        />
+        <!-- imputation_method <- c("group-median","median","mean","random")[1] -->
+        <conditional name="imputation">
+            <param name="imputation_method" type="select" label="Imputation Method"
+                   help="[imputation_method] Impute missing values by (1) using median for each sample-group; (2) using median across all samples; (3) using mean across all samples; or (4) using randomly generated values having same std. dev. as across all samples (with mean specified by [meanPercentile])"
+            >
+                <option value="random" selected="true">random</option>
+                <option value="group-median">group-median</option>
+                <option value="median">median</option>
+                <option value="mean">mean</option>
+            </param>
+            <when value="group-median" />
+            <when value="median" />
+            <when value="mean" />
+            <when value="random">
+                <param name="meanPercentile" type="integer" value="1" min="1" max="99"
+                       label="Mean percentile for random values"
+                       help="[meanPercentile] Percentile center of random values; range [1,99]"
+                />
+                <param name="sdPercentile" type="float" value="1.0"
+                       label="Percentile std. dev. for random values"
+                       help="[sdPercentile] Standard deviation adjustment-factor for random values; real number.  (1.0 means SD equal to the SD for the entire data set.)"
+                />
+            </when>
+        </conditional>
+        <param name="sample_names_regex" type="text" value="\.\d+[A-Z]$"
+               help="[sample_names_regex] Pattern extracting sample-names from names of columns that have peptide intensity data (PERL-compatible regular expression)"
+               label="Sample-extraction pattern">
+          <sanitizer>
+            <valid initial="string.printable">
+              <remove value="&apos;"/>
+            </valid>
+          </sanitizer>
+        </param>
+        <param name="sample_grouping_regex" type="text" value="\d+"
+               help="[sample_grouping_regex] Pattern extracting sample-group from the sample-names that are extracted by 'Sample-extraction pattern' (PERL-compatible regular expression)"
+               label="Group-extraction pattern">
+          <sanitizer>
+            <valid initial="string.printable">
+              <remove value="&apos;"/>
+            </valid>
+          </sanitizer>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="imputed_data_file" format="tabular" label="${input_file.name}.${imputation.imputation_method}-imputed_intensities" ></data>
+        <data name="imp_qn_lt_file" format="tabular" label="${input_file.name}.${imputation.imputation_method}-imputed_QN_LT_intensities" ></data>
+        <!--
+        <data name="report_file" format="html" label="${input_file.name}.${imputation.imputation_method}-imputed_report (download/unzip to view)" ></data>
+        -->
+        <data name="report_file" format="pdf" label="${input_file.name}.${imputation.imputation_method}-imputed_report" ></data>
+    </outputs>
+    <tests>
+        <test>
+            <param name="input_file" ftype="tabular" value="test_input_for_anova.tabular"/>
+            <param name="alpha_file" ftype="tabular" value="alpha_levels.tabular"/>
+            <param name="intensity_column_regex" value="^Intensity[^_]"/>
+            <param name="imputation_method" value="group-median"/>
+            <param name="sample_names_regex" value="\.\d+[A-Z]$"/>
+            <param name="sample_grouping_regex" value="\d+"/>
+            <output name="imp_qn_lt_file">
+                <assert_contents>
+                    <has_text text="Phosphopeptide" />
+                    <has_text text="AAAITDMADLEELSRLpSPLPPGpSPGSAAR" />
+                    <has_text text="7.935878" />
+                    <has_text text="pSQKQEEENPAEETGEEK" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="input_file" ftype="tabular" value="test_input_for_anova.tabular"/>
+            <param name="alpha_file" ftype="tabular" value="alpha_levels.tabular"/>
+            <param name="intensity_column_regex" value="^Intensity[^_]"/>
+            <param name="imputation_method" value="random"/>
+            <param name="meanPercentile" value="1" />
+            <param name="sdPercentile" value="1.0" />
+            <param name="sample_names_regex" value="\.\d+[A-Z]$"/>
+            <param name="sample_grouping_regex" value="\d+"/>
+            <output name="imp_qn_lt_file">
+                <assert_contents>
+                    <has_text text="Phosphopeptide" />
+                    <has_text text="AAAITDMADLEELSRLpSPLPPGpSPGSAAR" />
+                    <has_text text="8.392287" />
+                    <has_text text="pSQKQEEENPAEETGEEK" />
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help><![CDATA[
+===========================================
+Phopsphoproteomic Enrichment Pipeline ANOVA
+===========================================
+
+**Input files**
+
+``input_file``
+  Phosphopeptides annotated with SwissProt and phosphosite metadata (in tabular format).
+  This is the output from the "Phopsphoproteomic Enrichment Pipeline Merge and Filter"
+  (``mqppep_mrgflt``) tool.
+
+``alpha_file``
+  List of alpha cutoff values for significance testing; text file having one column and no header.  For example:
+
+::
+
+  0.2
+  0.1
+  0.05
+
+**Input parameters**
+
+``intensity_column_regex``
+  First column of ``input_file`` having intensity values (integer or PERL-compatible regular expression matching column label). Default: **Intensity**
+
+``imputation_method``
+  Impute missing values by:
+
+    1. using median for each sample-group;
+    2. using median across all samples;
+    3. using mean across all samples; or
+    4. using randomly generated values where:
+
+      - ``meanPercentile`` specifies the percentile among non-missing values to be used as mean of random values, and
+      - ``sdPercentile`` specifies the factor to be mulitplied by the standard deviation among the non-missing values (across all samples) to determine the standard deviation of random values.
+
+``sample_names_regex``
+  PERL-compatible regular expression extracting the sample-name from the the name of a column of instensities (from ``input_file``) for one sample.
+
+    - For example, ``"\.\d+[A-Z]$"`` applied to ``Intensity.splunge.10A`` would produce ``.10A``
+    - Note that *this is case sensitive* by default.
+
+``sample_grouping_regex``
+  PERL-compatible regular expression extracting the sample-grouping from the sample-name that was extracted with ``sample_names_regex`` from a column of intensites (from ``input_file``).
+
+    - For example, ``"\d+$"`` applied to ``.10A`` would produce ``10``
+    - Note that *this is case sensitive* by default.
+
+
+**Outputs**
+
+``imputed_intensities``
+  Phosphopeptide MS intensities where missing values have been **imputed** by the chosen method, in tabular format.
+
+``imputed_QN_LT_intensities``
+  Phosphopeptide MS intensities where missing values have been **imputed** by the chosen method, quantile-normalized (**QN**), and log10-transformed (**LT**), in tabular format.
+
+``report_file``
+  Summary report for normalization, imputation, and **ANOVA**, in PDF format.
+
+**Authors**
+
+``Larry C. Cheng``
+  (`ORCiD 0000-0002-6922-6433 <https://orcid.org/0000-0002-6922-6433>`_) wrote the original script.
+
+``Arthur C. Eschenlauer``
+  (`ORCiD 0000-0002-2882-0508 <https://orcid.org/0000-0002-2882-0508>`_) adapted the script to run in Galaxy.
+
+===================================
+PERL-compatible regular expressions
+===================================
+
+Note that the PERL-compatible regular expressions accepted by this tool are documented at http://rdrr.io/r/base/regex.html
+
+    ]]></help>
+    <citations>
+        <!-- Cheng_2018 "Phosphopeptide Enrichment ..." PMID: 30124664 -->
+        <citation type="doi">10.3791/57996</citation>
+    </citations>
+</tool>

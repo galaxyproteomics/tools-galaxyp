@@ -1,0 +1,520 @@
+<tool id="mqppep_preproc" name="MaxQuant Phosphopeptide Preprocessing" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" python_template_version="3.5">
+    <description>
+        Transform the output of MaxQuant for phosphoproteome-enriched samples to prepare it for statistical anlaysis.
+    </description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <command detect_errors="exit_code"><![CDATA[
+      (
+        echo '--- localization-filter step:'
+      ) && (
+        \$CONDA_PREFIX/bin/Rscript '$__tool_directory__/MaxQuantProcessingScript.R'
+        -i '$phosphoSites'
+        #if $pst_py_selector == "y"
+            --enriched Y
+        #else
+            --enriched ST
+        #end if
+        --phosphoCol '$phosphocol_script'
+        --startCol '$startcol_script'
+        --intervalCol $intervalCol
+        --localProbCutoff $localProbCutoff
+        --collapse_func $collapseFunc
+        -o '$phosphoPepIntensities'
+        --locProbCutoffGraph $locProbCutoffGraph
+        --enrichGraph $enrichGraph
+        --locProbCutoffGraph_svg $locProbCutoffGraph_svg
+        --enrichGraph_svg $enrichGraph_svg
+        --filtered_data $filteredData_tabular
+        --quant_data $quantData_tabular
+      ) && (
+        echo '... end localization-filter.'
+      ) && (
+        echo '--- kinase-mapping step:'
+      ) && (
+        \$CONDA_PREFIX/bin/perl '$__tool_directory__/PhosphoPeptide_Upstream_Kinase_Mapping.pl'
+        -i '$phosphoPepIntensities'
+        -f '$protein_fasta'
+        -n '$networkin'
+        -m '$p_sty_motifs'
+        -p '$psp_kinase_substrate'
+        -r '$psp_regulatory_sites'
+        #if $pst_py_selector == "y"
+            -P y
+        #else
+            -P sty
+        #end if
+        -F $merge_function
+        -o '$mapped_phophopeptides'
+        -O '$melted_phophopeptide_map'
+        -D '$mqppep_output_sqlite'
+        -s '$species'
+      ) && (
+        echo '... end kinase-mapping.'
+      ) && (
+        echo '--- merge-and-filter step:'
+      ) && (
+        \$CONDA_PREFIX/bin/python '$__tool_directory__/mqppep_mrgfltr.py'
+        --phosphopeptides='$mapped_phophopeptides'
+        --ppep_mapping_db='$mqppep_output_sqlite'
+        --species='$species'
+        --mrgfltr_tab='$preproc_tab'
+        --mrgfltr_csv='$preproc_csv'
+        --mrgfltr_sqlite='$preproc_sqlite'
+      ) && (
+        echo '... end merge-and-filter.'
+      )
+    ]]></command>
+    <configfiles>
+        <configfile name="phosphocol_script">$phosphoCol
+        </configfile>
+        <configfile name="startcol_script">$startCol
+        </configfile>
+    </configfiles>
+    <inputs>
+        <param name="phosphoSites" type="data" format="tabular"
+               label="Phospho (STY)Sites.txt"
+               help="[phosphoSites] Tabular 'Phospho (STY)Sites.txt' produced by MaxQuant"
+               />
+        <param name="phosphoCol" type="text"
+               label="pattern for column 'Number of Phospho (STY)'"
+               help="[phosphoCol] PERL-compatible regular expression matching header of column having number of 'Phospho (STY)'"
+               value="^Number of Phospho [(]STY[)]$">
+            <sanitizer>
+                <valid initial="string.printable">
+                    <remove value="&apos;"/>
+                </valid>
+            </sanitizer>
+        </param>
+        <param name="startCol" type="text"
+               label="pattern for first column of intensity values"
+               help="[startCol] PERL-compatible regular expression matching column header having first sample intensity"
+               value="^Intensity[^_]">
+            <sanitizer>
+                <valid initial="string.printable">
+                    <remove value="&apos;"/>
+                </valid>
+            </sanitizer>
+        </param>
+        <param name="intervalCol" type="integer" value="1" min="1"
+               label="Interval between the intensity column of samples"
+               help="[intervalCol] E.g., 1 if subsequent column is next sample; 2 if next sample is two columns away, etc."/>
+        <param name="pst_py_selector" type="select"
+            label="Phosphopeptide enrichment type"
+            help="[enrichment] Were samples enriched for pS and pT, or were they enriched for pY instead?"
+            >
+            <option value="st" selected="true">pST</option>
+            <option value="y">pY</option>
+        </param>
+        <param name="collapseFunc" type="select"
+               label="Intensity merge function"
+               help="[collapseFunc] When a peptide is multiply phosphorylated, how should intensities be merged? [default: sum]"
+               >
+            <option value="sum" selected="true">sum</option>
+            <option value="mean">average</option>
+        </param>
+        <param name="localProbCutoff" type="float" value="0.75" min="0" max="1.0"
+               label="Localization Probability Cutoff"
+               help="[localProbCutoff] See help below for an explanation."
+               />
+        <param name="merge_function" type="select" label="intensity merge-function"
+               help="[merge_function] Specifies how intensities for identical phosphosites should be merged">
+            <option value="sum" selected="true">sum</option>
+            <option value="average">average</option>
+        </param>
+        <param name="protein_fasta" type="data" format="fasta" label="UniProtKB/SwissProt FASTA database"
+               help="[protein_fasta] Sequence database; supply the same FASTA file as you supplied to by MaxQuant"
+               />
+        <param name="networkin" type="data" format="tabular" label="NetworKIN file"
+            help="[networkin] NetworKIN file; see help section below"/>
+        <param name="p_sty_motifs" type="data" format="tabular" label="pSTY_Motifs file"
+            help="[p_sty_motifs] pS/pT/pY phosphorylation site motifs; see help section below"/>
+        <param name="psp_kinase_substrate" type="data" format="tabular" label="PSP_Kinase_Substrate_Dataset"
+            help="[psp_kinase_substrate] 'Kinase-substrate dataset'; see help section below"/>
+        <param name="psp_regulatory_sites" type="data" format="tabular" label="PSP_Regulatory_sites"
+            help="[psp_regulatory_sites] 'Regulatory sites'; see help section below"/>
+        <param name="species"
+               type="text"
+               value = "human"
+               label="filter to limit PhosphoSitePlus records to indicated species"
+               help="[species] (field may be empty) [default: human]"
+               />
+    </inputs>
+    <outputs>
+      <!-- localization filter -->
+        <data name="phosphoPepIntensities"  format="tabular" label="${phosphoSites.name}.ppep_intensities" />
+        <data name="enrichGraph"            format="pdf"     label="${phosphoSites.name}.enrichment.pdf" />
+        <data name="locProbCutoffGraph"     format="pdf"     label="${phosphoSites.name}.locProbCutoff.pdf" />
+        <data name="enrichGraph_svg"        format="svg"     label="${phosphoSites.name}.enrichment.svg" />
+        <data name="locProbCutoffGraph_svg" format="svg"     label="${phosphoSites.name}.locProbCutoff.svg" />
+        <data name="filteredData_tabular"   format="tabular" label="${phosphoSites.name}.filteredData" />
+        <data name="quantData_tabular"      format="tabular" label="${phosphoSites.name}.quantData" />
+      <!-- upstream kinase mapping -->
+        <data name="mapped_phophopeptides" format="tabular" label="${phosphoSites.name}.ppep_intensities.ppep_map"/>
+        <data name="melted_phophopeptide_map" format="tabular" label="${phosphoSites.name}.ppep_intensities.melted"/>
+        <data name="mqppep_output_sqlite" format="sqlite" label="${phosphoSites.name}.ppep_intensities.ppep_mapping_sqlite"/>
+      <!-- merge and filter -->
+        <data name="preproc_tab"    format="tabular" label="${phosphoSites.name}.ppep_intensities.ppep_map.preproc_tab" />
+        <data name="preproc_csv"    format="csv"     label="${phosphoSites.name}.ppep_intensities.ppep_map.preproc_csv"  />
+        <data name="preproc_sqlite" format="sqlite"  label="${phosphoSites.name}.ppep_intensities.ppep_map.preproc_sqlite"  />
+    </outputs>
+    <tests>
+        <test>
+            <param name="phosphoSites" ftype="tabular" value="test_input_for_preproc.tabular" />
+            <param name="protein_fasta" ftype="fasta" value="test_swissprot.fasta" />
+            <param name="networkin" ftype="tabular" value="test_networkin.tabular" />
+            <param name="p_sty_motifs" ftype="tabular" value="pSTY_motifs.tabular" />
+            <param name="psp_kinase_substrate" ftype="tabular" value="test_kinase_substrate.tabular" />
+            <param name="psp_regulatory_sites" ftype="tabular" value="test_regulatory_sites.tabular" />
+            <param name="pst_py_selector" value="st"/>
+            <param name="merge_function"  value="sum"/>
+
+            <param name="phosphoCol" value="^Number of Phospho [(][STY][STY]*[)]$"/>
+            <param name="startCol" value="^Intensity[^_]"/>
+            <param name="intervalCol" value="1"/>
+            <param name="collapseFunc" value="sum"/>
+            <param name="localProbCutoff" value="0.75"/>
+            <param name="species" value="human"/>
+
+            <output name="phosphoPepIntensities">
+                <assert_contents>
+                    <has_text text="Phosphopeptide" />
+                    <has_line_matching expression="AAAITDMADLEELSRLpSPLPPGpSPGSAAR.5416400.7101800.385280000.208060000.41426000.352400000" />
+                    <has_line_matching expression="pSQKQEEENPAEETGEEK.0.0.8765300.0.2355900.14706000" />
+                </assert_contents>
+            </output>
+
+            <output name="preproc_tab">
+                <assert_contents>
+                    <has_text text="SSRP1_HUMAN FACT complex subunit SSRP1" />
+                    <has_text text="AEBP2_HUMAN Isoform 2 of Zinc finger protein AEBP2" />
+                    <has_text text="molecular association, regulation" />
+                    <has_text text="cell cycle regulation" />
+                    <has_text text="PPP2CA(INDUCES)" />
+                    <has_text text="SNCA(DISRUPTS)" />
+                    <has_text text="Casein Kinase II substrate" />
+                    <has_text text="PKC kinase substrate" />
+                    <has_text text="PKCiota" />
+                    <has_text text="Csnk2a1" />
+                    <has_text text="CDK7" />
+                    <has_text text="CK1alpha" />
+                    <has_text text="CK2a2" />
+                    <has_text text="CK2alpha" />
+                    <has_text text="DNAPK" />
+                    <has_text text="HIPK2" />
+                    <has_text text="IKKalpha" />
+                    <has_text text="PKCalpha" />
+                    <has_text text="PKCbeta" />
+                </assert_contents>
+            </output>
+
+            <output name="melted_phophopeptide_map">
+                <assert_contents>
+                    <has_text text="CDK7_NetworKIN" />
+                    <has_text text="CK1alpha_NetworKIN" />
+                    <has_text text="CK2a2_NetworKIN" />
+                    <has_text text="CK2alpha_NetworKIN" />
+                    <has_text text="DNAPK_NetworKIN" />
+                    <has_text text="HIPK2_NetworKIN" />
+                    <has_text text="IKKalpha_NetworKIN" />
+                    <has_text text="PKCalpha_NetworKIN" />
+                    <has_text text="PKCbeta_NetworKIN" />
+                    <has_text text="PKC kinase substrate motif" />
+                    <has_text text="Casein Kinase II substrate motif" />
+                    <has_text text="Csnk2a1_PhosphoSite" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="phosphoSites" ftype="tabular" value="test_input_for_preproc.tabular" />
+            <param name="protein_fasta" ftype="fasta" value="test_swissprot.fasta" />
+            <param name="networkin" ftype="tabular" value="test_networkin.tabular" />
+            <param name="p_sty_motifs" ftype="tabular" value="pSTY_motifs.tabular" />
+            <param name="psp_kinase_substrate" ftype="tabular" value="test_kinase_substrate.tabular" />
+            <param name="psp_regulatory_sites" ftype="tabular" value="test_regulatory_sites.tabular" />
+            <param name="pst_py_selector" value="y"/>
+            <param name="merge_function"  value="sum"/>
+
+            <param name="phosphoCol" value="^Number of Phospho [(][STY][STY]*[)]$"/>
+            <param name="startCol" value="^Intensity[^_]"/>
+            <param name="intervalCol" value="1"/>
+            <param name="collapseFunc" value="sum"/>
+            <param name="localProbCutoff" value="0.75"/>
+            <param name="species" value="human"/>
+
+            <output name="phosphoPepIntensities">
+                <assert_contents>
+                    <has_text text="Phosphopeptide" />
+                    <has_text text="pTYVDPFTpYEDPNQAVR" />
+                </assert_contents>
+            </output>
+
+            <output name="preproc_tab">
+                <assert_contents>
+                    <has_text text="pTYVDPFTpYEDPNQAVR" />
+                    <has_text text="EEKHLNQGVRpTYVDPFTYEDP" />
+                    <has_text text="GVRTYVDPFTpYEDPNQAVREF" />
+                    <has_text text="HLNQGVRtYVDPFTY" />
+                    <has_text text="TYVDPFTyEDPNQAV" />
+                    <has_text text="EPHA4" />
+                    <has_text text="pT595, pY602" />
+                    <has_text text="pT544, pY551" />
+                    <has_text text="P54764;" />
+                    <has_text text="P54764-2" />
+                </assert_contents>
+            </output>
+
+            <output name="melted_phophopeptide_map">
+                <assert_contents>
+                    <has_text text="Casein Kinase II substrate motif (HPRD)" />
+                    <has_text text="EPHA4_PhosphoSite" />
+                    <has_text text="EphA4_NetworKIN" />
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help><![CDATA[
+=========================================================
+Phopsphoproteomic Enrichment Pipeline Preprocessing Steps
+=========================================================
+
+**Overview**
+
+Prior to statistical analysis, it is necessary to perform
+three steps to transform the MaxQuant output
+for phosphoproteome-enriched samples.
+
+**Workflow position**
+
+``upstream tool``
+      The input data file for this tool is the ``Phospho (STY)Sites.txt`` file that is produced:
+
+      - by the Galaxy "MaxQuant" (``maxquant``) tool
+      - or by the Galaxy "Maxquant (using mqpar.xml)" (``maxquant_mqpar``) tool
+      - or by the desktop version of MaxQuant.
+
+``downstream tool``
+  The "MaxQuant Phosphopeptide ANOVA" tool (``mqppep_anova``) consumes the ``merged/filtered`` output file ``preproc_tab`` that this tool produces.
+
+======================================================================
+Phopsphoproteomic Enrichment Pipeline Localization-Probability Cut-Off
+======================================================================
+
+This step applies a "localization-probability cut-off" for phosphopeptides for each phosphopeptide.
+Higher values may reduce the number of peptides in the output.
+The default value of 0.75 reflects the text of [Cheng  2018]:
+
+    "For phosphopeptide identification, a localization probability cutoff is applied. This filter is performed to select for phosphopeptides with a high confidence (i.e., greater than 0.75) in phosphoresidue identification [Hogrebe 2018; Olsen 2006]. In other words, the summed probability of all other residues that could potentially contain the phospho-group is less than 0.25.  This cutoff could be raised to increase the stringency of the phosphopeptide selection. In regard to the number of identifications, the expected number of pY peptides is in the hundreds, while the expected number of pST peptides is in the high thousands. These values reflect previously observed phosphoproteome distribution where about 2%, 12%, and 86% of the phosphosites are pY, pT, and pS, respectively [Olsen 2006]."
+
+This tool wraps an R script. written by Larry Cheng, that performs the following (in order):
+
+1. Remove contaminant and reverse sequence rows
+2. Filters rows based on localization probability
+3. Extract the quantitative data
+4. Inserts a "p" before the phosphorylated residue(s) in each peptide sequence
+5. Merges (aggregating by "sum" or "average") multiply-phosphorylated peptides
+6. Filters output phosphopeptides based on enrichment
+7. Produces an output file (in tabular format) that contains the phosphopeptide (first column) and its (possibly merged) mass spectral intensity for each sample.
+
+Note that the "ProTeomiX Quality Control Report"
+[Bielow 2016] (available at `https://github.com/cbielow/PTXQC/
+<https://github.com/cbielow/PTXQC/>`_) is run by the Galaxy wrappers for MaxQuant,
+so it is omitted here even though it was included in Larry Cheng's original script.
+
+
+**Input dataset**
+
+``phosphoSites``
+    This is the ``MaxQuant Phospho (STY)Sites.txt`` file produced by MaxQuant.
+    If you use the desktop version of MaxQuant, you will find this file in the ``txt`` folder.
+
+**Output datasets**
+
+``ppep_intensities``
+  Data table (in tabular format) presenting, for each sample, the mass-spectral intensity of each phopshopeptide having localization probability greater than the cutoff.
+``enrichment.pdf``
+  Graph (in PDF format) presenting non-zero proportions of pS, pT, and pY among the phosphosites; note that a phosphopeptide may have multiple phosphosite.
+``locProbCutoff.pdf``
+  Graph (in PDF format) contrasting proportion of phosphopeptides above the localization probability cutoff with the proportion below.
+``enrichment.svg``
+  Enrichment graph (in downloadable "scalable vector graphics" format) for incorporation into documents.
+``locProbCutoff.svg``
+  Localization probability cutoff graph (in downloadable "scalable vector graphics" format) for incorporation into documents.
+``filteredData``
+  Data table (in tabular format) comprising rows of the ``phosphSites`` input file that are not flagged as contaminants or reversed sequences.
+``quantData``
+  Data table (in tabular format) comprising rows of the ``filteredData`` file whose localization probability exceeds the **Localization Probability Cutoff** parameter.
+
+**Authors**
+
+``Larry C. Cheng``
+  (`ORCiD 0000-0002-6922-6433 <https://orcid.org/0000-0002-6922-6433>`_) wrote the original script.
+
+``Arthur C. Eschenlauer``
+  (`ORCiD 0000-0002-2882-0508 <https://orcid.org/0000-0002-2882-0508>`_) adapted the script to run in Galaxy.
+
+=============================================================
+Phopsphoproteomic Enrichment Pipeline Upstream Kinase Mapping
+=============================================================
+
+This step searches phosphopeptides against several databases for known or predicted sites.
+
+**Input databases**
+
+``networkin``
+    This table is the result of filtering the NetworkKIN database [Linding 2007; Horn 2014] for cutoff score > 2.0.  The ENSEMBL data used to generate the file were from Ensembl, `ensembl.org <https://web.archive.org/web/20220308011159/http://useast.ensembl.org/index.html>`_ [Howe 2021].
+
+       *To generate this file:*
+
+       **(1)** Download the "precomputed data for all available kinase predictors against ENSEMBL" [available at the NetworkKIN predictions link on the downloads page at `https://networkin.info/download.shtml <https://networkin.info/download.shtml>`_] (N.B.: "Commercial users are requested to contact the authors before using the data on this website");
+
+       **(2)** Decompress the .tsv.xz with file with "unxz" (from XZ Utils `https://tukaani.org/xz/ <https://tukaani.org/xz/>`_);
+
+       **(3)** Filter out the rows having "network_kin" less than 2.0.
+
+       The result should be a tab-separated file with the following columns:
+
+           1. ``#substrate``
+           2. ``position``
+           3. ``id``
+           4. ``networkin_score``
+           5. ``tree``
+           6. ``netphorest_group``
+           7. ``netphorest_score``
+           8. ``string_identifier``
+           9. ``string_score``
+           10. ``substrate_name``
+           11. ``sequence``
+           12. ``string_path``
+
+
+``p_sty_motifs``
+  This database merges motif patterns from [Amanchy 2007] and Phosida [Gnad 2011].
+
+    The Amanchy data are adapted from `http://hprd.org/serine_motifs <http://hprd.org/serine_motifs>`_ and `http://hprd.org/tyrosine_motifs <http://hprd.org/tyrosine_motifs>`_ (both links cite the reference where each motif was published), and the patterns are translated into Perl regular expression format (`https://perldoc.perl.org/perlre <https://perldoc.perl.org/perlre>`_).
+
+    The Phosida data are adapted (translated to Perl-formatted regular expressions) from `http://pegasus.biochem.mpg.de/phosida/help/motifs.aspx <http://pegasus.biochem.mpg.de/phosida/help/motifs.aspx>`_ (this link cites the reference where each motif was published).
+
+      This file has three tab-separated columns (and no header):
+
+         1. column 1 is an (ignored) identifier
+         2. column 2 is a Perl regular expression
+         3. column 3 is a descriptor.
+
+      For two examples:
+
+      ``2<TAB>R.R..(pS|pT)<TAB>Akt kinase substrate motif (HPRD)``
+
+      ``10<TAB>R..(pS|pT)V<TAB>CAMK2_Phosida``
+
+``psp_kinase_substrate``
+  'Kinase-substrate dataset: experimentally determined substrates, sequences, cognate kinases, and metadata curated from the literature' [Hornbeck 2011].  This tabular-formatted file may be downloaded for non-commercial purposes as 'Kinase_Substrate_Dataset.gz' from `https://www.phosphosite.org/staticDownloads.action <https://www.phosphosite.org/staticDownloads.action>`_.
+
+      Data extracted from PhosphoSitePlus(R), created by Cell Signaling Technology Inc. PhosphoSitePlus is licensed under a Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported License (`https://creativecommons.org/licenses/by-nc-sa/3.0/ <https://creativecommons.org/licenses/by-nc-sa/3.0/>`_). Attribution must be given in written, oral and digital presentations to PhosphoSitePlus, www.phosphosite.org. Written documents should additionally cite:
+
+          Hornbeck PV, Kornhauser JM, Tkachev S, Zhang B, Skrzypek E, Murray B, Latham V, Sullivan M (2012) PhosphoSitePlus: a comprehensive resource for investigating the structure and function of experimentally determined post-translational modifications in man and mouse. Nucleic Acids Res. 40, D261-D270.; www.phosphosite.org.
+
+``psp_regulatory_sites``
+  'Regulatory sites: information curated from the literature about modification sites shown to regulate molecular functions, biological processes, and molecular interactions including protein-protein interactions' [Hornbeck 2011].  This tabular-formatted file may be downloaded for non-commercial purposes as 'Regulatory_sites.gz' from `https://www.phosphosite.org/staticDownloads.action <https://www.phosphosite.org/staticDownloads.action>`_.
+
+      Terms of use and citatation are as for the ``psp_kinase_substrate`` file.
+
+**Output datasets**
+
+``ppep_map``
+  Data table (in tabular format, consumed by the merge/filter step) presenting, for each phosphopeptide, the kinase mappings,  the mass-spectral intensities for each sample, and the metadata from UniProtKB/SwissProt, phospho-sites, phospho-motifs, and regulatory sites.  Data in the columns marked "``Domain``", "``ON_...``", or "``..._PhosphoSite``" are available subject to the following terms:
+
+    "PhosphoSitePlus\ |reg| (PSP) was created by Cell Signaling Technology Inc. It is licensed under a Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported License(`https://creativecommons.org/licenses/by-nc-sa/3.0/ <https://creativecommons.org/licenses/by-nc-sa/3.0/>`_). When using PSP data or analyses in printed publications or in online resources, the following acknowledgements must be included: (a) the words 'PhosphoSitePlus(R), www.phosphosite.org' must be included at appropriate places in the text or webpage, and (b) citation of [Hornbeck 2011 (`PMID: 25514926 <https://pubmed.ncbi.nlm.nih.gov/25514926>`_)] must be included in the bibliography."
+
+
+``melted``
+  Data table (in tabular format) presenting, for each phosphopeptide, the gene and one of the phospho-motifs or kinase-substrate sites.
+
+``ppep_mapping_sqlite``
+  SQLite database (consumed by the merge/filter step).
+
+**Authors**
+
+``Nicholas A. Graham``
+  (`ORCiD 0000-0002-6811-1941 <https://orcid.org/0000-0002-6811-1941>`_) wrote the original script.
+
+``Arthur C. Eschenlauer``
+  (`ORCiD 0000-0002-2882-0508 <https://orcid.org/0000-0002-2882-0508>`_) adapted the script to run in Galaxy.
+
+
+======================================================
+Phopsphoproteomic Enrichment Pipeline Merge and Filter
+======================================================
+
+This step merges mapped metadata into metadata for phosphopeptides, filtering by species.
+
+**Input parameters**
+
+``species``
+  Limit PhosphoSitesPlus to indicated species. Default: **human**
+
+**Output datasets**
+
+``preproc_tab``
+  Phosphopeptides annotated with SwissProt and phosphosite metadata, in tabular format.  This file is designed to be consumed by the downstream ANOVA tool.  Some data in the columns marked "PSP" are available subject to the following terms:
+
+    "PhosphoSitePlus\ |reg| (PSP) was created by Cell Signaling Technology Inc. It is licensed under a Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported License(`https://creativecommons.org/licenses/by-nc-sa/3.0/ <https://creativecommons.org/licenses/by-nc-sa/3.0/>`_). When using PSP data or analyses in printed publications or in online resources, the following acknowledgements must be included: (a) the words 'PhosphoSitePlus(R), www.phosphosite.org' must be included at appropriate places in the text or webpage, and (b) citation of [Hornbeck 2011 (`PMID: 25514926 <https://pubmed.ncbi.nlm.nih.gov/25514926>`_)] must be included in the bibliography."
+
+``preproc_csv``
+  Phosphopeptides annotated with SwissProt and phosphosite metadata, in CSV format.
+
+``preproc_sqlite``
+  ``ppep_mapping_sqlite`` updated with annotations, in SQLite format.
+
+**Authors**
+
+``Nicholas A. Graham``
+  (`ORCiD 0000-0002-6811-1941 <https://orcid.org/0000-0002-6811-1941>`_) may have initiated the original script.
+
+``Larry C. Cheng``
+  (`ORCiD 0000-0002-6922-6433 <https://orcid.org/0000-0002-6922-6433>`_) may have updated the original script.
+
+``Arthur C. Eschenlauer``
+  (`ORCiD 0000-0002-2882-0508 <https://orcid.org/0000-0002-2882-0508>`_) adapted the script to run in Galaxy.
+
+.. |reg|    unicode:: U+000AE .. REGISTERED SIGN
+    ]]></help>
+    <citations>
+      <!-- upstream kinase mapping -->
+        <!-- Amanchy, R., Periaswamy, B., Mathivanan, S. et al. A curated compendium of phosphorylation motifs. PMID: 17344875 -->
+        <citation type="doi">10.1038/nbt0307-285</citation>
+        <!-- Aken 2016 "The Ensembl gene annotation system." PMID: 33137190 -->
+        <citation type="doi">10.1093/database/baw093</citation>
+      <!-- localization filter -->
+        <!-- Bielow_2016 "Proteomics Quality Control: Quality Control Software for MaxQuant Results" PMID:  26653327 -->
+        <citation type="doi">10.1021/acs.jproteome.5b00780</citation>
+      <!-- all three -->
+        <!-- Cheng 2018 "Phosphopeptide Enrichment ..." PMID: 30124664 -->
+        <citation type="doi">10.3791/57996</citation>
+      <!-- localization and upstream kinase mapping -->
+        <!-- Cox 2014 "Accurate proteome-wide label-free quantification ..." PMID: 24942700 -->
+        <citation type="doi">10.1074/mcp.M113.031591</citation>
+        <!-- Cox 2008 "MaxQuant enables high peptide identification rates ..." PMID: 19029910 -->
+      <!-- upstream kinase mapping -->
+        <citation type="doi">10.1038/nbt.1511</citation>
+        <!-- Gnad 2011 "PHOSIDA 2011: the posttranslational modification database." PMID: 21081558 -->
+        <citation type="doi">10.1093/nar/gkq1159</citation>
+      <!-- localization filter -->
+        <!-- Hogrebe_2018 "Benchmarking common quantification strategies for large-scale phosphoproteomics" PMID: 29535314 -->
+        <citation type="doi">10.1038/s41467-018-03309-6</citation>
+      <!-- upstream kinase mapping -->
+        <!-- Horn 2014 "KinomeXplorer: an integrated platform for kinome biology studies." PMID: 24874572 -->
+        <citation type="doi">10.1038/nmeth.2968</citation>
+          <!-- upstream kinase mapping and merge and filter -->
+        <!-- Hornbeck 2012 "PhosphoSitePlus: a comprehensive resource for investigating the structure and function of experimentally determined post-translational modifications in man and mouse." PMID: 22135298 -->
+        <citation type="doi">10.1093/nar/gkr1122</citation>
+      <!-- upstream kinase mapping -->
+        <!-- Linding 2007 "Systematic discovery of in vivo phosphorylation networks." PMID: 17570479 -->
+        <citation type="doi">10.1016/j.cell.2007.05.052</citation>
+      <!-- localization filter -->
+        <!-- Olsen_2006 "Global, in vivo, and site-specific phosphorylation dynamics in signaling networks" PMID: 17081983 -->
+        <citation type="doi">10.1016/j.cell.2006.09.026</citation>
+    </citations>
+</tool>
