@@ -57,7 +57,7 @@ echo executing "TOPP_DatabaseSuitability_3"
 DatabaseSuitability -test -in_id DatabaseSuitability_in_id.idXML -in_spec DatabaseSuitability_in_spec.mzML -in_novo DatabaseSuitability_in_novo.idXML -database DatabaseSuitability_database.fasta -novo_database DatabaseSuitability_novo_database.FASTA -algorithm:FDR 0.5 -algorithm:reranking_cutoff_percentile 0.5 -out DatabaseSuitability_3.tmp > TOPP_DatabaseSuitability_3.stdout 2> TOPP_DatabaseSuitability_3.stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'TOPP_DatabaseSuitability_3 failed'; >&2 echo -e "stderr:\n$(cat TOPP_DatabaseSuitability_3.stderr | sed 's/^/    /')"; echo -e "stdout:\n$(cat TOPP_DatabaseSuitability_3.stdout)";fi
 echo executing "TOPP_Decharger_1"
-Decharger -test -in Decharger_input.featureXML -ini Decharger_input.ini -out_fm Decharger_output_fm.tmp -out_cm Decharger_output.tmp -outpairs Decharger_p_output.tmp > TOPP_Decharger_1.stdout 2> TOPP_Decharger_1.stderr
+Decharger -test -in Decharger_input.featureXML -ini Decharger_input.ini -out_fm Decharger_output_fm.tmp.featureXML -out_cm Decharger_output.tmp -outpairs Decharger_p_output.tmp > TOPP_Decharger_1.stdout 2> TOPP_Decharger_1.stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'TOPP_Decharger_1 failed'; >&2 echo -e "stderr:\n$(cat TOPP_Decharger_1.stderr | sed 's/^/    /')"; echo -e "stdout:\n$(cat TOPP_Decharger_1.stdout)";fi
 echo executing "TOPP_DTAExtractor_1"
 DTAExtractor -test -in DTAExtractor_1_input.mzML -out DTAExtractor -rt :61 > TOPP_DTAExtractor_1.stdout 2> TOPP_DTAExtractor_1.stderr
@@ -99,7 +99,7 @@ echo executing "TOPP_FeatureFinderIdentification_3"
 FeatureFinderIdentification -test -in FeatureFinderIdentification_1_input.mzML -id FeatureFinderIdentification_1_input.idXML -out FeatureFinderIdentification_3.tmp.featureXML -extract:mz_window 0.1 -detect:peak_width 60 -model:type symmetric > TOPP_FeatureFinderIdentification_3.stdout 2> TOPP_FeatureFinderIdentification_3.stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'TOPP_FeatureFinderIdentification_3 failed'; >&2 echo -e "stderr:\n$(cat TOPP_FeatureFinderIdentification_3.stderr | sed 's/^/    /')"; echo -e "stdout:\n$(cat TOPP_FeatureFinderIdentification_3.stdout)";fi
 echo executing "TOPP_FeatureFinderIdentification_5"
-FeatureFinderIdentification -test -in FeatureFinderIdentification_1_input.mzML -id FeatureFinderIdentification_1_input.idXML -out FeatureFinderIdentification_5.tmp.featureXML -candidates_out FeatureFinderIdentification_5_candidates.tmp -extract:mz_window 0.1 -extract:batch_size 10 -detect:peak_width 60 -model:type none > TOPP_FeatureFinderIdentification_5.stdout 2> TOPP_FeatureFinderIdentification_5.stderr
+FeatureFinderIdentification -test -in FeatureFinderIdentification_1_input.mzML -id FeatureFinderIdentification_1_input.idXML -out FeatureFinderIdentification_5.tmp.featureXML -candidates_out FeatureFinderIdentification_5_candidates.tmp.featureXML -extract:mz_window 0.1 -extract:batch_size 10 -detect:peak_width 60 -model:type none > TOPP_FeatureFinderIdentification_5.stdout 2> TOPP_FeatureFinderIdentification_5.stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'TOPP_FeatureFinderIdentification_5 failed'; >&2 echo -e "stderr:\n$(cat TOPP_FeatureFinderIdentification_5.stderr | sed 's/^/    /')"; echo -e "stdout:\n$(cat TOPP_FeatureFinderIdentification_5.stdout)";fi
 echo executing "TOPP_FeatureFinderMRM_1"
 FeatureFinderMRM -test -in FeatureFinderMRM_1_input.mzML -ini FeatureFinderMRM_1_parameters.ini -out FeatureFinderMRM_1.tmp > TOPP_FeatureFinderMRM_1.stdout 2> TOPP_FeatureFinderMRM_1.stderr

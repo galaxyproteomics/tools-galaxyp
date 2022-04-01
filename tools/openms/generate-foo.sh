@@ -70,13 +70,13 @@ function get_tests2 {
 
         ctdtmp=$(mktemp)
         # using eval: otherwise for some reason quoted values are not used properly ('A B' -> ["'A", "B'"])
-        >&2 echo "python3 fill_ctd_clargs.py --ini_file $ini $cli" 
+        # >&2 echo "python3 fill_ctd_clargs.py --ini_file $ini $cli" 
         eval "python3 fill_ctd_clargs.py --ini_file $ini $cli" > "$ctdtmp"
-        >&2 echo $ctdtmp
+        # >&2 echo $ctdtmp
         # >&2 cat $ctdtmp
         testtmp=$(mktemp)
-        >&2 echo CTDConverter galaxy -i $ctdtmp -o $testtmp -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib
-        CTDConverter galaxy -i $ctdtmp -o $testtmp -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib --test-condition "compare=sim_size" "delta_frac=0.05" > /dev/null
+        # >&2 echo CTDConverter galaxy -i $ctdtmp -o $testtmp -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib
+        CTDConverter galaxy -i $ctdtmp -o $testtmp -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib --test-condition "compare=sim_size" "delta_frac=0.7" > /dev/null
         echo "<!-- $test_id -->"
         cat $testtmp | grep -v '<output.*file=""' # | grep -v 'CHEMISTRY/'
 

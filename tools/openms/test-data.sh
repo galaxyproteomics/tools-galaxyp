@@ -45,14 +45,17 @@ eval "$(conda shell.bash hook)"
 
 echo "Clone OpenMS $VERSION sources"
 if [[ ! -d $OPENMSGIT ]]; then
-	git clone -b release/$VERSION.0 https://github.com/OpenMS/OpenMS.git $OPENMSGIT
+	# TODO >2.8 reenable original release branch .. also in else branch
+	# the plus branch contains commits from https://github.com/OpenMS/OpenMS/pull/5920 and https://github.com/OpenMS/OpenMS/pull/5917
+	# git clone -b release/$VERSION.0 https://github.com/OpenMS/OpenMS.git $OPENMSGIT
+	git clone -b release/$VERSION.0-plus https://github.com/bernt-matthias/OpenMS.git $OPENMSGIT
 	cd $OPENMSGIT
 	git submodule init
 	git submodule update
 	cd -
 else
 	cd $OPENMSGIT
-	git pull origin release/$VERSION.0
+	git pull origin release/$VERSION.0-plus
 	cd -
 fi
 
@@ -93,7 +96,7 @@ else
 fi
 conda activate $OPENMSENV
 cd $CTDCONVERTER
-python -m pip install . --no-deps -vv
+python -m pip install . --no-deps
 cd -
 conda deactivate
 
