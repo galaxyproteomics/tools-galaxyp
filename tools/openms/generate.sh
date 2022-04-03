@@ -55,6 +55,7 @@ fi
 ## conversion ctd->xml 
 ###############################################################################
 
+>&2 echo "generate tool xml from ctd files"
 find . -maxdepth 0 -name "[A-Z]*xml" -delete
 source $(dirname $(which conda))/../etc/profile.d/conda.sh
 conda activate OpenMS$VERSION-env
@@ -65,10 +66,14 @@ CTDConverter galaxy -i ctd/*ctd -o ./ -s tools_blacklist.txt -f "$FILETYPES" \
 if [[ "$?" -ne "0" ]]; then >&2 echo 'CTD -> XML conversion failed'; >&2 echo -e "stderr:\n$(cat convert.err)"; fi
 conda deactivate
 
+>&2 echo "apply patches"
 patch PepNovoAdapter.xml < PepNovoAdapter.patch
 patch OMSSAAdapter.xml < OMSSAAdapter.patch
 
 # https://github.com/OpenMS/OpenMS/pull/4984
 sed -i -e 's@http://www.openms.de/doxygen/nightly/html/@http://www.openms.de/doxygen/release/2.8.0/html/@' ./*xml
+
+# TODO should be fixed in >2.8 https://github.com/OpenMS/OpenMS/pull/6018
+sed -i -e 's@https://ccms-ucsd.github.io/GNPSDocumentation/featurebasedmolecularnetworking_with_openms@https://ccms-ucsd.github.io/GNPSDocumentation/featurebasedmolecularnetworking-with-openms@' .*xml
 
 rm macros_autotest.xml
