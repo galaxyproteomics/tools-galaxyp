@@ -448,8 +448,8 @@ def __main__():
                 UniProtSeqLUT[(Sequence, GENE_NAME)].append(Gene_Name)
                 if OS != N_A:
                     Description += " OS=" + OS
-                if OX != N_A:
-                    Description += " OX=" + str(int(OX))
+                if OX != -1:
+                    Description += " OX=" + str(OX)
                 if Gene_Name != N_A:
                     Description += " GN=" + Gene_Name
                 if PE != N_A:

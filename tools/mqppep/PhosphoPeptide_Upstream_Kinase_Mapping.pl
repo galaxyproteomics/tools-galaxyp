@@ -157,39 +157,53 @@ sub replace_pSpTpY {
     $formatted_sequence;
 }
 
-sub pseudo_sed()
+sub pseudo_sed
 {
+    # pseudo_sed produces "UniProt_ID\tDescription\tOS\tOX\tGN\tPE\tSV"
     # Comments give the sed equivalent
-    my $s;
+    my ($t) = @_;
+    my $s = $t;
     # / GN=/!{ s:\(OX=[^ \t]*\):\1 GN=N/A:; };
-    unless (m / GN=/s)
+    unless ($s =~ m / GN=/s)
     {
-        $s = s :(OX=[^ \t]*):${1} GN=N/A:s;
+        $s =~ s :(OX=[^ \t]*):${1} GN=N/A:s;
     }
     # / PE=/!{ s:\(GN=[^ \t]*\):\1 PE=N/A:; };
-    unless (m / PE=/s)
+    unless ($s =~ m / PE=/s)
     {
-        $s = s :(GN=[^ \t]*):${1} PE=N/A:s;
+        $s =~ s :(GN=[^ \t]*):${1} PE=N/A:s;
     }
     # / SV=/!{ s:\(PE=[^ \t]*\):\1 SV=N/A:; };
-    unless (m / SV=/s)
+    unless ($s =~ m / SV=/s)
     {
-        $s = s :(PE=[^ \t]*):${1} SV=N/A:s;
+        $s =~ s :(PE=[^ \t]*):${1} SV=N/A:s;
     }
     # s/^sp.//;
-    $s = s /^sp.//s;
+    $s =~ s :^...::s;
     # s/[|]/\t/g;
-    $s = s /[|]/\t/sg;
-    # s/ OS=/\t/;
-    $s = s / OS=/\t/s;
-    # s/ OX=/\t/;
-    $s = s / OX=/\t/s;
-    # s/ GN=/\t/;
-    $s = s / GN=/\t/s;
-    # s/ PE=/\t/;
-    $s = s / PE=/\t/s;
-    # s/ SV=/\t/;
-    $s = s / SV=/\t/s;
+    $s =~ s :[|]:\t:sg;
+    if ( !($s =~ m/ OX=/s)
+      && !($s =~ m/ GN=/s)
+      && !($s =~ m/ PE=/s)
+      && !($s =~ m/ SV=/s)
+    ) {
+      # OS= is used elsewhere, but it's not helpful without OX and GN
+      $s =~ s/OS=/Species /g;
+      # supply sensible default values
+      $s .= "\tN/A\t-1\tN/A\tN/A\tN/A";
+    } else {
+      # s/ OS=/\t/;
+      if ($s =~ m/ OS=/s) { $s =~ s: OS=:\t:s; } else { $s =~ s:(.*)\t:$1\tN/A\t:x; };
+      # s/ OX=/\t/;
+      if ($s =~ m/ OX=/s) { $s =~ s: OX=:\t:s; } else { $s =~ s:(.*)\t:$1\t-1\t:x; };
+      # s/ GN=/\t/;
+      if ($s =~ m/ GN=/s) { $s =~ s: GN=:\t:s; } else { $s =~ s:(.*)\t:$1\tN/A\t:x; };
+      # s/ PE=/\t/;
+      if ($s =~ m/ PE=/s) { $s =~ s: PE=:\t:s; } else { $s =~ s:(.*)\t:$1\tN/A\t:x; };
+      # s/ SV=/\t/;
+      if ($s =~ m/ SV=/s) { $s =~ s: SV=:\t:s; } else { $s =~ s:(.*)\t:$1\tN/A\t:x; };
+    }
+    return $s;
 } # sub pseudo_sed
 
 getopts('i:f:s:n:m:p:r:P:F:o:O:D:hva', \%opts) ;
@@ -390,6 +404,14 @@ if ($use_sqlite == 0) {
   # accession: Q9Y3B9
   # name: RRP15_HUMAN RRP15-like protein OS=Homo sapiens OX=9606 GN=RRP15 PE=1 SV=2
   # sequence: MAAAAPDSRVSEEENLKKTPKKKMKMVTGAVASVLEDEATDTSDSEGSCGSEKDHFYSDD DAIEADSEGDAEPCDKENENDGESSVGTNMGWADAMAKVLNKKTPESKPTILVKNKKLEK EKEKLKQERLEKIKQRDKRLEWEMMCRVKPDVVQDKETERNLQRIATRGVVQLFNAVQKH QKNVDEKVKEAGSSMRKRAKLISTVSKKDFISVLRGMDGSTNETASSRKKPKAKQTEVKS EEGPGWTILRDDFMMGASMKDWDKESDGPDDSRPESASDSDT
+  #
+  # e.g.
+  #   >gi|114939|sp|P00722.2|BGAL_ECOLI Beta-galactosidase (Lactase) cRAP
+  #   >gi|52001466|sp|P00366.2|DHE3_BOVIN Glutamate dehydrogenase 1, mitochondrial precursor (GDH) cRAP
+  #
+  # e.g.
+  #   >zs|P00009.24.AR-V2_1.zs|zs_peptide_0024_AR-V2_1
+
 
   open (IN1, "$fasta_in") or die "I couldn't find $fasta_in\n";
   print "Reading FASTA file $fasta_in\n";
@@ -406,23 +428,38 @@ if ($use_sqlite == 0) {
     # ref: https://perldoc.perl.org/functions/split#split-/PATTERN/,EXPR
     #      "If only PATTERN is given, EXPR defaults to $_."
     my (@x) = split(/\|/);
+    # begin FIX >gi|114939|sp|P00722.2|BGAL_ECOLI Beta-galactosidase (Lactase) cRAP
+    if (@x > 3) {
+      @x = (">".$x[$#x - 2], $x[$#x - 1], $x[$#x]);
+    }
+    # end FIX >gi|114939|sp|P00722.2|BGAL_ECOLI Beta-galactosidase (Lactase) cRAP
     for my $i (0 .. $#x) {
       $x[$i] =~ s/\r//g; $x[$i]  =~ s/\n//g; $x[$i]  =~ s/\"//g; }
-    if ($x[0] =~ /^>/) {
-      $x[0] =~ s/\>//g;
-      push (@databases, $x[0]);
-      push (@accessions, $x[1]);
-      push (@names, $x[2]);
-      pseudo_sed();
-      s/$/\t/;
-      push (@parsed_fasta, $_);
-    } elsif ($x[0] =~ /^\w/) {
-      if (defined $sequences[$#accessions]) {
-        $sequences[$#accessions] = $sequences[$#accessions].$x[0];
-      } else {
-        $sequences[$#accessions] = $x[0];
+    # Use of uninitialized value $x[0] in pattern match (m//) at /home/rstudio/src/mqppep/tools/mqppep/PhosphoPeptide_Upstream_Kinase_Mapping.pl line 411, <IN1> line 3.
+    if (exists($x[0])) {
+      if ($x[0] =~ /^>/) {
+        # parsing header line
+        $x[0] =~ s/\>//g;
+        push (@databases, $x[0]);
+        push (@accessions, $x[1]);
+        push (@names, $x[2]);
+        # format tags of standard UniProtKB headers as tab-separated values
+        # pseudo_sed produces "UniProt_ID\tDescription\tOS\tOX\tGN\tPE\tSV"
+        $_ = pseudo_sed(join "\t", (">".$x[0], $x[1], $x[2]));
+        # append tab as separator between header and sequence
+        s/$/\t/;
+        # parsed_fasta gets "UniProt_ID\tDescription\tOS\tOX\tGN\tPE\tSV\t"
+        print "push (\@parsed_fasta, $_)\n" if (0 && $x[0] ne "zs");
+        push (@parsed_fasta, $_);
+      } elsif ($x[0] =~ /^\w/) {
+        # line is a portion of the sequence
+        if (defined $sequences[$#accessions]) {
+          $sequences[$#accessions] = $sequences[$#accessions].$x[0];
+        } else {
+          $sequences[$#accessions] = $x[0];
+        }
+        $parsed_fasta[$#accessions] = $parsed_fasta[$#accessions].$x[0];
       }
-      $parsed_fasta[$#accessions] = $parsed_fasta[$#accessions].$x[0];
     }
   }
   close IN1;
@@ -488,18 +525,40 @@ if ($use_sqlite == 0) {
   my $wrd;
   while ( scalar @parsed_fasta > 0 ) {
       $database = $databases[$#parsed_fasta];
-      #### print "parsed_fasta[-1]: " . $parsed_fasta[$#parsed_fasta] . "\n";
+      # row_string gets "UniProt_ID\tDescription\tOS\tOX\tGN\tPE\tSV\t"
+      #                  1           2            3   4   5   6   7   sequence database
       $row_string = pop(@parsed_fasta);
-      #### print "row_string: $row_string\n";
       @row = (split /\t/, $row_string);
+      if ((not exists($row[4])) || ($row[4] eq "")) {
+        die("invalid fasta line\n$row_string\n");
+      };
+      if ($row[4] eq "N/A") {
+        print "Organism_ID is 'N/A' for row $row_count:\n'$row_string'\n";
+        $row[4] = -1;
+      };
       for $i (1..3,5..8) {
+          #BIND print "bind_param $i, $row[$i]\n";
           $stmth->bind_param($i, $row[$i]);
       }
+      #BIND print "bind_param 4, $row[4]\n";
       $stmth->bind_param(9, $database);
+      #BIND print "bind_param 4, $row[4]\n";
       $stmth->bind_param(4, $row[4], { TYPE => SQL_INTEGER });
       if (not $stmth->execute()) {
-          print "Error in row $row_count: $stmth->errstr\n";
+          print "Error in row $row_count: " . $dbh->errstr . "\n";
+          print "Row $row_count: $row_string\n";
+          print "Row $row_count: " . ($row_string =~ s/\t/@/g) . "\n";
       }
+      if (0 && $database ne "zs") {
+          print "row_count: $row_count\n";
+          #### print "row_string: $row_string\n";
+          print "Row $row_count: $row_string\n";
+          for $i (1..3,5..8) {
+              print "bind_param $i, $row[$i]\n" if (exists($row[$i]));
+          }
+          print "bind_param 4, $row[4]\n" if (exists($row[4]));
+          print "bind_param 9, $database\n";
+      };
       $row_count += 1;
   }
   # ...
@@ -531,10 +590,12 @@ if ($use_sqlite == 1) {
   # Uniprot_ID, Description, Organism_Name, Organism_ID, Gene_Name, PE, SV, Sequence
   $stmth = $dbh->prepare("
   SELECT Uniprot_ID
-  , Description || ' OS=' || Organism_Name || ' OX=' || Organism_ID
-    || CASE WHEN Gene_Name = 'N/A' THEN '' ELSE ' GN='|| Gene_Name END
-    || CASE WHEN PE = 'N/A' THEN '' ELSE ' PE='|| PE        END
-    || CASE WHEN SV = 'N/A' THEN '' ELSE ' SV='|| SV        END
+  , Description
+    || CASE WHEN Organism_Name = 'N/A' THEN '' ELSE ' OS=' || Organism_Name END
+    || CASE WHEN Organism_ID = -1      THEN '' ELSE ' OX=' || Organism_ID   END
+    || CASE WHEN Gene_Name = 'N/A'     THEN '' ELSE ' GN=' || Gene_Name     END
+    || CASE WHEN PE = 'N/A'            THEN '' ELSE ' PE=' || PE            END
+    || CASE WHEN SV = 'N/A'            THEN '' ELSE ' SV=' || SV            END
     AS Description
   , Sequence
   , Database
@@ -595,9 +656,9 @@ print "\n--- Start search at " . format_localtime_iso8601() ."\n";
 
 print "    --> Calling 'search_ppep' script\n\n";
 if ($verbose) {
-  $i = system("\$CONDA_PREFIX/bin/python $dirname/search_ppep.py -u $db_out -p $file_in --verbose");
+  $i = system("python $dirname/search_ppep.py -u $db_out -p $file_in --verbose");
 } else {
-  $i = system("\$CONDA_PREFIX/bin/python $dirname/search_ppep.py -u $db_out -p $file_in");
+  $i = system("python $dirname/search_ppep.py -u $db_out -p $file_in");
 }
 if ($i) {
   print "python $dirname/search_ppep.py -u $db_out -p $file_in\n  exited with exit code $i\n";
@@ -1283,7 +1344,7 @@ sub add_citation {
         print "Error writing $cit_label cit for table $cit_table: $stmth->errstr\n";
     }
 }
-my ($citation_text, $citation_table); 
+my ($citation_text, $citation_table);
 
 # PSP regulatory or kinase/substrate site
 $citation_text = 'PhosphoSitePlus(R) (PSP) was created by Cell Signaling Technology Inc. It is licensed under a Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported License. When using PSP data or analyses in printed publications or in online resources, the following acknowledgements must be included: (a) the words "PhosphoSitePlus(R), www.phosphosite.org" must be included at appropriate places in the text or webpage, and (b) the following citation must be included in the bibliography: "Hornbeck PV, Zhang B, Murray B, Kornhauser JM, Latham V, Skrzypek E PhosphoSitePlus, 2014: mutations, PTMs and recalibrations. Nucleic Acids Res. 2015 43:D512-20. PMID: 25514926."';
@@ -1611,7 +1672,7 @@ foreach my $peptide (keys %data) {
                     $organism_2{$peptide} = $organism{$seq_plus7aa};
                 } else {
                 } # if (exists($regulatory_sites_PhosphoSite -> {$seq_plus7aa}))
-            } # for my $k (0 .. $#formatted_sequences) 
+            } # for my $k (0 .. $#formatted_sequences)
         } # if/else number of phosphosites
     } # for each motif i # for my $i (0 .. $#{$unique_motifs{$peptide}})
 } # for each $peptide

@@ -103,12 +103,27 @@ def __main__():
             , PE
             , SV
             , Sequence
-            , Description || ' OS=' ||
-                Organism_Name || ' OX=' || Organism_ID ||
-                CASE WHEN Gene_Name = 'N/A' THEN '' ELSE ' GN='|| Gene_Name END ||
-                CASE WHEN PE = 'N/A' THEN '' ELSE ' PE='|| PE END ||
-                CASE WHEN SV = 'N/A' THEN '' ELSE ' SV='|| SV END
-                                                       AS long_description
+            , Description ||
+                CASE WHEN Organism_Name = 'N/A'
+                     THEN ''
+                     ELSE ' OS='|| Organism_Name
+                     END ||
+                CASE WHEN Organism_ID = -1
+                     THEN ''
+                     ELSE ' OX='|| Organism_ID
+                     END ||
+                CASE WHEN Gene_Name = 'N/A'
+                     THEN ''
+                     ELSE ' GN='|| Gene_Name
+                     END ||
+                CASE WHEN PE = 'N/A'
+                     THEN ''
+                     ELSE ' PE='|| PE
+                     END ||
+                CASE WHEN SV = 'N/A'
+                     THEN ''
+                     ELSE ' SV='|| SV
+                     END AS long_description
             , Database
           FROM UniProtKB
           ;
