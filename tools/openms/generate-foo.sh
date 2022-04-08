@@ -75,13 +75,12 @@ function get_tests2 {
         # >&2 echo $ctdtmp
         # >&2 cat $ctdtmp
         testtmp=$(mktemp)
-        # >&2 echo CTDConverter galaxy -i $ctdtmp -o $testtmp -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib
-        CTDConverter galaxy -i $ctdtmp -o $testtmp -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib --test-condition "compare=sim_size" "delta_frac=0.7" > /dev/null
+        # >&2 echo CTDConverter galaxy -i $ctdtmp -o $testtmp -s aux/tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p aux/hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib
+        CTDConverter galaxy -i $ctdtmp -o $testtmp -s aux/tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p aux/hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib --test-condition "compare=sim_size" "delta_frac=0.7" > /dev/null
         echo "<!-- $test_id -->"
         cat $testtmp | grep -v '<output.*file=""' # | grep -v 'CHEMISTRY/'
 
-        # ./regexify.py --ini_file "$ctdtmp"
-        # rm "$ctdtmp" "$testtmp"
+        rm "$ctdtmp" "$testtmp"
 
         #> /dev/null
 
