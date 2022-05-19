@@ -9,8 +9,8 @@ CONDAPKG="https://anaconda.org/bioconda/openms/2.8.0/download/linux-64/openms-2.
 
 # install conda
 if [ -z "$tmp" ]; then
-	tmp=$(mktemp -d)
-	created="yes"
+    tmp=$(mktemp -d)
+    created="yes"
 fi
 
 export OPENMSGIT="$tmp/OpenMS$VERSION.0-git"
@@ -18,15 +18,21 @@ export OPENMSPKG="$tmp/OpenMS$VERSION-pkg/"
 export OPENMSENV="OpenMS$VERSION-env"
 
 if [ -z "$CTDCONVERTER" ]; then
-	export CTDCONVERTER="$tmp/CTDConverter"
+    export CTDCONVERTER="$tmp/CTDConverter"
+fi
+
+if [[ -z "$1" ]]; then
+	autotests="/dev/null"
+else
+	autotests="$1"
 fi
 
 if type conda > /dev/null; then  
-	true
+    true
 else
-	wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-	bash Miniconda3-latest-Linux-x86_64.sh -b -p "$tmp/miniconda"
-	source "$tmp/miniconda/bin/activate"
+    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+    bash Miniconda3-latest-Linux-x86_64.sh -b -p "$tmp/miniconda"
+    source "$tmp/miniconda/bin/activate"
 fi
 eval "$(conda shell.bash hook)"
 
@@ -39,27 +45,27 @@ eval "$(conda shell.bash hook)"
 
 echo "Clone OpenMS $VERSION sources"
 if [[ ! -d $OPENMSGIT ]]; then
-	# TODO >2.8 reenable original release branch .. also in else branch
-	# the plus branch contains commits from https://github.com/OpenMS/OpenMS/pull/5920 and https://github.com/OpenMS/OpenMS/pull/5917
-	# git clone -b release/$VERSION.0 https://github.com/OpenMS/OpenMS.git $OPENMSGIT
-	git clone -b release/$VERSION.0-plus https://github.com/bernt-matthias/OpenMS.git $OPENMSGIT
-	cd $OPENMSGIT
-	git submodule init
-	git submodule update
-	cd -
+    # TODO >2.8 reenable original release branch .. also in else branch
+    # the plus branch contains commits from https://github.com/OpenMS/OpenMS/pull/5920 and https://github.com/OpenMS/OpenMS/pull/5917
+    # git clone -b release/$VERSION.0 https://github.com/OpenMS/OpenMS.git $OPENMSGIT
+    git clone -b release/$VERSION.0-plus https://github.com/bernt-matthias/OpenMS.git $OPENMSGIT
+    cd $OPENMSGIT
+    git submodule init
+    git submodule update
+    cd -
 else
-	cd $OPENMSGIT
-	git pull origin release/$VERSION.0-plus
-	cd -
+    cd $OPENMSGIT
+    git pull origin release/$VERSION.0-plus
+    cd -
 fi
 
 echo "Create OpenMS $VERSION conda env"
 # TODO currently add lxml (needed by CTDConverter)
 # TODO for some reason a to recent openjdk is used
 if conda env list | grep "$OPENMSENV"; then
-	true
+    true
 else
-	conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults -n $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION omssa=2.1.9 ctdopts=1.5 lxml
+    conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults -n $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION omssa=2.1.9 ctdopts=1.5 lxml
 # chmod -R u-w $OPENMSENV 
 fi
 ###############################################################################
@@ -69,10 +75,10 @@ fi
 echo "Download OpenMS $VERSION package $CONDAPKG"
 
 if [[ ! -d $OPENMSPKG ]]; then
-	mkdir $OPENMSPKG
-	wget -q -P $OPENMSPKG/ "$CONDAPKG"
-	tar -xf $OPENMSPKG/"$(basename $CONDAPKG)" -C $OPENMSPKG/
-	rm $OPENMSPKG/"$(basename $CONDAPKG)"
+    mkdir $OPENMSPKG
+    wget -q -P $OPENMSPKG/ "$CONDAPKG"
+    tar -xf $OPENMSPKG/"$(basename $CONDAPKG)" -C $OPENMSPKG/
+    rm $OPENMSPKG/"$(basename $CONDAPKG)"
 fi
 
 ###############################################################################
@@ -81,12 +87,12 @@ fi
 ###############################################################################
 echo "Clone CTDConverter"
 if [[ ! -d $CTDCONVERTER ]]; then
-	#git clone https://github.com/WorkflowConversion/CTDConverter.git CTDConverter
-	git clone -b topic/fix-selects2 https://github.com/bernt-matthias/CTDConverter.git $CTDCONVERTER
+    #git clone https://github.com/WorkflowConversion/CTDConverter.git CTDConverter
+    git clone -b topic/fix-selects2 https://github.com/bernt-matthias/CTDConverter.git $CTDCONVERTER
 else
-	cd $CTDCONVERTER
-	git pull origin topic/fix-selects2
-	cd -
+    cd $CTDCONVERTER
+    git pull origin topic/fix-selects2
+    cd -
 fi
 conda activate $OPENMSENV
 cd $CTDCONVERTER
@@ -108,19 +114,19 @@ cp -r $OPENMSGIT/share/OpenMS/MAPPING/ test-data/
 cp -r $OPENMSGIT/share/OpenMS/CHEMISTRY test-data/
 cp -r $OPENMSGIT/share/OpenMS/examples/ test-data/
 if [ ! -f test-data/MetaboliteSpectralDB.mzML ]; then 
-	wget -nc https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Tutorials/Data/latest/Example_Data/Metabolomics/databases/MetaboliteSpectralDB.mzML
-	mv MetaboliteSpectralDB.mzML test-data/
+    wget -nc https://abibuilder.informatik.uni-tuebingen.de/archive/openms/Tutorials/Data/latest/Example_Data/Metabolomics/databases/MetaboliteSpectralDB.mzML
+    mv MetaboliteSpectralDB.mzML test-data/
 fi
 ln -fs TOFCalibration_ref_masses test-data/TOFCalibration_ref_masses.txt
 ln -fs TOFCalibration_const test-data/TOFCalibration_const.csv
 
 if [ ! -d test-data/pepnovo_models/ ]; then
-	mkdir -p /tmp/pepnovo
-	wget -nc http://proteomics.ucsd.edu/Software/PepNovo/PepNovo.20120423.zip
-	unzip PepNovo.20120423.zip -d /tmp/pepnovo/
-	mv /tmp/pepnovo/Models test-data/pepnovo_models/
-	rm PepNovo.20120423.zip
-	rm -rf /tmp/pepnovo
+    mkdir -p /tmp/pepnovo
+    wget -nc http://proteomics.ucsd.edu/Software/PepNovo/PepNovo.20120423.zip
+    unzip PepNovo.20120423.zip -d /tmp/pepnovo/
+    mv /tmp/pepnovo/Models test-data/pepnovo_models/
+    rm PepNovo.20120423.zip
+    rm -rf /tmp/pepnovo
 fi
 ###############################################################################
 ## generate ctd files using the binaries in the conda package 
@@ -132,10 +138,10 @@ mkdir -p ctd
 
 for i in $OPENMSPKG/bin/*
 do
-	b=$(basename $i)
-	echo $b
-	$b -write_ctd ctd/
-	sed -i -e 's/²/^2/' ctd/$b.ctd
+    b=$(basename $i)
+    echo $b
+    $b -write_ctd ctd/
+    sed -i -e 's/²/^2/' ctd/$b.ctd
 done
 ###############################################################################
 ## fix ini files: OpenMS test data contains ini files with outdated ini files.
@@ -148,17 +154,17 @@ done
 echo "Update test INI files"
 for ini in test-data/*ini
 do
-	tool=$(cat $ini | grep 'NODE name="' | head -n 1 | sed 's/.*name="\([^"]\+\)".*/\1/')
-	bin=$(which $tool)
-	if [[ -z $bin ]]; then
+    tool=$(cat $ini | grep 'NODE name="' | head -n 1 | sed 's/.*name="\([^"]\+\)".*/\1/')
+    bin=$(which $tool)
+    if [[ -z $bin ]]; then
           >&2 echo "missing binary to convert $ini"
-		  continue
-	fi
-	cp $ini $ini.backup
-	$bin -ini $ini -write_ini $ini > $ini.stdout 2> $ini.stderr
-	if [[ "$?" -ne "0" ]]; then
-		>&2 echo "could not convert $ini"
-	fi
+          continue
+    fi
+    cp $ini $ini.backup
+    $bin -ini $ini -write_ini $ini > $ini.stdout 2> $ini.stderr
+    if [[ "$?" -ne "0" ]]; then
+        >&2 echo "could not convert $ini"
+    fi
 done
 
 ###############################################################################
@@ -191,9 +197,9 @@ prepare_test_data >> prepare_test_data.sh #tmp_test_data.sh
 ## # remove calls not needed for the tools listed in any .list file
 ## echo LIST $LIST
 ## if [ ! -z "$LIST" ]; then
-## 	REX=$(echo $LIST | sed 's/ /\n/g' | sed 's@.*/\([^/]\+\).xml$@\1@' | tr '\n' '|' | sed 's/|$//')
+##     REX=$(echo $LIST | sed 's/ /\n/g' | sed 's@.*/\([^/]\+\).xml$@\1@' | tr '\n' '|' | sed 's/|$//')
 ## else
-## 	REX=".*"
+##     REX=".*"
 ## fi
 ## echo REX $REX
 ## cat tmp_test_data.sh | egrep "($REX)" >> prepare_test_data.sh
@@ -222,16 +228,13 @@ cd - || exit
 ## auto generate tests
 ###############################################################################
 
-if [[ -n "$1" ]]; then
-	autotests="$1"
-
 echo "Write test macros to $autotests"
 echo "<macros>" > "$autotests"
 
 for i in $(ls ctd/*ctd)
 do
-	b=$(basename "$i" .ctd)
-	get_tests2 "$b" >> "$autotests"
+    b=$(basename "$i" .ctd)
+    get_tests2 "$b" >> "$autotests"
 done
 echo "</macros>" >> "$autotests"
 
@@ -253,25 +256,23 @@ echo "</macros>" >> "$autotests"
 # not able to specify composite test data  
 # -> SpectraSTSearchAdapter 
 if [[ ! -z "$1" ]]; then
-	echo "" > macros_discarded_auto.xml
-	for i in OpenSwathFileSplitter IDRipper MzMLSplitter SeedListGenerator MSFraggerAdapter MaRaClusterAdapter NovorAdapter SpectraSTSearchAdapter
-	do
-		echo "<xml name=\"manutest_$i\">" >>  macros_discarded_auto.xml
-		xmlstarlet sel -t -c "/macros/xml[@name='autotest_$i']/test" macros_autotest.xml >>  macros_discarded_auto.xml
-		echo "</xml>"  >>  macros_discarded_auto.xml
-		xmlstarlet ed -d "/macros/xml[@name='autotest_$i']/test" macros_autotest.xml > tmp
-		mv tmp macros_autotest.xml
-	done
-	>&2 echo "discarded autogenerated macros for curation in macros_discarded_auto.xml"
+    echo "" > macros_discarded_auto.xml
+    for i in OpenSwathFileSplitter IDRipper MzMLSplitter SeedListGenerator MSFraggerAdapter MaRaClusterAdapter NovorAdapter SpectraSTSearchAdapter
+    do
+        echo "<xml name=\"manutest_$i\">" >>  macros_discarded_auto.xml
+        xmlstarlet sel -t -c "/macros/xml[@name='autotest_$i']/test" macros_autotest.xml >>  macros_discarded_auto.xml
+        echo "</xml>"  >>  macros_discarded_auto.xml
+        xmlstarlet ed -d "/macros/xml[@name='autotest_$i']/test" macros_autotest.xml > tmp
+        mv tmp macros_autotest.xml
+    done
+    >&2 echo "discarded autogenerated macros for curation in macros_discarded_auto.xml"
 fi
 conda deactivate
-
-fi
 
 ## remove broken symlinks in test-data
 find test-data/ -xtype l -delete
 
 # if [ ! -z "$created" ]; then
-# 	echo "Removing temporary directory"
-# 	rm -rf "$tmp"
+#     echo "Removing temporary directory"
+#     rm -rf "$tmp"
 # fi
