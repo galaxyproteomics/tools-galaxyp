@@ -1,7 +1,7 @@
 
 # 
 # Author: Praveen Kumar
-# Updated: April 6th, 2018
+# Updated: April 6th, 2018 (updated to python3: May 2022)
 # 
 # 
 # 
@@ -38,12 +38,12 @@ def main():
                                 start = a[4].strip()
                                 end = a[3].strip()
                             else:
-                                print "Please check the start end coordinates in the GTF file"
+                                print("Please check the start end coordinates in the GTF file")
                         else:
-                            print "Please check the strand information in the GTF file. It should be '+' or '-'."
-                        if not gtf.has_key(strand):
+                            print("Please check the strand information in the GTF file. It should be '+' or '-'.")
+                        if not strand in gtf:
                             gtf[strand] = {}
-                        if not gtf[strand].has_key(type):
+                        if not type in gtf[strand]:
                             gtf[strand][type] = []
                         b = re.search("gene_id \"(.+?)\";", a[8].strip())
                         gene = b.group(1)
@@ -56,8 +56,8 @@ def main():
                         gtf[strand][type].append(data)
                 
                         if type == "exon":
-                            if gtf_transcript.has_key(chr+"#"+strand):
-                                if gtf_transcript[chr+"#"+strand].has_key(transcript+"#"+gene):
+                            if chr+"#"+strand in gtf_transcript:
+                                if transcript+"#"+gene in gtf_transcript[chr+"#"+strand]:
                                     gtf_transcript[chr+"#"+strand][transcript+"#"+gene][0].append(int(start))
                                     gtf_transcript[chr+"#"+strand][transcript+"#"+gene][1].append(int(end))
                                 else:
@@ -71,7 +71,7 @@ def main():
                                 gtf_transcript[chr+"#"+strand][transcript+"#"+gene][1].append(int(end))
                 
                         if type == "gene":
-                            if gtf_gene.has_key(chr+"#"+strand):
+                            if chr+"#"+strand in gtf_gene:
                                 gtf_gene[chr+"#"+strand][0].append(int(start))
                                 gtf_gene[chr+"#"+strand][1].append(int(end))
                                 gtf_gene[chr+"#"+strand][2].append(gene)
@@ -148,7 +148,7 @@ def main():
             elif strand == "-":
                 st = "negative"
             else:
-                print "Please check the strand information in the GTF file. It should be '+' or '-'."
+                print("Please check the strand information in the GTF file. It should be '+' or '-'.")
         
             for type in gtf[strand].keys():
                 data = gtf[strand][type]
@@ -215,13 +215,8 @@ def main():
         conn.close()
         outfh.close()
     else:
-        print "USAGE: python pep_pointer.py <input GTF file> <input tblastn file> <name of output file>"
+        print("USAGE: python pep_pointer.py <input GTF file> <input tblastn file> <name of output file>")
     return None
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
