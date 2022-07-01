@@ -7,7 +7,7 @@
   </requirements>
   <macros>
     <token name="@TOOL_VERSION@">1.9.4</token>
-    <token name="@VERSION_SUFFIX@">3</token>
+    <token name="@VERSION_SUFFIX@">4</token>
     <token name="@SUBSTITUTION_RX@">[^\w\-\.]</token>
     <import>macros_modifications.xml</import>
   </macros>
@@ -31,22 +31,27 @@
       ln -s '$input_type.input_mgf' '$mgf_dir/$mgf_name' &&
       #end if
 
-      cat $metanovo_config > config.sh &&
+      ## the number of threads should be number of available threads-1 according to the docs
+      threads=\${GALAXY_SLOTS:-3} &&
+      if [ \$threads -gt 1 ]; then
+        (( threads-- ));
+      fi &&
+      echo "THREAD_LIMIT=\$threads" >> config.sh &&
+
       metanovo.sh config.sh
     ]]>
   </command>
 
   <configfiles>
-    <configfile name="metanovo_config"><![CDATA[#slurp
+    <configfile filename="config.sh"><![CDATA[#slurp
 #import re
 MGF_FOLDER=mgf_files
 #set fasta_name = re.sub('@SUBSTITUTION_RX@', '_', str($input_fasta.element_identifier))
 FASTA_FILE=fasta_file/'$fasta_name'
 OUTPUT_FOLDER=.
 CHUNKSIZE=$processing_control.CHUNKSIZE
-THREAD_LIMIT=$processing_control.THREAD_LIMIT
-JVM_Xmx='$processing_control.JVM_Xmx'
-JVM_Xms='$processing_control.JVM_Xms'
+JVM_Xmx='10000M'
+JVM_Xms='1024M'
 mn_specificity='$metanovo_parameters.mn_specificity'
 mn_enzymes='$metanovo_parameters.mn_enzymes'
 mn_max_missed_cleavages=$metanovo_parameters.mn_max_missed_cleavages
@@ -145,9 +150,6 @@ novor_mass_analyzer=Trap
 
     <section name="processing_control" expanded="False" title="Processing Control">
       <param name="CHUNKSIZE" label="Size to split fasta for parallel processing" value="100000" type="integer" optional="true"/>
-      <param name="THREAD_LIMIT" label="How many threads to use per node" value="2" type="integer" optional="true"/>
-      <param name="JVM_Xmx" label="Maximum memory allocated to each Java thread" value="10000M" type="text" optional="true"/>
-      <param name="JVM_Xms" label="Minimum memory allocated to each Java thread" value="1024M" type="text" optional="true"/>
     </section>
     <section name="metanovo_parameters" expanded="False" title="MetaNovo Parameters">
       <param name="mn_specificity" argument="-mn_specificity" label="Enzyme Specificity" type="select">
@@ -302,9 +304,39 @@ novor_mass_analyzer=Trap
     </section>
   </inputs>
   <outputs>
-    <data name="output_fasta" format="fasta" from_work_dir="metanovo/metanovo.fasta" label="MetaNovo Output FASTA"/>
-    <data name="output_csv" format="csv" from_work_dir="metanovo/metanovo.csv" label="MetaNovo Output CSV"/>
+    <data name="output_fasta" format="fasta" from_work_dir="metanovo/metanovo.fasta" label="${tool.name} on ${on_string}: FASTA"/>
+    <data name="output_csv" format="csv" from_work_dir="metanovo/metanovo.csv" label="${tool.name} on ${on_string}: CSV"/>
   </outputs>
+  <tests>
+    <test expect_num_outputs="2">
+      <param name="input_mgf" value="sample_data_1.mgf" ftype="mgf"/>
+      <param name="input_fasta" value="sample_fasta_single.fasta" ftype="fasta"/>
+      <output name="output_csv" ftype="csv">
+          <assert_contents>
+              <!-- Check header. -->
+              <has_text text=",index,Accession,Record,ID,PeptideCount,Peptides,ScanCount,Scans,Organism,Length,File,Sample sample_data_1 (msms),SAF sample_data_1,NSAF sample_data_1,Summed_NSAF,Protein_Prob,Organism_Prob,MSMS_Percent,Combined_Prob"/>
+          </assert_contents>
+      </output>
+      <output name="output_fasta" ftype="fasta" file="sample_output_single.fasta"/>
+    </test>
+    <test expect_num_outputs="2">
+      <param name="type" value="collection"/>
+      <param name="input_mgf_collection">
+        <collection type="list">
+          <element name="sample_data_1.mgf" value="sample_data_1.mgf" />
+          <element name="sample_data_2.mgf" value="sample_data_2.mgf" />
+        </collection>
+      </param>
+      <param name="input_fasta" value="sample_fasta_collection.fasta" ftype="fasta"/>
+      <output name="output_csv" ftype="csv">
+          <assert_contents>
+              <!-- Check header. -->
+              <has_text text=",index,Accession,File,ID,Length,Organism,PeptideCount,Peptides,Record,SAF sample_data_1,SAF sample_data_2,Sample sample_data_1 (msms),Sample sample_data_2 (msms),ScanCount,Scans,NSAF sample_data_1,NSAF sample_data_2,Summed_NSAF,Protein_Prob,Organism_Prob,MSMS_Percent,Combined_Prob"/>
+          </assert_contents>
+      </output>
+      <output name="output_fasta" ftype="fasta" file="sample_output_collection.fasta"/>
+    </test>
+  </tests>
   <help><![CDATA[
 **MetaNovo**
 
