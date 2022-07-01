@@ -86,37 +86,37 @@ phosphopeptide_func <- function(df) {
   for (chara in phosphoprobsequence) {
     # build peptide sequence
     if (!(
-      chara == " " |
-      chara == "(" |
-      chara == ")" |
-      chara == "." |
-      chara == "-" |
-      chara == "0" |
-      chara == "1" |
-      chara == "2" |
-      chara == "3" |
-      chara == "4" |
-      chara == "5" |
-      chara == "6" |
-      chara == "7" |
-      chara == "8" |
+      chara == " " ||
+      chara == "(" ||
+      chara == ")" ||
+      chara == "." ||
+      chara == "-" ||
+      chara == "0" ||
+      chara == "1" ||
+      chara == "2" ||
+      chara == "3" ||
+      chara == "4" ||
+      chara == "5" ||
+      chara == "6" ||
+      chara == "7" ||
+      chara == "8" ||
       chara == "9")
     ) {
       phosphopeptide <- paste(phosphopeptide, chara, sep = "")
       counter <- counter + 1
     }
     # generate score_diff
-    if (chara == "-" |
-        chara == "." |
-        chara == "0" |
-        chara == "1" |
-        chara == "2" |
-        chara == "3" |
-        chara == "4" |
-        chara == "5" |
-        chara == "6" |
-        chara == "7" |
-        chara == "8" |
+    if (chara == "-" ||
+        chara == "." ||
+        chara == "0" ||
+        chara == "1" ||
+        chara == "2" ||
+        chara == "3" ||
+        chara == "4" ||
+        chara == "5" ||
+        chara == "6" ||
+        chara == "7" ||
+        chara == "8" ||
         chara == "9"
     ) {
       score_diff <- paste(score_diff, chara, sep = "")
@@ -388,7 +388,7 @@ full_data <-
   read.table(
     file = input_file_name,
     sep = "\t",
-    header = T,
+    header = TRUE,
     quote = ""
   )
 

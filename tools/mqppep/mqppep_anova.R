@@ -3,12 +3,6 @@
 library(optparse)
 library(data.table)
 library(stringr)
-# bioconductor-preprocesscore
-#  - libopenblas
-#  - r-data.table
-#  - r-rmarkdown
-#  - r-ggplot2
-#  - texlive-core
 
 # ref for parameterizing Rmd document: https://stackoverflow.com/a/37940285
 
@@ -28,6 +22,20 @@ option_list <- list(
     type = "character",
     help = paste0("List of alpha cutoff values for significance testing;",
              " path to text file having one column and no header")
+  ),
+  make_option(
+    c("-S", "--preproc_sqlite"),
+    action = "store",
+    default = NA,
+    type = "character",
+    help = "Path to 'preproc_sqlite' produced by `mqppep_mrgfltr.py`"
+  ),
+  make_option(
+    c("-K", "--ksea_sqlite"),
+    action = "store",
+    default = NA,
+    type = "character",
+    help = "Path to 'ksea_sqlite' output produced by this tool"
   ),
   make_option(
     c("-f", "--firstDataColumn"),
@@ -99,6 +107,28 @@ option_list <- list(
     default = "QuantDataProcessingScript.html",
     type = "character",
     help = "HTML report file path"
+  ),
+  make_option(
+    c("-k", "--ksea_cutoff_statistic"),
+    action = "store",
+    default = "FDR",
+    type = "character",
+    help = paste0("Method for missing-value imputation,",
+             " one of c('FDR','p.value'), but don't expect 'p.value' to work well.")
+  ),
+  make_option(
+    c("-t", "--ksea_cutoff_threshold"),
+    action = "store",
+    default = 0.05,
+    type = "double",
+    help = paste0("Maximum score to be used to score a kinase enrichment as significant")
+  ),
+  make_option(
+    c("-M", "--anova_ksea_metadata"),
+    action = "store",
+    default = "anova_ksea_metadata.tsv",
+    type = "character",
+    help = "Phosphopeptide metadata, ANOVA FDR, and KSEA enribhments"
   )
 )
 args <- parse_args(OptionParser(option_list = option_list))
@@ -112,18 +142,27 @@ if (! file.exists(args$inputFile)) {
 }
 input_file             <- args$inputFile
 alpha_file             <- args$alphaFile
+preproc_sqlite         <- args$preproc_sqlite
 imputed_data_file_name <- args$imputedDataFile
 imp_qn_lt_data_filenm  <- args$imputedQNLTDataFile
+anova_ksea_metadata    <- args$anova_ksea_metadata
 report_file_name       <- args$reportFile
+ksea_sqlite            <- args$ksea_sqlite
+ksea_cutoff_statistic  <- args$ksea_cutoff_statistic
+ksea_cutoff_threshold  <- args$ksea_cutoff_threshold
+if (
+  sum(
+    grepl(
+      pattern = ksea_cutoff_statistic,
+      x = c("FDR", "p.value")
+      )
+    ) < 1
+  ) {
+    print(sprintf("bad ksea_cutoff_statistic argument: %s", ksea_cutoff_statistic))
+    return(-1)
+    }
 
 imputation_method <- args$imputationMethod
-print(
-  grepl(
-    pattern = imputation_method,
-    x = c("group-median", "median", "mean", "random")
-    )
-  )
-
 if (
   sum(
     grepl(
@@ -219,6 +258,7 @@ script_dir <-  location_of_this_script()
 rmarkdown_params <- list(
     inputFile = input_file
   , alphaFile = alpha_file
+  , preprocDb = preproc_sqlite
   , firstDataColumn = first_data_column
   , imputationMethod = imputation_method
   , meanPercentile = mean_percentile
@@ -227,6 +267,10 @@ rmarkdown_params <- list(
   , regexSampleGrouping = regex_sample_grouping
   , imputedDataFilename = imputed_data_file_name
   , imputedQNLTDataFile = imp_qn_lt_data_filenm
+  , anovaKseaMetadata = anova_ksea_metadata
+  , kseaAppPrepDb = ksea_sqlite
+  , kseaCutoffThreshold = ksea_cutoff_threshold
+  , kseaCutoffStatistic = ksea_cutoff_statistic
   )
 
 print("rmarkdown_params")

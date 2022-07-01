@@ -2,13 +2,25 @@
   id="mqppep_anova"
   name="MaxQuant Phosphopeptide ANOVA"
   version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@"
-  python_template_version="3.5"
   profile="21.05"
   >
-    <description>Perform ANOVA on merged and filtered data from phospho-peptide enrichment/MaxQuant pipeline</description>
+    <description>Runs ANOVA and KSEA for phosphopeptides.</description>
     <macros>
         <import>macros.xml</import>
     </macros>
+    <edam_topics>
+        <edam_topic>topic_0121</edam_topic><!-- proteomics -->
+        <edam_topic>topic_3520</edam_topic><!-- proteomics experiment-->
+    </edam_topics>
+    <edam_operations>
+        <edam_operation>operation_0276</edam_operation><!-- Analyse a network of protein interactions. -->
+        <edam_operation>operation_0531</edam_operation><!-- Heat map generation -->
+        <edam_operation>operation_2938</edam_operation><!-- Dendrogram generation -->
+        <edam_operation>operation_2938</edam_operation><!-- Imputation -->
+        <edam_operation>operation_3435</edam_operation><!-- Standardisation and normalisation -->
+        <edam_operation>operation_3501</edam_operation><!-- Enrichment analysis -->
+        <edam_operation>operation_3658</edam_operation><!-- Statistical inference -->
+    </edam_operations>
     <expand macro="requirements"/>
     <!--
       The weird invocation used here is because knitr and install_tinytex
@@ -16,11 +28,12 @@
       biocontainer are read-only, so this builds a pseudo-home under /tmp
     -->
     <command detect_errors="exit_code"><![CDATA[
-      cp '$__tool_directory__/mqppep_anova_script.Rmd' . || exit 0;
-      cp '$__tool_directory__/mqppep_anova.R'          . || exit 0;
+      cp '$__tool_directory__/mqppep_anova_script.Rmd' . &&
+      cp '$__tool_directory__/mqppep_anova.R'          . &&
       Rscript mqppep_anova.R
         --inputFile '$input_file'
         --alphaFile '$alpha_file'
+        --preproc_sqlite '$preproc_sqlite'
         --firstDataColumn $intensity_column_regex_f
         --imputationMethod $imputation.imputation_method
         #if $imputation.imputation_method == "random"
@@ -31,9 +44,11 @@
         --regexSampleGrouping $sample_grouping_regex_f
         --imputedDataFile $imputed_data_file
         --imputedQNLTDataFile '$imp_qn_lt_file'
-        --reportFile '$report_file';
-      export RESULT=\$?;
-      exit \${RESULT}
+        --ksea_sqlite '$ksea_sqlite'
+        --ksea_cutoff_threshold '$ksea_cutoff_threshold'
+        --ksea_cutoff_statistic 'FDR'
+        --reportFile '$report_file'
+        --anova_ksea_metadata '$anova_ksea_metadata'
     ]]></command>
     <configfiles>
       <configfile name="sample_names_regex_f">
@@ -48,19 +63,22 @@
     </configfiles>
     <inputs>
         <param name="input_file" type="data" format="tabular" label="Filtered Phosphopeptide Intensities"
-               help="[input_file] Phosphopeptide intensities filtered for minimal quality.  First column label 'Phosphopeptide'; sample-intensities must begin in column 10 and must have column labels to match argument [sample_names_regex]"
+               help="Phosphopeptide intensities filtered for minimal quality.  First column label 'Phosphopeptide'; sample-intensities must begin in column 10 and must have column labels to match argument [sample_names_regex]"
         />
-        <param name="alpha_file" type="data" format="tabular" label="alpha cutoff level"
-               help="[alpha_file] List of alpha cutoff values for significance testing; text file having one column and no header"
+        <param name="alpha_file" type="data" format="tabular" label="ANOVA alpha cutoff level"
+               help="ANOVA alpha cutoff values for significance testing: tabular data having one column and no header"
         />
+        <param name="preproc_sqlite" type="data" format="sqlite" label="preproc_sqlite dataset from mqppep_preproc"
+               help="'preproc_sqlite' dataset produced by 'MaxQuant Phosphopeptide Preprocessing' tool"
+                />
         <param name="intensity_column_regex" type="text" value="^Intensity[^_]"
                label="Intensity-column pattern"
-               help="[intensity_column_regex] Pattern matching columns that have peptide intensity data (PERL-compatible regular expression matching column label)"
+               help="Pattern matching columns that have peptide intensity data (PERL-compatible regular expression matching column label)"
         />
         <!-- imputation_method <- c("group-median","median","mean","random")[1] -->
         <conditional name="imputation">
-            <param name="imputation_method" type="select" label="Imputation Method"
-                   help="[imputation_method] Impute missing values by (1) using median for each sample-group; (2) using median across all samples; (3) using mean across all samples; or (4) using randomly generated values having same std. dev. as across all samples (with mean specified by [meanPercentile])"
+            <param name="imputation_method" type="select" label="Imputation method"
+                   help="Impute missing values by (1) using median for each sample-group; (2) using median across all samples; (3) using mean across all samples; or (4) using randomly generated values having same std. dev. as across all samples (with mean specified by [meanPercentile])"
             >
                 <option value="random" selected="true">random</option>
                 <option value="group-median">group-median</option>
@@ -73,16 +91,16 @@
             <when value="random">
                 <param name="meanPercentile" type="integer" value="1" min="1" max="99"
                        label="Mean percentile for random values"
-                       help="[meanPercentile] Percentile center of random values; range [1,99]"
+                       help="Percentile center of random values; range [1,99]"
                 />
                 <param name="sdPercentile" type="float" value="1.0"
                        label="Percentile std. dev. for random values"
-                       help="[sdPercentile] Standard deviation adjustment-factor for random values; real number.  (1.0 means SD equal to the SD for the entire data set.)"
+                       help="Standard deviation adjustment-factor for random values; real number.  (1.0 means SD equal to the SD for the entire data set.)"
                 />
             </when>
         </conditional>
         <param name="sample_names_regex" type="text" value="\.\d+[A-Z]$"
-               help="[sample_names_regex] Pattern extracting sample-names from names of columns that have peptide intensity data (PERL-compatible regular expression)"
+               help="Pattern extracting sample-names from names of columns that have peptide intensity data (PERL-compatible regular expression)"
                label="Sample-extraction pattern">
           <sanitizer>
             <valid initial="string.printable">
@@ -91,7 +109,7 @@
           </sanitizer>
         </param>
         <param name="sample_grouping_regex" type="text" value="\d+"
-               help="[sample_grouping_regex] Pattern extracting sample-group from the sample-names that are extracted by 'Sample-extraction pattern' (PERL-compatible regular expression)"
+               help="Pattern extracting sample-group from the sample-names that are extracted by 'Sample-extraction pattern' (PERL-compatible regular expression)"
                label="Group-extraction pattern">
           <sanitizer>
             <valid initial="string.printable">
@@ -99,34 +117,106 @@
             </valid>
           </sanitizer>
         </param>
+        <param name="ksea_cutoff_threshold" type="float" value="0.05"
+               label="KSEA threshold level"
+               help="Maximum FDR to be used to score a kinase enrichment as significant"
+        />
     </inputs>
     <outputs>
         <data name="imputed_data_file" format="tabular" label="${input_file.name}.${imputation.imputation_method}-imputed_intensities" ></data>
         <data name="imp_qn_lt_file" format="tabular" label="${input_file.name}.${imputation.imputation_method}-imputed_QN_LT_intensities" ></data>
+        <data name="anova_ksea_metadata" format="tabular" label="${input_file.name}.${imputation.imputation_method}-anova_ksea_metadata" ></data>
         <!--
         <data name="report_file" format="html" label="${input_file.name}.${imputation.imputation_method}-imputed_report (download/unzip to view)" ></data>
         -->
         <data name="report_file" format="pdf" label="${input_file.name}.${imputation.imputation_method}-imputed_report" ></data>
+        <data name="ksea_sqlite" format="sqlite" label="${input_file.name}..${imputation.imputation_method}-imputed_ksea_sqlite">
+        </data>
     </outputs>
     <tests>
         <test>
             <param name="input_file" ftype="tabular" value="test_input_for_anova.tabular"/>
+            <param name="preproc_sqlite" ftype="sqlite" value="test_input_for_anova.sqlite"/>
             <param name="alpha_file" ftype="tabular" value="alpha_levels.tabular"/>
             <param name="intensity_column_regex" value="^Intensity[^_]"/>
-            <param name="imputation_method" value="group-median"/>
+            <param name="imputation_method" value="median"/>
             <param name="sample_names_regex" value="\.\d+[A-Z]$"/>
             <param name="sample_grouping_regex" value="\d+"/>
+            <output name="imputed_data_file">
+                <assert_contents>
+                    <has_text text="Phosphopeptide" />
+                    <has_text text="AAAITDMADLEELSRLpSPLPPGpSPGSAAR" />
+                    <!--                                               missing missing observd missing observd observd  -->
+                    <has_text_matching expression="pSQKQEEENPAEETGEEK.*8765300.8765300.8765300.8765300.2355900.14706000" />
+
+                </assert_contents>
+            </output>
             <output name="imp_qn_lt_file">
                 <assert_contents>
                     <has_text text="Phosphopeptide" />
                     <has_text text="AAAITDMADLEELSRLpSPLPPGpSPGSAAR" />
-                    <has_text text="7.935878" />
+                    <!--                                               missing   missing   observed  missing   observed  observed  -->
+                    <has_text_matching expression="pSQKQEEENPAEETGEEK.*6.962256.*6.908828.*6.814580.*6.865411.*6.908828.*7.088909" />
+
                     <has_text text="pSQKQEEENPAEETGEEK" />
                 </assert_contents>
             </output>
         </test>
         <test>
             <param name="input_file" ftype="tabular" value="test_input_for_anova.tabular"/>
+            <param name="preproc_sqlite" ftype="sqlite" value="test_input_for_anova.sqlite"/>
+            <param name="alpha_file" ftype="tabular" value="alpha_levels.tabular"/>
+            <param name="intensity_column_regex" value="^Intensity[^_]"/>
+            <param name="imputation_method" value="mean"/>
+            <param name="sample_names_regex" value="\.\d+[A-Z]$"/>
+            <param name="sample_grouping_regex" value="\d+"/>
+            <output name="imputed_data_file">
+                <assert_contents>
+                    <has_text text="Phosphopeptide" />
+                    <has_text text="AAAITDMADLEELSRLpSPLPPGpSPGSAAR" />
+                    <!--                                               missing missing observd missing observd observd  -->
+                    <has_text_matching expression="pSQKQEEENPAEETGEEK.*6721601.6721601.8765300.6721601.2355900.14706000" />
+
+                </assert_contents>
+            </output>
+            <output name="imp_qn_lt_file">
+                <assert_contents>
+                    <has_text text="Phosphopeptide" />
+                    <has_text text="AAAITDMADLEELSRLpSPLPPGpSPGSAAR" />
+                    <!--                                               missing   missing   observed  missing   observed  observed  -->
+                    <has_text_matching expression="pSQKQEEENPAEETGEEK.*6.839850.*6.797424.*6.797424.*6.797424.*6.896609.*7.092451" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="input_file" ftype="tabular" value="test_input_for_anova.tabular"/>
+            <param name="preproc_sqlite" ftype="sqlite" value="test_input_for_anova.sqlite"/>
+            <param name="alpha_file" ftype="tabular" value="alpha_levels.tabular"/>
+            <param name="intensity_column_regex" value="^Intensity[^_]"/>
+            <param name="imputation_method" value="group-median"/>
+            <param name="sample_names_regex" value="\.\d+[A-Z]$"/>
+            <param name="sample_grouping_regex" value="\d+"/>
+            <output name="imputed_data_file">
+                <assert_contents>
+                    <has_text text="Phosphopeptide" />
+                    <has_text text="AAAITDMADLEELSRLpSPLPPGpSPGSAAR" />
+                    <!--                                               missing missing observd missing observd observd  -->
+                    <has_text_matching expression="pSQKQEEENPAEETGEEK.*8765300.8765300.8765300.5886074.2355900.14706000" />
+
+                </assert_contents>
+            </output>
+            <output name="imp_qn_lt_file">
+                <assert_contents>
+                    <has_text text="Phosphopeptide" />
+                    <has_text text="AAAITDMADLEELSRLpSPLPPGpSPGSAAR" />
+                    <!--                                               missing   missing   observed  missing   observed  observed  -->
+                    <has_text_matching expression="pSQKQEEENPAEETGEEK.*6.946112.*6.888985.*6.792137.*6.792137.*6.888985.*7.089555" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="input_file" ftype="tabular" value="test_input_for_anova.tabular"/>
+            <param name="preproc_sqlite" ftype="sqlite" value="test_input_for_anova.sqlite"/>
             <param name="alpha_file" ftype="tabular" value="alpha_levels.tabular"/>
             <param name="intensity_column_regex" value="^Intensity[^_]"/>
             <param name="imputation_method" value="random"/>
@@ -134,29 +224,38 @@
             <param name="sdPercentile" value="1.0" />
             <param name="sample_names_regex" value="\.\d+[A-Z]$"/>
             <param name="sample_grouping_regex" value="\d+"/>
+            <output name="imputed_data_file">
+                <assert_contents>
+                    <has_text text="Phosphopeptide" />
+                    <has_text text="AAAITDMADLEELSRLpSPLPPGpSPGSAAR" />
+                    <!--                           observd  observd  observd  -->
+                    <has_text_matching expression="pSQKQEEENPAEETGEEK.*8765300.*2355900.*4706000" />
+
+                </assert_contents>
+            </output>
             <output name="imp_qn_lt_file">
                 <assert_contents>
                     <has_text text="Phosphopeptide" />
                     <has_text text="AAAITDMADLEELSRLpSPLPPGpSPGSAAR" />
-                    <has_text text="8.392287" />
-                    <has_text text="pSQKQEEENPAEETGEEK" />
+                    <has_text text="5.409549" /> <!-- log-transformed value for pTYVDPFTpYEDPNQAVR .1B -->
+                    <has_text text="6.464714" /> <!-- log-transformed value for pSQKQEEENPAEETGEEK .2A -->
                 </assert_contents>
             </output>
         </test>
     </tests>
     <help><![CDATA[
-===========================================
-Phopsphoproteomic Enrichment Pipeline ANOVA
-===========================================
+====================================================
+Phopsphoproteomic Enrichment Pipeline ANOVA and KSEA
+====================================================
 
 **Input files**
 
-``input_file``
+``Filtered Phosphopeptide Intensities``
   Phosphopeptides annotated with SwissProt and phosphosite metadata (in tabular format).
   This is the output from the "Phopsphoproteomic Enrichment Pipeline Merge and Filter"
   (``mqppep_mrgflt``) tool.
 
-``alpha_file``
+``ANOVA alpha cutoff level``
   List of alpha cutoff values for significance testing; text file having one column and no header.  For example:
 
 ::
@@ -167,43 +266,56 @@ Phopsphoproteomic Enrichment Pipeline ANOVA
 
 **Input parameters**
 
-``intensity_column_regex``
+``Intensity-column pattern``
   First column of ``input_file`` having intensity values (integer or PERL-compatible regular expression matching column label). Default: **Intensity**
 
-``imputation_method``
+``Imputation method``
   Impute missing values by:
 
-    1. using median for each sample-group;
-    2. using median across all samples;
-    3. using mean across all samples; or
-    4. using randomly generated values where:
+    1. ``group-median`` - use median for each sample-group;
+    2. ``mean`` - use mean across all samples; or
+    3. ``median`` - use median across all samples;
+    4. ``random`` - use randomly generated values where:
 
-      - ``meanPercentile`` specifies the percentile among non-missing values to be used as mean of random values, and
-      - ``sdPercentile`` specifies the factor to be mulitplied by the standard deviation among the non-missing values (across all samples) to determine the standard deviation of random values.
+      - ``Mean percentile for random values`` specifies the percentile among non-missing values to be used as mean of random values, and
+      - ``Percentile std. dev. for random values`` specifies the factor to be multiplied by the standard deviation among the non-missing values (across all samples) to determine the standard deviation of random values.
 
-``sample_names_regex``
+``Sample-extraction pattern``
   PERL-compatible regular expression extracting the sample-name from the the name of a column of instensities (from ``input_file``) for one sample.
 
     - For example, ``"\.\d+[A-Z]$"`` applied to ``Intensity.splunge.10A`` would produce ``.10A``
     - Note that *this is case sensitive* by default.
 
-``sample_grouping_regex``
+``Group-extraction pattern``
   PERL-compatible regular expression extracting the sample-grouping from the sample-name that was extracted with ``sample_names_regex`` from a column of intensites (from ``input_file``).
 
     - For example, ``"\d+$"`` applied to ``.10A`` would produce ``10``
     - Note that *this is case sensitive* by default.
 
+``KSEA threshold level``
+  Specifies minimum FDR at which a kinase will be considered to be enriched; the default choice of 0.05 is arbitrary.
 
 **Outputs**
 
-``imputed_intensities``
+``imputed_intensities (input_file.imputation_method-imputed_intensities)``
   Phosphopeptide MS intensities where missing values have been **imputed** by the chosen method, in tabular format.
 
-``imputed_QN_LT_intensities``
+``imputed_QN_LT_intensities (input_file.imputation_method-imputed_QN_LT_intensities)``
   Phosphopeptide MS intensities where missing values have been **imputed** by the chosen method, quantile-normalized (**QN**), and log10-transformed (**LT**), in tabular format.
 
-``report_file``
+``report_file (input_file.imputation_method-imputed_report)``
   Summary report for normalization, imputation, and **ANOVA**, in PDF format.
+
+``anova_ksea_metadata (input_file.imputation_method-imputed_anova_ksea_metadata)``
+  Phosphopeptide metadata including ANOVA significance and KSEA enrichments.
+
+``ksea_sqlite (input_file.imputation_method-imputed_ksea_sqlite)``
+  SQLite database for ad-hoc report creation.
+
+**Algorithm**
+
+The KSEA algorithm used here is as in the KSEAapp package as reported in [Wiredja 2017].
+The code is adapted from "Danica D. Wiredja (2017). KSEAapp: Kinase-Substrate Enrichment Analysis. R package version 0.99.0." to work with output from the "MaxQuant Phosphopeptide Preprocessing" Galaxy tool.
 
 **Authors**
 
@@ -223,5 +335,7 @@ Note that the PERL-compatible regular expressions accepted by this tool are docu
     <citations>
         <!-- Cheng_2018 "Phosphopeptide Enrichment ..." PMID: 30124664 -->
         <citation type="doi">10.3791/57996</citation>
+        <!-- Wiredja_2017 "The KSEA App ..." PMID: 28655153 -->
+        <citation type="doi">10.1093/bioinformatics/btx415</citation>
     </citations>
 </tool>

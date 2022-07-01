@@ -62,18 +62,18 @@ my (%p_residues, @tmp_p_residues, @p_sites, $left, $right, %p_motifs, @tmp_motif
 my (@kinases_observed, $kinases);
 my (@kinases_observed_lbl, @phosphosites_observed_lbl);
 my ($p_sequence_kinase, $p_sequence, $kinase);
-my (@motif_sequence, %motif_type, %motif_count);
+my (@motif_sequence, @motif_description, @motif_type_key_ary, %motif_type, %motif_count);
 my (@kinases_PhosphoSite, $kinases_PhosphoSite);
 my ($p_sequence_kinase_PhosphoSite, $p_sequence_PhosphoSite, $kinase_PhosphoSite);
 my (%regulatory_sites_PhosphoSite_hash);
 my (%domain, %ON_FUNCTION, %ON_PROCESS, %ON_PROT_INTERACT, %ON_OTHER_INTERACT, %notes, %organism);
 my (%unique_motifs);
-my ($kinase_substrate_NetworKIN_matches, $kinase_motif_matches, $kinase_substrate_PhosphoSite_matches);
+my ($kinase_substrate_NetworKIN_matches, $kinase_substrate_PhosphoSite_matches);
 my %psp_regsite_protein_2;
 my (%domain_2, %ON_FUNCTION_2, %ON_PROCESS_2, %ON_PROT_INTERACT_2, %N_PROT_INTERACT, %ON_OTHER_INTERACT_2, %notes_2, %organism_2);
 my @timeData;
 my $PhosphoSitePlusCitation;
-my %site_description;
+my (%site_description, %site_id);
 
 my %kinase_substrate_NetworKIN_matches;
 my %kinase_motif_matches;
@@ -997,12 +997,21 @@ close IN1;
 ###############################################################################################################################
 
 # file format (tab separated):
-#   x[0] = primary key (character), e.g., '17' or '23a'
+#   x[0] = quasi-primary key (character), e.g., '17' or '23a'
 #   x[1] = pattern (egrep pattern), e.g., '(M|I|L|V|F|Y).R..(pS|pT)'
 #   x[2] = description, e.g., 'PKA_Phosida' or '14-3-3 domain binding motif (HPRD)' or 'Akt kinase substrate motif (HPRD & Phosida)'
-
-my $SITE_MOTIF = 2;
-$site_description{$SITE_MOTIF} = "motif";
+# "counter"	"pcre"	"symbol"	"description"	"pubmed_id"	"classification"	"source"
+# "1"	"R.R..(pS|pT)(F|L)"	"PKB_group"	"Akt kinase"	"https://pubmed.ncbi.nlm.nih.gov/?term=8985174"	"kinase substrate"	"HPRD"
+#   x[3] = old description, i.e., description in Amanchy (HPRD) and Phosida tables
+#   x[4] = pubmed id
+#   x[5] = classification
+#   x[6] = source (Phosida or HPRD)
+my $SITE_HPRD = 2;
+$site_description{$SITE_HPRD} = "HPRD";
+$site_id{$site_description{$SITE_HPRD}} = $SITE_HPRD;
+my $SITE_PHOSIDA = 4;
+$site_description{$SITE_PHOSIDA} = "Phosida";
+$site_id{$site_description{$SITE_PHOSIDA}} = $SITE_PHOSIDA;
 
 open (IN2, "$motifs_in") or die "I couldn't find $motifs_in\n";
 print "Reading the Motifs file:  $motifs_in\n";
@@ -1010,17 +1019,30 @@ print "Reading the Motifs file:  $motifs_in\n";
 while (<IN2>) {
     chomp;
     my (@x) = split(/\t/);
+    my $tmp_motif_description;
+    if ($#x == 6) { # weirdly, a @list of length seven has $#list == 6
+        # remove double-quotes which are helpful or necessary for Excel
+        $x[6]  =~ s/\"//g;
+        $tmp_motif_description = $x[6];
+    } else {
+        $tmp_motif_description = "motif";
+    }
     for my $i (0 .. 2) {
+        # remove any embedded CR or LF (none should exist)
         $x[$i] =~ s/\r//g;
         $x[$i]  =~ s/\n//g;
+        # remove double-quotes which are helpful or necessary for Excel
         $x[$i]  =~ s/\"//g;
         }
-    if (exists ($motif_type{$x[1]})) {
-        $motif_type{$x[1]} = $motif_type{$x[1]}." & ".$x[2];
+    if (exists ($motif_type{$x[2]})) {
+        #ACE-2022.06.20 $motif_type{$x[1]} = $motif_type{$x[1]}." & ".$x[2];
+        $motif_type{$x[2]} = $motif_type{$x[2]}."|".$x[2];
     } else {
-        $motif_type{$x[1]} = $x[2];
+        $motif_type{$x[2]} = $x[2];
         $motif_count{$x[1]} = 0;
         push (@motif_sequence, $x[1]);
+        push (@motif_description, $tmp_motif_description);
+        push (@motif_type_key_ary, $x[2])
     }
 }
 close (IN2);
@@ -1111,7 +1133,6 @@ close IN3;
 #
 #  Columns:
 #    (0)  GENE
-#    (1)  PROTEIN           --> #ACE %psp_regsite_protein
 #    (2)  PROT_TYPE
 #    (3)  ACC_ID
 #    (4)  GENE_ID
@@ -1503,8 +1524,9 @@ foreach my $peptide (keys %data) {
                 }
             }
             for my $i (0 .. $#motif_sequence) {
+                print "matching $motif_sequence[$i]" if ($verbose);
                 if ($peptide =~ /$motif_sequence[$i]/) {
-                    $kinase_motif_matches{$peptide}{$motif_sequence[$i]} = "X";
+                    $kinase_motif_matches{$peptide}{$motif_type{$motif_type_key_ary[$i]}} = "X";
                 }
             }
             for my $i (0 .. $#kinases_PhosphoSite) {
@@ -1578,7 +1600,7 @@ foreach my $peptide (keys %data) {
                 $pSTY_sequence = $formatted_sequences[$k];
                 for my $i (0 .. $#motif_sequence) {
                     if ($pSTY_sequence =~ /$motif_sequence[$i]/) {
-                        $kinase_motif_matches{$peptide}{$motif_sequence[$i]} = "X";
+                        $kinase_motif_matches{$peptide}{$motif_type{$motif_type_key_ary[$i]}} = "X";
                     }
                 }
                 for my $i (0 .. $#kinases_PhosphoSite) {
@@ -1741,6 +1763,8 @@ print "... Finished find sequences that match the NetworKIN predictions and find
 # Print to the output file
 #
 ###############################################################################################################################
+
+
 open (OUT, ">$file_out") || die "could not open the fileout: $file_out";
 open (MELT, ">$file_melt") || die "could not open the fileout: $file_melt";
 
@@ -1760,11 +1784,12 @@ for my $i (0 .. $#kinases_observed) {
     print OUT "$temp\t";
     push(@kinases_observed_lbl, $temp);
 }
-for my $i (0 .. $#motif_sequence) {
-    print OUT "$motif_type{$motif_sequence[$i]} ($motif_sequence[$i])\t";
+my @motif_type_keys = keys %motif_type;
+for my $i (1 .. $#motif_type_keys) {
+    print OUT "$motif_type{$motif_type_keys[$i]}\t";
 }
 for my $i (0 .. $#kinases_PhosphoSite) {
-    my $temp = $kinases_PhosphoSite[$i]."_PhosphoSite";
+    my $temp = $kinases_PhosphoSite[$i]; # ."_PhosphoSite";
     if ($i < $#kinases_PhosphoSite) { print OUT "$temp\t"; }
     if ($i == $#kinases_PhosphoSite) { print OUT "$temp\n"; }
     push(@phosphosites_observed_lbl, $temp);
@@ -1861,8 +1886,9 @@ sub add_site_type {
     }
 }
 add_site_type($SITE_KINASE_SUBSTRATE, $site_description{$SITE_KINASE_SUBSTRATE});
-add_site_type($SITE_MOTIF, $site_description{$SITE_MOTIF});
-add_site_type($SITE_PHOSPHOSITE, $site_description{$SITE_PHOSPHOSITE});
+add_site_type($SITE_HPRD            , $site_description{$SITE_HPRD            });
+add_site_type($SITE_PHOSIDA         , $site_description{$SITE_PHOSIDA         });
+add_site_type($SITE_PHOSPHOSITE     , $site_description{$SITE_PHOSPHOSITE     });
 # end store-to-SQLite "site_type" table
 # ...
 
@@ -2070,7 +2096,7 @@ foreach my $peptide (sort(keys %data)) {
     for my $i (0 .. $#kinases_observed) {
         if (exists($kinase_substrate_NetworKIN_matches{$peptide}{$kinases_observed[$i]})) {
             print OUT "X\t";
-            my $NetworKIN_label = $kinases_observed[$i]."_NetworKIN";
+            my $NetworKIN_label = $kinases_observed[$i]; #."_NetworKIN";
             print MELT "$peptide\t$gene_names\t$site_description{$SITE_KINASE_SUBSTRATE}\t$NetworKIN_label\n";
             # begin store-to-SQLite "ppep_gene_site" table
             # ---
@@ -2088,26 +2114,36 @@ foreach my $peptide (sort(keys %data)) {
     }
     my %wrote_motif;
     my $motif_parts_0;
-    for my $i (0 .. $#motif_sequence) {
-        if (exists($kinase_motif_matches{$peptide}{$motif_sequence[$i]})) {
+    my @motif_split;
+    my $one_motif;
+    
+    for my $i (0 .. $#motif_type_keys) {
+        if (exists($kinase_motif_matches{$peptide}{$motif_type_keys[$i]})) {
             print OUT "X\t";
-            $motif_parts_0 = $motif_type{$motif_sequence[$i]}." ".$motif_sequence[$i];
-            my $key = "$peptide\t$gene_names\t$motif_parts_0";
-            if (!exists($wrote_motif{$key})) {
-                $wrote_motif{$key} = $key;
-                print MELT "$peptide\t$gene_names\t$site_description{$SITE_MOTIF}\t$motif_parts_0\n";
-                # print "Line 657: i is $i\t$kinase_motif_matches{$peptide}{$motif_sequence[$i]}\n";            #debug
-                # begin store-to-SQLite "ppep_gene_site" table
-                # ---
-                $ppep_gene_site_stmth->bind_param(1, $ppep_id);        # ppep_gene_site.ppep_id
-                $ppep_gene_site_stmth->bind_param(2, $gene_names);     # ppep_gene_site.gene_names
-                $ppep_gene_site_stmth->bind_param(3, $motif_parts_0); # ppep_gene_site.kinase_map
-                $ppep_gene_site_stmth->bind_param(4, $SITE_MOTIF);     # ppep_gene_site.site_type_id
-                if (not $ppep_gene_site_stmth->execute()) {
-                    print "Error writing tuple ($peptide,$gene_names,$motif_parts_0): $ppep_gene_site_stmth->errstr\n";
+            #ACE-2022.06.20 $motif_parts_0 = $motif_type{$motif_sequence[$i]}." ".$motif_sequence[$i];
+            $motif_parts_0 = $motif_type{$motif_type_keys[$i]};
+            @motif_split = split("[|]", $motif_parts_0);
+            #ACE-2022.06.20 my $key = "$peptide\t$gene_names\t$motif_parts_0";
+            for my $j (0 .. $#motif_split) {
+                $one_motif = $motif_split[$j];
+                #ACE-2022.06.20 my $key = "$peptide\t$gene_names\t$motif_parts_0";
+                my $key = "$peptide\t$gene_names\t$one_motif";
+                if (!exists($wrote_motif{$key})) {
+                    $wrote_motif{$key} = $key;
+                    print MELT "$peptide\t$gene_names\t$motif_description[$i]\t$one_motif\n";
+                    # print "Line 657: i is $i\t$kinase_motif_matches{$peptide}{$motif_sequence[$i]}\n";            #debug
+                    # begin store-to-SQLite "ppep_gene_site" table
+                    # ---
+                    $ppep_gene_site_stmth->bind_param(1, $ppep_id);        # ppep_gene_site.ppep_id
+                    $ppep_gene_site_stmth->bind_param(2, $gene_names);     # ppep_gene_site.gene_names
+                    $ppep_gene_site_stmth->bind_param(3, $one_motif);  # ppep_gene_site.kinase_map
+                    $ppep_gene_site_stmth->bind_param(4, $site_id{$motif_description[$i]});     # ppep_gene_site.site_type_id
+                    if (not $ppep_gene_site_stmth->execute()) {
+                        print "Error writing tuple ($peptide,$gene_names,$one_motif): $ppep_gene_site_stmth->errstr\n";
+                    }
+                    # ...
+                    # end store-to-SQLite "ppep_gene_site" table
                 }
-                # ...
-                # end store-to-SQLite "ppep_gene_site" table
             }
         }
         else { print OUT "\t";}
