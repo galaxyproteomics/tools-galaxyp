@@ -8,44 +8,54 @@
     <command detect_errors="aggressive"><![CDATA[
         emapper.py
         --data_dir '$eggnog_data.fields.path'
-        -m '$seed_ortho_options.ortho_method.m'
-        --itype '${input_trans.itype}'
-        #if $input_trans.itype in ['CDS', 'genome', 'metagenome']:
-            $input_trans.translate
-        #end if
-        #if $input_trans.itype in ['genome', 'metagenome']:
-            --genepred $input_trans.genepred
-        #end if
+        -m '$ortho_method.m'
 
-        ## Diamond option
-        #if $seed_ortho_options.ortho_method.m == "diamond":
-            --matrix '$seed_ortho_options.ortho_method.matrix_gapcosts.matrix'
-            $seed_ortho_options.ortho_method.matrix_gapcosts.gap_costs
-            --sensmode $seed_ortho_options.ortho_method.sensmode
-            $seed_ortho_options.ortho_method.dmnd_iterate
-            $seed_ortho_options.ortho_method.dmnd_ignore_warnings
-        #elif $seed_ortho_options.ortho_method.m == "mmseqs":
-            --start_sens $seed_ortho_options.ortho_method.start_sens
-            --sens_steps $seed_ortho_options.ortho_method.sens_steps
-            --final_sens $seed_ortho_options.ortho_method.final_sens
-        #end if
+        #if $ortho_method.m in ['diamond', 'mmseqs']:
+            -i '${ortho_method.input}'
+            --itype '${ortho_method.input_trans.itype}'
+            #if $ortho_method.input_trans.itype in ['CDS', 'genome', 'metagenome']:
+                $ortho_method.input_trans.translate
+            #end if
+            #if $ortho_method.input_trans.itype in ['genome', 'metagenome']:
+                --genepred $ortho_method.input_trans.genepred
+            #end if
 
-        ## Common options for search filtering
-        #if $seed_ortho_options.query_cover:
-        --query_cover $seed_ortho_options.query_cover
-        #end if
-        #if $seed_ortho_options.subject_cover:
-        --subject_cover $seed_ortho_options.subject_cover
-        #end if
-        #if $seed_ortho_options.pident:
-        --pident $seed_ortho_options.pident
+            ## Diamond option
+            #if $ortho_method.m == "diamond":
+                --matrix '$ortho_method.matrix_gapcosts.matrix'
+                $ortho_method.matrix_gapcosts.gap_costs
+                --sensmode $ortho_method.sensmode
+                $ortho_method.dmnd_iterate
+                $ortho_method.dmnd_ignore_warnings
+            #elif $ortho_method.m == "mmseqs":
+                --start_sens $ortho_method.start_sens
+                --sens_steps $ortho_method.sens_steps
+                --final_sens $ortho_method.final_sens
+            #end if
+
+            ## Common options for search filtering (applies to diamond and mmseqs only)
+            #if $ortho_method.query_cover:
+                --query_cover $ortho_method.query_cover
+            #end if
+            #if $ortho_method.subject_cover:
+                --subject_cover $ortho_method.subject_cover
+            #end if
+            #if $ortho_method.pident:
+                --pident $ortho_method.pident
+            #end if
+            #if $ortho_method.evalue:
+                --evalue $ortho_method.evalue
+            #end if
+            #if $ortho_method.score:
+                --score $ortho_method.score
+            #end if
         #end if
 
         #if $annotation_options.seed_ortholog_evalue:
-            --evalue=$annotation_options.seed_ortholog_evalue
+            --seed_ortholog_evalue $annotation_options.seed_ortholog_evalue
         #end if
         #if str($annotation_options.seed_ortholog_score):
-            --score=$annotation_options.seed_ortholog_score
+            --seed_ortholog_score $annotation_options.seed_ortholog_score
         #end if
         #if $annotation_options.tax_scope:
             --tax_scope=$annotation_options.tax_scope
@@ -60,7 +70,6 @@
         $output_options.no_annot
         $output_options.report_orthologs
         --output='results'
-        -i '${input}'
         --cpu "\${GALAXY_SLOTS:-4}"
         --scratch_dir \${TEMP:-\$_GALAXY_JOB_TMP_DIR}
         --temp_dir \${TEMP:-\$_GALAXY_JOB_TMP_DIR}
@@ -72,196 +81,163 @@
             </options>
         </param>
 
-        <param name="input" type="data" format="fasta" label="Fasta sequences to annotate"/>
-        <conditional name="input_trans">
-            <param argument="--itype" type="select" label="Type of sequences">
-                <option value="proteins" selected="true">proteins</option>
-                <option value="CDS">CDS</option>
-                <option value="genome">genome</option>
-                <option value="metagenome">metagenome</option>
+        <conditional name="ortho_method">
+            <param argument="-m" type="select" label="Method to search seed orthologs">
+                <option value="diamond" selected="true">Diamond</option>
+                <option value="mmseqs">MMseqs2</option>
             </param>
-            <when value="proteins"/>
-            <when value="CDS">
-                <param name="translate" type="boolean" truevalue="--translate" falsevalue="" checked="false"
-                    label="Translate CDS to proteins before search"/>
-            </when>
-            <when value="genome">
-                <param name="translate" type="boolean" truevalue="--translate" falsevalue="" checked="false"
-                    label="Translate predicted CDS from blastx hits to proteins"/>
-                <param argument="--genepred" type="select" label="Type of sequences">
-                    <option value="search">Inferred from Diamond/MMseqs2 blastx hits</option>
-                    <option value="prodigal" selected="true">Performed using Prodigal</option>
+            <when value="diamond">
+                <expand macro="fasta_input"/>
+                <conditional name="matrix_gapcosts">
+                    <param argument="--matrix" type="select" label="Scoring matrix and gap costs">
+                        <option value="BLOSUM90">BLOSUM90</option>
+                        <option value="BLOSUM80">BLOSUM80</option>
+                        <option value="BLOSUM62" selected="true">BLOSUM62</option>
+                        <option value="BLOSUM50">BLOSUM50</option>
+                        <option value="BLOSUM45">BLOSUM45</option>
+                        <option value="PAM250">PAM250</option>
+                        <option value="PAM70">PAM70</option>
+                        <option value="PAM30">PAM30</option>
+                    </param>
+                    <when value="BLOSUM90">
+                        <param name="gap_costs" type="select" label="Gap Costs">
+                            <option value="--gapopen 9 --gapextend 2">Existence: 9  Extension: 2</option>
+                            <option value="--gapopen 8 --gapextend 2">Existence: 8  Extension: 2</option>
+                            <option value="--gapopen 7 --gapextend 2">Existence: 7  Extension: 2</option>
+                            <option value="--gapopen 6 --gapextend 2">Existence: 6  Extension: 2</option>
+                            <option value="--gapopen 11 --gapextend 1">Existence: 11  Extension: 1</option>
+                            <option value="--gapopen 10 --gapextend 1" selected="true">Existence: 10  Extension: 1</option>
+                            <option value="--gapopen 9 --gapextend 1">Existence: 9  Extension: 1</option>
+                        </param>
+                    </when>
+                    <when value="BLOSUM80">
+                        <param name="gap_costs" type="select" label="Gap Costs">
+                            <option value="--gapopen 8 --gapextend 2">Existence: 8  Extension: 2</option>
+                            <option value="--gapopen 7 --gapextend 2">Existence: 7  Extension: 2</option>
+                            <option value="--gapopen 6 --gapextend 2">Existence: 6  Extension: 2</option>
+                            <option value="--gapopen 11 --gapextend 1">Existence: 11  Extension: 1</option>
+                            <option value="--gapopen 10 --gapextend 1" selected="true">Existence: 10  Extension: 1</option>
+                            <option value="--gapopen 9 --gapextend 1">Existence: 9  Extension: 1</option>
+                        </param>
+                    </when>
+                    <when value="BLOSUM62">
+                        <param name="gap_costs" type="select" label="Gap Costs">
+                            <option value="--gapopen 11 --gapextend 2">Existence: 11  Extension: 2</option>
+                            <option value="--gapopen 10 --gapextend 2">Existence: 10  Extension: 2</option>
+                            <option value="--gapopen 9 --gapextend 2">Existence: 9  Extension: 2</option>
+                            <option value="--gapopen 8 --gapextend 2">Existence: 8  Extension: 2</option>
+                            <option value="--gapopen 7 --gapextend 2">Existence: 7  Extension: 2</option>
+                            <option value="--gapopen 6 --gapextend 2">Existence: 6  Extension: 2</option>
+                            <option value="--gapopen 13 --gapextend 1">Existence: 13  Extension: 1</option>
+                            <option value="--gapopen 12 --gapextend 1">Existence: 12  Extension: 1</option>
+                            <option value="--gapopen 11 --gapextend 1" selected="true">Existence: 11  Extension: 1</option>
+                            <option value="--gapopen 10 --gapextend 1">Existence: 10  Extension: 1</option>
+                            <option value="--gapopen 9 --gapextend 1">Existence: 9  Extension: 1</option>
+                        </param>
+                    </when>
+                    <when value="BLOSUM50">
+                        <param name="gap_costs" type="select" label="Gap Costs">
+                            <option value="--gapopen 13 --gapextend 3">Existence: 13  Extension: 3</option>
+                            <option value="--gapopen 12 --gapextend 3">Existence: 12  Extension: 3</option>
+                            <option value="--gapopen 11 --gapextend 3">Existence: 11  Extension: 3</option>
+                            <option value="--gapopen 10 --gapextend 3">Existence: 10  Extension: 3</option>
+                            <option value="--gapopen 9 --gapextend 3">Existence: 9  Extension: 3</option>
+                            <option value="--gapopen 16 --gapextend 2">Existence: 16  Extension: 2</option>
+                            <option value="--gapopen 15 --gapextend 2">Existence: 15  Extension: 2</option>
+                            <option value="--gapopen 14 --gapextend 2">Existence: 14  Extension: 2</option>
+                            <option value="--gapopen 13 --gapextend 2" selected="true">Existence: 13  Extension: 2</option>
+                            <option value="--gapopen 12 --gapextend 2">Existence: 12  Extension: 2</option>
+                            <option value="--gapopen 19 --gapextend 1">Existence: 19  Extension: 1</option>
+                            <option value="--gapopen 18 --gapextend 1">Existence: 18  Extension: 1</option>
+                            <option value="--gapopen 17 --gapextend 1">Existence: 17  Extension: 1</option>
+                            <option value="--gapopen 16 --gapextend 1">Existence: 16  Extension: 1</option>
+                            <option value="--gapopen 15 --gapextend 1">Existence: 15  Extension: 1</option>
+                        </param>
+                    </when>
+                    <when value="BLOSUM45">
+                        <param name="gap_costs" type="select" label="Gap Costs">
+                            <option value="--gapopen 13 --gapextend 3">Existence: 13  Extension: 3</option>
+                            <option value="--gapopen 12 --gapextend 3">Existence: 12  Extension: 3</option>
+                            <option value="--gapopen 11 --gapextend 3">Existence: 11  Extension: 3</option>
+                            <option value="--gapopen 10 --gapextend 3">Existence: 10  Extension: 3</option>
+                            <option value="--gapopen 15 --gapextend 2" selected="true">Existence: 15  Extension: 2</option>
+                            <option value="--gapopen 14 --gapextend 2">Existence: 14  Extension: 2</option>
+                            <option value="--gapopen 13 --gapextend 2">Existence: 13  Extension: 2</option>
+                            <option value="--gapopen 12 --gapextend 2">Existence: 12  Extension: 2</option>
+                            <option value="--gapopen 19 --gapextend 1">Existence: 19  Extension: 1</option>
+                            <option value="--gapopen 18 --gapextend 1">Existence: 18  Extension: 1</option>
+                            <option value="--gapopen 17 --gapextend 1">Existence: 17  Extension: 1</option>
+                            <option value="--gapopen 16 --gapextend 1">Existence: 16  Extension: 1</option>
+                        </param>
+                    </when>
+                    <when value="PAM250">
+                        <param name="gap_costs" type="select" label="Gap Costs">
+                            <option value="--gapopen 15 --gapextend 3">Existence: 15  Extension: 3</option>
+                            <option value="--gapopen 14 --gapextend 3">Existence: 14  Extension: 3</option>
+                            <option value="--gapopen 13 --gapextend 3">Existence: 13  Extension: 3</option>
+                            <option value="--gapopen 12 --gapextend 3">Existence: 12  Extension: 3</option>
+                            <option value="--gapopen 17 --gapextend 2">Existence: 17  Extension: 2</option>
+                            <option value="--gapopen 16 --gapextend 2">Existence: 16  Extension: 2</option>
+                            <option value="--gapopen 15 --gapextend 2">Existence: 15  Extension: 2</option>
+                            <option value="--gapopen 14 --gapextend 2" selected="true">Existence: 14  Extension: 2</option>
+                            <option value="--gapopen 13 --gapextend 2">Existence: 13  Extension: 2</option>
+                            <option value="--gapopen 21 --gapextend 1">Existence: 21  Extension: 1</option>
+                            <option value="--gapopen 20 --gapextend 1">Existence: 20  Extension: 1</option>
+                            <option value="--gapopen 19 --gapextend 1">Existence: 19  Extension: 1</option>
+                            <option value="--gapopen 18 --gapextend 1">Existence: 18  Extension: 1</option>
+                            <option value="--gapopen 17 --gapextend 1">Existence: 17  Extension: 1</option>
+                        </param>
+                    </when>
+                    <when value="PAM70">
+                        <param name="gap_costs" type="select" label="Gap Costs">
+                            <option value="--gapopen 12 --gapextend 3">Existence: 12 Extension: 3</option>
+                            <option value="--gapopen 11 --gapextend 2">Existence: 11 Extension: 2</option>
+                            <option value="--gapopen 8 --gapextend 2">Existence: 8  Extension: 2</option>
+                            <option value="--gapopen 7 --gapextend 2">Existence: 7  Extension: 2</option>
+                            <option value="--gapopen 6 --gapextend 2">Existence: 6  Extension: 2</option>
+                            <option value="--gapopen 11 --gapextend 1">Existence: 11  Extension: 1</option>
+                            <option value="--gapopen 10 --gapextend 1" selected="true">Existence: 10  Extension: 1</option>
+                            <option value="--gapopen 9 --gapextend 1">Existence: 9  Extension: 1</option>
+                        </param>
+                    </when>
+                    <when value="PAM30">
+                        <param name="gap_costs" type="select" label="Gap Costs">
+                            <option value="--gapopen 15 --gapextend 3">Existence: 15 Extension: 3</option>
+                            <option value="--gapopen 13 --gapextend 3">Existence: 13 Extension: 3</option>
+                            <option value="--gapopen 14 --gapextend 2">Existence: 14 Extension: 2</option>
+                            <option value="--gapopen 7 --gapextend 2">Existence: 7  Extension: 2</option>
+                            <option value="--gapopen 6 --gapextend 2">Existence: 6  Extension: 2</option>
+                            <option value="--gapopen 5 --gapextend 2">Existence: 5  Extension: 2</option>
+                            <option value="--gapopen 14 --gapextend 1">Existence: 14 Extension: 1</option>
+                            <option value="--gapopen 10 --gapextend 1">Existence: 10  Extension: 1</option>
+                            <option value="--gapopen 9 --gapextend 1" selected="true">Existence: 9  Extension: 1</option>
+                            <option value="--gapopen 8 --gapextend 1">Existence: 8  Extension: 1</option>
+                        </param>
+                    </when>
+                </conditional>
+                <param argument="--sensmode" type="select" label="Diamond's sensitivity mode">
+                    <option value="default">default</option>
+                    <option value="fast">fast</option>
+                    <option value="mid-sensitive">mid-sensitive</option>
+                    <option value="sensitive" selected="true">sensitive</option>
+                    <option value="more-sensitive">more-sensitive</option>
+                    <option value="very-sensitive">very-sensitive</option>
+                    <option value="ultra-sensitive">ultra-sensitive</option>
                 </param>
+                <param argument="--dmnd_iterate" type="boolean" truevalue="--dmnd_iterate yes" falsevalue="--dmnd_iterate no" checked="false"
+                    label="Run diamond in iterative mode, up to the sensitivity level"/>
+                <param argument="--dmnd_ignore_warnings" type="boolean" truevalue="--dmnd_ignore_warnings" falsevalue="" checked="false"
+                    label="Ignore Diamond warnings on sequence content (e.g. when a protein contains only ATGC symbols)"/>
+                <expand macro="common_search_options"/>
             </when>
-            <when value="metagenome">
-                <param name="translate" type="boolean" truevalue="--translate" falsevalue="" checked="false"
-                    label="Translate predicted CDS from blastx hits to proteins"/>
-                <param argument="--genepred" type="select" label="Type of sequences">
-                    <option value="search">Inferred from Diamond/MMseqs2 blastx hits</option>
-                    <option value="prodigal" selected="true">Performed using Prodigal</option>
-                </param>
+            <when value="mmseqs">
+                <expand macro="fasta_input"/>
+                <param argument="--start_sens" type="integer" value="3" min="0" max="100" label="Starting sensitivity" />
+                <param argument="--sens_steps" type="integer" value="3" min="0" max="100" label="Number of sensitivity steps" />
+                <param argument="--final_sens" type="integer" value="7" min="0" max="100" label="Final sensititivy step" />
+                <expand macro="common_search_options"/>
             </when>
         </conditional>
-
-        <section name="seed_ortho_options" expanded="true" title="Seed orthologs search options">
-            <conditional name="ortho_method">
-                <param argument="-m" type="select" label="Method to search seed orthologs">
-                    <option value="diamond" selected="true">Diamond</option>
-                    <option value="mmseqs">MMseqs2</option>
-                </param>
-                <when value="diamond">
-                    <conditional name="matrix_gapcosts">
-                        <param argument="--matrix" type="select" label="Scoring matrix and gap costs">
-                            <option value="BLOSUM90">BLOSUM90</option>
-                            <option value="BLOSUM80">BLOSUM80</option>
-                            <option value="BLOSUM62" selected="true">BLOSUM62</option>
-                            <option value="BLOSUM50">BLOSUM50</option>
-                            <option value="BLOSUM45">BLOSUM45</option>
-                            <option value="PAM250">PAM250</option>
-                            <option value="PAM70">PAM70</option>
-                            <option value="PAM30">PAM30</option>
-                        </param>
-                        <when value="BLOSUM90">
-                            <param name="gap_costs" type="select" label="Gap Costs">
-                                <option value="--gapopen 9 --gapextend 2">Existence: 9  Extension: 2</option>
-                                <option value="--gapopen 8 --gapextend 2">Existence: 8  Extension: 2</option>
-                                <option value="--gapopen 7 --gapextend 2">Existence: 7  Extension: 2</option>
-                                <option value="--gapopen 6 --gapextend 2">Existence: 6  Extension: 2</option>
-                                <option value="--gapopen 11 --gapextend 1">Existence: 11  Extension: 1</option>
-                                <option value="--gapopen 10 --gapextend 1" selected="true">Existence: 10  Extension: 1</option>
-                                <option value="--gapopen 9 --gapextend 1">Existence: 9  Extension: 1</option>
-                            </param>
-                        </when>
-                        <when value="BLOSUM80">
-                            <param name="gap_costs" type="select" label="Gap Costs">
-                                <option value="--gapopen 8 --gapextend 2">Existence: 8  Extension: 2</option>
-                                <option value="--gapopen 7 --gapextend 2">Existence: 7  Extension: 2</option>
-                                <option value="--gapopen 6 --gapextend 2">Existence: 6  Extension: 2</option>
-                                <option value="--gapopen 11 --gapextend 1">Existence: 11  Extension: 1</option>
-                                <option value="--gapopen 10 --gapextend 1" selected="true">Existence: 10  Extension: 1</option>
-                                <option value="--gapopen 9 --gapextend 1">Existence: 9  Extension: 1</option>
-                            </param>
-                        </when>
-                        <when value="BLOSUM62">
-                            <param name="gap_costs" type="select" label="Gap Costs">
-                                <option value="--gapopen 11 --gapextend 2">Existence: 11  Extension: 2</option>
-                                <option value="--gapopen 10 --gapextend 2">Existence: 10  Extension: 2</option>
-                                <option value="--gapopen 9 --gapextend 2">Existence: 9  Extension: 2</option>
-                                <option value="--gapopen 8 --gapextend 2">Existence: 8  Extension: 2</option>
-                                <option value="--gapopen 7 --gapextend 2">Existence: 7  Extension: 2</option>
-                                <option value="--gapopen 6 --gapextend 2">Existence: 6  Extension: 2</option>
-                                <option value="--gapopen 13 --gapextend 1">Existence: 13  Extension: 1</option>
-                                <option value="--gapopen 12 --gapextend 1">Existence: 12  Extension: 1</option>
-                                <option value="--gapopen 11 --gapextend 1" selected="true">Existence: 11  Extension: 1</option>
-                                <option value="--gapopen 10 --gapextend 1">Existence: 10  Extension: 1</option>
-                                <option value="--gapopen 9 --gapextend 1">Existence: 9  Extension: 1</option>
-                            </param>
-                        </when>
-                        <when value="BLOSUM50">
-                            <param name="gap_costs" type="select" label="Gap Costs">
-                                <option value="--gapopen 13 --gapextend 3">Existence: 13  Extension: 3</option>
-                                <option value="--gapopen 12 --gapextend 3">Existence: 12  Extension: 3</option>
-                                <option value="--gapopen 11 --gapextend 3">Existence: 11  Extension: 3</option>
-                                <option value="--gapopen 10 --gapextend 3">Existence: 10  Extension: 3</option>
-                                <option value="--gapopen 9 --gapextend 3">Existence: 9  Extension: 3</option>
-                                <option value="--gapopen 16 --gapextend 2">Existence: 16  Extension: 2</option>
-                                <option value="--gapopen 15 --gapextend 2">Existence: 15  Extension: 2</option>
-                                <option value="--gapopen 14 --gapextend 2">Existence: 14  Extension: 2</option>
-                                <option value="--gapopen 13 --gapextend 2" selected="true">Existence: 13  Extension: 2</option>
-                                <option value="--gapopen 12 --gapextend 2">Existence: 12  Extension: 2</option>
-                                <option value="--gapopen 19 --gapextend 1">Existence: 19  Extension: 1</option>
-                                <option value="--gapopen 18 --gapextend 1">Existence: 18  Extension: 1</option>
-                                <option value="--gapopen 17 --gapextend 1">Existence: 17  Extension: 1</option>
-                                <option value="--gapopen 16 --gapextend 1">Existence: 16  Extension: 1</option>
-                                <option value="--gapopen 15 --gapextend 1">Existence: 15  Extension: 1</option>
-                            </param>
-                        </when>
-                        <when value="BLOSUM45">
-                            <param name="gap_costs" type="select" label="Gap Costs">
-                                <option value="--gapopen 13 --gapextend 3">Existence: 13  Extension: 3</option>
-                                <option value="--gapopen 12 --gapextend 3">Existence: 12  Extension: 3</option>
-                                <option value="--gapopen 11 --gapextend 3">Existence: 11  Extension: 3</option>
-                                <option value="--gapopen 10 --gapextend 3">Existence: 10  Extension: 3</option>
-                                <option value="--gapopen 15 --gapextend 2" selected="true">Existence: 15  Extension: 2</option>
-                                <option value="--gapopen 14 --gapextend 2">Existence: 14  Extension: 2</option>
-                                <option value="--gapopen 13 --gapextend 2">Existence: 13  Extension: 2</option>
-                                <option value="--gapopen 12 --gapextend 2">Existence: 12  Extension: 2</option>
-                                <option value="--gapopen 19 --gapextend 1">Existence: 19  Extension: 1</option>
-                                <option value="--gapopen 18 --gapextend 1">Existence: 18  Extension: 1</option>
-                                <option value="--gapopen 17 --gapextend 1">Existence: 17  Extension: 1</option>
-                                <option value="--gapopen 16 --gapextend 1">Existence: 16  Extension: 1</option>
-                            </param>
-                        </when>
-                        <when value="PAM250">
-                            <param name="gap_costs" type="select" label="Gap Costs">
-                                <option value="--gapopen 15 --gapextend 3">Existence: 15  Extension: 3</option>
-                                <option value="--gapopen 14 --gapextend 3">Existence: 14  Extension: 3</option>
-                                <option value="--gapopen 13 --gapextend 3">Existence: 13  Extension: 3</option>
-                                <option value="--gapopen 12 --gapextend 3">Existence: 12  Extension: 3</option>
-                                <option value="--gapopen 17 --gapextend 2">Existence: 17  Extension: 2</option>
-                                <option value="--gapopen 16 --gapextend 2">Existence: 16  Extension: 2</option>
-                                <option value="--gapopen 15 --gapextend 2">Existence: 15  Extension: 2</option>
-                                <option value="--gapopen 14 --gapextend 2" selected="true">Existence: 14  Extension: 2</option>
-                                <option value="--gapopen 13 --gapextend 2">Existence: 13  Extension: 2</option>
-                                <option value="--gapopen 21 --gapextend 1">Existence: 21  Extension: 1</option>
-                                <option value="--gapopen 20 --gapextend 1">Existence: 20  Extension: 1</option>
-                                <option value="--gapopen 19 --gapextend 1">Existence: 19  Extension: 1</option>
-                                <option value="--gapopen 18 --gapextend 1">Existence: 18  Extension: 1</option>
-                                <option value="--gapopen 17 --gapextend 1">Existence: 17  Extension: 1</option>
-                            </param>
-                        </when>
-                        <when value="PAM70">
-                            <param name="gap_costs" type="select" label="Gap Costs">
-                                <option value="--gapopen 12 --gapextend 3">Existence: 12 Extension: 3</option>
-                                <option value="--gapopen 11 --gapextend 2">Existence: 11 Extension: 2</option>
-                                <option value="--gapopen 8 --gapextend 2">Existence: 8  Extension: 2</option>
-                                <option value="--gapopen 7 --gapextend 2">Existence: 7  Extension: 2</option>
-                                <option value="--gapopen 6 --gapextend 2">Existence: 6  Extension: 2</option>
-                                <option value="--gapopen 11 --gapextend 1">Existence: 11  Extension: 1</option>
-                                <option value="--gapopen 10 --gapextend 1" selected="true">Existence: 10  Extension: 1</option>
-                                <option value="--gapopen 9 --gapextend 1">Existence: 9  Extension: 1</option>
-                            </param>
-                        </when>
-                        <when value="PAM30">
-                            <param name="gap_costs" type="select" label="Gap Costs">
-                                <option value="--gapopen 15 --gapextend 3">Existence: 15 Extension: 3</option>
-                                <option value="--gapopen 13 --gapextend 3">Existence: 13 Extension: 3</option>
-                                <option value="--gapopen 14 --gapextend 2">Existence: 14 Extension: 2</option>
-                                <option value="--gapopen 7 --gapextend 2">Existence: 7  Extension: 2</option>
-                                <option value="--gapopen 6 --gapextend 2">Existence: 6  Extension: 2</option>
-                                <option value="--gapopen 5 --gapextend 2">Existence: 5  Extension: 2</option>
-                                <option value="--gapopen 14 --gapextend 1">Existence: 14 Extension: 1</option>
-                                <option value="--gapopen 10 --gapextend 1">Existence: 10  Extension: 1</option>
-                                <option value="--gapopen 9 --gapextend 1" selected="true">Existence: 9  Extension: 1</option>
-                                <option value="--gapopen 8 --gapextend 1">Existence: 8  Extension: 1</option>
-                            </param>
-                        </when>
-                    </conditional>
-                    <param name="sensmode" type="select" label="Gap Costs">
-                        <option value="default">default</option>
-                        <option value="fast">fast</option>
-                        <option value="mid-sensitive">mid-sensitive</option>
-                        <option value="sensitive" selected="true">sensitive</option>
-                        <option value="more-sensitive">more-sensitive</option>
-                        <option value="very-sensitive">very-sensitive</option>
-                        <option value="ultra-sensitive">ultra-sensitive</option>
-                    </param>
-                    <param argument="--dmnd_iterate" type="boolean" truevalue="--dmnd_iterate yes" falsevalue="--dmnd_iterate no" checked="false"
-                        label="Run diamond in iterative mode, up to the sensitivity level"/>
-                    <param argument="--dmnd_ignore_warnings" type="boolean" truevalue="--dmnd_ignore_warnings" falsevalue="" checked="false"
-                        label="Ignore Diamond warnings on sequence content (e.g. when a protein contains only ATGC symbols)"/>
-                </when>
-                <when value="mmseqs">
-                    <param argument="--start_sens" type="integer" value="3" min="0" max="100" label="Starting sensitivity" />
-                    <param argument="--sens_steps" type="integer" value="3" min="0" max="100" label="Number of sensitivity steps" />
-                    <param argument="--final_sens" type="integer" value="7" min="0" max="100" label="Final sensititivy step" />
-                </when>
-            </conditional>
-
-            <param argument="--query_cover" type="integer" optional="true" min="0" max="100" label="Minimum query coverage" help="Report only alignments above the given percentage of query cover" />
-            <param argument="--subject_cover" type="integer" optional="true" min="0" max="100" label="Minimum subject coverage" help="Report only alignments above the given percentage of subject cover" />
-            <param argument="--pident" type="integer" optional="true" min="0" max="100" label="Minimum query coverage" help="Report only alignments above the given percentage of identity" />
-        </section>
 
         <section name="annotation_options" expanded="false" title="Annotation Options">
             <param argument="--seed_ortholog_evalue" type="float" value="0.001" min="0" label="Min E-value threshold">
@@ -292,11 +268,10 @@
             </param>
         </section>
         
-        
         <section name="output_options" expanded="false" title="Output Options">
-            <param name="no_file_comments" type="boolean" truevalue="--no_file_comments" falsevalue="" checked="true"
+            <param argument="--no_file_comments" type="boolean" truevalue="--no_file_comments" falsevalue="" checked="true"
                 label="Exclude header lines and stats from output files"/>
-            <param name="no_annot" type="boolean" truevalue="--no_annot" falsevalue="" checked="false"
+            <param argument="--no_annot" type="boolean" truevalue="--no_annot" falsevalue="" checked="false"
                 label="Skip functional annotation, reporting only hits"/>
             <param name="report_orthologs" type="boolean" truevalue="--report_orthologs" falsevalue="" checked="false"
                 label="Output a file with the list of orthologs for each hits"/>
@@ -323,30 +298,42 @@
     </outputs>
     <tests>
         <test expect_num_outputs="1">
-            <param name="input" value="Nmar_0135.fa" ftype="fasta"/>
             <param name="eggnog_data" value="@EGGNOG_DB_VERSION@"/>
-            <param name="no_annot" value="true"/>
-            <param name="no_file_comments" value="true"/>
+            <conditional name="ortho_method">
+                <param name="input" value="Nmar_0135.fa" ftype="fasta"/>
+            </conditional>
+            <section name="output_options">
+                <param name="no_annot" value="true"/>
+                <param name="no_file_comments" value="true"/>
+            </section>
             <output name="seed_orthologs" file="DIA_nlim.emapper.seed_orthologs" ftype="tabular" compare="sim_size"/>
             <expand macro="stdout_assertion"/>
         </test>
         <test expect_num_outputs="3">
-            <param name="input" value="Nmar_0135.fa" ftype="fasta"/>
             <param name="eggnog_data" value="@EGGNOG_DB_VERSION@"/> <!-- not passed in test, but required for test to work -->
-            <param name="report_orthologs" value="true"/>
-            <param name="no_file_comments" value="true"/>
+            <conditional name="ortho_method">
+                <param name="input" value="Nmar_0135.fa" ftype="fasta"/>
+            </conditional>
+            <section name="output_options">
+                <param name="report_orthologs" value="true"/>
+                <param name="no_file_comments" value="true"/>
+            </section>
             <output name="seed_orthologs" file="DIA_nlim.emapper.seed_orthologs" ftype="tabular" compare="sim_size"/>
             <output name="annotations" file="DIA_nlim.emapper.annotations" ftype="tabular" compare="sim_size"/>
             <output name="annotations_orthologs" file="DIA_nlim.emapper.annotations_orthologs" ftype="tabular"/>
             <expand macro="stdout_assertion"/>
         </test>
         <test expect_num_outputs="3">
-            <param name="input" value="Nmar_0135.fa" ftype="fasta"/>
             <param name="eggnog_data" value="@EGGNOG_DB_VERSION@"/> <!-- not passed in test, but required for test to work -->
-            <param name="report_orthologs" value="true"/>
-            <param name="no_file_comments" value="true"/>
+            <conditional name="ortho_method">
+                <param name="input" value="Nmar_0135.fa" ftype="fasta"/>
+            </conditional>
             <section name="annotation_options">
                 <param name="tax_scope" value="651137" />
+            </section>
+            <section name="output_options">
+                <param name="report_orthologs" value="true"/>
+                <param name="no_file_comments" value="true"/>
             </section>
             <output name="seed_orthologs" file="scoped.emapper.seed_orthologs" ftype="tabular" compare="sim_size"/>
             <output name="annotations" file="scoped.emapper.annotations" ftype="tabular" compare="sim_size"/>
@@ -354,16 +341,16 @@
             <expand macro="stdout_assertion"/>
         </test>
         <test expect_num_outputs="3">
-            <param name="input" value="Nmar_0135.fa" ftype="fasta"/>
             <param name="eggnog_data" value="@EGGNOG_DB_VERSION@"/> <!-- not passed in test, but required for test to work -->
-            <section name="seed_ortho_options">
-                <conditional name="ortho_method">
-                    <param name="m" value="diamond" />
-                    <param name="sensmode" value="fast" />
-                </conditional>
+            <conditional name="ortho_method">
+                <param name="m" value="diamond" />
+                <param name="input" value="Nmar_0135.fa" ftype="fasta"/>
+                <param name="sensmode" value="fast" />
+            </conditional>
+            <section name="output_options">
+                <param name="report_orthologs" value="true"/>
+                <param name="no_file_comments" value="true"/>
             </section>
-            <param name="report_orthologs" value="true"/>
-            <param name="no_file_comments" value="true"/>
             <output name="seed_orthologs" file="DIA_nlim.emapper.seed_orthologs" ftype="tabular" compare="sim_size"/>
             <output name="annotations" file="DIA_nlim.emapper.annotations" ftype="tabular" compare="sim_size"/>
             <output name="annotations_orthologs" file="DIA_nlim.emapper.annotations_orthologs" ftype="tabular"/>
@@ -371,8 +358,8 @@
         </test>
         <!-- not enabled as it requires a specific .db file, hard to minimize -->
         <!--test>
-            <param name="input" value="Nmar_0135.fa" ftype="fasta"/>
             <param name="eggnog_data" value="@EGGNOG_DB_VERSION@"/>
+            <param name="input" value="Nmar_0135.fa" ftype="fasta"/>
             <section name="seed_ortho_options">
                 <conditional name="ortho_method">
                     <param name="m" value="mmseqs" />
