@@ -1,4 +1,4 @@
-<tool id="eggnog_mapper" name="eggNOG Mapper" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@">
+<tool id="eggnog_mapper_beta" name="eggNOG Mapper" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@">
     <description>functional sequence annotation by orthology</description>
     <macros>
         <import>eggnog_macros.xml</import>
@@ -6,6 +6,15 @@
     <expand macro="requirements"/>
     <expand macro="version_command"/>
     <command detect_errors="aggressive"><![CDATA[
+        #if $ortho_method.m == "no_search"
+            cat 
+            #for aht in $ortho_method.annotate_hits_table
+                $aht
+            #end for
+            > annotate_hits_table.tsv
+            &&
+        #end if
+
         emapper.py
         --data_dir '$eggnog_data.fields.path'
         -m '$ortho_method.m'
@@ -49,26 +58,32 @@
             #if str($ortho_method.score):
                 --score $ortho_method.score
             #end if
+        #elif $ortho_method.m == "no_search"
+            --annotate_hits_table annotate_hits_table.tsv
         #end if
 
-        #if str($annotation_options.seed_ortholog_evalue):
-            --seed_ortholog_evalue $annotation_options.seed_ortholog_evalue
-        #end if
-        #if str($annotation_options.seed_ortholog_score):
-            --seed_ortholog_score $annotation_options.seed_ortholog_score
-        #end if
-        #if $annotation_options.tax_scope:
-            --tax_scope=$annotation_options.tax_scope
-        #end if
-        #if $annotation_options.target_orthologs:
-            --target_orthologs=$annotation_options.target_orthologs
-        #end if
-        #if $annotation_options.go_evidence:
-            --go_evidence=$annotation_options.go_evidence
+        #if $annotation_options.no_annot == "--no_annot"
+            --no_annot
+        #else
+            #if str($annotation_options.seed_ortholog_evalue):
+                --seed_ortholog_evalue $annotation_options.seed_ortholog_evalue
+            #end if
+            #if str($annotation_options.seed_ortholog_score):
+                --seed_ortholog_score $annotation_options.seed_ortholog_score
+            #end if
+            #if $annotation_options.tax_scope:
+                --tax_scope=$annotation_options.tax_scope
+            #end if
+            #if $annotation_options.target_orthologs:
+                --target_orthologs=$annotation_options.target_orthologs
+            #end if
+            #if $annotation_options.go_evidence:
+                --go_evidence=$annotation_options.go_evidence
+            #end if
         #end if
         $output_options.no_file_comments
-        $output_options.no_annot
         $output_options.report_orthologs
+        $output_options.md5
         --output='results'
         --cpu "\${GALAXY_SLOTS:-4}"
         --scratch_dir \${TEMP:-\$_GALAXY_JOB_TMP_DIR}
@@ -85,6 +100,7 @@
             <param argument="-m" type="select" label="Method to search seed orthologs">
                 <option value="diamond" selected="true">Diamond</option>
                 <option value="mmseqs">MMseqs2</option>
+                <option value="no_search">Skip search stage: annotate an existing seed orthologs data set</option>
             </param>
             <when value="diamond">
                 <expand macro="fasta_input"/>
@@ -237,56 +253,79 @@
                 <param argument="--final_sens" type="integer" value="7" min="0" max="100" label="Final sensititivy step" />
                 <expand macro="common_search_options"/>
             </when>
+            <when value="no_search">
+                <param argument="--annotate_hits_table" type="data" multiple="true" format="tabular" label="Seed orthologs">
+                    <validator type="expression" message="No seed orthologs">value.metadata.columns == 11</validator>
+                    <!-- would be cool to replace with this validator: 
+                        <validator type="expression" message="No seed orthologs">value.metadata.column_names == '@SEED_ORTHOLOG_COLUMNS@'.split()</validator>
+                        but this does not work (yet) in tool tests since column_names can not be set in uploads -->
+                </param>
+            </when>
         </conditional>
 
-        <section name="annotation_options" expanded="false" title="Annotation Options">
-            <param argument="--seed_ortholog_evalue" type="float" value="0.001" min="0" label="Min E-value threshold">
-                <help>
-                Min E-value expected when searching for seed eggNOG ortholog. Applies to phmmer/diamond searches.
-                Queries not having a significant seed orthologs (E-value less than threshold) will not be annotated.
-                </help>
+        <conditional name="annotation_options">
+            <param argument="--no_annot" type="select" label="Annotate seed orthologs">
+                <option value="">Yes</option>
+                <option value="--no_annot">No</option>
             </param>
-            <param argument="--seed_ortholog_score" type="float" optional="true" min="0" label="Minimum bit score threshold">
-                <help>
-                Min bit score expected when searching for seed eggNOG ortholog.
-                Queries not having a significant seed orthologs will not be annotated.
-                </help>
-            </param>
-            <param argument="--tax_scope" type="integer" optional="true" label="Set taxonomic scope" help="NCBI taxonomy id" />
-            <param argument="--target_orthologs" type="select" label="target orthologs for functional transfer">
-                <option value="one2one">one2one</option>
-                <option value="many2one">many2one</option>
-                <option value="one2many">one2many</option>
-                <option value="many2many">many2many</option>
-                <option value="all" selected="true">all</option>
-            </param>
-            <param argument="--go_evidence" type="select"
-                    label="Select the set of GO terms that should be used for annotation">
-                <option value="experimental">experimental = Use only terms inferred from experimental evidence</option>
-                <option value="non-electronic" selected="true">non-electronic = Use only non-electronically curated terms</option>
-                <option value="all" selected="true">All (experimental + non-electronic)</option>
-            </param>
-        </section>
+            <when value="">
+                <param argument="--seed_ortholog_evalue" type="float" value="0.001" min="0" label="Min E-value threshold">
+                    <help>
+                    Min E-value expected when searching for seed eggNOG ortholog. Applies to phmmer/diamond searches.
+                    Queries not having a significant seed orthologs (E-value less than threshold) will not be annotated.
+                    </help>
+                </param>
+                <param argument="--seed_ortholog_score" type="float" optional="true" min="0" label="Minimum bit score threshold">
+                    <help>
+                    Min bit score expected when searching for seed eggNOG ortholog.
+                    Queries not having a significant seed orthologs will not be annotated.
+                    </help>
+                </param>
+                <param argument="--tax_scope" type="integer" optional="true" label="Set taxonomic scope" help="NCBI taxonomy id" />
+                <param argument="--target_orthologs" type="select" label="target orthologs for functional transfer">
+                    <option value="one2one">one2one</option>
+                    <option value="many2one">many2one</option>
+                    <option value="one2many">one2many</option>
+                    <option value="many2many">many2many</option>
+                    <option value="all" selected="true">all</option>
+                </param>
+                <param argument="--go_evidence" type="select"
+                        label="Select the set of GO terms that should be used for annotation">
+                    <option value="experimental">experimental = Use only terms inferred from experimental evidence</option>
+                    <option value="non-electronic" selected="true">non-electronic = Use only non-electronically curated terms</option>
+                    <option value="all" selected="true">All (experimental + non-electronic)</option>
+                </param>
+            </when>
+            <when value="--no_annot"/>
+        </conditional>
         
         <section name="output_options" expanded="false" title="Output Options">
             <param argument="--no_file_comments" type="boolean" truevalue="--no_file_comments" falsevalue="" checked="true"
                 label="Exclude header lines and stats from output files"/>
-            <param argument="--no_annot" type="boolean" truevalue="--no_annot" falsevalue="" checked="false"
-                label="Skip functional annotation, reporting only hits"/>
-            <param name="report_orthologs" type="boolean" truevalue="--report_orthologs" falsevalue="" checked="false"
+            <param argument="--report_orthologs" type="boolean" truevalue="--report_orthologs" falsevalue="" checked="false"
                 label="Output a file with the list of orthologs for each hits"/>
+            <param argument="--md5" type="boolean" truevalue="--md5" falsevalue="" checked="false"
+                label="Add md5 hash of each query to annotations"/>
         </section>
     </inputs>
     <outputs>
         <data name="seed_orthologs" format="tabular" label="${tool.name} on ${on_string}: seed_orthologs" from_work_dir="results.emapper.seed_orthologs">
+            <filter>ortho_method['m'] != 'no_search'</filter>
             <actions>
-                <action name="column_names" type="metadata" default="query_name,seed_eggNOG_ortholog,seed_ortholog_evalue,seed_ortholog_score,query_start,query_end,seed_start,seed_end,pident,query_cov,seed_cov"/>
+                <action name="column_names" type="metadata" default="@SEED_ORTHOLOG_COLUMNS@"/>
             </actions>
         </data>
         <data name="annotations" format="tabular" label="${tool.name} on ${on_string}: annotations" from_work_dir="results.emapper.annotations">
-            <filter>not output_options['no_annot']</filter>
+            <filter>annotation_options['no_annot'] == ''</filter>
             <actions>
-                <action name="column_names" type="metadata" default="query,seed_ortholog,evalue,score,max_annot_lvl,COG_category,Description,Preferred_name,GOs,EC,KEGG_ko,KEGG_Pathway,KEGG_Module,KEGG_Reaction,KEGG_rclass,BRITE,KEGG_TC,CAZy,BiGG_Reaction,PFAMseggNOG_OGs"/>
+                <conditional name="output_options.md5">
+                    <when value="True">
+                        <action name="column_names" type="metadata" default="query,seed_ortholog,evalue,score,max_annot_lvl,COG_category,Description,Preferred_name,GOs,EC,KEGG_ko,KEGG_Pathway,KEGG_Module,KEGG_Reaction,KEGG_rclass,BRITE,KEGG_TC,CAZy,BiGG_Reaction,PFAMseggNOG_OGs,md5"/>
+                    </when>
+                    <when value="False">
+                        <action name="column_names" type="metadata" default="query,seed_ortholog,evalue,score,max_annot_lvl,COG_category,Description,Preferred_name,GOs,EC,KEGG_ko,KEGG_Pathway,KEGG_Module,KEGG_Reaction,KEGG_rclass,BRITE,KEGG_TC,CAZy,BiGG_Reaction,PFAMseggNOG_OGs"/>
+                    </when>
+                </conditional>
             </actions>
         </data>
         <data name="annotations_orthologs" format="tabular" label="${tool.name} on ${on_string}: orthologs"  from_work_dir="results.emapper.orthologs">
@@ -297,18 +336,48 @@
         </data>
     </outputs>
     <tests>
+        <!-- test producing only seed orthologs-->
         <test expect_num_outputs="1">
             <param name="eggnog_data" value="@EGGNOG_DB_VERSION@"/>
             <conditional name="ortho_method">
                 <param name="input" value="Nmar_0135.fa" ftype="fasta"/>
             </conditional>
+            <conditional name="annotation_options">
+                <param name="no_annot" value="--no_annot"/>
+            </conditional>
             <section name="output_options">
-                <param name="no_annot" value="true"/>
                 <param name="no_file_comments" value="true"/>
             </section>
             <output name="seed_orthologs" file="DIA_nlim.emapper.seed_orthologs" ftype="tabular" compare="sim_size"/>
             <expand macro="stdout_assertion"/>
         </test>
+        
+        <!-- test producing annotations form seed orthologs -->
+        <test expect_num_outputs="2">
+            <param name="eggnog_data" value="@EGGNOG_DB_VERSION@"/> <!-- not passed in test, but required for test to work -->
+            <conditional name="ortho_method">
+                <param name="m" value="no_search"/>
+                <param name="annotate_hits_table" value="DIA_nlim.emapper.seed_orthologs" ftype="tabular">
+                    <!-- this has no effect at the moment since column_names can not be set in uploads <metadata name="column_names" value="@SEED_ORTHOLOG_COLUMNS@"/> -->
+                </param>
+            </conditional>
+            <conditional name="annotation_options">
+            </conditional>
+            <section name="output_options">
+                <param name="report_orthologs" value="true"/>
+                <param name="no_file_comments" value="true"/>
+            </section>
+            <output name="annotations" file="DIA_nlim.emapper.annotations" ftype="tabular" compare="sim_size">
+                <metadata name="columns" value="21" />
+                <metadata name="column_names" value="query,seed_ortholog,evalue,score,max_annot_lvl,COG_category,Description,Preferred_name,GOs,EC,KEGG_ko,KEGG_Pathway,KEGG_Module,KEGG_Reaction,KEGG_rclass,BRITE,KEGG_TC,CAZy,BiGG_Reaction,PFAMseggNOG_OGs" />
+            </output>
+            <output name="annotations_orthologs" file="DIA_nlim.emapper.annotations_orthologs" ftype="tabular">
+                <metadata name="columns" value="4" />
+            </output>
+            <expand macro="stdout_assertion"/>
+        </test>
+
+        <!-- test producing seed orthologs and annotations at once (ie the same as the previous two tests but in a single tool run) -->
         <test expect_num_outputs="3">
             <param name="eggnog_data" value="@EGGNOG_DB_VERSION@"/> <!-- not passed in test, but required for test to work -->
             <conditional name="ortho_method">
@@ -317,12 +386,19 @@
             <section name="output_options">
                 <param name="report_orthologs" value="true"/>
                 <param name="no_file_comments" value="true"/>
+                <param name="md5" value="true"/>
             </section>
             <output name="seed_orthologs" file="DIA_nlim.emapper.seed_orthologs" ftype="tabular" compare="sim_size"/>
-            <output name="annotations" file="DIA_nlim.emapper.annotations" ftype="tabular" compare="sim_size"/>
-            <output name="annotations_orthologs" file="DIA_nlim.emapper.annotations_orthologs" ftype="tabular"/>
+            <output name="annotations" file="DIA_nlim.emapper.annotations" ftype="tabular" compare="sim_size">
+                <metadata name="columns" value="22" />
+                <metadata name="column_names" value="query,seed_ortholog,evalue,score,max_annot_lvl,COG_category,Description,Preferred_name,GOs,EC,KEGG_ko,KEGG_Pathway,KEGG_Module,KEGG_Reaction,KEGG_rclass,BRITE,KEGG_TC,CAZy,BiGG_Reaction,PFAMseggNOG_OGs,md5" />
+            </output>
+            <output name="annotations_orthologs" file="DIA_nlim.emapper.annotations_orthologs" ftype="tabular">
+                <metadata name="columns" value="4" />
+            </output>
             <expand macro="stdout_assertion"/>
         </test>
+
         <test expect_num_outputs="3">
             <param name="eggnog_data" value="@EGGNOG_DB_VERSION@"/> <!-- not passed in test, but required for test to work -->
             <conditional name="ortho_method">
@@ -424,6 +500,25 @@ This file provides final annotations of each query. Tab-delimited columns in the
 - ``best_OG|evalue|score``: Best matching Orthologous Groups (deprecated, use smallest from eggnog OGs)
 - ``COG_functional_categories``: COG functional category inferred from best matching OG
 - ``eggNOG_free_text_description``
+
+**Recommentation for large input data**
+
+EggNOG-mapper consists of two phases
+
+1. finding seed orthologous sequences (compute intensive)
+2. expanding annotations (IO intensive)
+
+by default (i.e. if *Method to search seed orthologs* is not *Skip search stage...* and *Annotate seed orthologs* is *Yes*)
+both phases are executed within one tool run. 
+
+For large input FASTA datasets in can be favourable to split this in two separate
+tool runs as follows:
+
+1. Split the FASTA (e.g. 1M seqs per data set)
+2. Run the search phase only (set *Annotate seed orthologs* to *No*) on the separate FASTA files.
+3. Run the annotation phase (set *Method to search seed orthologs* to *Skip search stage...*)
+
+See [also](https://github.com/eggnogdb/eggnog-mapper/wiki/eggNOG-mapper-v2.1.5-to-v2.1.8#Setting_up_large_annotation_jobs)
 
     ]]></help>
     <expand macro="citations"/>
