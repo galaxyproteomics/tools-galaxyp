@@ -1,4 +1,4 @@
-<tool id="eggnog_mapper_beta" name="eggNOG Mapper" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@">
+<tool id="eggnog_mapper" name="eggNOG Mapper" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@">
     <description>functional sequence annotation by orthology</description>
     <macros>
         <import>eggnog_macros.xml</import>
@@ -19,16 +19,24 @@
         --data_dir '$eggnog_data.fields.path'
         -m '$ortho_method.m'
 
-        #if $ortho_method.m in ['diamond', 'mmseqs']:
-            -i '${ortho_method.input}'
-            --itype '${ortho_method.input_trans.itype}'
+        #if $ortho_method.m in ['diamond', 'mmseqs', 'cache']:
+            -i '$ortho_method.input'
+            --itype '$ortho_method.input_trans.itype'
             #if $ortho_method.input_trans.itype in ['CDS', 'genome', 'metagenome']:
                 $ortho_method.input_trans.translate
             #end if
             #if $ortho_method.input_trans.itype in ['genome', 'metagenome']:
                 --genepred $ortho_method.input_trans.genepred
             #end if
+        #elif $ortho_method.m == "no_search"
+            --annotate_hits_table annotate_hits_table.tsv
+        #end if
+        
+        #if $ortho_method.m == 'cache'
+            --cache '$ortho_method.cache'
+        #end if
 
+        #if $ortho_method.m in ['diamond', 'mmseqs']:
             ## Diamond option
             #if $ortho_method.m == "diamond":
                 --matrix '$ortho_method.matrix_gapcosts.matrix'
@@ -58,8 +66,6 @@
             #if str($ortho_method.score):
                 --score $ortho_method.score
             #end if
-        #elif $ortho_method.m == "no_search"
-            --annotate_hits_table annotate_hits_table.tsv
         #end if
 
         #if $annotation_options.no_annot == "--no_annot"
@@ -101,6 +107,7 @@
                 <option value="diamond" selected="true">Diamond</option>
                 <option value="mmseqs">MMseqs2</option>
                 <option value="no_search">Skip search stage: annotate an existing seed orthologs data set</option>
+                <option value="cache">Skip search stage: annotate based on cached annotations (see also --md5)</option>
             </param>
             <when value="diamond">
                 <expand macro="fasta_input"/>
@@ -261,6 +268,13 @@
                         but this does not work (yet) in tool tests since column_names can not be set in uploads -->
                 </param>
             </when>
+            <when value="cache">
+                <expand macro="fasta_input"/>
+                <param argument="--cache"  type="data" multiple="true" format="tabular" label="EggNOG Annotations with md5 hashes" help="Annotations computed with EggNOG mapper with enabled --md5 option">
+                    <validator type="expression" message="No seed orthologs">value.metadata.columns == 22</validator>
+                </param>
+                <param name="output_no_annotations" type="boolean" checked="true" label="Output sequences without annotation" help="Produce an additional FASTA file with the sequences of queries for which an existing annotation was not found using cache mode. This file can be used as input of another eggNOG-mapper run without using the cache, trying to annotate the sequences."/>
+            </when>
         </conditional>
 
         <conditional name="annotation_options">
@@ -310,7 +324,7 @@
     </inputs>
     <outputs>
         <data name="seed_orthologs" format="tabular" label="${tool.name} on ${on_string}: seed_orthologs" from_work_dir="results.emapper.seed_orthologs">
-            <filter>ortho_method['m'] != 'no_search'</filter>
+            <filter>ortho_method['m'] not in ['no_search', 'cache']</filter>
             <actions>
                 <action name="column_names" type="metadata" default="@SEED_ORTHOLOG_COLUMNS@"/>
             </actions>
@@ -329,10 +343,13 @@
             </actions>
         </data>
         <data name="annotations_orthologs" format="tabular" label="${tool.name} on ${on_string}: orthologs"  from_work_dir="results.emapper.orthologs">
-            <filter>output_options['report_orthologs']</filter>
+            <filter>ortho_method['m'] != 'cache' and output_options['report_orthologs']</filter>
             <actions>
                 <action name="column_names" type="metadata" default="query,orth_type,species,orthologs"/>
             </actions>
+        </data>
+        <data name="no_annotations" format="fasta" label="${tool.name} on ${on_string}: Sequences wo annotation"  from_work_dir="results.emapper.no_annotations.fasta">
+            <filter>ortho_method['m'] == 'cache' and output_options['output_no_annotations']</filter>
         </data>
     </outputs>
     <tests>
@@ -348,7 +365,7 @@
             <section name="output_options">
                 <param name="no_file_comments" value="true"/>
             </section>
-            <output name="seed_orthologs" file="DIA_nlim.emapper.seed_orthologs" ftype="tabular" compare="sim_size"/>
+            <expand macro="seed_orthologs_assertion"/>
             <expand macro="stdout_assertion"/>
         </test>
         
@@ -367,13 +384,8 @@
                 <param name="report_orthologs" value="true"/>
                 <param name="no_file_comments" value="true"/>
             </section>
-            <output name="annotations" file="DIA_nlim.emapper.annotations" ftype="tabular" compare="sim_size">
-                <metadata name="columns" value="21" />
-                <metadata name="column_names" value="query,seed_ortholog,evalue,score,max_annot_lvl,COG_category,Description,Preferred_name,GOs,EC,KEGG_ko,KEGG_Pathway,KEGG_Module,KEGG_Reaction,KEGG_rclass,BRITE,KEGG_TC,CAZy,BiGG_Reaction,PFAMseggNOG_OGs" />
-            </output>
-            <output name="annotations_orthologs" file="DIA_nlim.emapper.annotations_orthologs" ftype="tabular">
-                <metadata name="columns" value="4" />
-            </output>
+            <expand macro="annotations_assertion"/>
+            <expand macro="annotations_orthologs_assertion"/>
             <expand macro="stdout_assertion"/>
         </test>
 
@@ -388,17 +400,35 @@
                 <param name="no_file_comments" value="true"/>
                 <param name="md5" value="true"/>
             </section>
-            <output name="seed_orthologs" file="DIA_nlim.emapper.seed_orthologs" ftype="tabular" compare="sim_size"/>
-            <output name="annotations" file="DIA_nlim.emapper.annotations" ftype="tabular" compare="sim_size">
-                <metadata name="columns" value="22" />
-                <metadata name="column_names" value="query,seed_ortholog,evalue,score,max_annot_lvl,COG_category,Description,Preferred_name,GOs,EC,KEGG_ko,KEGG_Pathway,KEGG_Module,KEGG_Reaction,KEGG_rclass,BRITE,KEGG_TC,CAZy,BiGG_Reaction,PFAMseggNOG_OGs,md5" />
-            </output>
-            <output name="annotations_orthologs" file="DIA_nlim.emapper.annotations_orthologs" ftype="tabular">
-                <metadata name="columns" value="4" />
+            <expand macro="seed_orthologs_assertion"/>
+            <expand macro="annotations_assertion" columns="22" add_metadata_columm_names=",md5" add_column_names="&#009;md5" add_column_re="\t[\d\w]+"/>
+            <expand macro="annotations_orthologs_assertion"/>
+            <expand macro="stdout_assertion"/>
+        </test>
+        
+        <!-- test using chached annotations from previous run -->
+        <test expect_num_outputs="2">
+            <param name="eggnog_data" value="@EGGNOG_DB_VERSION@"/> <!-- not passed in test, but required for test to work -->
+            <conditional name="ortho_method">
+                <param name="m" value="cache"/>
+                <param name="input" value="Nmar_0135.fa" ftype="fasta"/>
+                <param name="cache" value="DIA_nlim.emapper.annotations_cached" ftype="tabular"/>
+            </conditional>
+            <section name="output_options">
+                <param name="report_orthologs" value="true"/>
+                <param name="no_file_comments" value="true"/>
+                <param name="md5" value="true"/>
+            </section>
+            <expand macro="annotations_assertion" columns="22" add_metadata_columm_names=",md5" add_column_names="&#009;md5" add_column_re="\t[\d\w]+"/>
+            <output name="no_annotations" ftype="fasta">
+                <assert_contents>
+                    <has_n_lines n="0"/>
+                </assert_contents>
             </output>
             <expand macro="stdout_assertion"/>
         </test>
 
+        <!-- test setting tax scope-->
         <test expect_num_outputs="3">
             <param name="eggnog_data" value="@EGGNOG_DB_VERSION@"/> <!-- not passed in test, but required for test to work -->
             <conditional name="ortho_method">
@@ -411,11 +441,15 @@
                 <param name="report_orthologs" value="true"/>
                 <param name="no_file_comments" value="true"/>
             </section>
-            <output name="seed_orthologs" file="scoped.emapper.seed_orthologs" ftype="tabular" compare="sim_size"/>
-            <output name="annotations" file="scoped.emapper.annotations" ftype="tabular" compare="sim_size"/>
-            <output name="annotations_orthologs" file="scoped.emapper.annotations_orthologs" ftype="tabular"/>
-            <expand macro="stdout_assertion"/>
+            <expand macro="seed_orthologs_assertion"/>
+            <expand macro="annotations_assertion"/>
+            <expand macro="annotations_orthologs_assertion"/>
+            <expand macro="stdout_assertion">
+                <has_text text="--tax_scope=651137"/>
+            </expand>
         </test>
+
+        <!-- test setting a diamond option-->
         <test expect_num_outputs="3">
             <param name="eggnog_data" value="@EGGNOG_DB_VERSION@"/> <!-- not passed in test, but required for test to work -->
             <conditional name="ortho_method">
@@ -427,10 +461,12 @@
                 <param name="report_orthologs" value="true"/>
                 <param name="no_file_comments" value="true"/>
             </section>
-            <output name="seed_orthologs" file="DIA_nlim.emapper.seed_orthologs" ftype="tabular" compare="sim_size"/>
-            <output name="annotations" file="DIA_nlim.emapper.annotations" ftype="tabular" compare="sim_size"/>
-            <output name="annotations_orthologs" file="DIA_nlim.emapper.annotations_orthologs" ftype="tabular"/>
-            <expand macro="stdout_assertion"/>
+            <expand macro="seed_orthologs_assertion"/>
+            <expand macro="annotations_assertion"/>
+            <expand macro="annotations_orthologs_assertion"/>
+            <expand macro="stdout_assertion">
+                <has_text text="--sensmode fast"/>
+            </expand>
         </test>
         <!-- not enabled as it requires a specific .db file, hard to minimize -->
         <!--test>
