@@ -1,16 +1,16 @@
+
 GalaxyP - MaxQuant
 ==================
 
-* Home: <https://github.com/galaxyproteomics/tools-galaxyp/>
-* Tool ID: `maxquant`
-* Tool Type: `default`
 
+* Home: https://github.com/galaxyproteomics/tools-galaxyp/
+* Tool ID: ``maxquant``
+* Tool Type: ``default``
 
 Description
 -----------
 
 Wrapper for the MaxQuant version available in conda.
-
 
 Updating
 --------
