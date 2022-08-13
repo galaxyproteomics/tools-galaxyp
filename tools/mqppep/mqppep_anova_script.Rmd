@@ -1,0 +1,3536 @@
+---
+title: "MaxQuant Phosphoproteomic Enrichment Pipeline ANOVA/KSEA"
+author:
+- "Nick Graham^[ORCiD 0000-0002-6811-1941, University of Southern California: Los Angeles, CA, US]"
+- "Larry Cheng^[ORCiD 0000-0002-6922-6433, Rutgers School of Graduate Studies: New Brunswick, NJ, US]"
+- "Art Eschenlauer^[ORCiD 0000-0002-2882-0508, University of Minnesota: Minneapolis, Minnesota, US]"
+date:
+- "May 28, 2018"
+- "; revised June 23, 2022"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    keep_tex: true
+header-includes:
+  - \usepackage{longtable}
+  - \newcommand\T{\rule{0pt}{2.6ex}}       % Top strut
+  - \newcommand\B{\rule[-1.2ex]{0pt}{0pt}} % Bottom strut
+params:
+  alphaFile:            "test-data/alpha_levels.tabular"
+  inputFile:            "test-data/test_input_for_anova.tabular"
+  preprocDb:            "test-data/test_input_for_anova.sqlite"
+  kseaAppPrepDb:        !r c(":memory:", "test-data/mqppep.sqlite")[2]
+  show_toc:             true
+  firstDataColumn:      "^Intensity[^_]"
+  imputationMethod:     !r c("group-median", "median", "mean", "random")[1]
+  meanPercentile:       1
+  sdPercentile:         1.0
+  regexSampleNames:     "\\.\\d+[A-Z]$"
+  regexSampleGrouping:  "\\d+"
+  imputedDataFilename:  "test-data/limbo/imputedDataFilename.txt"
+  imputedQNLTDataFile:  "test-data/limbo/imputedQNLTDataFile.txt"
+  anovaKseaMetadata:    "test-data/limbo/anovaKseaMetadata.txt"
+  oneWayManyCategories: !r c("aov", "kruskal.test", "oneway.test")[1]
+  oneWayTwoCategories:  !r c("aov", "kruskal.test", "oneway.test")[3]
+  kseaCutoffStatistic:  !r c("p.value", "FDR")[2]
+  kseaCutoffThreshold:  !r c( 0.1, 0.05)[2]
+  kseaMinKinaseCount:   1
+  intensityHeatmapRows: 75
+---
+<!--
+  kseaCutoffStatistic:  !r c("p.value", "FDR")[2]
+  kseaCutoffThreshold:  !r c(0.05, 0.1)[1]
+
+  alphaFile:            "test-data/alpha_levels.tabular"
+  inputFile:            "test-data/test_input_for_anova.tabular"
+  preprocDb:            "test-data/test_input_for_anova.sqlite"
+  kseaAppPrepDb:        !r c(":memory:", "test-data/mqppep.sqlite")[2]
+
+  alphaFile:            "test-data/alpha_levels.tabular"
+  inputFile:            "test-data/UT_phospho_ST_sites.preproc.tabular"
+  preprocDb:            "test-data/UT_phospho_ST_sites.preproc.sqlite"
+  kseaAppPrepDb:        !r c(":memory:", "test-data/UT_phospho_ST_sites.ksea.sqlite")[2]
+
+  alphaFile:            "test-data/alpha_levels.tabular"
+  inputFile:            "test-data/pY_Sites_NancyDu.txt.ppep_intensities.ppep_map.preproc.tabular"
+  preprocDb:            "test-data/pY_Sites_NancyDu.txt.ppep_intensities.ppep_map.preproc.sqlite"
+  kseaAppPrepDb:        !r c(":memory:", "test-data/pST_Sites_NancyDu.ksea.sqlite")[2]
+
+  alphaFile:            "test-data/alpha_levels.tabular"
+  inputFile:            "test-data/pST_Sites_NancyDu.txt.preproc.tabular"
+  preprocDb:            "test-data/pST_Sites_NancyDu.txt.preproc.sqlite"
+  kseaAppPrepDb:        !r c(":memory:", "test-data/pST_Sites_NancyDu.ksea.sqlite")[2]
+
+  inputFile:            "test-data/density_failure.preproc_tab.tabular"
+  kseaAppPrepDb:        !r c(":memory:", "mqppep.sqlite")[2]
+  latex_document: default
+-->
+```{r setup, include = FALSE}
+#ref for debugging: https://yihui.org/tinytex/r/#debugging
+options(tinytex.verbose = TRUE)
+
+# ref for parameterizing Rmd document: https://stackoverflow.com/a/37940285
+# ref for top and bottom struts: https://tex.stackexchange.com/a/50355
+knitr::opts_chunk$set(echo = FALSE, fig.dim = c(9, 10))
+
+# freeze the random number generator so the same results will be produced
+#  from run to run
+set.seed(28571)
+
+### LIBRARIES
+library(gplots)
+library(DBI)
+library(RSQLite)
+# Suppress "Warning: no DISPLAY variable so Tk is not available"
+suppressWarnings(suppressMessages(library(sqldf)))
+
+# required but not added to search list:
+# - DBI
+# - RSQLite
+# - ggplot2
+# - knitr
+# - latex2exp
+# - preprocessCore
+# - reshape2
+# - vioplot
+
+### CONSTANTS
+
+const_parfin <- par("fin")
+const_boxplot_fill <- "grey94"
+const_stripchart_cex <- 0.5
+const_stripsmall_cex <-
+  sqrt(const_stripchart_cex * const_stripchart_cex / 2)
+const_stripchart_jitter <- 0.3
+const_write_debug_files <- FALSE
+const_table_anchor_bp <- "bp"
+const_table_anchor_ht <- "ht"
+const_table_anchor_p <- "p"
+const_table_anchor_tbp <- "tbp"
+
+
+const_ksea_astrsk_kinases    <- 1
+const_ksea_nonastrsk_kinases <- 2
+const_ksea_all_kinases       <- 3
+
+const_log10_e <- log10(exp(1))
+
+### FUNCTIONS
+
+# from `demo(error.catching)`
+##' Catch *and* save both errors and warnings, and in the case of
+##' a warning, also keep the computed result.
+##'
+##' @title tryCatch both warnings (with value) and errors
+##' @param expr an \R expression to evaluate
+##' @return a list with 'value' and 'warning', where
+##'   'value' may be an error caught.
+##' @author Martin Maechler;
+##' Copyright (C) 2010-2012  The R Core Team
+try_catch_w_e <- function(expr) {
+  wrn <- NULL
+  # warning handler
+  w_handler <- function(w) {
+    wrn <<- w
+    invokeRestart("muffleWarning")
+  }
+  list(
+    value = withCallingHandlers(
+      tryCatch(
+        expr,
+        error = function(e) e
+      ),
+      warning = w_handler
+    ),
+    warning = wrn
+  )
+}
+
+
+write_debug_file <- function(s) {
+  if (const_write_debug_files) {
+    s_path <- sprintf("test-data/%s.txt", deparse(substitute(s)))
+    print(sprintf("DEBUG writing file %s", spath))
+    write.table(
+      s,
+      file = s_path,
+      sep = "\t",
+      col.names = TRUE,
+      row.names = TRUE,
+      quote = FALSE
+    )
+  }
+}
+
+# ref: http://adv-r.had.co.nz/Environments.html
+# "When creating your own environment, note that you should set its parent
+#   environment to be the empty environment. This ensures you don't
+#   accidentally inherit objects from somewhere else."
+# Caution: this prevents `with(my_env, expr)` from working when `expr`
+#   contains anything from the global environment, even operators!
+#   Hence, `x <- 1; get("x", new_env())` fails by design.
+new_env <- function() {
+  new.env(parent = emptyenv())
+}
+
+### numerical/statistical helper functions
+
+any_nan <- function(x) {
+  !any(x == "NaN")
+}
+
+# determine standard deviation of quantile to impute
+sd_finite <- function(x) {
+  ok <- is.finite(x)
+  sd(x[ok])
+}
+
+anova_func <- function(x, grouping_factor, one_way_f) {
+  subject <- data.frame(
+    intensity = x
+  )
+  x_aov <-
+    one_way_f(
+      formula = intensity ~ grouping_factor,
+      data = subject
+      )
+  pvalue <-
+    if (identical(one_way_f, aov))
+      summary(x_aov)[[1]][["Pr(>F)"]][1]
+    else
+      pvalue <- x_aov$p.value
+  pvalue
+}
+
+
+### LaTeX functions
+
+latex_collapsed_vector <- function(collapse_string, v, underscore_whack = TRUE) {
+  v_sub <- if (underscore_whack) gsub("_", "\\\\_", v) else v
+  cat(
+    paste0(
+      v_sub,
+      collapse = collapse_string
+      )
+    )
+}
+
+latex_itemized_collapsed <- function(collapse_string, v, underscore_whack = TRUE) {
+  cat("\\begin{itemize}\n\\item ")
+  latex_collapsed_vector(collapse_string, v, underscore_whack)
+  cat("\n\\end{itemize}\n")
+}
+
+latex_itemized_list <- function(v, underscore_whack = TRUE) {
+  latex_itemized_collapsed("\n\\item ", v, underscore_whack)
+}
+
+latex_enumerated_collapsed <- function(collapse_string, v, underscore_whack = TRUE) {
+  cat("\\begin{enumerate}\n\\item ")
+  latex_collapsed_vector(collapse_string, v, underscore_whack)
+  cat("\n\\end{enumerate}\n")
+}
+
+latex_enumerated_list <- function(v) {
+  latex_enumerated_collapsed("\n\\item ", v)
+}
+
+latex_table_row <- function(v, extra = "", underscore_whack = TRUE) {
+  latex_collapsed_vector(" & ", v, underscore_whack)
+  cat(extra)
+  cat(" \\\\\n")
+}
+
+# Use this like print.data.frame, from which it is adapted:
+data_frame_latex <-
+  function(
+    x,
+    ...,
+    # digits to pass to format.data.frame
+    digits = NULL,
+    # TRUE -> right-justify columns; FALSE -> left-justify
+    right = TRUE,
+    # maximumn number of rows to print
+    max = NULL,
+    # string with justification of each column
+    justification = NULL,
+    # TRUE to center on page
+    centered = TRUE,
+    # optional caption
+    caption = NULL,
+    # h(inline); b(bottom); t (top) or p (separate page)
+    anchor = "h",
+    # set underscore_whack to TRUE to escape underscores
+    underscore_whack = TRUE
+  ) {
+    if (is.null(justification))
+      justification <-
+        Reduce(
+          f = paste,
+          x = rep_len(if (right) "r" else "l", length(colnames(x)))
+          )
+    n <- length(rownames(x))
+    if (length(x) == 0L) {
+      cat(
+        sprintf(
+          # if n is one, use singular 'row', else use plural 'rows'
+          ngettext(
+            n,
+            "data frame with 0 columns and %d row",
+            "data frame with 0 columns and %d rows"
+            ),
+          n
+          ),
+        "\n",
+        sep = ""
+        )
+    } else if (n == 0L) {
+      cat("0 rows for:\n")
+      latex_itemized_list(
+        v = names(x),
+        underscore_whack = underscore_whack
+        )
+    } else {
+      if (is.null(max))
+        max <- getOption("max.print", 99999L)
+      if (!is.finite(max))
+        stop("invalid 'max' / getOption(\"max.print\"): ",
+          max)
+      omit <- (n0 <- max %/% length(x)) < n
+      m <- as.matrix(
+        format.data.frame(
+          if (omit) x[seq_len(n0), , drop = FALSE] else x,
+          digits = digits,
+          na.encode = FALSE
+          )
+        )
+      cat(
+        # h(inline); b(bottom); t (top) or p (separate page)
+        paste0("\\begin{table}[", anchor, "]\n")
+        )
+      if (!is.null(caption))
+        cat(paste0(" \\caption{", caption, "}"))
+      if (centered) cat("\\centering\n")
+      cat(
+        paste(
+          " \\begin{tabular}{",
+          justification,
+          "}\n",
+          sep = ""
+          )
+        )
+      # ref: https://tex.stackexchange.com/a/50353
+      #   Describes use of \rule{0pt}{3ex}
+      if (!is.null(caption))
+        cat("\\B \\\\ \\hline\\hline\n")
+      # ref for top and bottom struts: https://tex.stackexchange.com/a/50355
+      latex_table_row(
+        v = colnames(m),
+        extra = "\\T\\B",
+        underscore_whack = underscore_whack
+        )
+      cat("\\hline\n")
+      for (i in seq_len(length(m[, 1]))) {
+        latex_table_row(
+        v = m[i, ],
+        underscore_whack = underscore_whack
+        )
+      }
+      cat(
+        paste(
+          " \\end{tabular}",
+          "\\end{table}",
+          sep = "\n"
+          )
+        )
+      if (omit)
+        cat(" [ reached 'max' / getOption(\"max.print\") -- omitted",
+          n - n0, "rows ]\n")
+    }
+    invisible(x)
+  }
+
+hypersub <-
+  function(s) {
+    hyper <- tolower(s)
+    hyper <- gsub("[^a-z0-9]+", "-", hyper)
+    hyper <- gsub("[-]+",       "-", hyper)
+    hyper <- sub("^[-]",        "",  hyper)
+    hyper <- sub("[-]$",        "",  hyper)
+    return(hyper)
+  }
+
+subsection_header <-
+  function(s) {
+    hyper <- hypersub(s)
+    cat(
+      sprintf(
+        "\\hypertarget{%s}\n{\\subsection{%s}\\label{%s}}\n",
+        hyper, s, hyper
+        )
+      )
+  }
+
+subsubsection_header <-
+  function(s) {
+    hyper <- hypersub(s)
+    cat(
+      sprintf(
+        "\\hypertarget{%s}\n{\\subsubsection{%s}\\label{%s}}\n",
+        hyper, s, hyper
+        )
+      )
+  }
+
+### SQLite functions
+
+ddl_exec <- function(db, sql) {
+  discard <- DBI::dbExecute(conn = db, statement = sql)
+  if (FALSE && discard != 0) {
+    need_newpage <- TRUE
+    if (need_newpage) {
+      need_newpage <<- FALSE
+      cat("\\newpage\n")
+    }
+    o_file <- stdout()
+    cat("\n\\begin{verbatim}\n")
+    cat(sql, file = o_file)
+    cat(sprintf("\n%d rows affected by DDL\n", discard), file = o_file)
+    cat("\n\\end{verbatim}\n")
+  }
+}
+
+dml_no_rows_exec <- function(db, sql) {
+  discard <- DBI::dbExecute(conn = db, statement = sql)
+  if (discard != 0) {
+    need_newpage <- TRUE
+    if (need_newpage) {
+      need_newpage <<- FALSE
+      cat("\\newpage\n")
+    }
+    cat("\n\\begin{verbatim}\n")
+    o_file <- stdout()
+    cat(sql, file = o_file)
+    cat(sprintf("\n%d rows affected by DML\n", discard), file = o_file)
+    cat("\n\\end{verbatim}\n")
+  }
+}
+
+### KSEA functions and helpers
+
+# Adapted from KSEAapp::KSEA.Scores to allow retrieval of:
+# - maximum log2(FC)
+ksea_scores <- function(
+
+  # For human data, typically, ksdata = KSEAapp::ksdata
+  ksdata,
+
+  # Input data file having columns:
+  # - Protein     : abbreviated protein name
+  # - Gene        : HUGO gene name
+  # - Peptide     : peptide sequence without indications of phosphorylation
+  # - Reside.Both : position(s) of phosphorylation within Gene sequence
+  #                 - First letter designates AA that is modified
+  #                 - Numbers indicate position within Gene
+  #                 - Multiple values are separated by semicolons
+  #   - p         : p-value
+  #   - FC        : fold-change
+  px,
+
+  # A binary input of TRUE or FALSE, indicating whether or not to include
+  #   NetworKIN predictions
+  networkin,
+
+  # A numeric value between 1 and infinity setting the minimum NetworKIN
+  #   score (can be left out if networkin = FALSE)
+  networkin_cutoff
+
+) {
+  if (length(grep(";", px$Residue.Both)) == 0) {
+    # There are no Residue.Both entries having semicolons, so new is
+    #   simply px except two columns are renamed and a column is added
+    #   for log2(abs(fold-change))
+    new <- px
+    colnames(new)[c(2, 4)] <- c("SUB_GENE", "SUB_MOD_RSD")
+    new$log2_fc <- log2(abs(as.numeric(as.character(new$FC))))
+    new <- new[complete.cases(new$log2_fc), ]
+  } else {
+    # Split each row having semicolons in Residue.Both into rows that are
+    #   duplicated in all respects except that each row has a single
+    #   member of the set "split-on-semicolon-Residue.Both"
+    px_double <- px[grep(";", px$Residue.Both), ]
+    residues <- as.character(px_double$Residue.Both)
+    residues <- as.matrix(residues, ncol = 1)
+    split <- strsplit(residues, split = ";")
+    # x gets count of residues in each row,
+    #   i.e., 1 + count of semicolons
+    x <- sapply(split, length)
+    # Here is the set of split rows
+    px_single <- data.frame(
+      Protein      = rep(px_double$Protein, x),
+      Gene         = rep(px_double$Gene,    x),
+      Peptide      = rep(px_double$Peptide, x),
+      Residue.Both = unlist(split),
+      p            = rep(px_double$p,       x),
+      FC           = rep(px_double$FC,      x)
+      )
+    # new first gets the split rows
+    new <- px[-grep(";", px$Residue.Both), ]
+    # to new, append the rows that didn't need splitting in the first place
+    new <- rbind(new, px_single)
+    # map Gene         to SUB_GENE
+    # map Residue.Both to SUB_MOD_RSD
+    colnames(new)[c(2, 4)] <- c("SUB_GENE", "SUB_MOD_RSD")
+    # Eliminate any non-positive values to prevent introduction of
+    #   infinite or NaN values
+    new[(0 <= new$log2_fc), "log2_fc"] <- NA
+    # Because of preceding step, there is no need for abs in the next line
+    new$log2_fc <- log2(as.numeric(as.character(new$FC)))
+    # Convert any illegal values from NaN to NA
+    new[is.nan(new$log2_fc), "log2_fc"] <- NA
+    # Eliminate rows having missing values (e.g., non-imputed data)
+    new <- new[complete.cases(new$log2_fc), ]
+  }
+  if (networkin == TRUE) {
+    # When NetworKIN is true, filter on NetworKIN.cutoff which includes
+    #   PhosphoSitePlus data *because its networkin_score is set to Inf*
+    ksdata_filtered <- ksdata[grep("[a-z]", ksdata$Source), ]
+    ksdata_filtered <- ksdata_filtered[
+      (ksdata_filtered$networkin_score >= networkin_cutoff), ]
+  } else {
+    # Otherwise, simply use PhosphSitePlus rows
+    ksdata_filtered <- ksdata[
+      grep("PhosphoSitePlus", ksdata$Source), ]
+  }
+  # Join the two data.frames on common columns SUB_GENE and SUB_MOD_RSD
+  #   colnames of ksdata_filtered:
+  #     "KINASE" "KIN_ACC_ID" "GENE" "KIN_ORGANISM" "SUBSTRATE" "SUB_GENE_ID"
+  #     "SUB_ACC_ID" "SUB_GENE" "SUB_ORGANISM" "SUB_MOD_RSD" "SITE_GRP_ID"
+  #     "SITE_...7_AA" "networkin_score" "Source"
+  #   colnames of new:
+  #     "Protein" "SUB_GENE" "Peptide" "SUB_MOD_RSD" "p" "FC" "log2_fc"
+  # Equivalent to:
+  #   SELECT a.*. b.Protein, b.Peptide, b.p, b.FC, b.log2_fc
+  #     FROM ksdata_filtered a
+  #       INNER JOIN new b
+  #         ON a.SUB_GENE = b.SUB_GENE
+  #           AND a.SUB_MOD_RSD = b.SUB_MOD_RSD
+  ksdata_dataset <- base::merge(ksdata_filtered, new)
+  #   colnames of ksdata_dataset:
+  #     "KINASE"      "KIN_ACC_ID"   "GENE"       "KIN_ORGANISM" "SUBSTRATE"
+  #     "SUB_GENE_ID" "SUB_ACC_ID"   "SUB_GENE"   "SUB_ORGANISM" "SUB_MOD_RSD"
+  #     "SITE_GRP_ID" "SITE_...7_AA" "networkin_score"  "Source" "Protein"
+  #     "Peptide"     "p"            "FC"         "log2_fc" (uniprot_no_isoform)
+  # Re-order dataset; prior to accounting for isoforms
+  ksdata_dataset <- ksdata_dataset[order(ksdata_dataset$GENE), ]
+  # Extract non-isoform accession in UniProtKB
+  ksdata_dataset$uniprot_no_isoform <- sapply(
+    ksdata_dataset$KIN_ACC_ID,
+    function(x) unlist(strsplit(as.character(x), split = "-"))[1]
+    )
+  # Discard previous results while selecting interesting columns ...
+  ksdata_dataset_abbrev <- ksdata_dataset[, c(5, 1, 2, 16:19, 14)]
+  # Column names are now:
+  #   "GENE"       "SUB_GENE"        "SUB_MOD_RSD"    "Peptide" "p"
+  #   "FC" "log2_fc" "Source"
+  # Make column names human-readable
+  colnames(ksdata_dataset_abbrev) <- c(
+    "Kinase.Gene", "Substrate.Gene", "Substrate.Mod", "Peptide", "p",
+    "FC", "log2FC", "Source"
+    )
+  # SELECT * FROM ksdata_dataset_abbrev
+  #   ORDER BY Kinase.Gene, Substrate.Gene, Substrate.Mod, p
+  ksdata_dataset_abbrev <-
+    ksdata_dataset_abbrev[
+      order(
+        ksdata_dataset_abbrev$Kinase.Gene,
+        ksdata_dataset_abbrev$Substrate.Gene,
+        ksdata_dataset_abbrev$Substrate.Mod,
+        ksdata_dataset_abbrev$p),
+      ]
+  # First aggregation step to account for multiply phosphorylated peptides
+  #   and differing peptide sequences; the goal here is to combine results
+  #   for all measurements of the same substrate.
+  # SELECT  `Kinase.Gene`, `Substrate.Gene`, `Substrate.Mod`,
+  #         `Source`, avg(log2FC) AS log2FC
+  #   FROM  ksdata_dataset_abbrev
+  #   GROUP BY `Kinase.Gene`, `Substrate.Gene`, `Substrate.Mod`,
+  #         `Source`
+  #   ORDER BY `Kinase.Gene`;
+  # in two steps:
+  # (1) compute average log_2(fold-change)
+  ksdata_dataset_abbrev <- aggregate(
+    log2FC ~ Kinase.Gene + Substrate.Gene + Substrate.Mod + Source,
+    data = ksdata_dataset_abbrev,
+    FUN = mean
+    )
+  # (2) order by Kinase.Gene
+  ksdata_dataset_abbrev <-
+    ksdata_dataset_abbrev[order(ksdata_dataset_abbrev$Kinase.Gene), ]
+  # SELECT  `Kinase.Gene`, count(*)
+  #   FROM  ksdata_dataset_abbrev
+  #  GROUP BY `Kinase.Gene`;
+  # in two steps:
+  # (1) Extract the list of Kinase.Gene names
+  kinase_list <- as.vector(ksdata_dataset_abbrev$Kinase.Gene)
+  # (2) Convert to a named list of counts of kinases in ksdata_dataset_abrev,
+  #   named by Kinase.Gene
+  kinase_list <- as.matrix(table(kinase_list))
+  # Second aggregation step to account for all substrates per kinase
+  # CREATE TABLE mean_fc
+  #   AS
+  # SELECT  `Kinase.Gene`, avg(log2FC) AS log2FC
+  #   FROM  ksdata_dataset_abbrev
+  #   GROUP BY `Kinase.Gene`
+  mean_fc <- aggregate(
+    log2FC ~ Kinase.Gene,
+    data = ksdata_dataset_abbrev,
+    FUN = mean
+    )
+  # mean_fc columns: "Kinase.Gene", "log2FC"
+  if (FALSE) {
+    # I need to re-think this; I was trying to find the most-represented
+    #   peptide, but that horse has already left the barn
+    # SELECT  `Kinase.Gene`, max(abs(log2FC)) AS log2FC
+    #   FROM  ksdata_dataset_abbrev
+    #   GROUP BY `Kinase.Gene`
+    max_fc <- aggregate(
+      log2FC ~ Kinase.Gene,
+      data = ksdata_dataset_abbrev,
+      FUN = function(r) max(abs(r))
+      )
+  }
+
+  # Create column 3: mS
+  mean_fc$m_s <- mean_fc[, 2]
+  # Create column 4: Enrichment
+  mean_fc$enrichment <- mean_fc$m_s / abs(mean(new$log2_fc, na.rm = TRUE))
+  # Create column 5: m, count of substrates
+  mean_fc$m <- kinase_list
+  # Create column 6: z-score
+  mean_fc$z_score <- (
+    (mean_fc$m_s - mean(new$log2_fc, na.rm = TRUE)) *
+      sqrt(mean_fc$m)) / sd(new$log2_fc, na.rm = TRUE)
+  # Create column 7: p-value, deduced from z-score
+  mean_fc$p_value <- pnorm(-abs(mean_fc$z_score))
+  # Create column 8: FDR, deduced by Benjamini-Hochberg adustment from p-value
+  mean_fc$fdr <- p.adjust(mean_fc$p_value, method = "fdr")
+
+  # Remove log2FC column, which is duplicated as mS
+  mean_fc <- mean_fc[order(mean_fc$Kinase.Gene), -2]
+  # Correct the column names which we had to hack because of the linter...
+  colnames(mean_fc) <- c(
+    "Kinase.Gene", "mS", "Enrichment", "m", "z.score", "p.value", "FDR"
+    )
+  return(mean_fc)
+}
+
+low_fdr_barplot <- function(
+  rslt,
+  i_cntrst,
+  i,
+  a_level,
+  b_level,
+  fold_change,
+  caption
+) {
+  rslt_score_list_i <- rslt$score_list[[i]]
+  if (!is.null(rslt_score_list_i)) {
+    rslt_score_list_i_nrow <- nrow(rslt_score_list_i)
+    k <- data.frame(
+      contrast = as.integer(i_cntrst),
+      a_level = rep.int(a_level, rslt_score_list_i_nrow),
+      b_level = rep.int(b_level, rslt_score_list_i_nrow),
+      kinase_gene = rslt_score_list_i$Kinase.Gene,
+      mean_log2_fc = rslt_score_list_i$mS,
+      enrichment = rslt_score_list_i$Enrichment,
+      substrate_count = rslt_score_list_i$m,
+      z_score = rslt_score_list_i$z.score,
+      p_value = rslt_score_list_i$p.value,
+      fdr = rslt_score_list_i$FDR
+    )
+    selector <- switch(
+      ksea_cutoff_statistic,
+      "FDR" = {
+        k$fdr
+        },
+      "p.value" = {
+        k$p_value
+        },
+      stop(
+        sprintf(
+          "Unexpected cutoff statistic %s rather than 'FDR' or 'p.value'",
+          ksea_cutoff_statistic
+          )
+        )
+      )
+
+    k <- k[selector < ksea_cutoff_threshold, ]
+
+    if (nrow(k) > 1) {
+      op <- par(mai = c(1, 1.5, 0.4, 0.4))
+      numeric_z_score <- as.numeric(k$z_score)
+      z_score_order <- order(numeric_z_score)
+      kinase_name <- k$kinase_gene
+      long_caption <-
+        sprintf(
+          "Kinase z-score, %s < %s, %s",
+          ksea_cutoff_statistic,
+          ksea_cutoff_threshold,
+          caption
+          )
+      my_cex_caption <- 65.0 / max(65.0, nchar(long_caption))
+      cat("\n\\clearpage\n")
+      barplot(
+        height = numeric_z_score[z_score_order],
+        border = NA,
+        xpd = FALSE,
+        cex.names = 1.0,
+        cex.axis = 1.0,
+        main = long_caption,
+        cex.main = my_cex_caption,
+        names.arg = kinase_name[z_score_order],
+        horiz = TRUE,
+        srt = 45,
+        las = 1)
+      par(op)
+    }
+  }
+}
+
+# note that this adds elements to the global variable `ksea_asterisk_hash`
+
+low_fdr_print <- function(
+  rslt,
+  i_cntrst,
+  i,
+  a_level,
+  b_level,
+  fold_change,
+  caption
+) {
+  rslt_score_list_i <- rslt$score_list[[i]]
+  if (!is.null(rslt_score_list_i)) {
+    rslt_score_list_i_nrow <- nrow(rslt_score_list_i)
+    k <- contrast_ksea_scores <- data.frame(
+      contrast = as.integer(i_cntrst),
+      a_level = rep.int(a_level, rslt_score_list_i_nrow),
+      b_level = rep.int(b_level, rslt_score_list_i_nrow),
+      kinase_gene = rslt_score_list_i$Kinase.Gene,
+      mean_log2_fc = rslt_score_list_i$mS,
+      enrichment = rslt_score_list_i$Enrichment,
+      substrate_count = rslt_score_list_i$m,
+      z_score = rslt_score_list_i$z.score,
+      p_value = rslt_score_list_i$p.value,
+      fdr = rslt_score_list_i$FDR
+    )
+
+    selector <- switch(
+      ksea_cutoff_statistic,
+      "FDR" = {
+        k$fdr
+        },
+      "p.value" = {
+        k$p_value
+        },
+      stop(
+        sprintf(
+          "Unexpected cutoff statistic %s rather than 'FDR' or 'p.value'",
+          ksea_cutoff_statistic
+          )
+        )
+      )
+
+    k <- k[selector < ksea_cutoff_threshold, ]
+    # save kinase names to ksea_asterisk_hash
+    for (kinase_name in k$kinase_gene) {
+      ksea_asterisk_hash[[kinase_name]] <- 1
+    }
+
+    db_write_table_overwrite <- (i_cntrst < 2)
+    db_write_table_append    <- !db_write_table_overwrite
+    RSQLite::dbWriteTable(
+      conn = db,
+      name = "contrast_ksea_scores",
+      value = contrast_ksea_scores,
+      append = db_write_table_append
+      )
+    selector <- switch(
+      ksea_cutoff_statistic,
+      "FDR" = {
+        contrast_ksea_scores$fdr
+        },
+      "p.value" = {
+        contrast_ksea_scores$p_value
+        },
+      stop(
+        sprintf(
+          "Unexpected cutoff statistic %s rather than 'FDR' or 'p.value'",
+          ksea_cutoff_statistic
+          )
+        )
+      )
+    output_df <- contrast_ksea_scores[
+      selector < ksea_cutoff_threshold,
+      c("kinase_gene", "mean_log2_fc", "enrichment", "substrate_count",
+        "z_score", "p_value", "fdr")
+      ]
+    output_order <- with(output_df, order(mean_log2_fc, kinase_gene))
+    output_df <- output_df[output_order, ]
+    colnames(output_df) <-
+      c(
+        colnames(output_df)[1],
+        colnames(output_df)[2],
+        "enrichment",
+        "m_s",
+        "z_score",
+        "p_value",
+        "fdr"
+      )
+    output_df$fdr <- sprintf("%0.4f", output_df$fdr)
+    output_df$p_value <- sprintf("%0.2e", output_df$p_value)
+    output_df$z_score <- sprintf("%0.2f", output_df$z_score)
+    output_df$m_s <- sprintf("%d", output_df$m_s)
+    output_df$enrichment <- sprintf("%0.2f", output_df$enrichment)
+    output_ncol <- ncol(output_df)
+    colnames(output_df) <-
+      c(
+        "Kinase",
+        "\\(\\overline{\\log_2 (|\\text{fold-change}|)}\\)",
+        "Enrichment",
+        "Substrates",
+        "z-score",
+        "p-value",
+        "FDR"
+      )
+    selector <- switch(
+      ksea_cutoff_statistic,
+      "FDR" = {
+        rslt$score_list[[i]]$FDR
+        },
+      "p.value" = {
+        rslt$score_list[[i]]$p.value
+        },
+      stop(
+        sprintf(
+          "Unexpected cutoff statistic %s rather than 'FDR' or 'p.value'",
+          ksea_cutoff_statistic
+          )
+        )
+      )
+    if (sum(selector < ksea_cutoff_threshold) > 0) {
+      math_caption <- gsub("{", "\\{", caption,      fixed = TRUE)
+      math_caption <- gsub("}", "\\}", math_caption, fixed = TRUE)
+      data_frame_latex(
+        x = output_df,
+        justification = "l c c c c c c",
+        centered = TRUE,
+        caption = sprintf(
+          "\\text{%s}, %s < %s",
+          math_caption,
+          ksea_cutoff_statistic,
+          ksea_cutoff_threshold
+          ),
+        anchor = const_table_anchor_p
+        )
+    } else {
+      cat(
+        sprintf(
+          "\\break
+          No kinases had
+          \\(\\text{%s}_\\text{enrichment} < %s\\)
+          for contrast %s\\hfill\\break\n",
+          ksea_cutoff_statistic,
+          ksea_cutoff_threshold,
+          caption
+        )
+      )
+    }
+  }
+}
+
+# create_breaks is a helper for ksea_heatmap
+create_breaks <- function(merged_scores) {
+  if (min(merged_scores, na.rm = TRUE) < -1.6) {
+    breaks_neg <- seq(-1.6, 0, length.out = 30)
+    breaks_neg <-
+      append(
+        seq(min(merged_scores, na.rm = TRUE), -1.6, length.out = 10),
+        breaks_neg
+        )
+    breaks_neg <- sort(unique(breaks_neg))
+  } else {
+    breaks_neg <- seq(-1.6, 0, length.out = 30)
+  }
+  if (max(merged_scores, na.rm = TRUE) > 1.6) {
+    breaks_pos <- seq(0, 1.6, length.out = 30)
+    breaks_pos <-
+      append(
+        breaks_pos,
+        seq(1.6, max(merged_scores, na.rm = TRUE),
+        length.out = 10)
+        )
+    breaks_pos <- sort(unique(breaks_pos))
+  } else {
+    breaks_pos <- seq(0, 1.6, length.out = 30)
+  }
+  breaks_all <- unique(append(breaks_neg, breaks_pos))
+  mycol_neg <-
+    gplots::colorpanel(n = length(breaks_neg),
+               low = "blue",
+               high = "white")
+  mycol_pos <-
+    gplots::colorpanel(n = length(breaks_pos) - 1,
+               low = "white",
+               high = "red")
+  mycol <- unique(append(mycol_neg, mycol_pos))
+  color_breaks <- list(breaks_all, mycol)
+  return(color_breaks)
+}
+
+# draw_kseaapp_summary_heatmap is a helper function for ksea_heatmap
+draw_kseaapp_summary_heatmap <- function(
+    x,
+    sample_cluster,
+    merged_asterisk,
+    my_cex_row,
+    color_breaks,
+    margins,
+    ...
+) {
+  merged_scores <- x
+  if (!is.matrix(x)) {
+    cat(
+      paste0(
+        "No plot because \\texttt{typeof(x)} is '",
+        typeof(x),
+        "' rather than 'matrix'.\n\n"
+        )
+      )
+  } else if (nrow(x) < 2) {
+    cat("No plot because matrix x has ", nrow(x), " rows.\n\n")
+    cat("\\begin{verbatim}\n")
+    str(x)
+    cat("\\end{verbatim}\n")
+  } else if (ncol(x) < 2) {
+    cat("No plot because matrix x has ", ncol(x), " columns.\n\n")
+    cat("\\begin{verbatim}\n")
+    str(x)
+    cat("\\end{verbatim}\n")
+  } else {
+    gplots::heatmap.2(
+      x            = merged_scores,
+      Colv         = sample_cluster,
+      scale        = "none",
+      cellnote     = merged_asterisk,
+      notecol      = "white",
+      cexCol       = 0.9,
+      # Heuristically assign size of row labels
+      cexRow       = min(1.0, ((3 * my_cex_row) ^ 1.7) / 2.25),
+      srtCol       = 45,
+      srtRow       = 45,
+      notecex      = 3 * my_cex_row,
+      col          = color_breaks[[2]],
+      density.info = "none",
+      trace        = "none",
+      breaks       = color_breaks[[1]],
+      lmat         = rbind(c(0, 3), c(2, 1), c(0, 4)),
+      lhei         = c(0.4, 8.0, 1.1),
+      lwid         = c(0.5, 3),
+      key          = FALSE,
+      margins      = margins,
+      ...
+    )
+  }
+}
+
+# Adapted from KSEAapp::KSEA.Heatmap
+ksea_heatmap <- function(
+  # the data frame outputs from the KSEA.Scores() function, in list format
+  score_list,
+  # a character vector of all the sample names for heatmap annotation:
+  # - the names must be in the same order as the data in score_list
+  # - please avoid long names, as they may get cropped in the final image
+  sample_labels,
+  # character string of either "p.value" or "FDR" indicating the data column
+  #   to use for marking statistically significant scores
+  stats,
+  # a numeric value between 0 and infinity indicating the min. number of
+  #   substrates a kinase must have to be included in the heatmap
+  m_cutoff,
+  # a numeric value between 0 and 1 indicating the p-value/FDR cutoff
+  #   for indicating significant kinases in the heatmap
+  p_cutoff =
+    stop("argument 'p_cutoff' is required for function 'ksea_heatmap'"),
+  # a binary input of TRUE or FALSE, indicating whether or not to perform
+  #   hierarchical clustering of the sample columns
+  sample_cluster,
+  # a binary input of TRUE or FALSE, indicating whether or not to export
+  #   the heatmap as a .png image into the working directory
+  export = FALSE,
+  # bottom and right margins; adjust as needed if contrast names are too long
+  margins = c(6, 20),
+  # print which kinases?
+  # - Mandatory argument, must be one of const_ksea_.*_kinases
+  which_kinases,
+  # additional arguments to gplots::heatmap.2, such as:
+  # - main: main title of plot
+  # - xlab: x-axis label
+  # - ylab: y-axis label
+  ...
+) {
+  filter_m <- function(dataset, m_cutoff) {
+    filtered <- dataset[(dataset$m >= m_cutoff), ]
+    return(filtered)
+  }
+  score_list_m <- lapply(score_list, function(...) filter_m(..., m_cutoff))
+  for (i in seq_len(length(score_list_m))) {
+    names <- colnames(score_list_m[[i]])[c(2:7)]
+    colnames(score_list_m[[i]])[c(2:7)] <-
+      paste(names, i, sep = ".")
+  }
+  master <-
+    Reduce(
+      f = function(...) {
+        base::merge(..., by = "Kinase.Gene", all = FALSE)
+      },
+      x = score_list_m
+      )
+
+  row.names(master) <- master$Kinase.Gene
+  columns <- as.character(colnames(master))
+  merged_scores <- as.matrix(master[, grep("z.score", columns), drop = FALSE])
+  colnames(merged_scores) <- sample_labels
+  merged_stats <- as.matrix(master[, grep(stats, columns)])
+  asterisk <- function(mtrx, p_cutoff) {
+    new <- data.frame()
+    for (i in seq_len(nrow(mtrx))) {
+      for (j in seq_len(ncol(mtrx))) {
+        my_value <- mtrx[i, j]
+        if (!is.na(my_value) && my_value < p_cutoff) {
+          new[i, j] <- "*"
+        } else {
+          new[i, j] <- ""
+        }
+      }
+    }
+    return(new)
+  }
+  merged_asterisk <- as.matrix(asterisk(merged_stats, p_cutoff))
+
+  # begin hack to print only significant rows
+  asterisk_rows <- rowSums(merged_asterisk == "*") > 0
+  all_rows <- rownames(merged_stats)
+  names(asterisk_rows) <- all_rows
+  non_asterisk_rows <- names(asterisk_rows[asterisk_rows == FALSE])
+  asterisk_rows <- names(asterisk_rows[asterisk_rows == TRUE])
+  merged_scores_asterisk <- merged_scores[names(asterisk_rows), ]
+  merged_scores_non_asterisk <- merged_scores[names(non_asterisk_rows), ]
+  # end hack to print only significant rows
+
+  row_list <- list()
+  row_list[[const_ksea_astrsk_kinases]] <- asterisk_rows
+  row_list[[const_ksea_all_kinases]] <- all_rows
+  row_list[[const_ksea_nonastrsk_kinases]] <- non_asterisk_rows
+
+  i <- which_kinases
+  my_row_names <- row_list[[i]]
+  scrs <- merged_scores[my_row_names, ]
+  stts <- merged_stats[my_row_names, ]
+  merged_asterisk <- as.matrix(asterisk(stts, p_cutoff))
+
+  color_breaks <- create_breaks(scrs)
+  plot_height <- nrow(scrs) ^ 0.55
+  plot_width <- ncol(scrs) ^ 0.7
+  my_cex_row <- 0.25 * 16 / plot_height
+  if (export == "TRUE") {
+    png(
+      "KSEA.Merged.Heatmap.png",
+      width = plot_width * 300,
+      height = 2 * plot_height * 300,
+      res = 300,
+      pointsize = 14
+    )
+  }
+  draw_kseaapp_summary_heatmap(
+    x               = scrs,
+    sample_cluster  = sample_cluster,
+    merged_asterisk = merged_asterisk,
+    my_cex_row      = my_cex_row,
+    color_breaks    = color_breaks,
+    margins         = margins
+  )
+  if (export == "TRUE") {
+    dev.off()
+  }
+  return(my_row_names)
+}
+
+# helper for heatmaps of phosphopeptide intensities
+
+draw_intensity_heatmap <-
+  function(
+    m,                              # matrix with rownames already formatted
+    cutoff,                         # cutoff used by hm_heading_function
+    hm_heading_function,            # construct and cat heading from m and cutoff
+    hm_main_title,                  # main title for plot (drawn below heading)
+    suppress_row_dendrogram = TRUE, # set to false to show dendrogram
+    max_peptide_count               # experimental:
+          = intensity_hm_rows,      #   values of 50 and 75 worked well
+    ...                             # passthru parameters for heatmap
+  ) {
+    peptide_count <- 0
+    # emit the heading for the heatmap
+    if (hm_heading_function(m, cutoff)) {
+      peptide_count <- min(max_peptide_count, nrow(m))
+      if (nrow(m) > 1) {
+        m_margin <- m[peptide_count:1, ]
+        # Margin setting was heuristically derived
+        margins <-
+          c(0.5, # col
+            max(80, sqrt(nchar(rownames(m_margin)))) * 5 / 16  # row
+          )
+        }
+      if (nrow(m) > 1) {
+        tryCatch(
+          {
+            old_oma <- par("oma")
+            par(cex.main = 0.6)
+            # Heuristically determined character size adjustment formula
+            char_contractor <-
+              250000 / (
+                max(4500, (nchar(rownames(m_margin)))^2) * intensity_hm_rows
+                )
+            heatmap(
+              m[peptide_count:1, ],
+              Rowv = if (suppress_row_dendrogram) NA else NULL,
+              Colv = NA,
+              cexRow = char_contractor,
+              cexCol = char_contractor * 50 / max_peptide_count,
+              scale = "row",
+              margins = margins,
+              main =
+                "Unimputed, unnormalized log(intensities)",
+              xlab = "",
+              las = 1,
+              ...
+              )
+          },
+          error = function(e) {
+            cat(
+              sprintf(
+                "\nCould not draw heatmap, possibly because of too many missing values.  Internal message: %s\n",
+                e$message
+                )
+              )
+            },
+          finally = par(old_oma)
+        )
+      }
+    }
+    return(peptide_count)
+  }
+```
+
+```{r, echo = FALSE, fig.dim = c(9, 10), results = 'asis'}
+cat("\\listoftables\n")
+```
+# Purpose
+
+To perform for phosphopeptides:
+
+- imputation of missing values,
+- quantile normalization,
+- ANOVA (using the R stats::`r params$oneWayManyCategories` function), and
+- KSEA (Kinase-Substrate Enrichment Analysis) using code adapted from the CRAN `KSEAapp` package to search for kinase substrates from the following databases:
+  - PhosphoSitesPlus [https://www.phosphosite.org](https://www.phosphosite.org)
+  - The Human Proteome Database [http://hprd.org](http://hprd.org)
+  - NetworKIN [http://networkin.science/](http://networkin.science/)
+  - Phosida [http://pegasus.biochem.mpg.de/phosida/help/motifs.aspx](http://pegasus.biochem.mpg.de/phosida/help/motifs.aspx)
+
+```{r include = FALSE}
+
+### GLOBAL VARIABLES
+
+# parameters for KSEA
+
+ksea_cutoff_statistic <- params$kseaCutoffStatistic
+ksea_cutoff_threshold <- params$kseaCutoffThreshold
+ksea_min_kinase_count <- params$kseaMinKinaseCount
+
+ksea_heatmap_titles <- list()
+ksea_heatmap_titles[[const_ksea_astrsk_kinases]] <-
+  sprintf(
+    "Summary for all kinases enriched in one or more contrasts at %s < %s",
+    ksea_cutoff_statistic,
+    ksea_cutoff_threshold
+    )
+ksea_heatmap_titles[[const_ksea_all_kinases]] <-
+  "Summary figure for all contrasts and all kinases"
+ksea_heatmap_titles[[const_ksea_nonastrsk_kinases]] <-
+  sprintf(
+    "Summary for all kinases not enriched at %s < %s in any contrast",
+    ksea_cutoff_statistic,
+    ksea_cutoff_threshold
+    )
+# hash to hold names of significantly enriched kinases
+ksea_asterisk_hash <- new_env()
+
+# READ PARAMETERS (mostly)
+
+intensity_hm_rows <- params$intensityHeatmapRows
+# Input Filename
+input_file <- params$inputFile
+
+# First data column - ideally, this could be detected via regexSampleNames,
+#   but for now leave it as is.
+first_data_column <- params$firstDataColumn
+fdc_is_integer <- is.integer(first_data_column)
+if (fdc_is_integer) {
+  first_data_column <- as.integer(params$firstDataColumn)
+}
+
+# False discovery rate adjustment for ANOVA
+#  Since pY abundance is low, set to 0.10 and 0.20 in addition to 0.05
+val_fdr <-
+  read.table(file = params$alphaFile, sep = "\t", header = FALSE, quote = "")
+
+if (
+  ncol(val_fdr) != 1 ||
+  sum(!is.numeric(val_fdr[, 1])) ||
+  sum(val_fdr[, 1] < 0) ||
+  sum(val_fdr[, 1] > 1)
+) {
+  stop("alphaFile should be one column of numbers within the range [0.0,1.0]")
+}
+val_fdr <- val_fdr[, 1]
+
+#Imputed Data filename
+imputed_data_filename <- params$imputedDataFilename
+imp_qn_lt_data_filenm <- params$imputedQNLTDataFile
+anova_ksea_mtdt_file  <- params$anovaKseaMetadata
+
+```
+
+```{r echo = FALSE}
+# Imputation method, should be one of
+#   "random", "group-median", "median", or "mean"
+imputation_method <- params$imputationMethod
+
+# Selection of percentile of logvalue data to set the mean for random number
+#   generation when using random imputation
+mean_percentile <- params$meanPercentile / 100.0
+
+# deviation adjustment-factor for random values; real number.
+sd_percentile <- params$sdPercentile
+
+# Regular expression of Sample Names, e.g., "\\.(\\d+)[A-Z]$"
+regex_sample_names <- params$regexSampleNames
+
+# Regular expression to extract Sample Grouping from Sample Name;
+#   if error occurs, compare sample_treatment_levels vs. sample_name_matches
+#   to see if groupings/pairs line up
+#   e.g., "(\\d+)"
+regex_sample_grouping <- params$regexSampleGrouping
+
+one_way_all_categories_fname <- params$oneWayManyCategories
+one_way_all_categories <- try_catch_w_e(
+  match.fun(one_way_all_categories_fname))
+if (!is.function(one_way_all_categories$value)) {
+  write("fatal error for parameter oneWayManyCategories:", stderr())
+  write(one_way_all_categories$value$message,             stderr())
+  if (sys.nframe() > 0) quit(save = "no", status = 1)
+  stop("Cannot continue. Goodbye.")
+}
+one_way_all_categories <- one_way_all_categories$value
+
+one_way_two_categories_fname <- params$oneWayManyCategories
+one_way_two_categories <- try_catch_w_e(
+  match.fun(one_way_two_categories_fname))
+if (!is.function(one_way_two_categories$value)) {
+  cat("fatal error for parameter oneWayTwoCategories: \n")
+  cat(one_way_two_categories$value$message, fill = TRUE)
+  if (sys.nframe() > 0) quit(save = "no", status = 1)
+  stop("Cannot continue. Goodbye.")
+}
+one_way_two_categories <- one_way_two_categories$value
+
+preproc_db       <- params$preprocDb
+ksea_app_prep_db <- params$kseaAppPrepDb
+result <- file.copy(
+  from      = preproc_db,
+  to        = ksea_app_prep_db,
+  overwrite = TRUE
+  )
+if (!result) {
+  write(
+    sprintf(
+      "fatal error copying initial database '%s' to output '%s'",
+      preproc_db,
+      ksea_app_prep_db,
+    ),
+    stderr()
+  )
+  if (sys.nframe() > 0) quit(save = "no", status = 1)
+  stop("Cannot continue. Goodbye.")
+}
+```
+
+```{r echo = FALSE}
+### READ DATA
+
+# read.table reads a file in table format and creates a data frame from it.
+#   - note that `quote = ""` means that quotation marks are treated literally.
+full_data <- read.table(
+  file = input_file,
+  sep = "\t",
+  header = TRUE,
+  quote = "",
+  check.names = FALSE
+  )
+```
+
+# Extract Sample Names and Treatment Levels
+
+Column names parsed from input file are shown in Table 1; sample names and treatment levels, in Table 2.
+
+```{r echo = FALSE, results = 'asis'}
+
+data_column_indices <- grep(first_data_column, names(full_data), perl = TRUE)
+
+if (!fdc_is_integer) {
+  if (length(data_column_indices) > 0) {
+    first_data_column <- data_column_indices[1]
+  } else {
+    stop(paste("failed to convert firstDataColumn:", first_data_column))
+  }
+}
+
+cat(
+  sprintf(
+    paste(
+      "\n\nThe input data file has peptide-intensity data for each sample",
+      "in one of columns %d through %d.\n\n"
+      ),
+    min(data_column_indices),
+    max(data_column_indices)
+    )
+  )
+
+# Write column names as a LaTeX enumerated list.
+column_name_df <- data.frame(
+  column = seq_len(length(colnames(full_data))),
+  name = paste0("\\verb@", colnames(full_data), "@")
+  )
+data_frame_latex(
+  x = column_name_df,
+  justification = "l l",
+  centered = TRUE,
+  caption = "Input data column names",
+  anchor = const_table_anchor_bp,
+  underscore_whack = FALSE
+  )
+
+```
+
+```{r echo = FALSE, results = 'asis'}
+quant_data <- full_data[first_data_column:length(full_data)]
+quant_data[quant_data == 0] <- NA
+rownames(quant_data) <- rownames(full_data) <- full_data$Phosphopeptide
+# Extract factors and trt-replicates using regular expressions.
+# Typically:
+#   regex_sample_names    is "\\.\\d+[A-Z]$"
+#   regex_sample_grouping is "\\d+"
+# This would distinguish trt-replicates by terminal letter [A-Z]
+#   in sample names and group them into trts by the preceding digits.
+#   e.g.:
+#     group .1A .1B .1C into group 1;
+#     group .2A .2B .2C, into group 2;
+#     etc.
+m <- regexpr(regex_sample_names, colnames(quant_data), perl = TRUE)
+sample_name_matches <- regmatches(names(quant_data), m)
+colnames(quant_data) <- sample_name_matches
+
+write_debug_file(quant_data)
+
+rx_match <- regexpr(regex_sample_grouping, sample_name_matches, perl = TRUE)
+sample_treatment_levels <- as.factor(regmatches(sample_name_matches, rx_match))
+number_of_samples <- length(sample_name_matches)
+sample_treatment_df <- data.frame(
+  level = sample_treatment_levels,
+  sample = sample_name_matches
+  )
+data_frame_latex(
+  x = sample_treatment_df,
+  justification = "rp{0.2\\linewidth} lp{0.3\\linewidth}",
+  centered = TRUE,
+  caption = "Treatment levels",
+  anchor = const_table_anchor_tbp,
+  underscore_whack = FALSE
+  )
+```
+
+```{r echo = FALSE, results = 'asis'}
+cat("\\newpage\n")
+```
+
+## Are the log-transformed sample distributions similar?
+
+```{r echo = FALSE, fig.dim = c(9, 5.5), results = 'asis'}
+
+quant_data[quant_data == 0] <- NA  #replace 0 with NA
+quant_data_log <- log10(quant_data)
+
+rownames(quant_data_log) <- rownames(quant_data)
+colnames(quant_data_log) <- sample_name_matches
+
+write_debug_file(quant_data_log)
+
+# data visualization
+old_par <- par(
+  mai = par("mai") + c(0.5, 0, 0, 0)
+)
+# ref: https://r-charts.com/distribution/add-points-boxplot/
+# Vertical plot
+boxplot(
+  quant_data_log
+, las = 1
+, col = const_boxplot_fill
+, ylab = latex2exp::TeX("$log_{10}$(peptide intensity)")
+, xlab = "Sample"
+)
+par(old_par)
+
+
+
+cat("\n\n\n")
+cat("\n\n\n")
+
+```
+
+```{r echo = FALSE, fig.align = "left", fig.dim = c(9, 4), results = 'asis'}
+if (nrow(quant_data_log) > 1) {
+  quant_data_log_stack <- stack(quant_data_log)
+  ggplot2::ggplot(quant_data_log_stack, ggplot2::aes(x = values)) +
+    ggplot2::xlab(latex2exp::TeX("$log_{10}$(peptide intensity)")) +
+    ggplot2::ylab("Probability density") +
+    ggplot2::geom_density(ggplot2::aes(group = ind, colour = ind), na.rm = TRUE)
+} else {
+  cat("No density plot because there are too few peptides.\n\n")
+}
+```
+
+## Globally, are peptide intensities are approximately unimodal?
+
+<!--
+# bquote could be used as an alternative to latex2exp::TeX below particularly
+#   and when plotting math expressions generally, at the expense of mastering
+#   another syntax, which hardly seems worthwhile when I need to use TeX
+#   elsewhere; here's an introduction to bquote:
+#   https://www.r-bloggers.com/2018/03/math-notation-for-r-plot-titles-expression-and-bquote/
+-->
+```{r echo = FALSE, fig.align = "left", fig.dim = c(9, 5), results = 'asis'}
+
+# identify the location of missing values
+fin <- is.finite(as.numeric(as.matrix(quant_data_log)))
+
+logvalues <- as.numeric(as.matrix(quant_data_log))[fin]
+logvalues_density <- density(logvalues)
+plot(
+  x = logvalues_density,
+  main = latex2exp::TeX(
+    "Smoothed estimated probability density vs. $log_{10}$(peptide intensity)"
+    ),
+  xlab = latex2exp::TeX("$log_{10}$(peptide intensity)"),
+  ylab = "Probability density"
+  )
+hist(
+  x = as.numeric(as.matrix(quant_data_log)),
+  xlim = c(min(logvalues_density$x), max(logvalues_density$x)),
+  breaks = 100,
+  main = latex2exp::TeX("Frequency vs. $log_{10}$(peptide intensity)"),
+  xlab = latex2exp::TeX("$log_{10}$(peptide intensity)")
+)
+```
+
+## Distribution of standard deviations of $log_{10}(\text{intensity})$, ignoring missing values
+
+```{r echo = FALSE, fig.align = "left", fig.dim = c(9, 5), results = 'asis'}
+# determine quantile
+q1 <- quantile(logvalues, probs = mean_percentile)[1]
+
+# 1 = row of matrix (ie, phosphopeptide)
+sds <- apply(quant_data_log, 1, sd_finite)
+if (sum(!is.na(sds)) > 2) {
+  plot(
+    density(sds, na.rm = TRUE)
+  , main = "Smoothed estimated probability density vs. std. deviation"
+  , sub = "(probability estimation made with Gaussian smoothing)"
+  , ylab = "Probability density"
+  )
+} else {
+  cat(
+    "At least two non-missing values are required to plot",
+    "probability density.\n\n"
+    )
+}
+
+```
+
+```{r echo = FALSE}
+# Determine number of cells to impute
+temp <- quant_data[is.na(quant_data)]
+
+# Determine number of values to impute
+number_to_impute <- length(temp)
+
+# Determine percent of missing values
+pct_missing_values <-
+  round(length(temp) / (length(logvalues) + length(temp)) * 100)
+```
+
+```{r echo = FALSE}
+
+# prep for trt-median based imputation
+
+```
+# Impute Missing Values
+
+```{r echo = FALSE}
+
+imp_smry_pot_peptides_before <- nrow(quant_data_log)
+imp_smry_missing_values_before   <- number_to_impute
+imp_smry_pct_missing      <- pct_missing_values
+
+```
+
+```{r echo = FALSE}
+#Determine number of cells to impute
+
+```
+```{r echo = FALSE}
+
+# Identify which values are missing and need to be imputed
+ind <- which(is.na(quant_data), arr.ind = TRUE)
+
+```
+```{r echo = FALSE, results = 'asis'}
+
+# Apply imputation
+switch(
+  imputation_method
+, "group-median" = {
+    quant_data_imp <- quant_data
+    imputation_method_description <-
+      paste("Substitute missing value with",
+        "median peptide-intensity for sample group.\n"
+        )
+    sample_level_integers <- as.integer(sample_treatment_levels)
+    # Take the accurate ln(x+1) because the data are log-normally distributed
+    #   and because median can involve an average of two measurements.
+    quant_data_imp <- log1p(quant_data_imp)
+    for (i in seq_len(length(levels(sample_treatment_levels)))) {
+      # Determine the columns for this factor-level
+      level_cols <- i == sample_level_integers
+      # Extract those columns
+      lvlsbst <- quant_data_imp[, level_cols, drop = FALSE]
+      # assign to ind the row-column pairs corresponding to each NA
+      ind <- which(is.na(lvlsbst), arr.ind = TRUE)
+      # No group-median exists if there is only one sample
+      #   a given ppep has no measurement; otherwise, proceed.
+      if (ncol(lvlsbst) > 1) {
+        the_centers <-
+          apply(lvlsbst, 1, median, na.rm = TRUE)
+        for (j in seq_len(nrow(lvlsbst))) {
+          for (k in seq_len(ncol(lvlsbst))) {
+            if (is.na(lvlsbst[j, k])) {
+              lvlsbst[j, k] <- the_centers[j]
+            }
+          }
+        }
+        quant_data_imp[, level_cols] <- lvlsbst
+      }
+    }
+    # Take the accurate e^x - 1 to match scaling of original input.
+    quant_data_imp <- round(expm1(quant_data_imp_ln <- quant_data_imp))
+    good_rows <- !is.na(rowMeans(quant_data_imp))
+  }
+, "median" = {
+    quant_data_imp <- quant_data
+    imputation_method_description <-
+      paste("Substitute missing value with",
+        "median peptide-intensity across all sample classes.\n"
+        )
+    # Take the accurate ln(x+1) because the data are log-normally distributed
+    #   and because median can involve an average of two measurements.
+    quant_data_imp <- log1p(quant_data_imp)
+    quant_data_imp[ind] <- apply(quant_data_imp, 1, median, na.rm = TRUE)[ind[, 1]]
+    # Take the accurate e^x - 1 to match scaling of original input.
+    quant_data_imp <- round(expm1(quant_data_imp_ln <- quant_data_imp))
+    good_rows <- !is.nan(rowMeans(quant_data_imp))
+  }
+, "mean" = {
+    quant_data_imp <- quant_data
+    imputation_method_description <-
+      paste("Substitute missing value with",
+        "geometric-mean peptide intensity across all sample classes.\n"
+        )
+    # Take the accurate ln(x+1) because the data are log-normally distributed,
+    #   so arguments to mean should be previously transformed.
+    #   this will have to be
+    quant_data_imp <- log1p(quant_data_imp)
+    # Assign to NA cells the mean for the row
+    quant_data_imp[ind] <- apply(quant_data_imp, 1, mean, na.rm = TRUE)[ind[, 1]]
+    # Take the accurate e^x - 1 to match scaling of original input.
+    quant_data_imp <- round(expm1(quant_data_imp_ln <- quant_data_imp))
+    good_rows <- !is.nan(rowMeans(quant_data_imp))
+  }
+, "random" = {
+    quant_data_imp <- quant_data
+    m1 <- median(sds, na.rm = TRUE) * sd_percentile #sd to be used is the median sd
+    # If you want results to be reproducible, you will want to call
+    #   base::set.seed before calling stats::rnorm
+    imputation_method_description <-
+      paste("Substitute each missing value with random intensity",
+        sprintf(
+          "random intensity $N \\sim (%0.2f, %0.2f)$.\n",
+          q1, m1
+          )
+        )
+    cat(sprintf("mean_percentile (from input parameter) is %2.0f\n\n",
+      100 * mean_percentile))
+    cat(sprintf("sd_percentile (from input parameter) is %0.2f\n\n",
+      sd_percentile))
+    quant_data_imp[ind] <-
+      10 ^ rnorm(number_to_impute, mean = q1, sd = m1)
+    quant_data_imp_ln <- log1p(quant_data_imp)
+    good_rows <- !is.nan(rowMeans(quant_data_imp))
+  }
+)
+quant_data_imp_log10 <- quant_data_imp_ln * const_log10_e
+
+if (length(good_rows) < 1) {
+  print("ERROR: Cannot impute data; there are no good rows!")
+  return(-1)
+  }
+```
+
+```{r echo = FALSE, results = 'asis'}
+cat("\\quad\n\nImputation method:\n\n\n", imputation_method_description)
+```
+
+```{r echo = FALSE}
+
+imp_smry_pot_peptides_after <- sum(good_rows)
+imp_smry_rejected_after  <- sum(!good_rows)
+imp_smry_missing_values_after   <- sum(is.na(quant_data_imp[good_rows, ]))
+```
+```{r echo = FALSE, results = 'asis'}
+# ref: http://www1.maths.leeds.ac.uk/latex/TableHelp1.pdf
+tabular_lines_fmt <- paste(
+  "\\begin{table}[hb]", # h(inline); b(bottom); t (top) or p (separate page)
+  " \\caption{Imputation Results}",
+  " \\centering", # \centering centers the table on the page
+  " \\begin{tabular}{l c c c}",
+  "  \\hline\\hline",
+  "  \\  & potential peptides   & missing values & rejected",
+  "    peptides \\\\ [0.5ex]",
+  "  \\hline",
+  "  before imputation & %d     & %d (%d\\%s)    &    \\\\",
+  "  after imputation  & %d     & %d             & %d \\\\ [1ex]",
+  "  \\hline",
+  " \\end{tabular}",
+  #" \\label{table:nonlin}", # may be used to refer this table in the text
+  "\\end{table}",
+  sep = "\n"
+  )
+tabular_lines <-
+  sprintf(
+    tabular_lines_fmt,
+    imp_smry_pot_peptides_before,
+    imp_smry_missing_values_before,
+    imp_smry_pct_missing,
+    "%",
+    imp_smry_pot_peptides_after,
+    imp_smry_missing_values_after,
+    imp_smry_rejected_after
+    )
+cat(tabular_lines)
+```
+```{r echo = FALSE}
+
+
+# Zap rows where imputation was ineffective
+full_data         <- full_data        [good_rows, ]
+quant_data        <- quant_data       [good_rows, ]
+
+quant_data_imp <- quant_data_imp[good_rows, ]
+write_debug_file(quant_data_imp)
+quant_data_imp_good_rows <- quant_data_imp
+
+write_debug_file(quant_data_imp_good_rows)
+```
+
+```{r echo = FALSE, results = 'asis'}
+
+can_plot_before_after_imp <- TRUE
+d_combined <-
+  as.numeric(
+    as.matrix(
+      log10(quant_data_imp)
+      )
+    )
+d_original <-
+  as.numeric(
+    as.matrix(
+      log10(quant_data_imp[!is.na(quant_data)])
+      )
+    )
+
+if (sum(!is.na(d_original)) > 2) {
+  d_original <- density(d_original)
+} else {
+  can_plot_before_after_imp <- FALSE
+}
+if (can_plot_before_after_imp && sum(is.na(d_combined)) < 1) {
+  d_combined <- density(d_combined)
+} else {
+  can_plot_before_after_imp <- FALSE
+}
+
+if (sum(is.na(quant_data)) > 0) {
+  # There ARE missing values
+  d_imputed <-
+    as.numeric(
+      as.matrix(
+        log10(quant_data_imp[is.na(quant_data)])
+        )
+      )
+  if (can_plot_before_after_imp && sum(is.na(d_imputed)) < 1) {
+    d_imputed <- (density(d_imputed))
+  } else {
+    can_plot_before_after_imp <- FALSE
+  }
+} else {
+  # There are NO missing values
+  d_imputed <- d_combined
+}
+
+```
+
+```{r echo = FALSE, fig.dim = c(9, 5.5), results = 'asis'}
+zero_sd_rownames <-
+  rownames(quant_data_imp)[
+    is.na((apply(quant_data_imp, 1, sd, na.rm = TRUE)) == 0)
+  ]
+
+if (length(zero_sd_rownames) >= nrow(quant_data_imp)) {
+  stop("All peptides have zero standard deviation.  Cannot continue.")
+}
+if (length(zero_sd_rownames) > 0) {
+  cat(
+    sprintf("%d peptides with zero variance were removed from statistical consideration",
+      length(zero_sd_rownames)
+    )
+  )
+  zap_named_rows <- function(df, nms) {
+    return(df[!(row.names(df) %in% nms), ])
+  }
+  quant_data_imp <- zap_named_rows(quant_data_imp, zero_sd_rownames)
+  quant_data     <- zap_named_rows(quant_data,     zero_sd_rownames)
+  full_data      <- zap_named_rows(full_data,      zero_sd_rownames)
+}
+
+if (sum(is.na(quant_data)) > 0) {
+  cat("\\leavevmode\\newpage\n")
+  # data visualization
+  old_par <- par(
+    mai = par("mai") + c(0.5, 0, 0, 0)
+  )
+  # Copy quant data to x
+  x <- quant_data
+  # x gets to have values of:
+  #  - NA for observed values
+  #  - 1 for missing values
+  x[is.na(x)] <- 0
+  x[x > 1] <- NA
+  x[x == 0] <- 1
+  # Log-transform imputed data
+  # update variable because rows may have been eliminated from quant_data_imp
+  quant_data_imp_log10 <- log10(quant_data_imp)
+
+  write_debug_file(quant_data_imp_log10)
+
+  # Set blue_dots to log of quant data or NA for NA quant data
+  blue_dots <- log10(quant_data)
+  # Set red_dots to log of imputed data or NA for observed quant data
+  red_dots <- quant_data_imp_log10 * x
+
+  count_red <- sum(!is.na(red_dots))
+  count_blue <- sum(!is.na(blue_dots))
+  ylim_save <- ylim <- c(
+    min(red_dots, blue_dots, na.rm = TRUE),
+    max(red_dots, blue_dots, na.rm = TRUE)
+    )
+  show_stripchart <-
+    50 > (count_red + count_blue) / length(sample_name_matches)
+  if (show_stripchart) {
+    boxplot_sub <- "Light blue = data before imputation; Red = imputed data"
+  } else {
+    boxplot_sub <- ""
+  }
+
+  # Vertical plot
+  colnames(blue_dots) <- sample_name_matches
+  boxplot(
+      blue_dots
+    , las = 1 # "always horizontal"
+    , col = const_boxplot_fill
+    , ylim = ylim
+    , main = "Peptide intensities after eliminating unusable peptides"
+    , sub = boxplot_sub
+    , xlab = "Sample"
+    , ylab = latex2exp::TeX("$log_{10}$(peptide intensity)")
+    )
+
+  if (show_stripchart) {
+    # Points
+    # ref: https://r-charts.com/distribution/add-points-boxplot/
+    # NA values are not plotted
+    stripchart(
+      blue_dots,                 # Data
+      method = "jitter",          # Random noise
+      jitter = const_stripchart_jitter,
+      pch = 19,                   # Pch symbols
+      cex = const_stripsmall_cex, # Size of symbols reduced
+      col = "lightblue",          # Color of the symbol
+      vertical = TRUE,            # Vertical mode
+      add = TRUE                  # Add it over
+      )
+    stripchart(
+      red_dots,                   # Data
+      method = "jitter",          # Random noise
+      jitter = const_stripchart_jitter,
+      pch = 19,                   # Pch symbols
+      cex = const_stripsmall_cex, # Size of symbols reduced
+      col = "red",                # Color of the symbol
+      vertical = TRUE,            # Vertical mode
+      add = TRUE                  # Add it over
+      )
+
+  }
+  if (TRUE) {
+    # show measured values in blue on left half-violin plot
+    cat("\\leavevmode\n\\quad\n\n\\quad\n\n")
+    vioplot::vioplot(
+      x = lapply(blue_dots, function(x) x[!is.na(x)]),
+      col = "lightblue1",
+      side = "left",
+      plotCentre = "line",
+      ylim = ylim_save,
+      main = "Distributions of observed and imputed data",
+      sub = "Light blue = observed data; Pink = imputed data",
+      xlab = "Sample",
+      ylab = latex2exp::TeX("$log_{10}$(peptide intensity)")
+      )
+    red_violins <- lapply(red_dots, function(x) x[!is.na(x)])
+    cols_to_delete <- c()
+    for (ix in seq_len(length(red_violins))) {
+      if (length(red_violins[[ix]]) < 1) {
+        cols_to_delete <- c(cols_to_delete, ix)
+      }
+    }
+    # destroy any unimputable columns
+    if (!is.null(cols_to_delete)) {
+      red_violins <- red_violins[-cols_to_delete]
+    }
+    # plot imputed values in red on right half-violin plot
+    vioplot::vioplot(
+      x = red_violins,
+      col = "lightpink1",
+      side = "right",
+      plotCentre = "line",
+      add = TRUE
+      )
+  }
+
+  par(old_par)
+
+  # density plot
+  cat("\\leavevmode\n\n\n\n\n\n\n")
+  if (can_plot_before_after_imp) {
+    ylim <- c(
+      0,
+      max(
+        if (is.list(d_combined)) d_combined$y else d_combined,
+        if (is.list(d_original)) d_original$y else d_original,
+        if (is.list(d_imputed)) d_imputed$y else d_imputed,
+        na.rm = TRUE
+      )
+    )
+    plot(
+      d_combined,
+      ylim = ylim,
+      sub =
+        paste(
+          "Blue = data before imputation; Red = imputed data;",
+          "Black = combined"
+          ),
+      main = "Density of peptide intensity before and after imputation",
+      xlab = latex2exp::TeX("$log_{10}$(peptide intensity)"),
+      ylab = "Probability density"
+    )
+    lines(d_original, col = "blue")
+    lines(d_imputed, col = "red")
+  } else {
+    cat(
+      "There are too few points to plot the density of peptide intensity",
+      "before and after imputation."
+      )
+  }
+  cat("\\leavevmode\\newpage\n")
+}
+```
+
+# Perform Quantile Normalization
+
+The excellent `normalize.quantiles` function from
+*[the `preprocessCore` Bioconductor package](http://bioconductor.org/packages/release/bioc/html/preprocessCore.html)*
+performs "quantile normalization" as described Bolstad *et al.* (2003),
+DOI *[10.1093/bioinformatics/19.2.185](https://doi.org/10.1093%2Fbioinformatics%2F19.2.185)*
+and *its supplementary material [http://bmbolstad.com/misc/normalize/normalize.html](http://bmbolstad.com/misc/normalize/normalize.html)*,
+i.e., it assumes that the goal is to detect
+subtle differences among grossly similar samples (having similar distributions)
+by equailzing intra-quantile quantitations.
+Unfortunately, one software library upon which it depends
+*[suffers from a concurrency defect](https://support.bioconductor.org/p/122925/#9135989)*
+that requires that a specific, non-concurrent version of the library be
+installed.  The installation command equivalent to what was used to install the library to produce the results presented here is:
+```
+    conda install bioconductor-preprocesscore openblas=0.3.3
+```
+
+
+<!--
+# Apply quantile normalization using preprocessCore::normalize.quantiles
+# ---
+# tool repository: http://bioconductor.org/packages/release/bioc/html/preprocessCore.html
+#   except this: https://support.bioconductor.org/p/122925/#9135989
+#   says to install it like this:
+#     ```
+#     BiocManager::install("preprocessCore", configure.args="--disable-threading", force = TRUE, lib=.libPaths()[1])
+#     ```
+# conda installation (necessary because of a bug in recent openblas):
+#   conda install bioconductor-preprocesscore openblas=0.3.3
+# ...
+# ---
+# normalize.quantiles {preprocessCore} --  Quantile Normalization
+#
+# Description:
+#   Using a normalization based upon quantiles, this function normalizes a
+#     matrix of probe level intensities.
+#
+#   THIS FUNCTIONS WILL HANDLE MISSING DATA (ie NA values), based on the
+#     assumption that the data is missing at random.
+#
+# Usage:
+#   normalize.quantiles(x, copy = TRUE, keep.names = FALSE)
+#
+# Arguments:
+#
+#   - x: A matrix of intensities where each column corresponds to a chip and each row is a probe.
+#
+#   - copy: Make a copy of matrix before normalizing. Usually safer to work with a copy,
+#       but in certain situations not making a copy of the matrix, but instead normalizing
+#       it in place will be more memory friendly.
+#
+#   - keep.names: Boolean option to preserve matrix row and column names in output.
+#
+# Details:
+#   This method is based upon the concept of a quantile-quantile plot extended to n dimensions.
+#     No special allowances are made for outliers. If you make use of quantile normalization
+#     please cite Bolstad et al, Bioinformatics (2003).
+#
+#   This functions will handle missing data (ie NA values), based on
+#     the assumption that the data is missing at random.
+#
+#   Note that the current implementation optimizes for better memory usage
+#     at the cost of some additional run-time.
+#
+# Value: A normalized matrix.
+#
+# Author: Ben Bolstad, bmbolstad.com
+#
+# References
+#
+#   - Bolstad, B (2001) Probe Level Quantile Normalization of High Density Oligonucleotide
+#       Array Data. Unpublished manuscript http://bmbolstad.com/stuff/qnorm.pdf
+#
+#   - Bolstad, B. M., Irizarry R. A., Astrand, M, and Speed, T. P. (2003) A Comparison of
+#       Normalization Methods for High Density Oligonucleotide Array Data Based on Bias
+#       and Variance. Bioinformatics 19(2), pp 185-193. DOI 10.1093/bioinformatics/19.2.185
+#       http://bmbolstad.com/misc/normalize/normalize.html
+# ...
+-->
+```{r echo = FALSE, results = 'asis'}
+
+if (nrow(quant_data_imp) > 0) {
+  quant_data_imp_qn <- preprocessCore::normalize.quantiles(
+     as.matrix(quant_data_imp), keep.names = TRUE
+   )
+} else {
+  quant_data_imp_qn <- as.matrix(quant_data_imp)
+}
+
+quant_data_imp_qn <- as.data.frame(quant_data_imp_qn)
+
+write_debug_file(quant_data_imp_qn)
+
+quant_data_imp_qn_log <- log10(quant_data_imp_qn)
+
+write_debug_file(quant_data_imp_qn_log)
+
+quant_data_imp_qn_ls <- t(scale(t(log10(quant_data_imp_qn))))
+
+sel <- apply(quant_data_imp_qn_ls, 1, any_nan)
+quant_data_imp_qn_ls2 <- quant_data_imp_qn_ls
+
+quant_data_imp_qn_ls2 <- quant_data_imp_qn_ls2[which(sel), ]
+quant_data_imp_qn_ls2 <- as.data.frame(quant_data_imp_qn_ls2)
+
+quant_data_imp_qn_ls <- as.data.frame(quant_data_imp_qn_ls)
+
+write_debug_file(quant_data_imp_qn_ls)
+write_debug_file(quant_data_imp_qn_ls2)
+
+# Create data.frame used by ANOVA analysis
+data_table_imp_qn_lt <- cbind(full_data[1:9], quant_data_imp_qn_log)
+```
+
+<!-- ACE insertion begin -->
+## Are normalized, imputed, log-transformed sample distributions similar?
+
+```{r echo = FALSE, fig.dim = c(9, 5.5), results = 'asis'}
+
+# Save unimputed quant_data_log for plotting below
+unimputed_quant_data_log <- quant_data_log
+
+# log10 transform (after preparing for zero values,
+#   which should never happen...)
+quant_data_imp_qn[quant_data_imp_qn == 0] <- .000000001
+quant_data_log <- log10(quant_data_imp_qn)
+
+how_many_peptides <- nrow(quant_data_log)
+
+if ((how_many_peptides) > 0) {
+  cat(
+    sprintf(
+      "Intensities for %d peptides:\n\n\n",
+      how_many_peptides
+      )
+    )
+  cat("\n\n\n")
+
+
+  # data visualization
+  old_par <- par(
+    mai = par("mai") + c(0.5, 0, 0, 0)
+  , oma = par("oma") + c(0.5, 0, 0, 0)
+  )
+  # ref: https://r-charts.com/distribution/add-points-boxplot/
+  # Vertical plot
+  colnames(quant_data_log) <- sample_name_matches
+  boxplot(
+    quant_data_log
+  , las = 1
+  , col = const_boxplot_fill
+  , ylab = latex2exp::TeX("$log_{10}$(peptide intensity)")
+  , xlab = "Sample"
+  )
+  par(old_par)
+} else {
+  cat("There are no peptides to plot\n")
+}
+
+cat("\n\n\n")
+
+```
+
+```{r echo = FALSE, fig.align = "left", fig.dim = c(9, 4), results = 'asis'}
+if (nrow(quant_data_log) > 1) {
+  quant_data_log_stack <- stack(quant_data_log)
+  ggplot2::ggplot(quant_data_log_stack, ggplot2::aes(x = values)) +
+    ggplot2::xlab(latex2exp::TeX("$log_{10}$(peptide intensity)")) +
+    ggplot2::ylab("Probability density") +
+    ggplot2::geom_density(ggplot2::aes(group = ind, colour = ind), na.rm = TRUE)
+} else {
+  cat("No density plot because there are fewer than two peptides to plot.\n\n")
+}
+```
+```{r echo = FALSE, results = 'asis'}
+cat("\\leavevmode\\newpage\n")
+```
+
+# ANOVA Analysis
+
+```{r, echo = FALSE}
+# Make new data frame containing only Phosphopeptides
+#   to connect preANOVA to ANOVA (connect_df)
+connect_df <- data.frame(
+    data_table_imp_qn_lt$Phosphopeptide
+  , data_table_imp_qn_lt[, first_data_column]
+  )
+colnames(connect_df) <- c("Phosphopeptide", "Intensity")
+```
+
+```{r echo = FALSE, fig.dim = c(9, 10), results = 'asis'}
+count_of_treatment_levels <- length(levels(sample_treatment_levels))
+if (count_of_treatment_levels < 2) {
+  nuke_control_sequences <-
+    function(s) {
+      s <- gsub("[\\]", "xyzzy_plugh", s)
+      s <- gsub("[$]", "\\\\$", s)
+      s <- gsub("xyzzy_plugh", "$\\\\backslash$", s)
+      return(s)
+    }
+  cat(
+    "ERROR!!!! Cannot perform ANOVA analysis",
+    "(see next page)\\newpage\n"
+  )
+  cat(
+    "ERROR: ANOVA analysis",
+    "requires two or more factor levels!\n\n\n"
+  )
+
+  cat("\n\n\n\n\n")
+  cat("Unparsed sample names are:\n\n\n",
+    "\\begin{quote}\n",
+    paste(names(quant_data_imp_qn_log), collapse = "\n\n\n"),
+    "\n\\end{quote}\n\n")
+
+  regex_sample_names <- nuke_control_sequences(regex_sample_names)
+
+  cat("\\leavevmode\n\n\n")
+  cat("Parsing rule for SampleNames is",
+    "\n\n\n",
+    "\\text{'",
+    regex_sample_names,
+    "'}\n\n\n",
+    sep = ""
+    )
+
+  cat("\nParsed sample names are:\n",
+    "\\begin{quote}\n",
+    paste(sample_name_matches, collapse = "\n\n\n"),
+    "\n\\end{quote}\n\n")
+
+  regex_sample_grouping <- nuke_control_sequences(regex_sample_grouping)
+
+  cat("\\leavevmode\n\n\n")
+  cat("Parsing rule for SampleGrouping is",
+    "\n\n\n",
+    "\\text{'",
+    regex_sample_grouping,
+    "'}\n\n\n",
+    sep = ""
+    )
+
+  cat("\n\n\n")
+  cat("Sample group assignments are:\n",
+    "\\begin{quote}\n",
+    paste(regmatches(sample_name_matches, rx_match), collapse = "\n\n\n"),
+    "\n\\end{quote}\n\n")
+
+} else {
+
+  p_value_data_anova_ps <-
+    apply(
+      quant_data_imp_qn_log,
+      1,
+      anova_func,
+      grouping_factor = sample_treatment_levels,
+      one_way_f = one_way_all_categories
+      )
+
+  p_value_data_anova_ps_fdr <-
+    p.adjust(p_value_data_anova_ps, method = "fdr")
+  p_value_data <- data.frame(
+    phosphopeptide = full_data[, 1]
+    ,
+    raw_anova_p = p_value_data_anova_ps
+    ,
+    fdr_adjusted_anova_p = p_value_data_anova_ps_fdr
+  )
+
+  # output ANOVA file to constructed filename,
+  #   e.g.    "Outputfile_pST_ANOVA_STEP5.txt"
+  #   becomes "Outpufile_pST_ANOVA_STEP5_FDR0.05.txt"
+
+  # Re-output datasets to include p-values
+  metadata_plus_p <- cbind(full_data[1:9], p_value_data[, 2:3])
+  write.table(
+    cbind(metadata_plus_p, quant_data_imp),
+    file = imputed_data_filename,
+    sep = "\t",
+    col.names = TRUE,
+    row.names = FALSE,
+    quote = FALSE
+    )
+
+  write.table(
+    cbind(metadata_plus_p, quant_data_imp_qn_log),
+    file = imp_qn_lt_data_filenm,
+    sep = "\t",
+    col.names = TRUE,
+    row.names = FALSE,
+    quote = FALSE
+    )
+
+
+  p_value_data <-
+    p_value_data[order(p_value_data$fdr_adjusted_anova_p), ]
+
+  first_page_suppress <- 1
+  number_of_peptides_found <- 0
+  cutoff <- val_fdr[1]
+  for (cutoff in val_fdr) {
+    if (number_of_peptides_found > 49) {
+      cat("\\leavevmode\n\n\n")
+      break
+      }
+
+    #loop through FDR cutoffs
+
+    filtered_p <-
+      p_value_data[
+        which(p_value_data$fdr_adjusted_anova_p < cutoff),
+        , drop = FALSE
+        ]
+    filtered_data_filtered <-
+      quant_data_imp_qn_log[
+        rownames(filtered_p),
+        , drop = FALSE
+        ]
+    filtered_data_filtered <-
+      filtered_data_filtered[
+        order(filtered_p$fdr_adjusted_anova_p),
+        , drop = FALSE
+        ]
+
+    # <!-- ACE insertion start -->
+
+    if (nrow(filtered_p) && nrow(filtered_data_filtered) > 0) {
+      if (first_page_suppress == 1) {
+        first_page_suppress <- 0
+        } else {
+          cat("\\newpage\n")
+        }
+      if (nrow(filtered_data_filtered) > 1) {
+        subsection_header(sprintf(
+          "Intensity distributions for %d phosphopeptides whose adjusted p-value < %0.2f\n",
+          nrow(filtered_data_filtered),
+          cutoff
+        ))
+      } else {
+        subsection_header(sprintf(
+          "Intensity distribution for one phosphopeptide (%s) whose adjusted p-value < %0.2f\n",
+          rownames(filtered_data_filtered)[1],
+          cutoff
+        ))
+      }
+      cat("\n\n\n")
+      cat("\n\n\n")
+
+      old_oma <- par("oma")
+      old_par <- par(
+        mai = (par("mai") + c(0.7, 0, 0, 0)) * c(1, 1, 0.3, 1),
+        oma = old_oma * c(1, 1, 0.3, 1),
+        cex.main = 0.9,
+        cex.axis = 0.7,
+        fin = c(9, 7.25)
+        )
+      # ref: https://r-charts.com/distribution/add-points-boxplot/
+      # Vertical plot
+      colnames(filtered_data_filtered) <- sample_name_matches
+      tryCatch(
+        boxplot(
+          filtered_data_filtered,
+          main = "Imputed, normalized intensities", # no line plot
+          las = 1,
+          col = const_boxplot_fill,
+          ylab = latex2exp::TeX("$log_{10}$(peptide intensity)")
+        ),
+        error = function(e) print(e)
+      )
+      par(old_par)
+    } else {
+      cat(sprintf(
+        "%s < %0.2f\n\n\n\n\n",
+        "No peptides were found to have cutoff adjusted p-value",
+        cutoff
+      ))
+    }
+
+    if (nrow(filtered_data_filtered) > 0) {
+      # Add Phosphopeptide column to anova_filtered table
+      # The assumption here is that the first intensity is unique;
+      #   this is a hokey assumption but almost definitely will
+      #   be true in the real world unless there is a computation
+      #   error upstream.
+      anova_filtered_merge <- base::merge(
+        x = connect_df,
+        y = filtered_data_filtered,
+        by.x = "Intensity",
+        by.y = 1
+      )
+      anova_filtered_merge_order <- rownames(filtered_p)
+
+      anova_filtered <- data.frame(
+        ppep    = anova_filtered_merge$Phosphopeptide,
+        intense = anova_filtered_merge$Intensity,
+        data    = anova_filtered_merge[, 2:number_of_samples + 1]
+      )
+      colnames(anova_filtered) <-
+        c("Phosphopeptide", colnames(filtered_data_filtered))
+
+      # Merge qualitative columns into the ANOVA data
+      output_table <- data.frame(anova_filtered$Phosphopeptide)
+      output_table <- base::merge(
+        x = output_table,
+        y = data_table_imp_qn_lt,
+        by.x = "anova_filtered.Phosphopeptide",
+        by.y = "Phosphopeptide"
+      )
+
+      # Produce heatmap to visualize significance and the effect of imputation
+
+      anova_filtered_merge_format <- sapply(
+        X = filtered_p$fdr_adjusted_anova_p
+        ,
+        FUN = function(x) {
+          if (x > 0.0001)
+            paste0("(%0.", 1 + ceiling(-log10(x)), "f) %s")
+          else
+            paste0("(%0.4e) %s")
+        }
+      )
+
+      cat_hm_heading <- function(m, cutoff) {
+        cat("\\newpage\n")
+        if (nrow(m) > intensity_hm_rows) {
+          subsection_header(
+            paste(
+              sprintf("Heatmap for the %d most-significant peptides",
+                intensity_hm_rows),
+              sprintf("whose adjusted p-value < %0.2f\n", cutoff)
+            )
+          )
+        } else {
+          if (nrow(m) == 1) {
+            return(FALSE)
+          } else {
+            subsection_header(
+              paste(
+                sprintf("Heatmap for %d usable peptides whose", nrow(m)),
+                sprintf("adjusted p-value < %0.2f\n", cutoff)
+              )
+            )
+          }
+        }
+        cat("\n\n\n")
+        cat("\n\n\n")
+        return(TRUE)
+      }
+
+      # construct matrix with appropriate rownames
+      m <-
+        as.matrix(unimputed_quant_data_log[anova_filtered_merge_order, ])
+      if (nrow(m) > 0) {
+        rownames_m <- rownames(m)
+        rownames(m) <- sapply(
+          X = seq_len(nrow(m))
+          ,
+          FUN = function(i) {
+            sprintf(
+              anova_filtered_merge_format[i],
+              filtered_p$fdr_adjusted_anova_p[i],
+              rownames_m[i]
+            )
+          }
+        )
+      }
+      # draw the heading and heatmap
+      if (nrow(m) > 0) {
+          number_of_peptides_found <-
+            draw_intensity_heatmap(
+              m                       = m,
+              cutoff                  = cutoff,
+              hm_heading_function     = cat_hm_heading,
+              hm_main_title           = "Unimputed, unnormalized log(intensities)",
+              suppress_row_dendrogram = FALSE
+            )
+      }
+    }
+  }
+}
+cat("\\leavevmode\n\n\n")
+```
+
+```{r sqlite, echo = FALSE, fig.dim = c(9, 10), results = 'asis'}
+
+if (count_of_treatment_levels > 1) {
+  # Prepare two-way contrasts with adjusted p-values
+  # Strategy:
+  # - use imputed, log-transformed data:
+  #   - remember this when computing log2(fold-change)
+  # - each contrast is between a combination of trt levels
+  # - for each contrast, compute samples that are members
+  # - compute one-way test:
+  #   - use `oneway.test` (Welch test) if numbers of samples
+  #     are not equivalent between trt levels
+  #   - otherwise, aov is fine but offers no advantage
+  # - adjust p-value, assuming that
+  #   (# of pppeps)*(# of contrasts) tests were performed
+
+  # Each contrast is between a combination of trt levels
+  m2 <- combn(
+    x = seq_len(length(levels(sample_treatment_levels))),
+    m = 2,
+    simplify = TRUE
+  )
+  contrast_count <- ncol(m2)
+
+  # For each contrast, compute samples that are members
+  # - local function to construct a data.frame for each contrast
+  #   - the contrast in the first "column"
+  f_m2 <-
+    function(cntrst, lvl1, lvl2) {
+      return(
+        data.frame(
+          contrast = cntrst,
+          level = sample_treatment_levels[
+              sample_treatment_levels %in%
+                levels(sample_treatment_levels)[c(lvl1, lvl2)]
+            ],
+          label = sample_name_matches[
+              sample_treatment_levels %in%
+                levels(sample_treatment_levels)[c(lvl1, lvl2)]
+            ]
+        )
+      )
+    }
+  # - compute a df for each contrast
+  sample_level_dfs <- lapply(
+    X = 1:contrast_count,
+    FUN = function(i) f_m2(i, m2[1, i], m2[2, i])
+  )
+  # - compute a single df for all contrasts
+  combined_contrast_df <- Reduce(f = rbind, x = sample_level_dfs)
+
+  # - dispose objects to free resources
+  rm(sample_level_dfs)
+
+  # - write the df to a DB for later join-per-contrast
+  db <- RSQLite::dbConnect(RSQLite::SQLite(), ksea_app_prep_db)
+
+  RSQLite::dbWriteTable(
+    conn = db,
+    name = "contrast",
+    value = combined_contrast_df,
+    overwrite = TRUE
+  )
+
+  # Create UK for insert
+  ddl_exec(db, "
+    CREATE UNIQUE INDEX IF NOT EXISTS contrast__uk__idx
+      ON contrast(contrast, label);
+    "
+  )
+  # Create indexes for join
+  ddl_exec(db, "
+    -- index for join in contrast_ppep_smpl_qnlt on a.label < b.label
+    CREATE INDEX IF NOT EXISTS contrast__label__idx
+      ON contrast(label);
+    "
+  )
+  ddl_exec(db, "
+    -- index for joining two contrast_lvl_ppep_avg_quant on contrast
+    CREATE INDEX IF NOT EXISTS contrast__contrast__idx
+      ON contrast(contrast);
+    "
+  )
+  ddl_exec(db, "
+    -- index for joining two contrast_lvl_ppep_avg_quant on phophospep
+    CREATE INDEX IF NOT EXISTS contrast__level__idx
+      ON contrast(level);
+    "
+  )
+  # - dispose objects to free resources
+  rm(combined_contrast_df)
+
+  # Use imputed, log-transformed data
+  # - remember that this was donoe when computing log2(fold-change)
+  # - melt data matrix for use in later join-per-contrast
+  casted <- cbind(
+    data.frame(vrbl = rownames(quant_data_imp_qn_log)),
+    quant_data_imp_qn_log
+  )
+  quant_data_imp_qn_log_melted <- reshape2::melt(
+    casted,
+    id.vars = "vrbl"
+  )
+  colnames(quant_data_imp_qn_log_melted) <-
+    c("phosphopep", "sample", "quant")
+  # - dispose objects to free resources
+  rm(casted)
+
+  # - write the df to a DB for use in later join-per-contrast
+  RSQLite::dbWriteTable(
+    conn = db,
+    name = "ppep_smpl_qnlt",
+    value = quant_data_imp_qn_log_melted,
+    overwrite = TRUE
+  )
+  # Create UK for insert
+  ddl_exec(db, "
+    CREATE UNIQUE INDEX IF NOT EXISTS ppep_smpl_qnlt__uk__idx
+      ON ppep_smpl_qnlt(phosphopep, sample);
+    "
+  )
+  # Create index for join
+  ddl_exec(db, "
+    -- index for join in contrast_ppep_smpl_qnlt
+    CREATE INDEX IF NOT EXISTS ppep_smpl_qnlt__sample__idx
+      ON ppep_smpl_qnlt(sample);
+    "
+  )
+  ddl_exec(db, "
+    -- index for joining two contrast_lvl_ppep_avg_quant on phopho.pep
+    CREATE INDEX IF NOT EXISTS ppep_smpl_qnlt__phosphopep__idx
+      ON ppep_smpl_qnlt(phosphopep);
+    "
+  )
+  # - dispose objects to free resources
+  rm(quant_data_imp_qn_log_melted)
+
+  # - drop views if exist
+  ddl_exec(db, "
+    -- drop view dependent on contrast_lvl_ppep_avg_quant
+    DROP VIEW IF EXISTS v_contrast_log2_fc;
+    "
+  )
+  ddl_exec(db, "
+    -- drop table dependent on contrast_ppep_smpl_qnlt
+    DROP TABLE IF EXISTS contrast_lvl_ppep_avg_quant;
+    "
+  )
+  ddl_exec(db, "
+    DROP TABLE IF EXISTS contrast_lvl_lvl_metadata;
+    "
+  )
+  ddl_exec(db, "
+    DROP VIEW IF EXISTS v_contrast_lvl_metadata;
+    "
+  )
+  ddl_exec(db, "
+    -- drop view dependent on contrast_ppep_smpl_qnlt
+    DROP VIEW IF EXISTS v_contrast_lvl_ppep_avg_quant;
+    "
+  )
+  ddl_exec(db, "
+    DROP VIEW IF EXISTS v_contrast_lvl_lvl;
+    "
+  )
+  ddl_exec(db, "
+    -- drop view upon which other views depend
+    DROP VIEW IF EXISTS contrast_ppep_smpl_qnlt;
+    "
+  )
+  # - create view
+  dml_no_rows_exec(db, "
+      -- view contrast_ppep_smpl_qnlt is used for each phopshopep to
+      --   compute p-value for test of trt effect for two trt levels
+      CREATE VIEW contrast_ppep_smpl_qnlt
+        AS
+      SELECT  contrast,
+              level,
+              phosphopep,
+              sample,
+              quant
+        FROM  contrast AS c,
+              ppep_smpl_qnlt AS q
+        WHERE q.sample = c.label
+        ORDER BY contrast, level, phosphopep
+      ;
+    "
+  )
+  # - create simplification views
+  dml_no_rows_exec(db, "
+      CREATE VIEW v_contrast_lvl_metadata
+        AS
+      SELECT  contrast,
+              level,
+              group_concat(label, ';') AS samples
+        FROM  contrast
+        GROUP BY contrast, level
+        /* view v_contrast_lvl_metadata is used
+           to simplify creation of table contrast_lvl_lvl_metadata */
+      ;
+    "
+  )
+  dml_no_rows_exec(db, "
+      CREATE VIEW v_contrast_lvl_ppep_avg_quant
+        AS
+      SELECT  contrast,
+              level,
+              phosphopep,
+              avg(quant)                AS avg_quant
+        FROM  contrast_ppep_smpl_qnlt
+        GROUP BY contrast, level, phosphopep
+        /* view v_contrast_lvl_ppep_avg_quant is used
+           to simplify view v_contrast_log2_fc */
+      ;
+    "
+  )
+
+  # - create contrast-metadata table
+  dml_no_rows_exec(db, "
+      CREATE TABLE contrast_lvl_lvl_metadata
+        AS
+      SELECT DISTINCT
+              a.contrast              AS ab_contrast,
+              a.level                 AS a_level,
+              b.level                 AS b_level,
+              a.samples               AS a_samples,
+              b.samples               AS b_samples,
+              'log2(level_'||a.level||'/level_'||b.level||')'
+                                      AS fc_description
+        FROM  v_contrast_lvl_metadata AS a,
+              v_contrast_lvl_metadata AS b
+        WHERE a.contrast = b.contrast
+          AND a.level > b.level
+        /* view v_contrast_lvl_lvl is used
+           to simplify view v_contrast_log2_fc */
+      ;
+    "
+  )
+  # - create pseudo-materialized view table
+  dml_no_rows_exec(db, "
+      CREATE VIEW v_contrast_lvl_lvl
+        AS
+      SELECT DISTINCT
+              a.contrast AS ab_contrast,
+              a.level    AS a_level,
+              b.level    AS b_level
+        FROM  contrast   AS a,
+              contrast   AS b
+        WHERE a.contrast = b.contrast
+          AND a.level > b.level
+        /* view v_contrast_lvl_lvl is used
+           to simplify view v_contrast_log2_fc */
+      ;
+    "
+  )
+
+  # - create view to compute log2(fold-change)
+  dml_no_rows_exec(db, "
+      CREATE VIEW v_contrast_log2_fc
+        AS
+      SELECT  ab.ab_contrast                         AS contrast,
+              m.a_level                              AS a_level,
+              c.avg_quant                            AS a_quant,
+              m.a_samples                            AS a_samples,
+              ab.b_level                             AS b_level,
+              d.avg_quant                            AS b_quant,
+              m.b_samples                            AS b_samples,
+              m.fc_description                       AS fc_description,
+              3.32193 * ( d.avg_quant - c.avg_quant) AS log2_fc,
+              d.phosphopep                           AS phosphopep
+        FROM  contrast_lvl_lvl_metadata                  AS m,
+              v_contrast_lvl_ppep_avg_quant              AS d,
+              v_contrast_lvl_lvl AS ab
+                INNER JOIN v_contrast_lvl_ppep_avg_quant AS c
+                  ON c.contrast = ab.ab_contrast
+                  AND c.level   = ab.a_level
+        WHERE d.contrast    = ab.ab_contrast
+          AND m.ab_contrast = ab.ab_contrast
+          AND d.level       = ab.b_level
+          AND d.phosphopep  = c.phosphopep
+        /* view to compute log2(fold-change) */
+        ;
+    "
+  )
+
+  # For each contrast, compute samples that are members
+  # compute one-way test:
+  # - use `oneway.test` (Welch test) if numbers of samples
+  #   are not equivalent between trt levels
+  # - otherwise, aov is fine but offers no advantage
+  for (contrast in contrast_count:2) {
+    invisible(contrast)
+  }
+  for (contrast in 1:contrast_count) {
+    contrast_df <- sqldf::sqldf(
+      x = paste0("
+        SELECT level, phosphopep, sample, quant
+          FROM contrast_ppep_smpl_qnlt
+          WHERE contrast = ", contrast, "
+          ORDER BY phosphopep, level, sample
+      "),
+      connection = db
+    )
+    contrast_cast <- reshape2::dcast(
+      data = contrast_df,
+      formula = phosphopep ~ sample,
+      value.var = "quant"
+    )
+    contrast_cast_ncol <- ncol(contrast_cast)
+    contrast_cast_data <- contrast_cast[, 2:contrast_cast_ncol]
+    contrast_cast_samples <- colnames(contrast_cast_data)
+
+    # - order grouping_factor by order of sample columns of contrast_cast_data
+    grouping_factor <- sqldf::sqldf(
+      x = paste0("
+        SELECT sample, level
+          FROM contrast_ppep_smpl_qnlt
+          WHERE contrast = ", contrast, "
+          ORDER BY phosphopep, level, sample
+          LIMIT ", contrast_cast_ncol - 1
+      ),
+      connection = db
+    )
+    rownames(grouping_factor) <- grouping_factor$sample
+    grouping_factor <- grouping_factor[, "level", drop = FALSE]
+
+    # - run the two-level (one-way) test
+    p_value_data_contrast_ps <-
+      apply(
+        X = contrast_cast_data,
+        MARGIN = 1, # apply to rows
+        FUN = anova_func,
+        grouping_factor =
+          as.factor(as.numeric(grouping_factor$level)), # anova_func arg2
+        one_way_f = one_way_two_categories, # anova_func arg3
+        simplify = TRUE # TRUE is the default for simplify
+        )
+    contrast_data_adj_p_values <- p.adjust(
+        p = p_value_data_contrast_ps,
+        method = "fdr",
+        n = length(p_value_data_contrast_ps) # this is the default, length(p)
+      )
+    # - compute the fold-change
+    contrast_p_df <-
+      data.frame(
+        contrast = contrast,
+        phosphopep = contrast_cast$phosphopep,
+        p_value_raw = p_value_data_contrast_ps,
+        p_value_adj = contrast_data_adj_p_values
+      )
+    db_write_table_overwrite <- (contrast < 2)
+    db_write_table_append <- !db_write_table_overwrite
+    RSQLite::dbWriteTable(
+      conn = db,
+      name = "contrast_ppep_p_val",
+      value = contrast_p_df,
+      append = db_write_table_append
+      )
+    # Create UK for insert
+    ddl_exec(db, "
+      CREATE UNIQUE INDEX IF NOT EXISTS contrast_ppep_p_val__uk__idx
+        ON contrast_ppep_p_val(phosphopep, contrast);
+      "
+    )
+  }
+  # Perhaps this could be done more elegantly using unique keys
+  #   or creating the tables before saving data to them, but this
+  #   is fast and, if the database exists on disk rather than in
+  #   memory, it doesn't stress memory.
+  dml_no_rows_exec(db, "
+    CREATE TEMP table contrast_log2_fc
+      AS
+    SELECT *
+      FROM  v_contrast_log2_fc
+      ORDER BY contrast, phosphopep
+    ;
+    "
+  )
+  dml_no_rows_exec(db, "
+    CREATE TEMP table ppep_p_val
+      AS
+    SELECT  p_value_raw,
+            p_value_adj,
+            contrast   AS p_val_contrast,
+            phosphopep AS p_val_ppep
+      FROM  contrast_ppep_p_val
+      ORDER BY contrast, phosphopep
+    ;
+    "
+  )
+  dml_no_rows_exec(db, "
+    DROP TABLE IF EXISTS contrast_log2_fc_p_val
+    ;
+    "
+  )
+  dml_no_rows_exec(db, "
+    CREATE TABLE contrast_log2_fc_p_val
+      AS
+    SELECT  a.*,
+            b.p_value_raw,
+            b.p_value_adj,
+            b.p_val_contrast,
+            b.p_val_ppep
+      FROM  contrast_log2_fc a, ppep_p_val b
+      WHERE a.rowid = b.rowid
+        AND a.phosphopep = b.p_val_ppep
+    ;
+    "
+  )
+  # Create UK
+  ddl_exec(db, "
+    CREATE UNIQUE INDEX IF NOT EXISTS contrast_log2_fc_p_val__uk__idx
+      ON contrast_log2_fc_p_val(phosphopep, contrast);
+    "
+  )
+  # Create indices for future queries
+  ddl_exec(db, "
+    CREATE INDEX IF NOT EXISTS contrast_log2_fc_p_val__contrast__idx
+      ON contrast_log2_fc_p_val(contrast);
+    "
+  )
+  ddl_exec(db, "
+    CREATE INDEX IF NOT EXISTS contrast_log2_fc_p_val__phosphopep__idx
+      ON contrast_log2_fc_p_val(phosphopep);
+    "
+  )
+  ddl_exec(db, "
+    CREATE INDEX IF NOT EXISTS contrast_log2_fc_p_val__p_value_raw__idx
+      ON contrast_log2_fc_p_val(p_value_raw);
+    "
+  )
+  ddl_exec(db, "
+    CREATE INDEX IF NOT EXISTS contrast_log2_fc_p_val__p_value_adj__idx
+      ON contrast_log2_fc_p_val(p_value_adj);
+    "
+  )
+  dml_no_rows_exec(db, "
+    DROP VIEW IF EXISTS v_contrast_log2_fc_p_val
+    ;
+    "
+  )
+  dml_no_rows_exec(db, "
+      CREATE VIEW v_contrast_log2_fc_p_val
+        AS
+      SELECT  contrast,
+              a_level,
+              a_samples,
+              b_level,
+              b_samples,
+              a_quant,
+              b_quant,
+              fc_description,
+              log2_fc,
+              p_value_raw,
+              p_value_adj,
+              phosphopep
+        FROM  contrast_log2_fc_p_val
+        ORDER BY contrast, phosphopep
+        ;
+    "
+  )
+  ddl_exec(db, "
+    DROP TABLE IF EXISTS kseaapp_metadata
+    ;
+    "
+  )
+  dml_no_rows_exec(db, "
+    CREATE TABLE kseaapp_metadata
+      AS
+    WITH extended(deppep, ppep, gene_name, uniprot_id, phosphoresidue) AS (
+              SELECT DISTINCT
+                  deppep.seq,
+                  ppep.seq,
+                  GeneName||';',
+                  UniProtID||';',
+                  PhosphoResidue||';'
+              FROM
+                ppep, deppep, mrgfltr_metadata
+              WHERE
+                  mrgfltr_metadata.ppep_id = ppep.id
+                AND
+                  ppep.deppep_id = deppep.id
+        )
+    SELECT
+        ppep                                                  AS `ppep`,
+        SUBSTR(uniprot_id,     1, INSTR(uniprot_id,';') - 1 ) AS `Protein`,
+        SUBSTR(gene_name,      1, INSTR(gene_name,';')  - 1 ) AS `Gene`,
+        deppep                                                AS `Peptide`,
+        REPLACE(
+          REPLACE(
+            SUBSTR(phosphoresidue, 1, INSTR(phosphoresidue,';') - 1 ),
+            'p',
+            ''
+            ),
+          ', ',
+          ';'
+          )                                                   AS `Residue.Both`
+      FROM extended
+      ;
+    "
+  )
+  # Create indexes for join
+  ddl_exec(db, "
+    CREATE INDEX IF NOT EXISTS kseaapp_metadata__ppep__idx
+      ON kseaapp_metadata(ppep);
+    "
+  )
+  ddl_exec(db, "
+    DROP VIEW IF EXISTS v_kseaapp_contrast
+    ;
+    "
+  )
+  dml_no_rows_exec(db, "
+    CREATE VIEW v_kseaapp_contrast
+      AS
+    SELECT  a.*, b.Protein, b.Gene, b.Peptide, b.`Residue.Both`
+      FROM  v_contrast_log2_fc_p_val a, kseaapp_metadata b
+      WHERE b.ppep = a.phosphopep
+      ;
+      "
+  )
+  ddl_exec(db, "
+    DROP VIEW IF EXISTS v_kseaapp_input
+    ;
+    "
+  )
+  dml_no_rows_exec(db, "
+    CREATE VIEW v_kseaapp_input
+      AS
+    SELECT  v.contrast,
+            v.phosphopep,
+            m.`Protein`,
+            m.`Gene`,
+            m.`Peptide`,
+            m.`Residue.Both`,
+            v.p_value_raw AS `p`,
+            v.log2_fc AS `FC`
+      FROM  kseaapp_metadata AS m,
+            v_contrast_log2_fc_p_val AS v
+      WHERE m.ppep = v.phosphopep
+        AND NOT m.`Gene` = 'No_Gene_Name'
+        AND NOT v.log2_fc = 0
+      ;
+      "
+  )
+}
+```
+
+```{r echo = FALSE, results = 'asis'}
+cat("\\newpage\n")
+```
+
+# KSEA Analysis
+
+Results of Kinase-Substrate Enrichment Analysis are presented here, if the substrates for any kinases are relatively enriched.   Enrichments are found by the CRAN `KSEAapp` package:
+
+- The package is available on CRAN, at https:/cran.r-project.org/package=KSEAapp
+- The method used is described in Casado et al. (2013) [doi:10.1126/scisignal.2003573](https:/doi.org/10.1126/scisignal.2003573) and Wiredja et al (2017) [doi:10.1093/bioinformatics/btx415](https:/doi.org/10.1093/bioinformatics/btx415).
+- An online alternative (supporting only analysis of human data) is available at [https:/casecpb.shinyapps.io/ksea/](https:/casecpb.shinyapps.io/ksea/).
+
+For each kinase, $i$, and each two-way contrast of treatments, $j$, an enrichment $z$-score is computed as:
+
+$$
+\text{kinase enrichment score}_{j,i} = \frac{(\overline{s}_{j,i} - \overline{p}_j)\sqrt{m_{j,i}}}{\delta_j}
+$$
+
+and fold-enrichment is computed as:
+
+$$
+\text{Enrichment}_{j,i} = \frac{\overline{s}_{j,i}}{\overline{p}_j}
+$$
+
+where:
+
+- $\overline{s}_{j,i}$ is the mean $\log_2 (|\text{fold-change|})$ in intensities (for contrast $j$) of known substrates of the kinase $i$,
+- $\overline{p}_j$ is the mean $\log_2 (|\text{fold-change}|)$ of all phosphosites identified in contrast $j$, and
+- $m_{j,i}$ is the total number of phosphosite substrates of kinase $i$ identified in contrast $j$,
+- $\delta_j$ is the standard deviation of the $\log_2 (|\text{fold-change}|)$ for contrast $j$ across all phosphosites in the dataset.
+- Note that the absolute value of fold-change is used so that both increased and decreased substrates of a kinase will contribute to its enrichment score.
+
+$\text{FDR}_{j,i}$ is computed from the $p$-value for the z-score using the R `stats::p.adjust` function, applying the False Discovery Rate correction from Benjamini and Hochberg (1995) [doi:10.1111/j.2517-6161.1995.tb02031.x](https:/doi.org/10.1111/j.2517-6161.1995.tb02031.x)
+
+Color intensity in heatmaps reflects magnitude of $z$-score for enrichment of respective kinase in respective contrast; hue reflects the sign of the $z$-score (blue, negative; red, positive).
+
+Asterisks in heatmaps reflect enrichments that are significant at `r ksea_cutoff_statistic` < `r ksea_cutoff_threshold`.
+
+- Kinase names are generally as presented at Phospho.ELM [http://phospho.elm.eu.org/kinases.html](http://phospho.elm.eu.org/kinases.html) (when available), although Phospho.ELM data are not yet incorporated into this analysis.
+- Kinase names having the suffix '(HPRD)' are as presented at [http://hprd.org/serine_motifs](http://hprd.org/serine_motifs) and [http://hprd.org/tyrosine_motifs](http://hprd.org/tyrosine_motifs) and are as originally reported in the Amanchy et al., 2007 (doi: [10.1038/nbt0307-285](https://doi.org/10.1038/nbt0307-285)).
+- Kinase-strate deata were also taken from [http://networkin.science/download.shtml](http://networkin.science/download.shtml) and from PhosphoSitePlus [https://www.phosphosite.org/staticDownloads](https://www.phosphosite.org/staticDownloads).
+
+```{r ksea, echo = FALSE, fig.dim = c(9, 10), results = 'asis'}
+
+db <- RSQLite::dbConnect(RSQLite::SQLite(), ksea_app_prep_db)
+
+# -- eliminate the table that's about to be defined
+ddl_exec(db, "
+DROP TABLE IF EXISTS site_metadata;
+")
+
+# -- define the site_metadata table
+ddl_exec(db, "
+CREATE TABLE site_metadata(
+  id            INTEGER PRIMARY KEY
+, site_type_id  INTEGER REFERENCES site_type(id)
+, full          TEXT    UNIQUE ON CONFLICT IGNORE
+, abbrev        TEXT
+, pattern       TEXT
+, motif         TEXT
+);
+")
+
+# -- populate the table with initial values
+ddl_exec(db, "
+INSERT INTO site_metadata(full, abbrev, site_type_id)
+  SELECT  DISTINCT kinase_map, kinase_map, site_type_id
+    FROM  ppep_gene_site
+    ORDER BY kinase_map;
+")
+
+# -- drop bogus KSData view if exists
+ddl_exec(db, "
+DROP VIEW IF EXISTS ks_data_v;
+")
+
+# -- create view to serve as an impostor for  KSEAapp::KSData
+ddl_exec(db, "
+CREATE VIEW IF NOT EXISTS ks_data_v
+AS
+SELECT
+  'NA' AS KINASE,
+  'NA' AS KIN_ACC_ID,
+  kinase_map AS GENE,
+  'NA' AS KIN_ORGANISM,
+  'NA' AS SUBSTRATE,
+  0 AS SUB_GENE_ID,
+  'NA' AS SUB_ACC_ID,
+  gene_names AS SUB_GENE,
+  'NA' AS SUB_ORGANISM,
+  phospho_peptide AS SUB_MOD_RSD,
+  0 AS SITE_GROUP_ID,
+  'NA' AS 'SITE_7AA',
+  2 AS networkin_score,
+  type_name AS Source
+FROM ppep_gene_site_view;
+")
+
+contrast_metadata_df <-
+  sqldf::sqldf("select * from contrast_lvl_lvl_metadata", connection = db)
+rslt <- new_env()
+rslt$score_list <- list()
+rslt$name_list  <- list()
+rslt$longname_list  <- list()
+
+ddl_exec(db, "
+  DROP TABLE IF EXISTS contrast_ksea_scores;
+  "
+)
+
+next_index <- 0
+err_na_subscr_df_const <-
+ "missing values are not allowed in subscripted assignments of data frames"
+
+for (i_cntrst in seq_len(nrow(contrast_metadata_df))) {
+  cntrst_a_level <- contrast_metadata_df[i_cntrst, "a_level"]
+  cntrst_b_level <- contrast_metadata_df[i_cntrst, "b_level"]
+  cntrst_fold_change <- contrast_metadata_df[i_cntrst, 6]
+  contrast_label <- sprintf("%s -> %s", cntrst_b_level, cntrst_a_level)
+  contrast_longlabel <- (
+    sprintf(
+      "Trt %s {%s} -> Trt %s {%s}",
+      contrast_metadata_df[i_cntrst, "b_level"],
+      gsub(
+        pattern = ";",
+        replacement = ", ",
+        x = contrast_metadata_df[i_cntrst, "b_samples"],
+        fixed = TRUE
+      ),
+      contrast_metadata_df[i_cntrst, "a_level"],
+      gsub(
+        pattern = ";",
+        replacement = ", ",
+        x = contrast_metadata_df[i_cntrst, "a_samples"],
+        fixed = TRUE
+      )
+    )
+  )
+  kseaapp_input <-
+    sqldf::sqldf(
+      x = sprintf("
+        SELECT `Protein`, `Gene`, `Peptide`, phosphopep AS `Residue.Both`, `p`, `FC`
+          FROM v_kseaapp_input
+          WHERE contrast = %d
+        ",
+        i_cntrst
+      ),
+    connection = db
+    )
+
+  pseudo_ksdata <- dbReadTable(db, "ks_data_v")
+
+  # This hack is because SQL table has the log2-transformed values
+  kseaapp_input[, "FC"] <- 2 ** kseaapp_input[, "FC", drop = TRUE]
+  main_title <- (
+      sprintf(
+      "Change from treatment %s to treatment %s",
+      contrast_metadata_df[i_cntrst, "b_level"],
+      contrast_metadata_df[i_cntrst, "a_level"]
+    )
+  )
+  sub_title <- contrast_longlabel
+  tryCatch(
+    expr = {
+        ksea_scores_rslt <-
+          ksea_scores(
+            ksdata           = pseudo_ksdata, # KSEAapp::KSData,
+            px               = kseaapp_input,
+            networkin        = TRUE,
+            networkin_cutoff = 2
+            )
+
+        if (0 < sum(!is.nan(ksea_scores_rslt$FDR))) {
+          next_index <- 1 + next_index
+          rslt$score_list[[next_index]] <- ksea_scores_rslt
+          rslt$name_list[[next_index]] <- contrast_label
+          rslt$longname_list[[next_index]] <- contrast_longlabel
+          low_fdr_print(
+            rslt = rslt,
+            i_cntrst = i_cntrst,
+            i = next_index,
+            a_level = cntrst_a_level,
+            b_level = cntrst_b_level,
+            fold_change = cntrst_fold_change,
+            caption = contrast_longlabel
+            )
+        }
+      },
+    error = function(e) str(e)
+  )
+}
+
+plotted_kinases <- NULL
+if (length(rslt$score_list) > 1) {
+  for (i in seq_len(length(ksea_heatmap_titles))) {
+    hdr <- ksea_heatmap_titles[[i]]
+    which_kinases <- i
+
+    cat("\\clearpage\n\\begin{center}\n")
+    if (i == const_ksea_astrsk_kinases) {
+      subsection_header(hdr)
+    } else {
+      subsection_header(hdr)
+    }
+    cat("\\end{center}\n")
+
+    plotted_kinases <- ksea_heatmap(
+      # the data frame outputs from the KSEA.Scores() function, in list format
+      score_list = rslt$score_list,
+      # a character vector of all the sample names for heatmap annotation:
+      # - the names must be in the same order as the data in score_list
+      # - please avoid long names, as they may get cropped in the final image
+      sample_labels = rslt$name_list,
+      # character string of either "p.value" or "FDR" indicating the data column
+      #   to use for marking statistically significant scores
+      stats = c("p.value", "FDR")[2],
+      # a numeric value between 0 and infinity indicating the min. number of
+      #   substrates a kinase must have to be included in the heatmap
+      m_cutoff = 1,
+      # a numeric value between 0 and 1 indicating the p-value/FDR cutoff
+      #   for indicating significant kinases in the heatmap
+      p_cutoff = 0.05,
+      # a binary input of TRUE or FALSE, indicating whether or not to perform
+      #   hierarchical clustering of the sample columns
+      sample_cluster = TRUE,
+      # a binary input of TRUE or FALSE, indicating whether or not to export
+      #   the heatmap as a .png image into the working directory
+      export = FALSE,
+      # additional arguments to gplots::heatmap.2, such as:
+      # - main: main title of plot
+      # - xlab: x-axis label
+      # - ylab: y-axis label
+      xlab = "Contrast",
+      ylab = "Kinase",
+      # print which kinases:
+      # - 1 : all kinases
+      # - 2 : significant kinases
+      # - 3 : non-significant kinases
+      which_kinases = which_kinases
+    )
+    cat("\\begin{center}\n")
+    cat("Color intensities reflects $z$-score magnitudes; hue reflects $z$-score sign.  Asterisks reflect significance.\n")
+    cat("\\end{center}\n")
+  } # end for (i in ...
+} # end if (length ...
+
+for (i_cntrst in seq_len(length(rslt$score_list))) {
+  next_index <- i_cntrst
+  cntrst_a_level <- contrast_metadata_df[i_cntrst, "a_level"]
+  cntrst_b_level <- contrast_metadata_df[i_cntrst, "b_level"]
+  cntrst_fold_change <- contrast_metadata_df[i_cntrst, 6]
+  contrast_label <- sprintf("%s -> %s", cntrst_b_level, cntrst_a_level)
+  contrast_longlabel <- (
+    sprintf(
+      "Trt %s {%s} -> Trt %s {%s}",
+      contrast_metadata_df[i_cntrst, "b_level"],
+      gsub(
+        pattern = ";",
+        replacement = ", ",
+        x = contrast_metadata_df[i_cntrst, "b_samples"],
+        fixed = TRUE
+      ),
+      contrast_metadata_df[i_cntrst, "a_level"],
+      gsub(
+        pattern = ";",
+        replacement = ", ",
+        x = contrast_metadata_df[i_cntrst, "a_samples"],
+        fixed = TRUE
+      )
+    )
+  )
+  main_title <- (
+      sprintf(
+      "Change from treatment %s to treatment %s",
+      contrast_metadata_df[i_cntrst, "b_level"],
+      contrast_metadata_df[i_cntrst, "a_level"]
+    )
+  )
+  sub_title <- contrast_longlabel
+  tryCatch(
+    expr = {
+        ksea_scores_rslt <- rslt$score_list[[next_index]]
+
+        if (0 < sum(!is.nan(ksea_scores_rslt$FDR))) {
+          low_fdr_barplot(
+            rslt = rslt,
+            i_cntrst = i_cntrst,
+            i = next_index,
+            a_level = cntrst_a_level,
+            b_level = cntrst_b_level,
+            fold_change = cntrst_fold_change,
+            caption = contrast_longlabel
+            )
+        }
+      },
+    error = function(e) str(e)
+  )
+}
+```
+
+```{r enriched, echo = FALSE, fig.dim = c(9, 10), results = 'asis'}
+
+# Use enriched kinases to find enriched kinase-substrate pairs
+enriched_kinases <- data.frame(kinase = ls(ksea_asterisk_hash))
+all_enriched_substrates <- sqldf("
+  SELECT
+    gene AS kinase,
+    ppep,
+    '('||group_concat(gene||'-'||sub_gene)||') '||ppep AS label
+  FROM (
+    SELECT DISTINCT gene, sub_gene, SUB_MOD_RSD AS ppep
+      FROM pseudo_ksdata
+      WHERE GENE IN (SELECT kinase FROM enriched_kinases)
+    )
+  GROUP BY ppep
+  ")
+
+# helper used to label per-kinase substrate enrichment figure
+cat_enriched_heading <- function(m, cut_args) {
+  cutoff <- cut_args$cutoff
+  kinase <- cut_args$kinase
+  statistic <- cut_args$statistic
+  threshold <- cut_args$threshold
+  cat("\\newpage\n")
+  if (nrow(m) > intensity_hm_rows) {
+    subsection_header(
+      paste(
+        sprintf(
+          "Lowest p-valued %d (of %d) enriched %s-substrates,",
+          intensity_hm_rows,
+          nrow(m),
+          kinase
+        ),
+        sprintf(" KSEA %s < %0.2f\n", statistic, threshold)
+      )
+    )
+  } else {
+    if (nrow(m) == 1) {
+      return(FALSE)
+    } else {
+      subsection_header(
+        paste(
+          sprintf(
+            "%d enriched %s-substrates,",
+            nrow(m),
+            kinase
+            ),
+          sprintf(
+            " KSEA %s < %0.2f\n",
+            statistic,
+            threshold
+            )
+        )
+      )
+    }
+  }
+  cat("\n\n\n")
+  cat("\n\n\n")
+  return(TRUE)
+}
+
+# Disabling heatmaps for substrates pending decision whether to eliminate them altogether
+if (FALSE)
+  for (kinase_name in sort(enriched_kinases$kinase)) {
+    enriched_substrates <-
+      all_enriched_substrates[
+        all_enriched_substrates$kinase == kinase_name,
+        ,
+        drop = FALSE
+        ]
+    # Get the intensity values for the heatmap
+    enriched_intensities <-
+      as.matrix(unimputed_quant_data_log[enriched_substrates$ppep, , drop = FALSE])
+    # Remove rows having too many NA values to be relevant
+    na_counter <- is.na(enriched_intensities)
+    na_counts <- apply(na_counter, 1, sum)
+    enriched_intensities <-
+      enriched_intensities[na_counts < ncol(enriched_intensities) / 2, , drop = FALSE]
+    # Rename the rows with the display-name for the heatmap
+    rownames(enriched_intensities) <-
+      sapply(
+        X = rownames(enriched_intensities),
+        FUN = function(rn) {
+          enriched_substrates[enriched_substrates$ppep == rn, "label"]
+        }
+      )
+    # Format as matrix for heatmap
+    m <- as.matrix(enriched_intensities)
+    # Draw the heading and heatmap
+    if (nrow(m) > 0) {
+      cut_args <- new_env()
+      cut_args$cutoff <- cutoff
+      cut_args$kinase <- kinase_name
+      cut_args$statistic <- ksea_cutoff_statistic
+      cut_args$threshold <- ksea_cutoff_threshold
+      number_of_peptides_found <-
+        draw_intensity_heatmap(
+          m                       = m,
+          cutoff                  = cut_args,
+          hm_heading_function     = cat_enriched_heading,
+          hm_main_title
+            = "Unnormalized (zero-imputed) intensities of enriched kinase-substrates",
+          suppress_row_dendrogram = FALSE
+        )
+    }
+  }
+
+# Write output tabular files
+
+# get kinase, ppep, concat(kinase) tuples for enriched kinases
+
+kinase_ppep_label <- sqldf("
+  WITH
+    t(ppep, label) AS
+      (
+        SELECT DISTINCT
+            SUB_MOD_RSD AS ppep,
+            group_concat(gene, '; ') AS label
+          FROM pseudo_ksdata
+          WHERE GENE IN (SELECT kinase FROM enriched_kinases)
+          GROUP BY ppep
+      ),
+    k(kinase, ppep_join) AS
+      (
+      SELECT DISTINCT gene AS kinase, SUB_MOD_RSD AS ppep_join
+        FROM pseudo_ksdata
+        WHERE GENE IN (SELECT kinase FROM enriched_kinases)
+      )
+  SELECT k.kinase, t.ppep, t.label
+    FROM  t,  k
+    WHERE t.ppep = k.ppep_join
+    ORDER BY k.kinase, t.ppep
+  ")
+
+# extract what we need from full_data
+impish <- cbind(rownames(quant_data_imp), quant_data_imp)
+colnames(impish)[1] <- "Phosphopeptide"
+data_table_imputed_sql <- "
+  SELECT
+    f.*,
+    k.label AS KSEA_enrichments,
+    q.*
+  FROM
+    metadata_plus_p f
+      LEFT JOIN kinase_ppep_label k
+        ON f.Phosphopeptide = k.ppep,
+    impish q
+  WHERE
+    f.Phosphopeptide = q.Phosphopeptide
+  "
+data_table_imputed <- sqldf(data_table_imputed_sql)
+# Zap the duplicated 'Phosphopeptide' column named 'ppep'
+data_table_imputed <-
+    data_table_imputed[, c(1:12, 14:ncol(data_table_imputed))]
+
+# Output with imputed, un-normalized data
+
+write.table(
+    data_table_imputed
+  , file = imputed_data_filename
+  , sep = "\t"
+  , col.names = TRUE
+  , row.names = FALSE
+  , quote = FALSE
+  )
+
+
+#output quantile normalized data
+impish <- cbind(rownames(quant_data_imp_qn_log), quant_data_imp_qn_log)
+colnames(impish)[1] <- "Phosphopeptide"
+data_table_imputed <- sqldf(data_table_imputed_sql)
+# Zap the duplicated 'Phosphopeptide' column named 'ppep'
+data_table_imputed <-
+    data_table_imputed[, c(1:12, 14:ncol(data_table_imputed))]
+write.table(
+  data_table_imputed,
+  file = imp_qn_lt_data_filenm,
+  sep = "\t",
+  col.names = TRUE,
+  row.names = FALSE,
+  quote = FALSE
+)
+
+ppep_kinase <- sqldf("
+  SELECT DISTINCT k.ppep, k.kinase
+    FROM (
+      SELECT DISTINCT gene AS kinase, SUB_MOD_RSD AS ppep
+        FROM pseudo_ksdata
+        WHERE GENE IN (SELECT kinase FROM enriched_kinases)
+      ) k
+    ORDER BY k.ppep, k.kinase
+  ")
+
+RSQLite::dbWriteTable(
+  conn = db,
+  name = "ksea_enriched_ks",
+  value = ppep_kinase,
+  append = FALSE
+  )
+
+RSQLite::dbWriteTable(
+  conn = db,
+  name = "anova_signif",
+  value = p_value_data,
+  append = FALSE
+  )
+
+  ddl_exec(db, "
+    DROP VIEW IF EXISTS stats_metadata_v;
+    "
+  )
+  dml_no_rows_exec(db, "
+      CREATE VIEW stats_metadata_v
+        AS
+      SELECT DISTINCT  m.*,
+          p.raw_anova_p,
+          p.fdr_adjusted_anova_p,
+          kek.kinase AS ksea_enrichments
+        FROM
+          mrgfltr_metadata_view m
+            LEFT JOIN anova_signif p
+              ON m.phospho_peptide = p.phosphopeptide
+            LEFT JOIN ksea_enriched_ks kek
+              ON m.phospho_peptide = kek.ppep
+      ;
+    "
+  )
+
+write.table(
+  dbReadTable(db, "stats_metadata_v"),
+  file = anova_ksea_mtdt_file,
+  sep = "\t",
+  col.names = TRUE,
+  row.names = FALSE,
+  quote = FALSE
+  )
+
+
+```
+
+```{r parmlist, echo = FALSE, fig.dim = c(9, 10), results = 'asis'}
+cat("\\leavevmode\n\n\n")
+
+# write parameters to report
+
+param_unlist <- unlist(as.list(params))
+param_df <- data.frame(
+  parameter = paste0("\\verb@", names(param_unlist), "@"),
+  value = paste0("\\verb@", gsub("$", "\\$", param_unlist, fixed = TRUE), "@")
+  )
+
+data_frame_latex(
+  x = param_df,
+  justification = "p{0.35\\linewidth} p{0.6\\linewidth}",
+  centered = TRUE,
+  caption = "Input parameters",
+  anchor = const_table_anchor_bp,
+  underscore_whack = FALSE
+  )
+
+# write parameters to SQLite output
+
+mqppep_anova_script_param_df <- data.frame(
+  script    = "mqppep_anova_script.Rmd",
+  parameter = names(param_unlist),
+  value     = param_unlist
+  )
+ddl_exec(db, "
+  DROP TABLE IF EXISTS script_parameter;
+  "
+)
+ddl_exec(db, "
+  CREATE TABLE IF NOT EXISTS script_parameter(
+    script    TEXT,
+    parameter TEXT,
+    value     ANY,
+    UNIQUE (script, parameter) ON CONFLICT REPLACE
+    )
+    ;
+  "
+)
+RSQLite::dbWriteTable(
+  conn = db,
+  name = "script_parameter",
+  value = mqppep_anova_script_param_df,
+  append = TRUE
+)
+
+# We are done with output
+RSQLite::dbDisconnect(db)
+```
+<!--
+There's gotta be a better way...
+
+loaded_packages_df <-  sessioninfo::package_info("loaded")
+loaded_packages_df[, "library"] <- as.character(loaded_packages_df$library)
+loaded_packages_df <- data.frame(
+  package = loaded_packages_df$package,
+  version = loaded_packages_df$loadedversion,
+  date    = loaded_packages_df$date
+  )
+data_frame_latex(
+  x = loaded_packages_df,
+  justification = "l | l l",
+  centered = FALSE,
+  caption = "Loaded R packages",
+  anchor = const_table_anchor_bp
+  )
+-->
