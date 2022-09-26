@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+
 import requests
 
 uniprotkb_url = 'https://rest.uniprot.org/uniprotkb/stream?compressed=true&format=fasta&query='
