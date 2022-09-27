@@ -1,4 +1,4 @@
-<tool id="dbbuilder" name="Protein Database Downloader" version="0.3.3">
+<tool id="dbbuilder" name="Protein Database Downloader" version="0.3.4">
     <description></description>
     <requirements>
         <requirement type="package" version="1.20.1">wget</requirement>
@@ -16,17 +16,20 @@
     <command>
 <![CDATA[
         #if $source.from == "uniprot"
-            #if $source.set:
-                #set $modified_set = '&' + str($source.set) 
-            #else
-                #set $modified_set = ''
-            #end if
+            #set $query_fields = [] 
             #if $source.taxon_id
-                #set $taxon_id = $source.taxon_id
+                #silent $query_fields.append('taxonomy_id:' + str($source.taxon_id))
             #else
-                #set $taxon_id = $source.taxon
+                #silent $query_fields.append('taxonomy_id:' + str($source.taxon))
             #end if
-            #set $url = 'https://rest.uniprot.org/uniprotkb/stream?compressed=true&format=fasta&query=taxonomy_id:"' + str($taxon_id) + '"' + str($modified_set) + str($source.reviewed) + str($source.include_isoform)
+            #if $source.reviewed:
+                #silent $query_fields.append(str($source.reviewed))
+            #end if
+            #if $source.set:
+                #silent $query_fields.append(str($source.set))
+            #end if
+            #set $query  = '(' + ')+AND+('.join($query_fields) + ')' 
+            #set $url = 'https://rest.uniprot.org/uniprotkb/stream?compressed=true&format=fasta' + str($source.include_isoform) + '&query=' + $query
             #set $type = "uniprotkb_stream"
         #elif $source.from == "cRAP"
             ##set $url = "ftp://ftp.thegpm.org/fasta/cRAP/crap.fasta"
@@ -85,24 +88,24 @@
                 <param name="taxon_id" type="integer" value="" min="1" optional="true" help="Specify a NCBI taxon id to override species selection"/>
                 <param name="reviewed" type="select" help="UniProtKB/TrEMBL (unreviewed)is a large, automatically annotated database- may contain redundant sequences, but there is a higher chance peptides will be identified. UniProtKB/Swiss-Prot (reviewed) is a smaller, manually annotated database- less of a chance peptides will be identified but less sequence redundancy">
                     <option value="">UniProtKB</option>
-                    <option value="+reviewed%3Atrue">UniProtKB/Swiss-Prot (reviewed only)</option>
-                    <option value="+reviewed%3Afalse">UniProtKB/TrEMBL (unreviewed only)</option>
+                    <option value="reviewed:true">UniProtKB/Swiss-Prot (reviewed only)</option>
+                    <option value="reviewed:false">UniProtKB/TrEMBL (unreviewed only)</option>
                     <sanitizer>
                         <valid>
-                            <add value="%"/>
+                            <add value=":"/>
                         </valid>
                     </sanitizer>
                 </param>
                 <param name="set" type="select" label="Proteome Set">
                     <option value="">Any</option>
-                    <option value="keyword%3aKW-1185" selected="true">Reference Proteome Set</option>
+                    <option value="keyword:KW-1185" selected="true">Reference Proteome Set</option>
                     <sanitizer>
                         <valid>
-                            <add value="%"/>
+                            <add value=":"/>
                         </valid>
                     </sanitizer>
                 </param>
-                <param name="include_isoform" type="boolean" truevalue="&amp;includeIsoform=true" falsevalue="" 
+                <param name="include_isoform" type="boolean" truevalue="&amp;includeIsoform=true" falsevalue=""
                     label="Include isoform data" help="several different forms of a given protein are incorporated into database" />
             </when>
             <when value="cRAP" />
@@ -168,11 +171,12 @@
                 </assert_contents>
             </output>
         </test>
+
         <test>
             <conditional name="source">
                 <param name="from" value="uniprot" />
                 <param name="taxon_id" value="2697049"/>
-                <param name="reviewed" value="+reviewed%3Atrue"/>
+                <param name="reviewed" value="reviewed:true"/>
                 <param name="set" value=""/>
             </conditional>
             <output name="output_database">
@@ -182,17 +186,50 @@
                 </assert_contents>
             </output>
         </test>
+
         <test>
             <conditional name="source">
                 <param name="from" value="uniprot" />
                 <param name="taxon_id" value="2697049"/>
-                <param name="reviewed" value="+reviewed%3Afalse"/>
+                <param name="reviewed" value="reviewed:false"/>
                 <param name="set" value=""/>
             </conditional>
             <output name="output_database">
                 <assert_contents>
                     <has_text text=">tr|A0A679G4D8|A0A679G4D8_SARS2" />
                     <not_has_text text=">sp|P0DTC1|R1A_SARS2" />
+                </assert_contents>
+            </output>
+        </test>
+
+        <test>
+            <conditional name="source">
+                <param name="from" value="uniprot" />
+                <param name="taxon" value="83333"/>
+                <param name="reviewed" value="reviewed:true"/>
+                <param name="set" value=""/>
+                <param name="include_isoform" value="True"/>
+            </conditional>
+            <output name="output_database">
+                <assert_contents>
+                    <has_text text="sp|P06615|REDF_ECOLI" />
+                    <has_text text=">sp|P06710-2|DPO3X_ECOLI" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <conditional name="source">
+                <param name="from" value="uniprot" />
+                <param name="taxon" value="83333"/>
+                <param name="reviewed" value="reviewed:true"/>
+                <param name="set" value=""/>
+                <param name="include_isoform" value="False"/>
+            </conditional>
+            <output name="output_database">
+                <assert_contents>
+                    <has_text text="sp|P06615|REDF_ECOLI" />
+                    <has_text text="REDF_ECOLI" />
+                    <not_has_text text=">sp|P06710-2|DPO3X_ECOLI" />
                 </assert_contents>
             </output>
         </test>
