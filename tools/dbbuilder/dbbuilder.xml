@@ -1,7 +1,9 @@
-<tool id="dbbuilder" name="Protein Database Downloader" version="0.3.2">
+<tool id="dbbuilder" name="Protein Database Downloader" version="0.3.3">
     <description></description>
     <requirements>
         <requirement type="package" version="1.20.1">wget</requirement>
+        <requirement type="package" version="3.8">python</requirement>
+        <requirement type="package" version="2.20.1">requests</requirement>
     </requirements>
     <stdio>
         <exit_code range="1:"  level="fatal" description="Error downloading database." />
@@ -14,8 +16,18 @@
     <command>
 <![CDATA[
         #if $source.from == "uniprot"
-            #set $url = 'http://www.uniprot.org/uniprot/?query=taxonomy:"' + str($source.taxon) + '"' + str($source.set) + str($source.reviewed) + '&force=yes&format=fasta' + str($source.include_isoform)
-            #set $type = "direct"
+            #if $source.set:
+                #set $modified_set = '&' + str($source.set) 
+            #else
+                #set $modified_set = ''
+            #end if
+            #if $source.taxon_id
+                #set $taxon_id = $source.taxon_id
+            #else
+                #set $taxon_id = $source.taxon
+            #end if
+            #set $url = 'https://rest.uniprot.org/uniprotkb/stream?compressed=true&format=fasta&query=taxonomy_id:"' + str($taxon_id) + '"' + str($modified_set) + str($source.reviewed) + str($source.include_isoform)
+            #set $type = "uniprotkb_stream"
         #elif $source.from == "cRAP"
             ##set $url = "ftp://ftp.thegpm.org/fasta/cRAP/crap.fasta"
             #set $url = "https://raw.githubusercontent.com/pravs3683/cRAP/master/cRAP_protein_database.fasta"
@@ -34,7 +46,9 @@
             #set $url = $source.url
             #set $type = $source.archive_type
         #end if
-        #if $type =="direct"
+        #if $type =="uniprotkb_stream"
+            python '$__tool_directory__/uniprotkb.py' --url '$url' -o 'tmp.gz' && gzip -dc 'tmp.gz' > '${output_database}' 
+        #elif $type =="direct"
             wget -nv '$url' -O '${output_database}' --no-check-certificate
         #elif $type =="zip"
             wget -nv '$url' -O tmp.zip --no-check-certificate && zcat -c tmp.zip > '${output_database}'
@@ -51,7 +65,8 @@
     </command>
     <inputs>
         <conditional name="source">
-            <param name="from" type="select" label="Download from" help="Select database source. cRAP acts as a database for common MS contaminants. UniProtKB is a cross species collection of functional protein databases">
+            <param name="from" type="select" label="Download from"
+                help="Select database source. cRAP acts as a database for common MS contaminants. UniProtKB is a cross species collection of functional protein databases">
                 <option value="uniprot">UniProtKB</option>
                 <option value="cRAP">cRAP (contaminants)</option>
                 <option value="HMP">Human Microbiome Project body sites</option>
@@ -64,12 +79,14 @@
                     <options from_file="uniprot_taxons.loc">
                         <column name="name" index="0" />
                         <column name="value" index="1" />
+                        <filter type="add_value" name="Escherichia coli (strain K12)" value="83333" />
                     </options>
                 </param>
+                <param name="taxon_id" type="integer" value="" min="1" optional="true" help="Specify a NCBI taxon id to override species selection"/>
                 <param name="reviewed" type="select" help="UniProtKB/TrEMBL (unreviewed)is a large, automatically annotated database- may contain redundant sequences, but there is a higher chance peptides will be identified. UniProtKB/Swiss-Prot (reviewed) is a smaller, manually annotated database- less of a chance peptides will be identified but less sequence redundancy">
-                    <option value="+">UniProtKB</option>
-                    <option value="+reviewed%3Ayes">UniProtKB/Swiss-Prot (reviewed only)</option>
-                    <option value="+reviewed%3Ano">UniProtKB/TrEMBL (unreviewed only)</option>
+                    <option value="">UniProtKB</option>
+                    <option value="+reviewed%3Atrue">UniProtKB/Swiss-Prot (reviewed only)</option>
+                    <option value="+reviewed%3Afalse">UniProtKB/TrEMBL (unreviewed only)</option>
                     <sanitizer>
                         <valid>
                             <add value="%"/>
@@ -77,15 +94,16 @@
                     </sanitizer>
                 </param>
                 <param name="set" type="select" label="Proteome Set">
-                    <option value="+">Any</option>
-                    <option value="+keyword%3a1185" selected="true">Reference Proteome Set</option>
+                    <option value="">Any</option>
+                    <option value="keyword%3aKW-1185" selected="true">Reference Proteome Set</option>
                     <sanitizer>
                         <valid>
                             <add value="%"/>
                         </valid>
                     </sanitizer>
                 </param>
-                <param name="include_isoform" type="boolean" truevalue="&amp;include=yes" falsevalue="" label="Include isoform data" help="several different forms of a given protein are incorporated into database" />
+                <param name="include_isoform" type="boolean" truevalue="&amp;includeIsoform=true" falsevalue="" 
+                    label="Include isoform data" help="several different forms of a given protein are incorporated into database" />
             </when>
             <when value="cRAP" />
             <when value="HMP">
@@ -129,13 +147,56 @@
     </outputs>
     <tests>
         <test>
-            <param name="from" value="cRAP" />
+            <conditional name="source">
+                <param name="from" value="cRAP" />
+            </conditional>
             <output name="output_database">
                 <assert_contents>
                     <has_text text="KKA1_ECOLX" />
                 </assert_contents>
             </output>
         </test>
+        <test>
+            <conditional name="source">
+                <param name="from" value="uniprot" />
+                <param name="taxon" value="83333"/>
+                <param name="taxon_id" value="2697049"/>
+            </conditional>
+            <output name="output_database">
+                <assert_contents>
+                    <has_text text="SPIKE_SARS2" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <conditional name="source">
+                <param name="from" value="uniprot" />
+                <param name="taxon_id" value="2697049"/>
+                <param name="reviewed" value="+reviewed%3Atrue"/>
+                <param name="set" value=""/>
+            </conditional>
+            <output name="output_database">
+                <assert_contents>
+                    <has_text text=">sp|P0DTC1|R1A_SARS2" />
+                    <not_has_text text=">tr|A0A679G4D8|A0A679G4D8_SARS2" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <conditional name="source">
+                <param name="from" value="uniprot" />
+                <param name="taxon_id" value="2697049"/>
+                <param name="reviewed" value="+reviewed%3Afalse"/>
+                <param name="set" value=""/>
+            </conditional>
+            <output name="output_database">
+                <assert_contents>
+                    <has_text text=">tr|A0A679G4D8|A0A679G4D8_SARS2" />
+                    <not_has_text text=">sp|P0DTC1|R1A_SARS2" />
+                </assert_contents>
+            </output>
+        </test>
+
         <test>
             <param name="from" value="url" />
             <param name="url" value="https://raw.githubusercontent.com/pravs3683/cRAP/master/cRAP_protein_database.fasta" />
