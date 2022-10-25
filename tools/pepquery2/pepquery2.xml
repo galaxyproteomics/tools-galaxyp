@@ -32,6 +32,7 @@
 #end if
 ## PepQuery command
 pepquery 
+  -Xmx\$[ \${GALAXY_MEMORY_MB:-8192} / 1024 ]g
 #if $validation.task_type == "known"
   -s 2 $validation.decoy
 #else
@@ -49,26 +50,33 @@ pepquery
   -db '$req_inputs.db_type.db_id' 
 #end if
 #if $req_inputs.input_type.input_type_selector == 'peptide'
-  -t '$req_inputs.input_type.input_type_selector'
+  -t $req_inputs.input_type.input_type_selector
   -i '$req_inputs.input_type.multiple.input'
 #else
-  -t '$req_inputs.input_type.input_type_selector'
-  #if int(str($req_inputs.input_type.input_type_selector)) == 1
-    -i '$req_inputs.input_type.multiple.input'
+  -t $req_inputs.input_type.input_type_selector
+  #if $req_inputs.input_type.input_type_selector == 'protein'
+    #if $req_inputs.input_type.multiple.protein_input_selector == 'identifier'
+      #set $prot_id = str($req_inputs.input_type.multiple.input).replace('|','\|')
+      -i '"$prot_id"'
+    #else
+      -i '$req_inputs.input_type.multiple.input'
+    #end if
   #else
     -i '$req_inputs.input_type.input'
-    #if int(str($req_inputs.input_type.input_type_selector)) == 2
+    #if $req_inputs.input_type.input_type_selector == 'DNA'
       #if $req_inputs.input_type.frame == 'None'
-        -f '0'
+        -frame '0'
       #else
-        -f '$req_inputs.input_type.frame'
+        -frame '$req_inputs.input_type.frame'
       #end if
     #else
             -anno '$req_inputs.input_type.anno'
     #end if
   #end if
 #end if
+#if $req_inputs.indexType
   -indexType $req_inputs.indexType
+#end if
 
 #if $modifications.fixed_mod
   -fixMod '$modifications.fixed_mod'
@@ -134,8 +142,8 @@ pepquery
 #end if
   $fast
   -o pepquery_output
-  | sed 's/No valid peptide/Error: No valid peptide/' | tee >(cat 1>&2)
-#set $flist = str($outputs_selected).replace(',',' ') 
+  | tee >(sed "s/\x1b[^m]*m//g" > log.txt) 
+#set $flist = str($outputs_selected).replace(',',' ').replace('ms_index','')
 && for i in $flist; do for f in `find pepquery_output/*/* -name \$i`; do cat \$f >> pepquery_output/\${i}; done; done
 && for f in `find pepquery_output/*/ -name parameter.txt`; do cp \$f pepquery_output/parameter.txt; done 
         ]]>
@@ -155,8 +163,8 @@ pepquery
             <conditional name="input_type">
                 <param name="input_type_selector" argument="-t" type="select" label="Input Type" help="" >
                     <option value="peptide">peptide</option>
-                    <option value="1">protein</option>
-                    <option value="2">DNA (translate to protein sequences)</option>
+                    <option value="protein">protein</option>
+                    <option value="DNA">DNA (translate to protein sequences)</option>
                     <!-- these are not working with pepquery version 1.6
                     <option value="3">VCF (translate to protein sequences)</option>
                     <option value="4">BED (translate to protein sequences)</option>
@@ -170,7 +178,11 @@ pepquery
                             <option value="single">Single peptide entered as text</option>
                         </param> 
                         <when value="multiple">
-                            <param name="input" argument="-i" type="data" format="txt" label="Peptide Sequences (.txt)" help="Peptide sequence file containing peptides which you want to search (no column header, 1 peptide per line)." />
+                            <param name="input" argument="-i" type="data" format="txt" label="Peptide Sequences (.txt)">
+                                <help>Peptide sequence file containing peptides which you want to search (no column headers).
+                                      First column is am peptide sequence. Optional second column is spectrum title.
+                                </help>
+                            </param>
                         </when>
                         <when value="single">
                             <param name="input" argument="-i" type="text" label="Peptide Sequence" help="Peptide sequence(s) which you want to search">
@@ -179,11 +191,12 @@ pepquery
                         </when>
                     </conditional>
                 </when>
-                <when value="1">
+                <when value="protein">
                     <conditional name="multiple">
                         <param name="protein_input_selector" type="select" label="Proteins?">
                             <option value="multiple">Protein fasta from your history</option>
                             <option value="single">Single protein entered as text</option>
+                            <option value="identifier">Protein Identifier from selected Protein Reference Database</option>
                         </param> 
                         <when value="multiple">
                             <param name="input" argument="-i" type="data" format="fasta" label="Protein Sequences (.txt)" help="Protein fasta file containing proteins which you want to search." />
@@ -193,9 +206,19 @@ pepquery
                                 <validator type="regex" message="Must be AA letters">^[AC-IK-NP-TV-Yac-ik-np-tv-y]+$</validator>
                             </param>
                         </when>
+                        <when value="identifier">
+                            <param name="input" argument="-i" type="text" label="Protein Identifier" help="Protein ID from the selected Protein Reference Database. E.g. sp|P07205|PGK2_HUMAN from swissprot:human">
+                                <sanitizer invalid_char="">
+                                    <valid initial="string.ascii_letters,string.digits">
+                                        <add value="|" />
+                                    </valid>
+                                </sanitizer>
+                                <validator type="regex" message="Spaces not allowed in ID">^[^ ]+$</validator>
+                            </param>
+                        </when>
                     </conditional>
                 </when>
-                <when value="2">
+                <when value="DNA">
                     <param name="input" argument="-i" type="text" label="DNA Sequence (at least 60 bp)" help="DNA sequence which you want to search">
                         <validator type="regex" message="Must be at least 60bp">^[acgtuAGCTU]{60}[acgtuAGCTU]*$</validator>
                     </param> 
@@ -268,8 +291,8 @@ pepquery
                 </when>
             </conditional>
 
-            <param name="indexType" argument="-indexType" type="select" label="Report Spectrum Scan as" help="" >
-                <option value="1" selected="true">index (1-based) in MGF</option>
+            <param name="indexType" argument="-indexType" type="select" optional="true" label="Report Spectrum Scan as" help="Default: index" >
+                <option value="1">index (1-based) in MGF</option>
                 <option value="2">spectrum title in MGF</option>
             </param>
         </section>
@@ -289,11 +312,11 @@ pepquery
 
         <section name="modifications" title="Modifications" expanded="false">
              <param name="fixed_mod" argument="-fixMod" type="select" label="Fixed modification(s)" multiple="true" optional="true">
-                <help>default: 1: Carbamidomethylation of C [57.02146372057]</help>
+                <help>Default: 1: Carbamidomethylation of C [57.02146372057]</help>
                 <expand macro="modifications" />
              </param>
              <param name="var_mod" argument="-varMod" type="select" label="Variable modification(s)" multiple="true" optional="true">
-                <help>default: 2: Oxidation of M [15.99491461956]</help>
+                <help>Default: 2: Oxidation of M [15.99491461956]</help>
                 <expand macro="modifications" />
              </param>
 
@@ -303,9 +326,9 @@ pepquery
         </section>
 
         <section name="digestion" title="Digestion" expanded="false">
-            <param name="enzyme" argument="-e" type="select" optional="true" label="Enzyme" help="Enzyme used for protein digestion" >
+            <param name="enzyme" argument="-e" type="select" optional="true" label="Enzyme" help="Enzyme used for protein digestion.  Default: Trypsin" >
                 <option value="0">Non enzyme</option>
-                <option value="1" selected="true">Trypsin</option>
+                <option value="1">Trypsin</option>
                 <option value="2">Trypsin (no P rule)</option>
                 <option value="3">Arg-C</option>
                 <option value="4">Arg-C (no P rule)</option>
@@ -319,20 +342,20 @@ pepquery
         <section name="ms_params" title="Mass spectrometer" expanded="false">
             <section name="tolerance_params" title="Tolerance" expanded="true">
                 <param name="precursor_tolerance" argument="-tol" type="integer" value="" optional="true" label="Precursor Tolerance" help="The error window on experimental peptide mass values. This parameter is usually set according to the mass spectrometer which was used to generate the MS/MS data.  Default: 10" />
-                <param name="precursor_unit" argument="-tolu" type="select" optional="true" label="Precursor Unit" help="The unit of precursor ion m/z tolerance">
-                    <option value="ppm" selected="true">ppm</option>
+                <param name="precursor_unit" argument="-tolu" type="select" optional="true" label="Precursor Unit" help="The unit of precursor ion m/z tolerance. Default: ppm">
+                    <option value="ppm">ppm</option>
                     <option value="Da">Da</option>
                 </param>
                 <param name="tolerance" argument="-itol" type="float" value="" optional="true" label="Tolerance" help="Error window for MS/MS fragment ion mass values in Da unit.  Default: 0.6 Da" />
             </section>
 
             <section name="search" title="PSM" expanded="false">
-                <param name="frag_method" argument="-fragmentMethod" type="select" optional="true" label="Fragmentation Method">
-                    <option value="1" selected="true">CID/HCD</option>
+                <param name="frag_method" argument="-fragmentMethod" type="select" optional="true" label="Fragmentation Method" help="Default: CID/HCD">
+                    <option value="1">CID/HCD</option>
                     <option value="2">ETD</option>
                 </param>
-                <param name="scoring_method" argument="-m" type="select" optional="true" label="Scoring Method">
-                    <option value="1" selected="true">HyperScore</option>
+                <param name="scoring_method" argument="-m" type="select" optional="true" label="Scoring Method" help="Default: HyperScore">
+                    <option value="1">HyperScore</option>
                     <option value="2">MVH</option>
                 </param>
                 <param name="extra_score_validation" argument="-x" type="boolean" truevalue="-x" falsevalue="" checked="false" label="Add extra score validation" help="use two scoring algorithms for peptide identification" />
@@ -359,12 +382,13 @@ pepquery
             <option value="detail.txt" selected="true">detail.txt</option>
             <option value="ptm.txt" selected="true">ptm.txt</option>
             <option value="ptm_detail.txt" selected="true">ptm_detail.txt</option>
-            <option value="ptm_detail.txt" selected="true">ptm_detail.txt</option>
             <option value="ms_index" selected="true">MS/MS Index</option>
         </param>
         <param name="fast" argument="-fast" type="boolean" truevalue="-fast" falsevalue="" checked="false" label="Use fast mode for searching" help="In fast mode, only one better match from reference peptide-based competitive filtering steps will be returned. A peptide identified or not is not affected by this setting. For most applications, fast mode will speed up the analysis." />
     </inputs>
     <outputs>
+        <data name="log" format="txt" from_work_dir="log.txt" label="${tool.name} on ${on_string}: log.txt">
+        </data> 
         <data name="parameter_txt" format="txt" from_work_dir="pepquery_output/parameter.txt" label="${tool.name} on ${on_string}: parameter.txt">
         </data> 
         <data name="ms_index" format="txt" label="${tool.name} on ${on_string}: index summary.txt" from_work_dir="index_dir/summary.txt">
