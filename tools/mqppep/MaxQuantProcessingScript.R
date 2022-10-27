@@ -220,7 +220,6 @@ option_list <- list(
     type = "character",
     help = "pY or pST enriched samples (ie, 'Y' or 'ST')"
   )
-  # default = "^Number of Phospho [(]STY[)]$",
   ,
   make_option(
     c("-p", "--phosphoCol"),
@@ -229,7 +228,6 @@ option_list <- list(
     help = paste0("PERL-compatible regular expression matching",
              " header of column having number of 'Phospho (STY)'")
   )
-  # default = "^Intensity[^_]",
   ,
   make_option(
     c("-s", "--startCol"),
@@ -238,7 +236,6 @@ option_list <- list(
     help = paste0("PERL-compatible regular expression matching",
              " header of column having first sample intensity")
   )
-  # default = 1,
   ,
   make_option(
     c("-I", "--intervalCol"),
@@ -247,7 +244,6 @@ option_list <- list(
     help = paste0("Column interval between the Intensities of samples",
              " (eg, 1 if subsequent column; 2 if every other column")
   )
-  # default = 0.75,
   ,
   make_option(
     c("-l", "--localProbCutoff"),
@@ -255,7 +251,6 @@ option_list <- list(
     type = "double",
     help = "Localization Probability Cutoff"
   )
-  # default = "sum",
   ,
   make_option(
     c("-f", "--collapse_func"),
@@ -264,7 +259,6 @@ option_list <- list(
     help = paste0("merge identical phosphopeptides",
              " by ('sum' or 'average') the intensities")
   )
-  # default = "filtered_data.txt",
   ,
   make_option(
     c("-r", "--filtered_data"),
@@ -272,7 +266,6 @@ option_list <- list(
     type = "character",
     help = "filtered_data.txt"
   )
-  # default = "quantData.txt",
   ,
   make_option(
     c("-q", "--quant_data"),
