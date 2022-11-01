@@ -11,7 +11,10 @@ Description
 
 msconvert from ProteoWizard.
 
-Note: This requires manual installation of ProteoWizard, and may require a Windows environment.
+Convert and/or filter mass spectrometry files using the offical Docker container.
+Using the Docker container requires agreeing to each vendor's license (for using their proprietary data access libraries): http://www.proteowizard.org/licenses.html
+
+Main web site: http://www.proteowizard.org
 
 See:
 
@@ -19,8 +22,9 @@ See:
 * <http://proteowizard.sourceforge.net/tools/msconvert.html>
 
 
-Installing
-----------
+#### Note about installing older versions:
+
+Version 0.3.0 (2016) and earlier require manual installation of ProteoWizard, and may require a Windows environment.
 
 Due to potential difficulties installing ProteoWizard with vendor library support, tools for interacting with vendor types are seperated out into their own wrappers. Galaxy is generally deployed under Linux, but vendor support in ProteoWizard requires .NET 4.0. There are at least two ways to get this to work:
 
