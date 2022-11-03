@@ -52,6 +52,7 @@ def __main__():
     parser.add_option('-t', '--taxon', dest='taxon', action='append', default=[], help='NCBI taxon ID to download')
     parser.add_option('-r', '--reviewed', dest='reviewed', help='Only uniprot reviewed entries')
     parser.add_option('-f', '--format', dest='format', choices=['xml', 'fasta'], default='xml', help='output format')
+    parser.add_option('-k', '--field', dest='field', choices=['taxonomy_name', 'taxonomy_id'], default='taxonomy_name', help='query field')
     parser.add_option('-o', '--output', dest='output', help='file path for the downloaded uniprot xml')
     parser.add_option('-d', '--debug', dest='debug', action='store_true', default=False, help='Turn on wrapper debugging to stderr')
     (options, args) = parser.parse_args()
@@ -66,7 +67,7 @@ def __main__():
                     taxid = fields[options.column].strip()
                     if taxid:
                         taxids.add(taxid)
-    taxon_queries = ['taxonomy:"%s"' % taxid for taxid in taxids]
+    taxon_queries = [f'{options.field}:"{taxid}"' for taxid in taxids]
     taxon_query = ' OR '.join(taxon_queries)
     if options.output:
         dest_path = options.output
@@ -74,20 +75,26 @@ def __main__():
         dest_path = "uniprot_%s.xml" % '_'.join(taxids)
     reviewed = " reviewed:%s" % options.reviewed if options.reviewed else ''
     try:
-        url = 'https://www.uniprot.org/uniprot/'
+        url = 'https://rest.uniprot.org/uniprotkb/stream'
         query = "%s%s" % (taxon_query, reviewed)
-        params = {'query': query, 'force': 'yes', 'format': options.format}
+        params = {'query': query, 'format': options.format}
         if options.debug:
             print("%s ? %s" % (url, params), file=sys.stderr)
         data = parse.urlencode(params)
-        print(f"Retrieving: {url+data}")
+        print(f"Retrieving: {url}?{data}")
         adapter = TimeoutHTTPAdapter(max_retries=retry_strategy)
+
         http = requests.Session()
         http.mount("https://", adapter)
-        response = http.post(url, data=params)
+        response = http.get(url, params=params)
         http.close()
+
+        if response.status_code != 200:
+            exit(f"Request failed with status code {response.status_code}:\n{response.text}")
+
         with open(dest_path, 'w') as fh:
             fh.write(response.text)
+
         if options.format == 'xml':
             with open(dest_path, 'r') as contents:
                 while True:
