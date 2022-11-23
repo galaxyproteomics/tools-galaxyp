@@ -66,6 +66,8 @@ function get_tests2 {
         else
             ini="ctd/$tool_id.ctd"
         fi
+        # >&2 echo "========================================================"
+        # >&2 echo "USING ini $ini"
         cli=$(echo $line |cut -d" " -f3- | sed 's/-ini [^ ]\+//')
 
         ctdtmp=$(mktemp)
@@ -75,7 +77,7 @@ function get_tests2 {
         # >&2 echo $ctdtmp
         # >&2 cat $ctdtmp
         testtmp=$(mktemp)
-        # >&2 echo CTDConverter galaxy -i $ctdtmp -o $testtmp -s aux/tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p aux/hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib
+        # >&2 echo CTDConverter galaxy -i $ctdtmp -o $testtmp -s aux/tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p aux/hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib --test-condition "compare=sim_size" "delta_frac=0.7"
         CTDConverter galaxy -i $ctdtmp -o $testtmp -s aux/tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p aux/hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib --test-condition "compare=sim_size" "delta_frac=0.7" > /dev/null
         echo "<!-- $test_id -->"
         cat $testtmp | grep -v '<output.*file=""' # | grep -v 'CHEMISTRY/'
