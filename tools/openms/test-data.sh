@@ -272,7 +272,7 @@ conda deactivate
 ## remove broken symlinks in test-data
 find test-data/ -xtype l -delete
 
-# if [ ! -z "$created" ]; then
-#     echo "Removing temporary directory"
-#     rm -rf "$tmp"
-# fi
+if [ ! -z "$created" ]; then
+    echo "Removing temporary directory"
+    rm -rf "$tmp"
+fi
