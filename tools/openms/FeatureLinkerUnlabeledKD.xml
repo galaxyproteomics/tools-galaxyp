@@ -1,13 +1,11 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
 <!--Proposed Tool Section: [Map Alignment]-->
-<tool id="FeatureLinkerUnlabeledKD" name="FeatureLinkerUnlabeledKD" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@" profile="20.05">
+<tool id="FeatureLinkerUnlabeledKD" name="FeatureLinkerUnlabeledKD" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="21.05">
   <description>Groups corresponding features from multiple maps.</description>
   <macros>
     <token name="@EXECUTABLE@">FeatureLinkerUnlabeledKD</token>
     <import>macros.xml</import>
-    <import>macros_autotest.xml</import>
-    <import>macros_test.xml</import>
   </macros>
   <expand macro="requirements"/>
   <expand macro="stdio"/>
@@ -16,9 +14,13 @@
 #import re
 
 ## Preprocessing
-mkdir in &&
-mkdir ${' '.join(["'in/%s'" % (i) for i, f in enumerate($in) if f])} && 
-${' '.join(["ln -s '%s' 'in/%s/%s.%s' && " % (f, i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in) if f])}
+mkdir in_cond.in &&
+#if $in_cond.in_select == "no"
+mkdir ${' '.join(["'in_cond.in/%s'" % (i) for i, f in enumerate($in_cond.in) if f])} && 
+${' '.join(["ln -s '%s' 'in_cond.in/%s/%s.%s' && " % (f, i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in_cond.in) if f])}
+#else
+ln -s '$in_cond.in' 'in_cond.in/${re.sub("[^\w\-_]", "_", $in_cond.in.element_identifier)}.$gxy2omsext($in_cond.in.ext)' &&
+#end if
 mkdir out &&
 #if $design:
   mkdir design &&
@@ -32,7 +34,11 @@ set -o pipefail &&
 python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
 @EXECUTABLE@ -ini @EXECUTABLE@.ctd
 -in
-${' '.join(["'in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in) if f])}
+#if $in_cond.in_select == "no"
+${' '.join(["'in_cond.in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in_cond.in) if f])}
+#else
+'in_cond.in/${re.sub("[^\w\-_]", "_", $in_cond.in.element_identifier)}.$gxy2omsext($in_cond.in.ext)'
+#end if
 -out
 'out/output.${gxy2omsext("consensusxml")}'
 #if $design:
@@ -50,34 +56,45 @@ ${' '.join(["'in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $
     <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
   </configfiles>
   <inputs>
-    <param name="in" argument="-in" type="data" format="consensusxml,featurexml" multiple="true" optional="false" label="input files separated by blanks" help=" select consensusxml,featurexml data sets(s)"/>
-    <param name="design" argument="-design" type="data" format="tabular" optional="true" label="input file containing the experimental design" help=" select tabular data sets(s)"/>
-    <param name="keep_subelements" argument="-keep_subelements" type="boolean" truevalue="true" falsevalue="false" checked="false" label="For consensusXML input only: If set, the sub-features of the inputs are transferred to the output" help=""/>
+    <conditional name="in_cond">
+      <param name="in_select" type="select" label="Run tool in batch mode for -in">
+        <option value="no">No: process all datasets jointly</option>
+        <option value="yes">Yes: process each dataset in an independent job</option>
+      </param>
+      <when value="no">
+        <param argument="-in" type="data" format="consensusxml,featurexml" multiple="true" optional="false" label="input files separated by blanks" help=" select consensusxml,featurexml data sets(s)"/>
+      </when>
+      <when value="yes">
+        <param argument="-in" type="data" format="consensusxml,featurexml" multiple="false" optional="false" label="input files separated by blanks" help=" select consensusxml,featurexml data sets(s)"/>
+      </when>
+    </conditional>
+    <param argument="-design" type="data" format="tabular" optional="true" label="input file containing the experimental design" help=" select tabular data sets(s)"/>
+    <param argument="-keep_subelements" type="boolean" truevalue="true" falsevalue="false" checked="false" label="For consensusXML input only: If set, the sub-features of the inputs are transferred to the output" help=""/>
     <section name="algorithm" title="Algorithm parameters section" help="" expanded="false">
-      <param name="mz_unit" argument="-algorithm:mz_unit" display="checkboxes" type="select" optional="false" label="Unit of m/z tolerance" help="">
+      <param name="mz_unit" argument="-algorithm:mz_unit" type="select" optional="true" label="Unit of m/z tolerance" help="">
         <option value="ppm" selected="true">ppm</option>
         <option value="Da">Da</option>
         <expand macro="list_string_san" name="mz_unit"/>
       </param>
-      <param name="nr_partitions" argument="-algorithm:nr_partitions" type="integer" optional="false" min="1" value="100" label="Number of partitions in m/z space" help=""/>
+      <param name="nr_partitions" argument="-algorithm:nr_partitions" type="integer" optional="true" min="1" value="100" label="Number of partitions in m/z space" help=""/>
       <section name="warp" title="" help="" expanded="false">
         <param name="enabled" argument="-algorithm:warp:enabled" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Whether or not to internally warp feature RTs using LOWESS transformation before linking (reported RTs in results will always be the original RTs)" help=""/>
-        <param name="rt_tol" argument="-algorithm:warp:rt_tol" type="float" optional="false" min="0.0" value="100.0" label="Width of RT tolerance window (sec)" help=""/>
-        <param name="mz_tol" argument="-algorithm:warp:mz_tol" type="float" optional="false" min="0.0" value="5.0" label="m/z tolerance (in ppm or Da)" help=""/>
-        <param name="max_pairwise_log_fc" argument="-algorithm:warp:max_pairwise_log_fc" type="float" optional="false" value="0.5" label="Maximum absolute log10 fold change between two compatible signals during compatibility graph construction" help="Two signals from different maps will not be connected by an edge in the compatibility graph if absolute log fold change exceeds this limit (they might still end up in the same connected component, however). Note: this does not limit fold changes in the linking stage, only during RT alignment, where we try to find high-quality alignment anchor points. Setting this to a value &lt; 0 disables the FC check"/>
-        <param name="min_rel_cc_size" argument="-algorithm:warp:min_rel_cc_size" type="float" optional="false" min="0.0" max="1.0" value="0.5" label="Only connected components containing compatible features from at least max(2, (warp_min_occur * number_of_input_maps)) input maps are considered for computing the warping function" help=""/>
-        <param name="max_nr_conflicts" argument="-algorithm:warp:max_nr_conflicts" type="integer" optional="false" min="-1" value="0" label="Allow up to this many conflicts (features from the same map) per connected component to be used for alignment (-1 means allow any number of conflicts)" help=""/>
+        <param name="rt_tol" argument="-algorithm:warp:rt_tol" type="float" optional="true" min="0.0" value="100.0" label="Width of RT tolerance window (sec)" help=""/>
+        <param name="mz_tol" argument="-algorithm:warp:mz_tol" type="float" optional="true" min="0.0" value="5.0" label="m/z tolerance (in ppm or Da)" help=""/>
+        <param name="max_pairwise_log_fc" argument="-algorithm:warp:max_pairwise_log_fc" type="float" optional="true" value="0.5" label="Maximum absolute log10 fold change between two compatible signals during compatibility graph construction" help="Two signals from different maps will not be connected by an edge in the compatibility graph if absolute log fold change exceeds this limit (they might still end up in the same connected component, however). Note: this does not limit fold changes in the linking stage, only during RT alignment, where we try to find high-quality alignment anchor points. Setting this to a value &lt; 0 disables the FC check"/>
+        <param name="min_rel_cc_size" argument="-algorithm:warp:min_rel_cc_size" type="float" optional="true" min="0.0" max="1.0" value="0.5" label="Only connected components containing compatible features from at least max(2, (warp_min_occur * number_of_input_maps)) input maps are considered for computing the warping function" help=""/>
+        <param name="max_nr_conflicts" argument="-algorithm:warp:max_nr_conflicts" type="integer" optional="true" min="-1" value="0" label="Allow up to this many conflicts (features from the same map) per connected component to be used for alignment (-1 means allow any number of conflicts)" help=""/>
       </section>
       <section name="link" title="" help="" expanded="false">
-        <param name="rt_tol" argument="-algorithm:link:rt_tol" type="float" optional="false" min="0.0" value="30.0" label="Width of RT tolerance window (sec)" help=""/>
-        <param name="mz_tol" argument="-algorithm:link:mz_tol" type="float" optional="false" min="0.0" value="10.0" label="m/z tolerance (in ppm or Da)" help=""/>
-        <param name="charge_merging" argument="-algorithm:link:charge_merging" display="checkboxes" type="select" optional="false" label="whether to disallow charge mismatches (Identical), allow to link charge zero" help="(i.e., unknown charge state) with every charge state, or disregard charges (Any)">
+        <param name="rt_tol" argument="-algorithm:link:rt_tol" type="float" optional="true" min="0.0" value="30.0" label="Width of RT tolerance window (sec)" help=""/>
+        <param name="mz_tol" argument="-algorithm:link:mz_tol" type="float" optional="true" min="0.0" value="10.0" label="m/z tolerance (in ppm or Da)" help=""/>
+        <param name="charge_merging" argument="-algorithm:link:charge_merging" type="select" optional="true" label="whether to disallow charge mismatches (Identical), allow to link charge zero" help="(i.e., unknown charge state) with every charge state, or disregard charges (Any)">
           <option value="Identical">Identical</option>
           <option value="With_charge_zero" selected="true">With_charge_zero</option>
           <option value="Any">Any</option>
           <expand macro="list_string_san" name="charge_merging"/>
         </param>
-        <param name="adduct_merging" argument="-algorithm:link:adduct_merging" display="checkboxes" type="select" optional="false" label="whether to only allow the same adduct for linking (Identical), also allow linking features with adduct-free ones, or disregard adducts (Any)" help="">
+        <param name="adduct_merging" argument="-algorithm:link:adduct_merging" type="select" optional="true" label="whether to only allow the same adduct for linking (Identical), also allow linking features with adduct-free ones, or disregard adducts (Any)" help="">
           <option value="Identical">Identical</option>
           <option value="With_unknown_adducts">With_unknown_adducts</option>
           <option value="Any" selected="true">Any</option>
@@ -85,33 +102,33 @@ ${' '.join(["'in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $
         </param>
       </section>
       <section name="distance_RT" title="Distance component based on RT differences" help="" expanded="false">
-        <param name="exponent" argument="-algorithm:distance_RT:exponent" type="float" optional="false" min="0.0" value="1.0" label="Normalized RT differences ([0-1], relative to 'max_difference') are raised to this power (using 1 or 2 will be fast, everything else is REALLY slow)" help=""/>
-        <param name="weight" argument="-algorithm:distance_RT:weight" type="float" optional="false" min="0.0" value="1.0" label="Final RT distances are weighted by this facto" help=""/>
+        <param name="exponent" argument="-algorithm:distance_RT:exponent" type="float" optional="true" min="0.0" value="1.0" label="Normalized RT differences ([0-1], relative to 'max_difference') are raised to this power (using 1 or 2 will be fast, everything else is REALLY slow)" help=""/>
+        <param name="weight" argument="-algorithm:distance_RT:weight" type="float" optional="true" min="0.0" value="1.0" label="Final RT distances are weighted by this facto" help=""/>
       </section>
       <section name="distance_MZ" title="Distance component based on m/z differences" help="" expanded="false">
-        <param name="exponent" argument="-algorithm:distance_MZ:exponent" type="float" optional="false" min="0.0" value="2.0" label="Normalized ([0-1], relative to 'max_difference') m/z differences are raised to this power (using 1 or 2 will be fast, everything else is REALLY slow)" help=""/>
-        <param name="weight" argument="-algorithm:distance_MZ:weight" type="float" optional="false" min="0.0" value="1.0" label="Final m/z distances are weighted by this facto" help=""/>
+        <param name="exponent" argument="-algorithm:distance_MZ:exponent" type="float" optional="true" min="0.0" value="2.0" label="Normalized ([0-1], relative to 'max_difference') m/z differences are raised to this power (using 1 or 2 will be fast, everything else is REALLY slow)" help=""/>
+        <param name="weight" argument="-algorithm:distance_MZ:weight" type="float" optional="true" min="0.0" value="1.0" label="Final m/z distances are weighted by this facto" help=""/>
       </section>
       <section name="distance_intensity" title="Distance component based on differences in relative intensity (usually relative to highest peak in the whole data set)" help="" expanded="false">
-        <param name="exponent" argument="-algorithm:distance_intensity:exponent" type="float" optional="false" min="0.0" value="1.0" label="Differences in relative intensity ([0-1]) are raised to this power (using 1 or 2 will be fast, everything else is REALLY slow)" help=""/>
-        <param name="weight" argument="-algorithm:distance_intensity:weight" type="float" optional="false" min="0.0" value="1.0" label="Final intensity distances are weighted by this facto" help=""/>
-        <param name="log_transform" argument="-algorithm:distance_intensity:log_transform" display="checkboxes" type="select" optional="false" label="Log-transform intensities" help="If disabled, d = |int_f2 - int_f1| / int_max. If enabled, d = |log(int_f2 + 1) - log(int_f1 + 1)| / log(int_max + 1))">
+        <param name="exponent" argument="-algorithm:distance_intensity:exponent" type="float" optional="true" min="0.0" value="1.0" label="Differences in relative intensity ([0-1]) are raised to this power (using 1 or 2 will be fast, everything else is REALLY slow)" help=""/>
+        <param name="weight" argument="-algorithm:distance_intensity:weight" type="float" optional="true" min="0.0" value="1.0" label="Final intensity distances are weighted by this facto" help=""/>
+        <param name="log_transform" argument="-algorithm:distance_intensity:log_transform" type="select" optional="true" label="Log-transform intensities" help="If disabled, d = |int_f2 - int_f1| / int_max. If enabled, d = |log(int_f2 + 1) - log(int_f1 + 1)| / log(int_max + 1))">
           <option value="enabled" selected="true">enabled</option>
           <option value="disabled">disabled</option>
           <expand macro="list_string_san" name="log_transform"/>
         </param>
       </section>
       <section name="LOWESS" title="LOWESS parameters for internal RT transformations (only relevant if 'warp:enabled' is set to 'true')" help="" expanded="false">
-        <param name="span" argument="-algorithm:LOWESS:span" type="float" optional="false" min="0.0" max="1.0" value="0.666666666666667" label="Fraction of datapoints (f) to use for each local regression (determines the amount of smoothing)" help="Choosing this parameter in the range .2 to .8 usually results in a good fit"/>
-        <param name="num_iterations" argument="-algorithm:LOWESS:num_iterations" type="integer" optional="false" min="0" value="3" label="Number of robustifying iterations for lowess fitting" help=""/>
-        <param name="delta" argument="-algorithm:LOWESS:delta" type="float" optional="false" value="-1.0" label="Nonnegative parameter which may be used to save computations (recommended value is 0.01 of the range of the input" help="e.g. for data ranging from 1000 seconds to 2000 seconds, it could be set to 10). Setting a negative value will automatically do this"/>
-        <param name="interpolation_type" argument="-algorithm:LOWESS:interpolation_type" display="checkboxes" type="select" optional="false" label="Method to use for interpolation between datapoints computed by lowess" help="'linear': Linear interpolation. 'cspline': Use the cubic spline for interpolation. 'akima': Use an akima spline for interpolation">
+        <param name="span" argument="-algorithm:LOWESS:span" type="float" optional="true" min="0.0" max="1.0" value="0.666666666666667" label="Fraction of datapoints (f) to use for each local regression (determines the amount of smoothing)" help="Choosing this parameter in the range .2 to .8 usually results in a good fit"/>
+        <param name="num_iterations" argument="-algorithm:LOWESS:num_iterations" type="integer" optional="true" min="0" value="3" label="Number of robustifying iterations for lowess fitting" help=""/>
+        <param name="delta" argument="-algorithm:LOWESS:delta" type="float" optional="true" value="-1.0" label="Nonnegative parameter which may be used to save computations (recommended value is 0.01 of the range of the input" help="e.g. for data ranging from 1000 seconds to 2000 seconds, it could be set to 10). Setting a negative value will automatically do this"/>
+        <param name="interpolation_type" argument="-algorithm:LOWESS:interpolation_type" type="select" optional="true" label="Method to use for interpolation between datapoints computed by lowess" help="'linear': Linear interpolation. 'cspline': Use the cubic spline for interpolation. 'akima': Use an akima spline for interpolation">
           <option value="linear">linear</option>
           <option value="cspline" selected="true">cspline</option>
           <option value="akima">akima</option>
           <expand macro="list_string_san" name="interpolation_type"/>
         </param>
-        <param name="extrapolation_type" argument="-algorithm:LOWESS:extrapolation_type" display="checkboxes" type="select" optional="false" label="Method to use for extrapolation outside the data range" help="'two-point-linear': Uses a line through the first and last point to extrapolate. 'four-point-linear': Uses a line through the first and second point to extrapolate in front and and a line through the last and second-to-last point in the end. 'global-linear': Uses a linear regression to fit a line through all data points and use it for interpolation">
+        <param name="extrapolation_type" argument="-algorithm:LOWESS:extrapolation_type" type="select" optional="true" label="Method to use for extrapolation outside the data range" help="'two-point-linear': Uses a line through the first and last point to extrapolate. 'four-point-linear': Uses a line through the first and second point to extrapolate in front and and a line through the last and second-to-last point in the end. 'global-linear': Uses a linear regression to fit a line through all data points and use it for interpolation">
           <option value="two-point-linear">two-point-linear</option>
           <option value="four-point-linear" selected="true">four-point-linear</option>
           <option value="global-linear">global-linear</option>
@@ -120,8 +137,8 @@ ${' '.join(["'in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $
       </section>
     </section>
     <expand macro="adv_opts_macro">
-      <param name="force" argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
-      <param name="test" argument="-test" type="hidden" optional="false" value="False" label="Enables the test mode (needed for internal use only)" help="">
+      <param argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
+      <param argument="-test" type="hidden" optional="true" value="False" label="Enables the test mode (needed for internal use only)" help="">
         <expand macro="list_string_san" name="test"/>
       </param>
     </expand>
@@ -135,13 +152,402 @@ ${' '.join(["'in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $
       <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
     </data>
   </outputs>
-  <tests>
-    <expand macro="autotest_FeatureLinkerUnlabeledKD"/>
-    <expand macro="manutest_FeatureLinkerUnlabeledKD"/>
+  <tests><!-- TOPP_FeatureLinkerUnlabeledKD_1 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <conditional name="in_cond">
+        <param name="in" value="FeatureLinkerUnlabeled_1_input1.featureXML,FeatureLinkerUnlabeled_1_input2.featureXML,FeatureLinkerUnlabeled_1_input3.featureXML"/>
+      </conditional>
+      <output name="out" file="FeatureLinkerUnlabeledKD_1_output.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
+      <param name="keep_subelements" value="false"/>
+      <section name="algorithm">
+        <param name="mz_unit" value="Da"/>
+        <param name="nr_partitions" value="1"/>
+        <section name="warp">
+          <param name="enabled" value="false"/>
+          <param name="rt_tol" value="100.0"/>
+          <param name="mz_tol" value="0.3"/>
+          <param name="max_pairwise_log_fc" value="0.5"/>
+          <param name="min_rel_cc_size" value="0.5"/>
+          <param name="max_nr_conflicts" value="0"/>
+        </section>
+        <section name="link">
+          <param name="rt_tol" value="100.0"/>
+          <param name="mz_tol" value="0.3"/>
+          <param name="charge_merging" value="With_charge_zero"/>
+          <param name="adduct_merging" value="Any"/>
+        </section>
+        <section name="distance_RT">
+          <param name="exponent" value="1.0"/>
+          <param name="weight" value="1.0"/>
+        </section>
+        <section name="distance_MZ">
+          <param name="exponent" value="2.0"/>
+          <param name="weight" value="1.0"/>
+        </section>
+        <section name="distance_intensity">
+          <param name="exponent" value="1.0"/>
+          <param name="weight" value="1.0"/>
+          <param name="log_transform" value="enabled"/>
+        </section>
+        <section name="LOWESS">
+          <param name="span" value="0.666666666666667"/>
+          <param name="num_iterations" value="3"/>
+          <param name="delta" value="-1.0"/>
+          <param name="interpolation_type" value="cspline"/>
+          <param name="extrapolation_type" value="four-point-linear"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+    </test>
+    <!-- TOPP_FeatureLinkerUnlabeledKD_2 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <conditional name="in_cond">
+        <param name="in" value="FeatureLinkerUnlabeledKD_1_output.consensusXML,FeatureLinkerUnlabeledKD_1_output_2.consensusXML"/>
+      </conditional>
+      <output name="out" file="FeatureLinkerUnlabeledKD_2_output.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
+      <param name="keep_subelements" value="true"/>
+      <section name="algorithm">
+        <param name="mz_unit" value="Da"/>
+        <param name="nr_partitions" value="99999"/>
+        <section name="warp">
+          <param name="enabled" value="false"/>
+          <param name="rt_tol" value="100.0"/>
+          <param name="mz_tol" value="0.3"/>
+          <param name="max_pairwise_log_fc" value="0.5"/>
+          <param name="min_rel_cc_size" value="0.5"/>
+          <param name="max_nr_conflicts" value="0"/>
+        </section>
+        <section name="link">
+          <param name="rt_tol" value="100.0"/>
+          <param name="mz_tol" value="0.3"/>
+          <param name="charge_merging" value="With_charge_zero"/>
+          <param name="adduct_merging" value="Any"/>
+        </section>
+        <section name="distance_RT">
+          <param name="exponent" value="1.0"/>
+          <param name="weight" value="1.0"/>
+        </section>
+        <section name="distance_MZ">
+          <param name="exponent" value="2.0"/>
+          <param name="weight" value="1.0"/>
+        </section>
+        <section name="distance_intensity">
+          <param name="exponent" value="1.0"/>
+          <param name="weight" value="1.0"/>
+          <param name="log_transform" value="enabled"/>
+        </section>
+        <section name="LOWESS">
+          <param name="span" value="0.666666666666667"/>
+          <param name="num_iterations" value="3"/>
+          <param name="delta" value="-1.0"/>
+          <param name="interpolation_type" value="cspline"/>
+          <param name="extrapolation_type" value="four-point-linear"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+    </test>
+    <!-- TOPP_FeatureLinkerUnlabeledKD_3 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <conditional name="in_cond">
+        <param name="in" value="FeatureLinkerUnlabeledQT_3_input1.featureXML,FeatureLinkerUnlabeledQT_3_input2.featureXML"/>
+      </conditional>
+      <output name="out" file="FeatureLinkerUnlabeledKD_3_output.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
+      <param name="keep_subelements" value="false"/>
+      <section name="algorithm">
+        <param name="mz_unit" value="Da"/>
+        <param name="nr_partitions" value="100"/>
+        <section name="warp">
+          <param name="enabled" value="false"/>
+          <param name="rt_tol" value="100.0"/>
+          <param name="mz_tol" value="0.3"/>
+          <param name="max_pairwise_log_fc" value="0.5"/>
+          <param name="min_rel_cc_size" value="0.5"/>
+          <param name="max_nr_conflicts" value="0"/>
+        </section>
+        <section name="link">
+          <param name="rt_tol" value="100.0"/>
+          <param name="mz_tol" value="0.3"/>
+          <param name="charge_merging" value="With_charge_zero"/>
+          <param name="adduct_merging" value="Any"/>
+        </section>
+        <section name="distance_RT">
+          <param name="exponent" value="1.0"/>
+          <param name="weight" value="1.0"/>
+        </section>
+        <section name="distance_MZ">
+          <param name="exponent" value="2.0"/>
+          <param name="weight" value="1.0"/>
+        </section>
+        <section name="distance_intensity">
+          <param name="exponent" value="1.0"/>
+          <param name="weight" value="1.0"/>
+          <param name="log_transform" value="enabled"/>
+        </section>
+        <section name="LOWESS">
+          <param name="span" value="0.666666666666667"/>
+          <param name="num_iterations" value="3"/>
+          <param name="delta" value="-1.0"/>
+          <param name="interpolation_type" value="cspline"/>
+          <param name="extrapolation_type" value="four-point-linear"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+    </test>
+    <!-- TOPP_FeatureLinkerUnlabeledKD_4 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <conditional name="in_cond">
+        <param name="in" value="FeatureLinkerUnlabeledKD_dc_input1.featureXML,FeatureLinkerUnlabeledKD_dc_input2.featureXML,FeatureLinkerUnlabeledKD_dc_input3.featureXML,FeatureLinkerUnlabeledKD_dc_input1_2.featureXML,FeatureLinkerUnlabeledKD_dc_input2_2.featureXML"/>
+      </conditional>
+      <output name="out" file="FeatureLinkerUnlabeledKD_4_output.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
+      <param name="keep_subelements" value="false"/>
+      <section name="algorithm">
+        <param name="mz_unit" value="ppm"/>
+        <param name="nr_partitions" value="100"/>
+        <section name="warp">
+          <param name="enabled" value="true"/>
+          <param name="rt_tol" value="100.0"/>
+          <param name="mz_tol" value="5.0"/>
+          <param name="max_pairwise_log_fc" value="0.5"/>
+          <param name="min_rel_cc_size" value="0.5"/>
+          <param name="max_nr_conflicts" value="0"/>
+        </section>
+        <section name="link">
+          <param name="rt_tol" value="30.0"/>
+          <param name="mz_tol" value="10.0"/>
+          <param name="charge_merging" value="Identical"/>
+          <param name="adduct_merging" value="Any"/>
+        </section>
+        <section name="distance_RT">
+          <param name="exponent" value="1.0"/>
+          <param name="weight" value="1.0"/>
+        </section>
+        <section name="distance_MZ">
+          <param name="exponent" value="2.0"/>
+          <param name="weight" value="1.0"/>
+        </section>
+        <section name="distance_intensity">
+          <param name="exponent" value="1.0"/>
+          <param name="weight" value="1.0"/>
+          <param name="log_transform" value="enabled"/>
+        </section>
+        <section name="LOWESS">
+          <param name="span" value="0.666666666666667"/>
+          <param name="num_iterations" value="3"/>
+          <param name="delta" value="-1.0"/>
+          <param name="interpolation_type" value="cspline"/>
+          <param name="extrapolation_type" value="four-point-linear"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+    </test>
+    <!-- TOPP_FeatureLinkerUnlabeledKD_5 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <conditional name="in_cond">
+        <param name="in" value="FeatureLinkerUnlabeledKD_dc_input1.featureXML,FeatureLinkerUnlabeledKD_dc_input2.featureXML,FeatureLinkerUnlabeledKD_dc_input3.featureXML,FeatureLinkerUnlabeledKD_dc_input1_2.featureXML,FeatureLinkerUnlabeledKD_dc_input2_2.featureXML"/>
+      </conditional>
+      <output name="out" file="FeatureLinkerUnlabeledKD_5_output.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
+      <param name="keep_subelements" value="false"/>
+      <section name="algorithm">
+        <param name="mz_unit" value="ppm"/>
+        <param name="nr_partitions" value="100"/>
+        <section name="warp">
+          <param name="enabled" value="true"/>
+          <param name="rt_tol" value="100.0"/>
+          <param name="mz_tol" value="5.0"/>
+          <param name="max_pairwise_log_fc" value="0.5"/>
+          <param name="min_rel_cc_size" value="0.5"/>
+          <param name="max_nr_conflicts" value="0"/>
+        </section>
+        <section name="link">
+          <param name="rt_tol" value="30.0"/>
+          <param name="mz_tol" value="10.0"/>
+          <param name="charge_merging" value="With_charge_zero"/>
+          <param name="adduct_merging" value="Any"/>
+        </section>
+        <section name="distance_RT">
+          <param name="exponent" value="1.0"/>
+          <param name="weight" value="1.0"/>
+        </section>
+        <section name="distance_MZ">
+          <param name="exponent" value="2.0"/>
+          <param name="weight" value="1.0"/>
+        </section>
+        <section name="distance_intensity">
+          <param name="exponent" value="1.0"/>
+          <param name="weight" value="1.0"/>
+          <param name="log_transform" value="enabled"/>
+        </section>
+        <section name="LOWESS">
+          <param name="span" value="0.666666666666667"/>
+          <param name="num_iterations" value="3"/>
+          <param name="delta" value="-1.0"/>
+          <param name="interpolation_type" value="cspline"/>
+          <param name="extrapolation_type" value="four-point-linear"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+    </test>
+    <!-- TOPP_FeatureLinkerUnlabeledKD_6 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <conditional name="in_cond">
+        <param name="in" value="FeatureLinkerUnlabeledKD_dc_input1.featureXML,FeatureLinkerUnlabeledKD_dc_input2.featureXML,FeatureLinkerUnlabeledKD_dc_input3.featureXML,FeatureLinkerUnlabeledKD_dc_input1_2.featureXML,FeatureLinkerUnlabeledKD_dc_input2_2.featureXML"/>
+      </conditional>
+      <output name="out" file="FeatureLinkerUnlabeledKD_6_output.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
+      <param name="keep_subelements" value="false"/>
+      <section name="algorithm">
+        <param name="mz_unit" value="ppm"/>
+        <param name="nr_partitions" value="100"/>
+        <section name="warp">
+          <param name="enabled" value="true"/>
+          <param name="rt_tol" value="100.0"/>
+          <param name="mz_tol" value="5.0"/>
+          <param name="max_pairwise_log_fc" value="0.5"/>
+          <param name="min_rel_cc_size" value="0.5"/>
+          <param name="max_nr_conflicts" value="0"/>
+        </section>
+        <section name="link">
+          <param name="rt_tol" value="30.0"/>
+          <param name="mz_tol" value="10.0"/>
+          <param name="charge_merging" value="Any"/>
+          <param name="adduct_merging" value="With_unknown_adducts"/>
+        </section>
+        <section name="distance_RT">
+          <param name="exponent" value="1.0"/>
+          <param name="weight" value="1.0"/>
+        </section>
+        <section name="distance_MZ">
+          <param name="exponent" value="2.0"/>
+          <param name="weight" value="1.0"/>
+        </section>
+        <section name="distance_intensity">
+          <param name="exponent" value="1.0"/>
+          <param name="weight" value="1.0"/>
+          <param name="log_transform" value="enabled"/>
+        </section>
+        <section name="LOWESS">
+          <param name="span" value="0.666666666666667"/>
+          <param name="num_iterations" value="3"/>
+          <param name="delta" value="-1.0"/>
+          <param name="interpolation_type" value="cspline"/>
+          <param name="extrapolation_type" value="four-point-linear"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+    </test>
+    <!-- TOPP_FeatureLinkerUnlabeledKD_7 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <conditional name="in_cond">
+        <param name="in" value="FeatureLinkerUnlabeledKD_dc_input1.featureXML,FeatureLinkerUnlabeledKD_dc_input2.featureXML,FeatureLinkerUnlabeledKD_dc_input3.featureXML,FeatureLinkerUnlabeledKD_dc_input1_2.featureXML,FeatureLinkerUnlabeledKD_dc_input2_2.featureXML"/>
+      </conditional>
+      <output name="out" file="FeatureLinkerUnlabeledKD_7_output.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
+      <param name="keep_subelements" value="false"/>
+      <section name="algorithm">
+        <param name="mz_unit" value="ppm"/>
+        <param name="nr_partitions" value="100"/>
+        <section name="warp">
+          <param name="enabled" value="true"/>
+          <param name="rt_tol" value="100.0"/>
+          <param name="mz_tol" value="5.0"/>
+          <param name="max_pairwise_log_fc" value="0.5"/>
+          <param name="min_rel_cc_size" value="0.5"/>
+          <param name="max_nr_conflicts" value="0"/>
+        </section>
+        <section name="link">
+          <param name="rt_tol" value="30.0"/>
+          <param name="mz_tol" value="10.0"/>
+          <param name="charge_merging" value="Any"/>
+          <param name="adduct_merging" value="Identical"/>
+        </section>
+        <section name="distance_RT">
+          <param name="exponent" value="1.0"/>
+          <param name="weight" value="1.0"/>
+        </section>
+        <section name="distance_MZ">
+          <param name="exponent" value="2.0"/>
+          <param name="weight" value="1.0"/>
+        </section>
+        <section name="distance_intensity">
+          <param name="exponent" value="1.0"/>
+          <param name="weight" value="1.0"/>
+          <param name="log_transform" value="enabled"/>
+        </section>
+        <section name="LOWESS">
+          <param name="span" value="0.666666666666667"/>
+          <param name="num_iterations" value="3"/>
+          <param name="delta" value="-1.0"/>
+          <param name="interpolation_type" value="cspline"/>
+          <param name="extrapolation_type" value="four-point-linear"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+    </test>
   </tests>
   <help><![CDATA[Groups corresponding features from multiple maps.
 
 
-For more information, visit http://www.openms.de/doxygen/release/2.6.0/html/TOPP_FeatureLinkerUnlabeledKD.html]]></help>
+For more information, visit http://www.openms.de/doxygen/release/2.8.0/html/TOPP_FeatureLinkerUnlabeledKD.html]]></help>
   <expand macro="references"/>
 </tool>

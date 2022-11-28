@@ -8,17 +8,15 @@ function get_tests2 {
 
     # get the tests from the CMakeLists.txt
     # 1st remove some tests
-    # - OpenSwathMzMLFileCacher with -convert_back argumen https://github.com/OpenMS/OpenMS/issues/4399
+    # - OpenSwathMzMLFileCacher with -convert_back argument https://github.com/OpenMS/OpenMS/issues/4399
     # - IDRipper PATH gets empty causing problems. TODO But overall the option needs to be handled differentlt
     # - several tools with duplicated input (leads to conflict when linking)
-    # - TOFCalibration inputs we extension (also in prepare_test_data) https://github.com/OpenMS/OpenMS/pull/4525
     # - MaRaCluster with -consensus_out (parameter blacklister: https://github.com/OpenMS/OpenMS/issues/4456)
     # - FileMerger with mixed dta dta2d input (ftype can not be specified in the test, dta can not be sniffed)
     # - some input files are originally in a subdir (degenerated cases/), but not in test-data
-    # - SeedListGenerator: https://github.com/OpenMS/OpenMS/issues/4404
     # - OpenSwathAnalyzer 9/10: cachedMzML (not supported yet)
-    # - FeatureFinderIdentification name clash of two tests https://github.com/OpenMS/OpenMS/pull/5002
-    # - TODO SiriusAdapter https://github.com/OpenMS/OpenMS/pull/5010
+    # - SiriusAdapter_4 depends on online service which may timeout .. so keep disabled https://github.com/OpenMS/OpenMS/pull/5010
+    # - SiriusAdapter_10 should work in >2.8 https://github.com/OpenMS/OpenMS/issues/5869
     CMAKE=$(cat $OPENMSGIT/src/tests/topp/CMakeLists.txt $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake  |
         sed 's@${DATA_DIR_SHARE}/@@g' |
         grep -v 'OpenSwathMzMLFileCacher .*-convert_back' |
@@ -26,19 +24,9 @@ function get_tests2 {
         grep -v "MaRaClusterAdapter.*-consensus_out"|
         grep -v "FileMerger_1_input1.dta2d.*FileMerger_1_input2.dta " |
         sed 's@degenerate_cases/@@g' |
-        grep -v 'TOPP_SeedListGenerator_3"' | 
         egrep -v 'TOPP_OpenSwathAnalyzer_test_3"|TOPP_OpenSwathAnalyzer_test_4"' |
-	egrep -v '"TOPP_FeatureFinderIdentification_4"' | 
-	sed 's/\("TOPP_SiriusAdapter_4".*\)-sirius:database all\(.*\)/\1-sirius:database pubchem\2/')
-
-
-#         grep -v 'FileFilter.*-spectra:select_polarity ""' |
-#         grep -v 'MassTraceExtractor_2.ini ' |
-#         grep -v "FileMerger_6_input2.mzML.*FileMerger_6_input2.mzML" |
-#         grep -v "IDMerger_1_input1.idXML.*IDMerger_1_input1.idXML" |
-#         grep -v "degenerated_empty.idXML.*degenerated_empty.idXML" |
-#         grep -v "FeatureLinkerUnlabeledKD_1_output.consensusXML.*FeatureLinkerUnlabeledKD_1_output.consensusXML" |
-#         grep -v "FeatureLinkerUnlabeledQT_1_output.consensusXML.*FeatureLinkerUnlabeledQT_1_output.consensusXML" |
+        sed 's/\("TOPP_SiriusAdapter_4".*\)-sirius:database all\(.*\)/\1-sirius:database pubchem\2/' |
+        grep -v '"TOPP_SiriusAdapter_10"')
 
     # 1st part is a dirty hack to join lines containing a single function call, e.g.
     # addtest(....
@@ -50,6 +38,7 @@ function get_tests2 {
         # >&2 echo $line
         test_id=$(echo "$line" | cut -d" " -f 1)
         tool_id=$(echo "$line" | cut -d" " -f 2)
+        # >&2 echo "test_id $test_id"
         if [[ $test_id =~ _out_?[0-9]? ]]; then
             >&2 echo "    skip $test_id $line"
             continue
@@ -67,7 +56,7 @@ function get_tests2 {
         tes="  <test>\n"
         line=$(fix_tmp_files "$line")
         line=$(unique_files "$line")
-        # >&2 echo $line
+        # >&2 echo LINE $line
         #if there is an ini file then we use this to generate the test
         #otherwise the ctd file is used
         #other command line parameters are inserted later into this xml
@@ -77,19 +66,23 @@ function get_tests2 {
         else
             ini="ctd/$tool_id.ctd"
         fi
+        # >&2 echo "========================================================"
+        # >&2 echo "USING ini $ini"
         cli=$(echo $line |cut -d" " -f3- | sed 's/-ini [^ ]\+//')
 
         ctdtmp=$(mktemp)
-        #echo python3 fill_ctd_clargs.py --ctd $ini $cli
         # using eval: otherwise for some reason quoted values are not used properly ('A B' -> ["'A", "B'"])
-        # >&2 echo "python3 fill_ctd_clargs.py --ctd $ini $cli"
-        eval "python3 fill_ctd_clargs.py --ini_file $ini --ctd_file ctd/$tool_id.ctd $cli" > "$ctdtmp"
-        # echo $ctdtmp
+        # >&2 echo "python3 fill_ctd_clargs.py --ini_file $ini $cli" 
+        eval "python3 fill_ctd_clargs.py --ini_file $ini $cli" > "$ctdtmp"
+        # >&2 echo $ctdtmp
         # >&2 cat $ctdtmp
         testtmp=$(mktemp)
-        python3 $CTDCONVERTER/convert.py galaxy -i $ctdtmp -o $testtmp -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib > /dev/null
+        # >&2 echo CTDConverter galaxy -i $ctdtmp -o $testtmp -s aux/tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p aux/hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib --test-condition "compare=sim_size" "delta_frac=0.7"
+        CTDConverter galaxy -i $ctdtmp -o $testtmp -s aux/tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p aux/hardcoded_params.json --tool-version $VERSION --test-only --test-unsniffable csv tsv txt dta dta2d edta mrm splib --test-condition "compare=sim_size" "delta_frac=0.7" > /dev/null
+        echo "<!-- $test_id -->"
         cat $testtmp | grep -v '<output.*file=""' # | grep -v 'CHEMISTRY/'
-        rm $ctdtmp $testtmp
+
+        rm "$ctdtmp" "$testtmp"
 
         #> /dev/null
 
@@ -130,23 +123,23 @@ function fix_out_type {
 #(e.g. for prepare_test_data, e.g. CLI expects csv but test file is txt)
 #this function replaces the tmp file by the expected file. 
 function fix_tmp_files {
-#    >&2 echo "FIX $line"
+    # >&2 echo "FIX $line"
     ret=""
     for a in $@; do
-        if [[ ! $a =~ .tmp$ ]]; then
+        # >&2 echo "    a "$a
+        if [[ ! $a =~ .tmp$ ]] && [[ ! $a =~ _tmp_ ]]; then
             ret="$ret $a"
             continue
         fi
-#        >&2 echo "    a "$a
-        g=$(cat $OPENMSGIT/src/tests/topp/CMakeLists.txt $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake | awk '{printf("%s@NEWLINE@", $0)}' | sed 's/)@NEWLINE@/)\n/g' | sed 's/@NEWLINE@/ /g' | grep '\${DIFF}.*'"$a")
-#        >&2 echo "    g "$g
-        in1=$(sed 's/.*-in1 \([^ ]\+\).*/\1/' <<<$g)
+        diff_line=$(cat $OPENMSGIT/src/tests/topp/CMakeLists.txt $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake | awk '{printf("%s@NEWLINE@", $0)}' | sed 's/)@NEWLINE@/)\n/g' | sed 's/@NEWLINE@/ /g' | grep '\${DIFF}.*'"$a")
+        # >&2 echo "    diff_line "$diff_line
+        in1=$(sed 's/.*-in1 \([^ ]\+\).*/\1/' <<<$diff_line)
         # >&2 echo "    in1 "$in1
         if [[  "$a" != "$in1" ]]; then
             ret="$ret $a"
             continue
         fi
-        in2=$(sed 's/.*-in2 \([^ ]\+\).*/\1/' <<<$g)
+        in2=$(sed 's/.*-in2 \([^ ]\+\).*/\1/' <<<$diff_line)
         in2=$(basename $in2 | sed 's/)$//')
         # >&2 echo "    in2 "$in2
         if [[ -f "test-data/$in2" ]]; then
@@ -176,11 +169,11 @@ function link_tmp_files {
         fi
         ln -f -s $in1 test-data/$in2
     done
-    for i in test-data/*.tmp
-    do
+    
+    find test-data/ -name "*.tmp" -print0 | 
+    while IFS= read -r -d '' i; do 
         if [ ! -e test-data/$(basename $i .tmp) ]; then
             ln -s $(basename $i) test-data/$(basename $i .tmp)
-            #ln -s $(basename $i) test-data/$(basename $i .tmp)
         else
             ln -fs $(basename $i) test-data/$(basename $i .tmp)
         fi
@@ -194,14 +187,14 @@ function prepare_test_data {
 #     id=$1
 # | egrep -i "$id\_.*[0-9]+(_prepare\"|_convert)?"
 
-# TODO SiriusAdapter https://github.com/OpenMS/OpenMS/pull/5010
+    # TODO SiriusAdapter depends on online service which may timeout .. so keep disabled https://github.com/OpenMS/OpenMS/pull/5010
     cat $OPENMSGIT/src/tests/topp/CMakeLists.txt  $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake | sed 's/#.*$//'| sed 's/^\s*//; s/\s*$//' | grep -v "^$"  | awk '{printf("%s@NEWLINE@", $0)}' | sed 's/)@NEWLINE@/)\n/g' | sed 's/@NEWLINE@/ /g' | 
         sed 's/degenerate_cases\///' | 
         egrep -v "WRITEINI|WRITECTD|INVALIDVALUE|DIFF" | 
         grep add_test | 
         egrep "TOPP|UTILS" |
         sed 's@${DATA_DIR_SHARE}/@@g;'|
-        sed 's@${TMP_RIP_PATH}@dummy2.tmp@g'|
+        sed 's@${TMP_RIP_PATH}@./@g'|
         sed 's@TOFCalibration_ref_masses @TOFCalibration_ref_masses.txt @g; s@TOFCalibration_const @TOFCalibration_const.csv @'| 
 	sed 's/\("TOPP_SiriusAdapter_4".*\)-sirius:database all\(.*\)/\1-sirius:database pubchem\2/' |
     while read line
