@@ -6,7 +6,7 @@ author:
 - "Art Eschenlauer^[ORCiD 0000-0002-2882-0508, University of Minnesota: Minneapolis, Minnesota, US]"
 date:
 - "May 28, 2018"
-- "; revised June 23, 2022"
+- "; revised December 7, 2022"
 lot: true
 output:
   pdf_document:
@@ -97,13 +97,14 @@ params:
   kinaseUprtDescLutBz2: "./kinase_uniprot_description_lut.tabular.bz2"
   # should debugging trace messages be printed?
   showEnrichedSubstrates: FALSE
-
   # should debugging nb/nbe messages be printed?
   printNBMsgs:          FALSE
+  # showld row-scaling be applied to heatmaps: "none" or "row"
+  defaultHeatMapRowScaling: "none"
   # should debugging trace messages be printed?
   printTraceMsgs:       FALSE
   # when debugging files are needed, set debugFileBasePath to the path
-  #   to the directory where they should be writtn
+  #   to the directory where they should be written
   debugFileBasePath:    !r if (TRUE) NULL else "test-data"
 ---
 
@@ -555,6 +556,16 @@ switch(
     knitr::knit_exit()
   }
 )
+
+g_default_heatmap_row_scaling <-
+  params$defaultHeatMapRowScaling
+if (
+  !is.character(g_default_heatmap_row_scaling) ||
+  !(g_default_heatmap_row_scaling %in% c("row", "none"))
+  ) {
+  cat("invalid defaultHeatMapRowScaling (must be 'row' or 'none')")
+  knitr::knit_exit()
+}
 
 # intensityHeatmapRows: 50
 # TODO Validate >> 0 < 75
@@ -2287,7 +2298,16 @@ draw_kseaapp_summary_heatmap <- function(
   my_limit <- g_intensity_hm_rows
 
   my_row_cex_scale <- master_cex * 150 / nrow_x
+  #ACE row cex shrink hack begin
+  my_row_cex_scale <- master_cex * 150 / max(nrow_x, ncol_x)
+  #ACE row cex shrink hack end
+
   my_col_cex_scale <- 3.0
+  #ACE col cex shrink hack begin
+  if (ncol_x > 40)
+    my_col_cex_scale <- 3.0 * 40 / ncol_x
+  #ACE col cex shrink hack end
+
   my_asterisk_scale <- 0.4 * my_row_cex_scale
   my_row_warp <- 1
   my_note_warp <- 2
@@ -2606,6 +2626,8 @@ ppep_heatmap <-
     margins = NULL,                 # optional margins (bottom, right)
     cellnote = NULL,                # optional matrix of character; dim = dim(m)
     adj = 0.5,                      # adjust text: 0 left, 0.5 middle, 1 right
+    row_scaling =                   # should row-scaling be applied if possible?
+      g_default_heatmap_row_scaling,
     ...                             # passthru to hm2plus or heatmap.2
   ) {
     use_heatmap_1 <- FALSE
@@ -2780,11 +2802,11 @@ ppep_heatmap <-
             }
 
             # invoke hm_call inner function
-            if (sum(rowSums(!is.na(m_hm)) < 2))
+            if (row_scaling != "row" || sum(rowSums(!is.na(m_hm)) < 2))
               hm_call(
                 m_hm,
                 "none",
-                "log(intensities), unscaled, unimputed, and unnormalized"
+                "log(intensities), unimputed, and unnormalized"
                 )
             else
               hm_call(
@@ -2802,10 +2824,7 @@ ppep_heatmap <-
                     hm_call(
                       m_hm,
                       "none",
-                      paste(
-                        "log(intensities), unscaled,",
-                        "zero-imputed, unnormalized"
-                        )
+                      "log(intensities), zero-imputed, unnormalized"
                       )
                   else
                     cat("\nThere are too few peptides to produce a heatmap.\n")
@@ -3715,12 +3734,8 @@ imp_smry_pot_peptides_after <- sum(good_rows)
 imp_smry_rejected_after  <- sum(!good_rows)
 imp_smry_missing_values_after   <- sum(is.na(quant_data_imp[good_rows, ]))
 
-# From ?`%in%`, %in% is currently defined as function(x, table) match(x, table, nomatch = 0) > 0
-
-sink(stderr())
-print("`%in%`:")
-print(`%in%`)
-sink()
+# From ?`%in%`:
+#   %in% is currently defined as function(x, table) match(x, table, nomatch = 0) > 0
 
 stock_in <-
   names(good_rows) %in%
@@ -5094,33 +5109,38 @@ if (g_can_run_ksea && count_of_treatment_levels > 1) {
         one_way_f = one_way_two_categories, # anova_func arg3
         simplify = TRUE # TRUE is the default for simplify
         )
-    contrast_data_adj_p_values <- p.adjust(
-        p = p_value_data_contrast_ps,
-        method = "fdr",
-        n = length(p_value_data_contrast_ps) # this is the default, length(p)
+
+    if (!is.null(p_value_data_contrast_ps)) {
+      contrast_data_adj_p_values <-
+        p.adjust(
+          p = p_value_data_contrast_ps,
+          method = "fdr",
+          n = length(p_value_data_contrast_ps) # this is the default, length(p)
+          )
+
+      # - compute the fold-change
+      contrast_p_df <-
+        data.frame(
+          contrast = contrast,
+          phosphopep = contrast_cast$phosphopep,
+          p_value_raw = p_value_data_contrast_ps,
+          p_value_adj = contrast_data_adj_p_values
+        )
+      db_write_table_overwrite <- (contrast < 2)
+      db_write_table_append <- !db_write_table_overwrite
+      RSQLite::dbWriteTable(
+        conn = db,
+        name = "contrast_ppep_p_val",
+        value = contrast_p_df,
+        append = db_write_table_append
+        )
+      # Create UK for insert
+      ddl_exec(db, "
+        CREATE UNIQUE INDEX IF NOT EXISTS contrast_ppep_p_val__uk__idx
+          ON contrast_ppep_p_val(phosphopep, contrast);
+        "
       )
-    # - compute the fold-change
-    contrast_p_df <-
-      data.frame(
-        contrast = contrast,
-        phosphopep = contrast_cast$phosphopep,
-        p_value_raw = p_value_data_contrast_ps,
-        p_value_adj = contrast_data_adj_p_values
-      )
-    db_write_table_overwrite <- (contrast < 2)
-    db_write_table_append <- !db_write_table_overwrite
-    RSQLite::dbWriteTable(
-      conn = db,
-      name = "contrast_ppep_p_val",
-      value = contrast_p_df,
-      append = db_write_table_append
-      )
-    # Create UK for insert
-    ddl_exec(db, "
-      CREATE UNIQUE INDEX IF NOT EXISTS contrast_ppep_p_val__uk__idx
-        ON contrast_ppep_p_val(phosphopep, contrast);
-      "
-    )
+    }
   }
   # Perhaps this could be done more elegantly using unique keys
   #   or creating the tables before saving data to them, but this
@@ -6095,7 +6115,8 @@ if (g_can_run_ksea) {
           suppress_row_dendrogram = FALSE,
           master_cex              = 0.35,
           sepcolor                = "black",
-          colsep                  = sample_colsep
+          colsep                  = sample_colsep,
+          row_scaling             = "none"
         )
         if (number_of_peptides_found > 1) {
 
