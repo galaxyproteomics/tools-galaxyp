@@ -73,7 +73,9 @@ movetolast <- function(data, move) {
 }
 
 # Generate phosphopeptide and build list when applied
+# nolint start: squash un-actionable cyclomatic_complexity warning
 phosphopeptide_func <- function(df) {
+# nolint end
   # generate peptide sequence and list of phosphopositions
   phosphoprobsequence <-
     strsplit(as.character(df["Phospho (STY) Score diffs"]), "")[[1]]

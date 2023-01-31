@@ -101,14 +101,15 @@ option_list <- list(
     default = "FDR",
     type = "character",
     help = paste0("Method for missing-value imputation,",
-             " one of c('FDR','p.value'), but don't expect 'p.value' to work well.")
+      " one of c('FDR','p.value'), but don't expect 'p.value' to work well.")
   ),
   make_option(
     c("-t", "--ksea_cutoff_threshold"),
     action = "store",
     default = 0.05,
     type = "double",
-    help = paste0("Maximum score to be used to score a kinase enrichment as significant")
+    help = paste0(
+      "Maximum score to be used to score a kinase enrichment as significant")
   ),
   make_option(
     c("-c", "--kseaMinSubstrateCount"),
@@ -269,7 +270,8 @@ if (
       )
     ) < 1
   ) {
-    print(sprintf("bad ksea_cutoff_statistic argument: %s", ksea_cutoff_statistic))
+    print(sprintf(
+      "bad ksea_cutoff_statistic argument: %s", ksea_cutoff_statistic))
     return(-1)
     }
 
@@ -313,7 +315,6 @@ read_config_file_string <- function(fname, limit) {
       cat(sprintf("not a file: '%s'\n", fname))
       fname
     }
-  #AC print(paste0("read_config_file_string: opening file '", as.character(fname), "'"))
   # eliminate any leading whitespace
   result <- gsub("^[ \t\n]*", "",   result)
   # eliminate any trailing whitespace
@@ -347,8 +348,10 @@ regex_sample_names <- read_config_file_string(args$regexSampleNames, nc)
 cat(paste0("regex_sample_names: ",    regex_sample_names,    "\n"))
 
 if (group_filter != "none") {
-  cat(paste0("group_filter_patterns file: '", args$sampleGroupFilterPatterns, "'\n"))
-  group_filter_patterns <- read_config_file_string(args$sampleGroupFilterPatterns, nc)
+  cat(paste0("group_filter_patterns file: '",
+             args$sampleGroupFilterPatterns, "'\n"))
+  group_filter_patterns <-
+    read_config_file_string(args$sampleGroupFilterPatterns, nc)
 } else {
   group_filter_patterns <- ".*"
 }
