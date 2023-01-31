@@ -48,11 +48,11 @@ params:
   # for small random value imputation, what should `s / mean(x)` ratio be?
   sdPercentile:         1.0
   # output path for imputed data file
-  imputedDataFilename:  "test-data/limbo/imputedDataFilename.txt"
+  imputedDataFilename:  "test-data/imputedDataFilename.txt"
   # output path for imputed/quantile-normalized/log-transformed data file
-  imputedQNLTDataFile:  "test-data/limbo/imputedQNLTDataFile.txt"
+  imputedQNLTDataFile:  "test-data/imputedQNLTDataFile.txt"
   # output path for contents of `stats_metadata_v` table
-  anovaKseaMetadata:    "test-data/limbo/anovaKseaMetadata.txt"
+  anovaKseaMetadata:    "test-data/anovaKseaMetadata.txt"
   # how to test one variable with > 2 categories (e.g., aov or kruskal.test)
   oneWayManyCategories: !r c("aov", "kruskal.test", "oneway.test")[1]
   # how to test one variable with 2 categories (e.g., oneway.test)
@@ -99,8 +99,17 @@ params:
   showEnrichedSubstrates: FALSE
   # should debugging nb/nbe messages be printed?
   printNBMsgs:          FALSE
-  # showld row-scaling be applied to heatmaps: "none" or "row"
-  defaultHeatMapRowScaling: "none"
+  #printNBMsgs:          TRUE
+  # should row-scaling be applied to heatmaps: "none" or "row"
+  defaultHeatMapRowScaling: !r c("none", "row")[1]
+  # how missing values be displayed on heat maps: "NA" or " "
+  heatMapNAcellNote:    !r c(" ", "NA")[1]
+  # how missing values be displayed on heat maps: "NA" or " "
+  heatMapNAgrey:        "#D8D8D8"
+  # temporary hack
+  heatMapNAsubstitute:  TRUE
+  # what color should be used for missing values be displayed on heat maps
+  heatMapNAcellColor:   "grey15"
   # should debugging trace messages be printed?
   printTraceMsgs:       FALSE
   # when debugging files are needed, set debugFileBasePath to the path
@@ -124,7 +133,7 @@ nbe <- if (!print_nb_messages) {
   } else {
     function(..., f = cat, file = stderr()) {
       cat(
-        stringi::stri_unescape_unicode("\nNBE \\u2203\\u2283\\u2200"),
+        stringi::stri_unescape_unicode("\nN.B. \\u2203\\u2283\\u2200"),
         ...,
         file = file
       )
@@ -148,7 +157,7 @@ if (print_nb_messages) nbe("library(gplots)")
 library(gplots)
 if (print_nb_messages) nbe("library(caret)")
 # load caret for nearZeroVar
-if (print_nb_messages) nbe("Please ignore the messages about systemd, if any.\n")
+if (print_nb_messages) nbe("Please ignore any messages about systemd.\n")
 library(caret)
 if (print_nb_messages) nbe("library(DBI)")
 library(DBI)
@@ -342,6 +351,18 @@ see_variable <-
     }
   }
 
+divert_warnings <-
+  function(expr, classes = "warning") {
+    withCallingHandlers(
+      expr,
+      warning = function(w) {
+        cat("  divert_warnings: ", w$message, "\n", file = stderr())
+        if (inherits(w, classes))
+          tryInvokeRestart("muffleWarning")
+        }
+      )
+  }
+
 # ref: https://tug.org/texinfohtml/latex2e.html
 # LaTeX sets aside the following characters for special purposes.
 #   For example, the percent sign % is for comments.
@@ -360,24 +381,68 @@ see_variable <-
 #   receiving a tilde accent).
 # Similarly, to get a text body font circumflex use \^{}.
 #   To get a backslash in the font of the text body enter \textbackslash{}.
-whack_math <-
+whack_math <- if (TRUE) {
   function(v) {
     v <- as.character(v)
+    w <- v
     w <- gsub("\\", "\\textbackslash ", v, fixed = TRUE)
     w <- Reduce(
           f = function(l, r) {
-            gsub(r, paste0("\\", r), l, fixed = TRUE)
+            ptrn <- paste0("\\", r)
+            for (i in seq_along(l)) {
+              if (!grepl(ptrn, l[i], fixed = TRUE)) {
+                l[i] <- gsub(r, ptrn, l[i], fixed = TRUE)
+              }
+            }
+            l
           },
           x = c("#", "$", "%", "&", "{", "}", "_"),
           init = w
         )
     w <- gsub("^", "\\^{}", w, fixed = TRUE)
+    w <- gsub("\\textbackslash \\_", "\\_", w, fixed = TRUE)
+    return(w)
+  }
+} else {
+  function(v) {
+    v <- as.character(v)
+    w <- v
+    w <- gsub("\\", "\\textbackslash ", v, fixed = TRUE)
+    w <- Reduce(
+          f = function(l, r) {
+            if (length(l) > 1) {
+              cat("whack_math: deparse1(v) = `", deparse1(v), "`\n",
+                  file = stderr())
+              cat("whack_math: v = `", v, "`\n", file = stderr())
+              cat("  Reduce f: l = `", l,
+                "` r = `", r,
+                "`\n", file = stderr()
+                )
+              divert_warnings(grepl(r, l, fixed = TRUE))
+            }
+            ptrn <- paste0("\\", r)
+            cat("ptrn: `", ptrn, "`\n", file = stderr())
+            for (i in seq_along(l)) {
+              cat("  before l[i] = ", l[i], "\n", file = stderr())
+              if (!grepl(ptrn, l[i], fixed = TRUE)) {
+                l[i] <- gsub(r, ptrn, l[i], fixed = TRUE)
+              }
+              cat("   after l[i] = ", l[i], "\n", file = stderr())
+            }
+            l
+          },
+          x = c("#", "$", "%", "&", "{", "}", "_"),
+          init = w
+        )
+    w <- gsub("^", "\\^{}", w, fixed = TRUE)
+    w <- gsub("\\textbackslash \\_", "\\_", w, fixed = TRUE)
     return(w)
     if (all(v == w))
       v
     else
       paste0("\\texttt{", w, "}")
   }
+}
 whack_underscores <- whack_math
 
 ## dump params to stderr (remove this eventually)
@@ -580,13 +645,13 @@ if (!is.integer(g_intensity_min_per_class) || g_intensity_min_per_class < 0) {
   cat("invalid intensityMinValuesPerGroup (must be integer > -1")
   knitr::knit_exit()
 }
-
-if (is.na(as.logical(g_correlate_substrates  <- params$correlateSubstrates))) {
+g_correlate_substrates  <- params$correlateSubstrates
+if (is.na(as.logical(g_correlate_substrates))) {
   cat("invalid correlateSubstrates (must be TRUE or FALSE)")
   knitr::knit_exit()
 }
-
-if (is.na(as.logical(g_filter_cov_var_gt_1   <- params$filterCovVarGT1))) {
+g_filter_cov_var_gt_1 <- params$filterCovVarGT1
+if (is.na(as.logical(g_filter_cov_var_gt_1))) {
   cat("invalid filterCovVarGT1 parameter (must be TRUE or FALSE)")
   knitr::knit_exit()
 }
@@ -619,6 +684,9 @@ g_sbstr_trunc_n         <- params$substTruncN
   )
   invisible(rvalue)
 }
+# Infix concatenation
+`%||%` <- function(lvalue, rvalue) paste0(lvalue, rvalue)
+
 
 ### FUNCTIONS
 
@@ -705,7 +773,7 @@ mgrepl <- function(v, s, ...) {
     )
     grpl_rslt <- grpl_rslt + grpl_rslt_v
   }
-  rslt <- unname(grpl_rslt > 0)
+  unname(grpl_rslt > 0)
 }
 
 ##' Produce positions in a vector where succeeding value != current valus
@@ -828,7 +896,10 @@ anova_func <- function(x, grouping_factor, one_way_f) {
 
 # This code adapted from matrixcalc::is.positive.definite
 #   Notably, this simply tests without calling stop()
+# nolint start
+#   squash un-actionable cyclomatic_complexity warning
 is_positive_definite <- function(x, tol = 1e-08) {
+# nolint end
   if (!is.matrix(x))
     return(FALSE)
   if (!is.numeric(x))
@@ -972,8 +1043,12 @@ data_frame_table_latex <-
   }
 
 # Use this like print.data.frame, from which it is adapted:
+# nolint start
+#   squash un-actionable cyclomatic_complexity warning
+#   squash un-actionable "no visible global for ..."
 data_frame_tabbing_latex <-
   function(
+# nolint end
     x,
     # vector of tab stops, in inches
     tabstops,
@@ -1151,38 +1226,30 @@ latex_printable_control_seqs <-
 nolatex_verbatim <-
   function(expr) eval(expr)
 
+error_knitrexit_stop <-
+  function(e) {
+    cat("Caught error:\n\n")
+    str(e)
+    knitr::knit_exit()
+    stop(e)
+  }
+
 latex_verbatim <-
   function(expr) {
-    arg_string <- deparse1(substitute(expr))
     cat("\n\\begin{verbatim}\n___\n")
     tryCatch(
       expr = expr,
       error = param_df_exit,
-      #ACE error =
-      #ACE   function(e) {
-      #ACE     cat("Caught error:\n\n")
-      #ACE     str(e)
-      #ACE     knitr::knit_exit()
-      #ACE     stop(e)
-      #ACE   },
       finally = cat("...\n\\end{verbatim}\n")
     )
   }
 
 latex_samepage <-
   function(expr) {
-    arg_string <- deparse1(substitute(expr))
     cat("\n\\begin{samepage}\n")
     tryCatch(
       expr = expr,
       error = param_df_exit,
-      #ACE error =
-      #ACE   function(e) {
-      #ACE     cat("Caught error:\n\n")
-      #ACE     str(e)
-      #ACE     knitr::knit_exit()
-      #ACE     stop(e)
-      #ACE   },
       finally = cat("\n\\end{samepage}\n")
     )
   }
@@ -1192,7 +1259,6 @@ latex_samepage <-
 latex_show_invocation <-
   function(f, f_name = deparse1(substitute(f)), head_patch = FALSE) {
     function(...) {
-      my_env <- (as.list(environment()))
       va <- list(...)
       my_rslt <- new_env()
       my_rslt$rslt <- NULL
@@ -1202,7 +1268,8 @@ latex_show_invocation <-
           str(va)
           if (!head_patch) {
             # return this result
-            # ref: https://www.r-bloggers.com/2013/08/a-new-r-trick-for-me-at-least/
+            # ref:
+            # https://www.r-bloggers.com/2013/08/a-new-r-trick-for-me-at-least/
             cat(sprintf("\n ..  Invoking '%s'\n", f_name))
             tryCatch(
               {
@@ -1210,13 +1277,6 @@ latex_show_invocation <-
                 rslt <- do.call(f, va)
               },
               error = param_df_exit,
-              #ACE error = function(e) {
-              #ACE    cat("\n\\begin{verbatim}\n")
-              #ACE    str(e)
-              #ACE    cat("\n\\end{verbatim}\n")
-              #ACE    knitr::knit_exit()
-              #ACE    stop(e)
-              #ACE },
               finally = cat("\n\\begin{verbatim}\n")
             )
             cat(sprintf("\n ..  '%s' returned:\n", f_name))
@@ -1248,7 +1308,8 @@ latex_collapsed_vector <- function(
     )
 }
 
-latex_itemized_collapsed <- function(collapse_string, v, underscore_whack = TRUE) {
+latex_itemized_collapsed <-
+  function(collapse_string, v, underscore_whack = TRUE) {
   cat("\\begin{itemize}\n\\item ")
   latex_collapsed_vector(collapse_string, v, underscore_whack)
   cat("\n\\end{itemize}\n")
@@ -1258,7 +1319,8 @@ latex_itemized_list <- function(v, underscore_whack = TRUE) {
   latex_itemized_collapsed("\n\\item ", v, underscore_whack)
 }
 
-latex_enumerated_collapsed <- function(collapse_string, v, underscore_whack = TRUE) {
+latex_enumerated_collapsed <-
+  function(collapse_string, v, underscore_whack = TRUE) {
   cat("\\begin{enumerate}\n\\item ")
   latex_collapsed_vector(collapse_string, v, underscore_whack)
   cat("\n\\end{enumerate}\n")
@@ -1302,7 +1364,7 @@ latex_tabbing_row <- function(
 # N.B. use con = "" to emulate regular cat
 fcat0 <-
   function(..., sprtr = " ", cnnctn = file()) {
-    cat0(..., sep = sprtr, file = cnnctn)
+    gsubfn::cat0(..., sep = sprtr, file = cnnctn)
     invisible(cnnctn)
   }
 
@@ -1428,7 +1490,10 @@ dml_no_rows_exec <- function(db, sql) {
 #'
 #' Horn et al. (2014) Nature Methods 11(6):603-4
 #'
+# nolint start
+#   squash un-actionable cyclomatic_complexity warning
 ksea_scores <- function(
+# nolint end
   # For human data, typically, ksdata = KSEAapp::ksdata
   ksdata,
 
@@ -1456,6 +1521,18 @@ ksea_scores <- function(
   minimum_substrate_count
 
 ) {
+  if (FALSE) {
+    if (print_nb_messages) nbe("Output contents of `ksdata` table\n")
+    cat_variable(ksdata)
+    cat("\n\\clearpage\n")
+    data_frame_tabbing_latex(
+      x = ksdata[order(ksdata$GENE, ksdata$SUB_GENE), ],
+      tabstops = c(0.3, 0.3, 1.2, 0.3, 0.3, 0.3, 0.3,
+                   0.8, 0.3, 0.8, 0.3, 0.3, 0.3),
+      caption = "ksdata dump",
+      use_subsubsection_header = FALSE
+    )
+  }
   # no px$FC should be <= 0, but abs(px$FC) is used below as a precaution.
   if (length(grep(";", px$Residue.Both)) == 0) {
     # There are no Residue.Both entries having semicolons, so new is
@@ -1509,7 +1586,10 @@ ksea_scores <- function(
   #
   # Should KSEA be performed aggregating signed log2FC or absolute?
   # FALSE use raw log2FC for KSEA as for KSEAapp::KSEA.Scores
+# nolint start
+#   squash un-actionable "no visible global for ..."
   if (params$kseaUseAbsoluteLog2FC) {
+# nolint end
     # TRUE  use abs(log2FC) for KSEA as Justin requested; this is a
     #         justifiable deviation from the KSEAapp::KSEA.Scores algorithm.
     new$log2_fc <- abs(new$log2_fc)
@@ -1522,7 +1602,7 @@ ksea_scores <- function(
     cat(see_variable(networkin, "\n"))
   }
   ksdata_filtered <-
-    sqldf(
+    sqldf::sqldf(
       sprintf("%s %s",
         "select * from ksdata where not Source = 'NetworKIN'",
         if (networkin)
@@ -1531,10 +1611,11 @@ ksea_scores <- function(
           ""
         )
       )
+  if (FALSE) write.csv(x = ksdata_filtered, file = "ksdata_filtered.csv")
   if (monitor_filtration_on_stderr) {
-    cat(see_variable(sqldf(
+    cat(see_variable(sqldf::sqldf(
       "select count(*), Source from ksdata group by Source"), "\n"))
-    cat(see_variable(sqldf(
+    cat(see_variable(sqldf::sqldf(
       "select count(*), Source from ksdata_filtered group by Source"), "\n"))
     sink()
   }
@@ -1604,6 +1685,44 @@ ksea_scores <- function(
         ksdata_dataset_abbrev$p),
       ]
   if (print_nb_messages) nbe(see_variable(ksdata_dataset_abbrev))
+  if (FALSE) write.csv(
+    x = ksdata_dataset_abbrev,
+    file = "ksdata_dataset_abbrev_no_aggregation.csv",
+    row.names = FALSE
+    )
+
+  # For some kinases, the only difference between kinase names in two databases
+  #   is the case of the the letters; dedup to eliminate this false distinction
+  #   The only imperfection with this approach is when the NetworKIN-only fliter
+  #   is in force and there is a duplication between NetworKIN and HPRD (which
+  #   outranks NetworKIN).  Presently, the script does not invoke with this
+  #   function with the NetworKIN-only filter active.
+  dedup_sql <- "
+    select
+      r.'Kinase.Gene', r.'Substrate.Gene', r.'Substrate.Mod',
+      r.Peptide, r.p, r.FC, r.log2FC, r.Source
+    from
+      ( select
+          rowid,
+          rank() over
+            (partition by
+              lower(k.'Kinase.Gene'), k.p, k.FC
+            order by
+              k.Source
+            ) as rank,
+          *
+        from
+          ksdata_dataset_abbrev k
+        ) as r
+    where r.rank = 1
+  "
+  ksdata_dataset_abbrev <- sqldf::sqldf(x = dedup_sql)
+  if (FALSE) write.csv(
+    x = ksdata_dataset_abbrev,
+    file = "ksdata_dataset_abbrev_no_aggregation_dedup.csv",
+    row.names = FALSE
+    )
+
   # First aggregation step to account for multiply phosphorylated peptides
   #   and differing peptide sequences; the goal here is to combine results
   #   for all measurements of the same substrate.
@@ -1656,6 +1775,7 @@ ksea_scores <- function(
       FUN = mean
       )
   if (print_nb_messages) nbe(see_variable(mean_fc), "\n")
+  if (FALSE) write.csv(x = mean_fc, file = "mean_fc.csv")
 
   # for contrast j
   #   for each kinase i
@@ -1681,6 +1801,7 @@ ksea_scores <- function(
   # Reorder mean_fc, although I don't see why
   #   (KSEA.Scores.R line 128
   mean_fc <- mean_fc[order(mean_fc[, 1]), ]
+  if (FALSE) write.csv(x = mean_fc, file = "mean_fc.csv")
   # mean_fc columns so far: "Kinase.Gene", "log2FC"
   # - Kinase.Gene
   #               indicates the gene name for each kinase.
@@ -1736,7 +1857,6 @@ ksea_scores <- function(
       ]
   }
 
-  #ACE nb(see_variable(nrow(mean_fc)), "\n")
   # Create column 8: FDR, deduced by Benjamini-Hochberg adustment from p-value
   # - FDR
   #               is the p-value adjusted for multiple hypothesis testing
@@ -1747,7 +1867,10 @@ ksea_scores <- function(
 
   # It makes no sense to leave Z-scores negative when using
   #   absolute value of fold-change
+# nolint start
+#   squash un-actionable "no visible global for ..."
   if (params$kseaUseAbsoluteLog2FC) {
+# nolint end
     mean_fc$z_score <- abs(mean_fc$z_score)
   }
 
@@ -1809,8 +1932,6 @@ ksea_low_fdr_barplot_factory <- function(
 
     k <- k[selector < ksea_cutoff_threshold, ]
     nrow_k <- nrow(k)
-
-    #ACE nbe(see_variable(fdr_barplot_dataframe <- k))
 
     if (nrow_k > 0) {
       max_nchar_rowname <- max(nchar(rownames(k)))
@@ -1978,8 +2099,10 @@ ksea_low_fdr_print <- function(
           "p_value",
           "fdr"
         )
-      #ACE output_order <- with(output_df, order(fdr))
+
+# nolint start
       output_order <- with(output_df, order(p_value))
+# nolint end
       output_df <- output_df[output_order, ]
 
       output_df[, 2] <- sprintf("%0.3g", output_df[, 2])
@@ -1988,10 +2111,9 @@ ksea_low_fdr_print <- function(
       output_df$z_score <- sprintf("%0.2f", output_df$z_score)
       output_df$m_s <- sprintf("%d", output_df$m_s)
       output_df$enrichment <- sprintf("%0.3g", output_df$enrichment)
-      output_ncol <- ncol(output_df)
       colnames(output_df) <-
         c(
-          "Kinase",
+          "Kinase or motif",
           "\\(\\overline{{\\lvert}\\log_2 (\\text{fold-change}){\\rvert}}\\)",
           "Enrichment",
           "Substrates",
@@ -2022,15 +2144,11 @@ ksea_low_fdr_print <- function(
         if (print_nb_messages) nbe(see_variable(output_df))
         math_caption <- gsub("{", "\\{", caption,      fixed = TRUE)
         math_caption <- gsub("}", "\\}", math_caption, fixed = TRUE)
-        # with (
-        #   output_df,
-        #   )
         if (TRUE) {
-          output_df$Kinase <- whack_underscores(output_df$Kinase)
           data_frame_tabbing_latex(
             x = output_df,
             # vector of tab stops, in inches
-            tabstops = c(1.0, 1.2, 1.0, 1.0, 1.0, 1.0),
+            tabstops = c(1.8, 1.2, 0.8, 0.8, 0.8, 0.8, 0.8),
             # vector of headings, registered with tab-stops
             headings = colnames(output_df),
             # digits to pass to format.data.frame
@@ -2056,20 +2174,6 @@ ksea_low_fdr_print <- function(
             charactersize = "small",
             # set verbatim to TRUE to debug output
             verbatim = FALSE
-            )
-        } else {
-          data_frame_table_latex(
-            x = output_df,
-            justification = "l c c c c c c",
-            centered = TRUE,
-            caption = sprintf(
-              "\\text{%s}, KSEA %s < %s",
-              math_caption,
-              ksea_cutoff_statistic,
-              ksea_cutoff_threshold
-              ),
-            anchor = anchor,
-            underscore_whack = FALSE
             )
         }
       } else {
@@ -2132,7 +2236,10 @@ create_breaks <- function(merged_scores) {
   return(color_breaks)
 }
 
+# nolint start
+#   squash un-actionable cyclomatic_complexity warning
 hm2plus <- function(
+# nolint end
   x,
   mat = matrix(
           c(
@@ -2161,11 +2268,10 @@ hm2plus <- function(
   ...
 ) {
 
-  varargs <- list(...)
   if (FALSE) # this is to avoid commenting out code to pass linting...
-    my_hm2 <- latex_show_invocation(heatmap.2, head_patch = FALSE)
+    my_hm2 <- latex_show_invocation(gplots::heatmap.2, head_patch = FALSE)
   else
-    my_hm2 <- heatmap.2
+    my_hm2 <- gplots::heatmap.2
 
   x <- as.matrix(x)
   if (sum(!is.na(x)) < 1)
@@ -2177,7 +2283,7 @@ hm2plus <- function(
   if (print_nb_messages) nb("within hm2plus", see_variable(divergent), "\n")
   if (divergent) {
     zlim <- max(abs(min_nonax), abs(max_nonax))
-    if (print_nb_messages) nb(see_variable(pre_zlim <- zlim, "\n"))
+    if (print_nb_messages) nb(see_variable(zlim, "\n"))
     breaks <- (zlim) / (break_count:1)
     if (print_nb_messages) nb(see_variable(breaks, "\n"))
     breaks <- breaks - median(breaks)
@@ -2185,7 +2291,7 @@ hm2plus <- function(
     if (print_nb_messages) nb(see_variable(zlim, "\n"))
   } else {
     zlim <- max(abs(min_nonax), abs(max_nonax))
-    if (print_nb_messages) nb(see_variable(pre_zlim <- zlim, "\n"))
+    if (print_nb_messages) nb(see_variable(zlim, "\n"))
     breaks <- zlim / (break_count:1)
     if (print_nb_messages) nb(see_variable(breaks, "\n"))
     if  (max_nonax < 0) {
@@ -2197,7 +2303,10 @@ hm2plus <- function(
     if (print_nb_messages) nb(see_variable(zlim, "\n"))
   }
   nonax <- x
-  nonax[is.na(x)] <- min_nonax
+# nolint start
+#   squash un-actionable "no visible global for ..."
+  if (params$heatMapNAsubstitute) nonax[is.na(x)] <- min_nonax
+# nolint end
   if (is.null(widths)) widths <- c(denwid, 4 - denwid, 1.5)
   if (is.null(heights)) heights <- c(0.4, denhgt, 4.0)
   colors <-
@@ -2212,21 +2321,20 @@ hm2plus <- function(
       colorRampPalette(c("red", "white"))(color_count)
     } else {
       # "non-divergent" colors including zero
-      hcl.colors(color_count, "YlOrRd", rev = TRUE)
+      tmp <- hcl.colors(color_count, "YlOrRd", rev = TRUE)
+# nolint start
+#   squash un-actionable "no visible global for ..."
+      tmp[1] <- params$heatMapNAgrey
+# nolint end
+      tmp
     }
 
-  #ACE if (print_nb_messages) nb("within hm2plus", see_variable(key_par), "\n")
-  #ACE if (print_nb_messages) nb(see_variable(colors, "\n"))
-  #ACE key_par$col = colors
-  #ACE key_par$breaks = breaks
+  nbe("There are ", sum(is.na(x)), " NA values")
 
-  if (print_nb_messages) nb(see_variable(par(), "\n")) #ACE TODO remove me
-  if (print_nb_messages) cat("\\leavevmode\n\\linebreak\n") #ACE TODO remove me
   suppressWarnings(
     my_hm2(
       x = x,
       col = colors,
-      #ACE symkey = FALSE,
       density.info = density_info,
       srtCol = srtcol,
       srtRow = srtrow,
@@ -2241,7 +2349,6 @@ hm2plus <- function(
       trace = trace,
       bg = "yellow",
       hclustfun = hclustfun,
-      #ACE breaks = breaks,
       oldstyle = FALSE,
       ... # varargs
     )
@@ -2250,7 +2357,10 @@ hm2plus <- function(
 }
 
 # draw_kseaapp_summary_heatmap is a helper function for ksea_heatmap
+# nolint start
+#   squash un-actionable cyclomatic_complexity warning
 draw_kseaapp_summary_heatmap <- function(
+# nolint end
     x,                       # matrix with row/col names already formatted
     sample_cluster,          # a binary input of TRUE or FALSE,
                              #   indicating whether or not to perform
@@ -2295,18 +2405,17 @@ draw_kseaapp_summary_heatmap <- function(
   }
   max_nchar_rowname <- max(nchar(rownames(x)))
   max_nchar_colname <- max(nchar(colnames(x)))
-  my_limit <- g_intensity_hm_rows
 
   my_row_cex_scale <- master_cex * 150 / nrow_x
-  #ACE row cex shrink hack begin
+  # row cex shrink hack begin
   my_row_cex_scale <- master_cex * 150 / max(nrow_x, ncol_x)
-  #ACE row cex shrink hack end
+  # row cex shrink hack end
 
   my_col_cex_scale <- 3.0
-  #ACE col cex shrink hack begin
+  # col cex shrink hack begin
   if (ncol_x > 40)
     my_col_cex_scale <- 3.0 * 40 / ncol_x
-  #ACE col cex shrink hack end
+  # col cex shrink hack end
 
   my_asterisk_scale <- 0.4 * my_row_cex_scale
   my_row_warp <- 1
@@ -2338,14 +2447,6 @@ draw_kseaapp_summary_heatmap <- function(
       c(
         margins[1] * 0.08 * max_nchar_colname * my_col_cex,
         margins[2] * 0.04 * max_nchar_rowname * my_row_cex
-      )
-
-  my_notecex <-
-    my_scale *
-      min(
-        1.1,
-        my_row_cex_asterisk * my_note_warp,
-        my_col_cex * my_note_warp
       )
 
   if (print_trace_messages) {
@@ -2403,7 +2504,10 @@ draw_kseaapp_summary_heatmap <- function(
 
 # function drawing heatmap of contrast fold-change for each kinase,
 #   adapted from KSEAapp::KSEA.Heatmap
+# nolint start
+#   squash un-actionable cyclomatic_complexity warning
 ksea_heatmap <- function(
+# nolint end
   # the data frame outputs from the KSEA.Scores() function, in list format
   score_list,
   # a character vector of all the sample names for heatmap annotation:
@@ -2429,7 +2533,7 @@ ksea_heatmap <- function(
   # a binary input of TRUE or FALSE, indicating whether or not to export
   #   the heatmap as a .png image into the working directory
   export = FALSE,
-  # bottom and right margins; adjust as needehttps://tex.stackexchange.com/a/56795d if contrast names are too long
+  # bottom and right margins; adjust as needed if contrast names are too long
   margins = c(6, 6),
   # print which kinases?
   # - Mandatory argument, must be one of const_ksea_.*_kinases
@@ -2484,8 +2588,6 @@ ksea_heatmap <- function(
   names(asterisk_rows) <- all_rows
   non_asterisk_rows <- names(asterisk_rows[asterisk_rows == FALSE])
   asterisk_rows <- names(asterisk_rows[asterisk_rows == TRUE])
-  merged_scores_asterisk <- merged_scores[names(asterisk_rows), , drop = FALSE]
-  merged_scores_non_asterisk <- merged_scores[names(non_asterisk_rows), , drop = FALSE]
 
   row_list <- list()
   row_list[[const_ksea_astrsk_kinases]] <- asterisk_rows
@@ -2613,7 +2715,10 @@ keep_var_gtr_min <- function(v_min) {
 keep_var_gtr_0 <- keep_var_gtr_min(0)
 
 # function drawing heatmap of phosphopeptide intensities
+# nolint start
+#   squash un-actionable cyclomatic_complexity warning
 ppep_heatmap <-
+# nolint end
   function(
     m,                              # matrix with rownames already formatted
     cutoff,                         # cutoff used by hm_heading_function
@@ -2630,7 +2735,6 @@ ppep_heatmap <-
       g_default_heatmap_row_scaling,
     ...                             # passthru to hm2plus or heatmap.2
   ) {
-    use_heatmap_1 <- FALSE
     peptide_count <- 0
     # emit the heading for the heatmap
     if (hm_heading_function(m, cutoff)) {
@@ -2643,8 +2747,10 @@ ppep_heatmap <-
         col_mchar_max <- max(nchar(colnames(m_margin)))
         row_margin <- master_cex * row_mchar_max * 2.6
         col_margin <- master_cex * col_mchar_max * 2.6
-        if (print_trace_messages) cat(sprintf("row_margin = %0.3f; ", row_margin))
-        if (print_trace_messages) cat(sprintf("col_margin = %0.3f; ", col_margin))
+        if (print_trace_messages) cat(
+          sprintf("row_margin = %0.3f; ", row_margin))
+        if (print_trace_messages) cat(
+          sprintf("col_margin = %0.3f; ", col_margin))
         hm_call <- NULL
         tryCatch(
           {
@@ -2656,16 +2762,21 @@ ppep_heatmap <-
             m_hm <-  m[peptide_count:1, , drop = FALSE]
             if (is.null(cellnote)) {
               cellnote <-  matrix("", nrow = nrow(m_hm), ncol = ncol(m_hm))
-              cellnote[is.na(m_hm)] <- "NA"
+# nolint start
+#   squash un-actionable "no visible global for ..."
+              cellnote[is.na(m_hm)] <- params$heatMapNAcellNote
+# nolint end
             } else {
               cellnote <-  cellnote[peptide_count:1, , drop = FALSE]
             }
-            m_hm[is.na(m_hm)] <- 0
+# nolint start
+#   squash un-actionable "no visible global for ..."
+            if (params$heatMapNAsubstitute) m_hm[is.na(m_hm)] <- 0
+# nolint end
             nrow_m_hm <- nrow(m_hm)
             ncol_m_hm <- ncol(m_hm)
             if (nrow_m_hm < 1 || ncol_m_hm < 1)
               return(peptide_count) # return zero as initialized above
-            my_limit <- g_intensity_hm_rows
 
 
             my_row_cex <- master_cex * (100 / (2 + row_mchar_max))
@@ -2673,8 +2784,10 @@ ppep_heatmap <-
             my_col_adj <- min(my_col_cex, my_row_cex) / my_col_cex
             my_col_cex <- min(my_col_cex, my_row_cex)
             col_margin <- sqrt(my_col_adj) * col_margin
-            if (print_trace_messages) cat(sprintf("my_row_cex = %0.3f; ", my_row_cex))
-            if (print_trace_messages) cat(sprintf("my_col_cex = %0.3f; ", my_col_cex))
+            if (print_trace_messages) cat(
+              sprintf("my_row_cex = %0.3f; ", my_row_cex))
+            if (print_trace_messages) cat(
+              sprintf("my_col_cex = %0.3f; ", my_col_cex))
             if (is.null(margins)) my_margins <-
               c(
                 (my_col_cex + col_margin), # col
@@ -2690,7 +2803,9 @@ ppep_heatmap <-
               )
             )
             my_hm2_cex <- 2 * master_cex
-            my_key_cex <- 0.9 - 0.1 * (g_intensity_hm_rows + nrow_m_hm) / g_intensity_hm_rows
+            my_key_cex <-
+              0.9 -
+              0.1 * (g_intensity_hm_rows + nrow_m_hm) / g_intensity_hm_rows
             my_key_warp <- 1.5 * 22.75 / row_margin
             my_key_cex <- min(1.10, my_key_warp * my_key_cex)
             my_hgt_scale <- 3.70 - 0.4 * (max(1, 0.9 * my_row_cex) - 1)
@@ -2705,7 +2820,8 @@ ppep_heatmap <-
             my_plot_height <-
               (0.566 + 0.354 * (nrow_m / g_intensity_hm_rows)) *
                 min(my_hgt_scale, my_hgt_scale * my_warp)
-            my_plot_height <- min(3.65, my_plot_height * g_intensity_hm_rows / 50)
+            my_plot_height <-
+              min(3.65, my_plot_height * g_intensity_hm_rows / 50)
             my_heights <- c(
                 0.3,                                 # title and top dendrogram
                 my_plot_height,                      # plot and bottom margin
@@ -2770,6 +2886,12 @@ ppep_heatmap <-
                     srtrow = 0,
                     xlab = "",
                     cellnote = cellnote,
+                    # ref for na.color:
+                    # https://cran.r-project.org/web/packages/gplots/gplots.pdf
+# nolint start
+#   squash un-actionable "no visible global for ..."
+                    na.color = params$heatMapNAcellColor,
+# nolint end
                     notecex = my_note_cex,
                     ...
                   )
@@ -2833,8 +2955,8 @@ ppep_heatmap <-
                   cat(
                     sprintf(
                       "\n%s %s Internal message: %s\n\\newline\n\n",
-                      "Failure drawing heatmap,",
-                      "possibly because of too many missing values.\n\\newline\n\n",
+                      "Failure drawing heatmap, possibly because of ",
+                      "too many missing values.\n\\newline\n\n",
                       r$message
                       )
                     )
@@ -2843,7 +2965,8 @@ ppep_heatmap <-
               )
             } else {
               cat(
-                "\nFailure drawing heatmap, possibly because of too many missing values.\n"
+                "\nFailure drawing heatmap, ",
+                "possibly because of too many missing values.\n"
                 )
             }
           }
@@ -2855,17 +2978,19 @@ ppep_heatmap <-
   }
 
 # function drawing heatmap of correlations if they exist, else covariances
+# nolint start
+#   squash un-actionable cyclomatic_complexity warning
+#   squash un-actionable "no visible global for ..."
 cov_heatmap <-
   function(
+# nolint end
     m,                              # matrix with rownames already formatted
+    kinase_name,
     top_substrates = FALSE,
     ...                             # passthru to hm2plus or heatmap.2
   ) {
-      if (print_nb_messages) nbe(see_variable(m), " [", nrow(m), "x", ncol(m), "\n")
-      #ACE nb(rowSums(m, na.rm = TRUE))
-      #ACE bad_rows <- (rowSums(m, na.rm = TRUE) == 0)
-      #ACE nb(see_variable(bad_rows))
-      #ACE m <- m[-bad_rows, , drop = FALSE]
+      if (print_nb_messages) nbe(
+        see_variable(m), " [", nrow(m), "x", ncol(m), "\n")
       colnames_m <- colnames(m)
       is_na_m <- is.na(m)
       tmp <- m
@@ -2903,7 +3028,6 @@ cov_heatmap <-
 
       t_m <- t(tmp)
       t_m[is.na(t_m)] <- 0
-      prefiltered_nrow <- ncol(t_m)
 
       my_corcov <- cov(t_m)
       did_filter_rows <- did_filter_cols <- FALSE
@@ -2944,7 +3068,7 @@ cov_heatmap <-
         function(is_corr) {
           cat(
             sprintf(
-              "Below is the %s plot for %s substrates",
+              "Below is the %s plot for %s sites",
               if (is_corr) "correlation" else "covariance",
               sprintf(
                 if (top_substrates)
@@ -3006,7 +3130,7 @@ cov_heatmap <-
       on.exit(par(parjust))
       my_corcov <- my_corcov[order(rownames(my_corcov)), ]
       my_main <-
-        sprintf("%s among %s substrates %s",
+        sprintf("%s among %s sites %s",
             if (my_correlate_substrates) "Correlation"
               else "Covariance",
             kinase_name,
@@ -3025,13 +3149,17 @@ cov_heatmap <-
           )
       if (print_trace_messages) cat(sprintf("max_nchar = %0.3f; ", max_nchar))
       if (print_trace_messages) cat(sprintf("my_margin = %0.3f; ", my_margin))
-      if (print_trace_messages) cat(sprintf("my_plot_height = %0.3f\n\n", my_plot_height))
+      if (print_trace_messages) cat(
+        sprintf("my_plot_height = %0.3f\n\n", my_plot_height))
       if (print_trace_messages) cat(sprintf("master_cex = %0.3f; ", master_cex))
       if (print_trace_messages) cat(sprintf("my_row_cex = %0.3f; ", my_row_cex))
       if (print_trace_messages) cat(sprintf("my_col_cex = %0.3f; ", my_col_cex))
-      if (print_trace_messages) cat(sprintf("my_key_cex = %0.3f\n\n", my_key_cex))
-      if (print_trace_messages) cat(sprintf("my_hgt_scale = %0.3f\n\n", my_hgt_scale))
-      if (print_trace_messages) cat(sprintf("legend height = %0.3f\n\n", my_legend_height))
+      if (print_trace_messages) cat(
+        sprintf("my_key_cex = %0.3f\n\n", my_key_cex))
+      if (print_trace_messages) cat(
+        sprintf("my_hgt_scale = %0.3f\n\n", my_hgt_scale))
+      if (print_trace_messages) cat(
+        sprintf("legend height = %0.3f\n\n", my_legend_height))
       if (print_trace_messages) cat(
         sprintf(
           "my_heights = c(%s); sum = %0.3f\n\n",
@@ -3673,7 +3801,8 @@ switch(
     # Take the accurate ln(x+1) because the data are log-normally distributed
     #   and because median can involve an average of two measurements.
     quant_data_imp <- log1p(quant_data_imp)
-    quant_data_imp[ind] <- row_apply(quant_data_imp, median, na.rm = TRUE)[ind[, 1]]
+    quant_data_imp[ind] <-
+      row_apply(quant_data_imp, median, na.rm = TRUE)[ind[, 1]]
     # Take the accurate e^x - 1 to match scaling of original input.
     quant_data_imp <- round(expm1(quant_data_imp_ln <- quant_data_imp))
     good_rows <- !is.nan(rowMeans(quant_data_imp))
@@ -3689,14 +3818,16 @@ switch(
     #   this will have to be
     quant_data_imp <- log1p(quant_data_imp)
     # Assign to NA cells the mean for the row
-    quant_data_imp[ind] <- row_apply(quant_data_imp, mean, na.rm = TRUE)[ind[, 1]]
+    quant_data_imp[ind] <-
+      row_apply(quant_data_imp, mean, na.rm = TRUE)[ind[, 1]]
     # Take the accurate e^x - 1 to match scaling of original input.
     quant_data_imp <- round(expm1(quant_data_imp_ln <- quant_data_imp))
     good_rows <- !is.nan(rowMeans(quant_data_imp))
   }
 , "random" = {
     quant_data_imp <- quant_data
-    m1 <- median(sds, na.rm = TRUE) * sd_percentile #sd to be used is the median sd
+    # sd to be used is the median sd
+    m1 <- median(sds, na.rm = TRUE) * sd_percentile
     # If you want results to be reproducible, you will want to call
     #   base::set.seed before calling stats::rnorm
     imputation_method_description <-
@@ -3735,7 +3866,8 @@ imp_smry_rejected_after  <- sum(!good_rows)
 imp_smry_missing_values_after   <- sum(is.na(quant_data_imp[good_rows, ]))
 
 # From ?`%in%`:
-#   %in% is currently defined as function(x, table) match(x, table, nomatch = 0) > 0
+#   %in% is currently defined
+#   as function(x, table) match(x, table, nomatch = 0) > 0
 
 stock_in <-
   names(good_rows) %in%
@@ -3798,27 +3930,26 @@ cat(tabular_lines)
 
 ```{r filter_good_rows, echo = FALSE}
 
-if (print_nb_messages) nbe("before name extraction, ", see_variable(length(good_rows)), " ", see_variable(good_rows), "\n")
+if (print_nb_messages) nbe(
+  "before name extraction, ", see_variable(length(good_rows)), " ",
+  see_variable(good_rows), "\n")
 good_rows <- names(good_rows[names(great_enough_row_names)])
-if (print_nb_messages) nbe("after name extraction, ", see_variable(length(good_rows)), see_variable(good_rows), "\n")
+if (print_nb_messages) nbe(
+  "after name extraction, ", see_variable(length(good_rows)),
+  see_variable(good_rows), "\n")
 
-#ACE min_group_obs_count <- min_group_obs_count[names(great_enough_row_names)]
-#ACE nbe("good_rows")
-#ACE nbe(see_variable(good_rows))
-#ACE nbe("names(min_group_obs_count) before filter for good rows")
-#ACE nbe(see_variable(names(min_group_obs_count)))
 min_group_obs_count <- min_group_obs_count[good_rows]
-#ACE nbe("min_group_obs_count after filter for good rows")
-#ACE nbe(see_variable(names(min_group_obs_count)))
 
 # Zap rows where imputation was insufficiently effective
 full_data         <- full_data        [good_rows, ]
 quant_data        <- quant_data       [good_rows, ]
 quant_data_log    <- quant_data_log   [good_rows, ]
 
-if (print_nb_messages) nbe("before row filter, ", see_variable(nrow(quant_data_imp)), "\n")
+if (print_nb_messages) nbe(
+  "before row filter, ", see_variable(nrow(quant_data_imp)), "\n")
 quant_data_imp <- quant_data_imp[good_rows, ]
-if (print_nb_messages) nbe("after row filter, ", see_variable(nrow(quant_data_imp)), "\n")
+if (print_nb_messages) nbe(
+  "after row filter, ", see_variable(nrow(quant_data_imp)), "\n")
 write_debug_file(quant_data_imp)
 quant_data_imp_good_rows <- quant_data_imp
 
@@ -3947,7 +4078,8 @@ if (sum(is.na(quant_data)) > 0) {
     , sample_name_grow = sample_name_grow
     , main = "Peptide intensities after eliminating unusable peptides"
     , varwidth = boxplot_varwidth
-    , sub = paste(boxplot_sub, "Box widths reflect number of peptides for sample")
+    , sub = paste(boxplot_sub,
+                  "Box widths reflect number of peptides for sample")
     , xlab = "Sample"
     , ylab = latex2exp::TeX("$log_{10}$(peptide intensity)")
     , col = const_boxplot_fill
@@ -4283,7 +4415,7 @@ cat("\\leavevmode\\newpage\n")
 
 For each phosphopeptide, ANOVA analysis was performed to compute a $p$-value representing the evidence against the "null hypothesis" ($H_0$) that the intensity does not vary significantly among sample groups.
 
-However, because as more and more phosphopeptides are tested, there is increasd probability that, by random chance, a given peptide will have a $p$-value that appears to indicate significance.  For this reason, the $p$-values were adjusted by applying the False Discovery Rate (FDR) correction from Benjamini and Hochberg (1995) [doi:10.1111/j.2517-6161.1995.tb02031.x](https:/doi.org/10.1111/j.2517-6161.1995.tb02031.x).
+However, because as more and more phosphopeptides are tested, there is increasd probability that, by random chance, a given peptide will have a $p$-value that appears to indicate significance.  For this reason, the $p$-values were adjusted by applying the False Discovery Rate (FDR) correction from Benjamini and Hochberg (1995) [doi:10.1111/j.2517-6161.1995.tb02031.x](https://doi.org/10.1111/j.2517-6161.1995.tb02031.x).
 
 Furthermore, to give more weight to phosphopeptides having fewer missing values, an (arbitrarily defined) quality score was assigned to each, defined as:
 
@@ -4313,7 +4445,11 @@ colnames(connect_df) <- c("Phosphopeptide", "Intensity")
 ```{r anova, echo = FALSE, fig.dim = c(10, 12), results = 'asis'}
 g_can_run_ksea <- FALSE
 old_oma <- par("oma")
+
+# nolint start
+#   squash un-actionable cyclomatic_complexity warning
 if (count_of_treatment_levels < 2) {
+# nolint end
   cat(
     "ERROR!!!! Cannot perform ANOVA analysis",
     "(see next page)\\newpage\n"
@@ -4367,7 +4503,6 @@ if (count_of_treatment_levels < 2) {
   if (print_nb_messages) nbe("computing p_value_data_anova_ps\n")
   if (print_nb_messages) nbe(see_variable(nrow(quant_data_imp_qn_log)), "\n")
   if (print_nb_messages) nbe(see_variable(ncol(quant_data_imp_qn_log)), "\n")
-  if (print_nb_messages) nbe(see_variable(quant_data_imp_qn_log[, ".NE.7C"]), "\n")
   if (print_nb_messages) nbe(see_variable(quant_data_imp_qn_log), "\n")
   if (print_nb_messages) nbe(see_variable(anova_func), "\n")
   if (print_nb_messages) nbe(see_variable(smpl_trt), "\n")
@@ -4477,6 +4612,11 @@ if (count_of_treatment_levels < 2) {
       break
       }
 
+    if (print_trace_messages) {
+      cat_variable(cutoff)
+      cat("\n\n")
+    }
+
     bool_1 <- (p_value_data$fdr_adjusted_anova_p < cutoff)
     bool_2 <- (p_value_data$min_group_obs_count >= g_intensity_min_per_class)
     g_can_run_ksea <- g_can_run_ksea || (sum(bool_2) > 0)
@@ -4509,6 +4649,7 @@ if (count_of_treatment_levels < 2) {
       cat_variable(filtered_p, force_str = TRUE)
 
     have_remaining_peptides <- sum(bool_3, na.rm = TRUE) > 0
+
     filter_result_string <-
       sprintf(
         "%s, %s of %0.0f peptides remained having both %s and %s.\n\n",
@@ -4518,7 +4659,8 @@ if (count_of_treatment_levels < 2) {
         else
           "none",
         length(bool_3),
-        sprintf("adjusted p-value < %s", as.character(signif(cutoff, 2))),
+        adj_p_string <-
+          sprintf("adjusted p-value < %s", as.character(signif(cutoff, 2))),
         sprintf(
           "more than %0.0f observations in some groups",
           max(0, g_intensity_min_per_class - 1)
@@ -4537,7 +4679,10 @@ if (count_of_treatment_levels < 2) {
         , drop = FALSE
         ]
 
-    if (have_remaining_peptides && nrow(filtered_p) > 0 && nrow(filtered_data_filtered) > 0) {
+    if (have_remaining_peptides
+        && nrow(filtered_p) > 0
+        && nrow(filtered_data_filtered) > 0
+        ) {
       if (first_page_suppress == 1) {
         first_page_suppress <- 0
         } else {
@@ -4547,14 +4692,21 @@ if (count_of_treatment_levels < 2) {
         cat(filter_result_string)
         if (nrow(filtered_data_filtered) > 1) {
           cat(subsection_header(sprintf(
-            "Intensity distributions for %d phosphopeptides\n",
-            nrow(filtered_data_filtered)
+            "Intensity distributions for %d phosphopeptides, %s\n",
+            nrow(filtered_data_filtered),
+            adj_p_string
           )))
         } else {
-          cat(subsection_header(sprintf(
-            "Intensity distribution for one phosphopeptide (%s)\n",
-            rownames(filtered_data_filtered)[1]
-          )))
+          cat(
+            subsection_header(
+              sprintf(
+                "Intensity distribution for one phosphopeptide, %s\n",
+                adj_p_string
+              )
+            ),
+            rownames(filtered_data_filtered)[1],
+            "\n"
+          )
         }
       }) # end latex_samepage
 
@@ -4637,7 +4789,7 @@ if (count_of_treatment_levels < 2) {
             )
           ))
         } else {
-          if (nrow(m) == 0) {
+          if (nrow(m) < 2) {
             return(FALSE)
           } else {
             cat(subsection_header(
@@ -4661,7 +4813,7 @@ if (count_of_treatment_levels < 2) {
       if (nrow_m > 0) {
         rownames_m <- rownames(m)
         q <- data.frame(pepname = rownames_m)
-        g <- sqldf("
+        g <- sqldf::sqldf("
           SELECT q.pepname, substr(met.Gene_Name, 1, 30) AS gene_name
             FROM q, metadata_plus_p AS met
             WHERE q.pepname = met.Phosphopeptide
@@ -4718,7 +4870,7 @@ if (count_of_treatment_levels < 2) {
     }
   }
 }
-cat(filter_result_string)
+
 cat("\\leavevmode\n")
 
 if (!g_can_run_ksea) {
@@ -4747,9 +4899,11 @@ if (!g_can_run_ksea) {
       sprintf("%0.3g", display_p_value_data$quality)
 
     headers_1st_line <-
-      c("",               "Raw ANOVA", "FDR-adj.", "Missing", "Min. #", "", "")
+      c("",               "Raw ANOVA", "FDR-adj.", "Missing", "Min. #",
+        "",        "")
     headers_2nd_line <-
-      c("Phosphopeptide", "p-value",   "p-value",  "values",  "group-obs", "Quality", "Ranking")
+      c("Phosphopeptide", "p-value",   "p-value",  "values",  "group-obs",
+        "Quality", "Ranking")
     data_frame_tabbing_latex(
       x = display_p_value_data,
       tabstops = c(2.75, 0.80, 0.80, 0.5, 0.6, 0.60),
@@ -5335,9 +5489,9 @@ cat("\\newpage\n")
 
 Results of Kinase-Substrate Enrichment Analysis are presented here, if the substrates for any kinases are relatively enriched.   Enrichments are found by the CRAN `KSEAapp` package:
 
-- The package is available on CRAN, at https:/cran.r-project.org/package=KSEAapp
-- The method used is described in Casado et al. (2013) [doi:10.1126/scisignal.2003573](https:/doi.org/10.1126/scisignal.2003573) and Wiredja et al (2017) [doi:10.1093/bioinformatics/btx415](https:/doi.org/10.1093/bioinformatics/btx415).
-- An online alternative (supporting only analysis of human data) is available at [https:/casecpb.shinyapps.io/ksea/](https:/casecpb.shinyapps.io/ksea/).
+- The package is available on CRAN, at https://cran.r-project.org/package=KSEAapp
+- The method used is described in Casado et al. (2013) [doi:10.1126/scisignal.2003573](https://doi.org/10.1126/scisignal.2003573) and Wiredja et al (2017) [doi:10.1093/bioinformatics/btx415](https://doi.org/10.1093/bioinformatics/btx415).
+- An online alternative (supporting only analysis of human data) is available at [https://casecpb.shinyapps.io/ksea/](https://casecpb.shinyapps.io/ksea/).
 
 For each kinase, $i$, and each two-way contrast of treatments, $j$, an enrichment $z$-score is computed as:
 
@@ -5461,7 +5615,7 @@ for (i_cntrst in seq_len(nrow(contrast_metadata_df))) {
   kseaapp_input <-
     sqldf::sqldf(
       x = sprintf("
-        SELECT `Protein`, `Gene`, `Peptide`, phosphopep AS `Residue.Both`, `p`, `FC`
+        SELECT `Protein`,`Gene`,`Peptide`,phosphopep AS `Residue.Both`,`p`,`FC`
           FROM v_kseaapp_input
           WHERE contrast = %d
         ",
@@ -5503,19 +5657,17 @@ for (i_cntrst in seq_len(nrow(contrast_metadata_df))) {
         }
 
         if (FALSE) {
+          if (print_nb_messages) nbe(
+            "Output contents of `ksea_scores_rslt` table\n")
+          cat_variable(ksea_scores_rslt)
+          cat("\n\\clearpage\n")
           data_frame_tabbing_latex(
             x = ksea_scores_rslt,
-            tabstops = c(0.8, 0.8, 0.8, 0.8, 0.8, 0.8),
+            tabstops = c(1.8, 0.8, 0.8, 0.3, 0.8, 0.8),
             caption = paste("KSEA scores for contrast ",
                         cntrst_b_level, "to",  cntrst_a_level),
             use_subsubsection_header = FALSE
           )
-        }
-
-        if (FALSE) {
-          if (print_nb_messages) nbe("Output contents of `ksea_scores_rslt` table\n")
-          cat_variable(ksea_scores_rslt)
-          cat("\n\\clearpage\n")
         }
 
         if (0 < sum(!is.nan(ksea_scores_rslt$FDR))) {
@@ -5627,7 +5779,7 @@ ksea_barplots <- list()
       tryCatch(
         expr = {
             ksea_scores_rslt <- rslt$score_list[[next_index]]
-            if (print_nb_messages) nbe(see_variable(ksea_scores_rslt)) #ACE
+            if (print_nb_messages) nbe(see_variable(ksea_scores_rslt))
 
             if (0 < sum(!is.nan(ksea_scores_rslt$FDR))) {
               sink(deferred <- file())
@@ -5760,12 +5912,6 @@ write_params <- function(db) {
     version = loaded_packages_df$loadedversion,
     date    = loaded_packages_df$date
     )
-  #ACE cat("\\clearpage\n\\section{R package versions}\n")
-  #ACE data_frame_tabbing_latex(
-  #ACE   x = loaded_packages_df,
-  #ACE   tabstops = c(2.5, 1.25),
-  #ACE   caption = "R package versions"
-  #ACE   )
   cat("\\clearpage\n\\section{Input parameter settings}\n")
   data_frame_tabbing_latex(
     x = param_df,
@@ -5786,7 +5932,10 @@ if (!have_kinase_descriptions) {
 ```
 
 ```{r kseabar, echo = FALSE, fig.dim = c(9.5, 12.3), results = 'asis'}
+# nolint start
+#   squash un-actionable cyclomatic_complexity warning
 if (have_kinase_descriptions) {
+# nolint end
   my_section_header <-
     sprintf(
       "inases whose KSEA %s < %s\n",
@@ -5826,14 +5975,14 @@ if (have_kinase_descriptions) {
   }
 
   if (FALSE) {
-    cat_variable(sqldf("SELECT kinase FROM enriched_kinases"))
-    cat_variable(sqldf("
+    cat_variable(sqldf::sqldf("SELECT kinase FROM enriched_kinases"))
+    cat_variable(sqldf::sqldf("
        SELECT DISTINCT gene, sub_gene, SUB_MOD_RSD AS ppep
          FROM pseudo_ksdata
          WHERE gene IN (SELECT kinase FROM enriched_kinases)
     "))
     data_frame_table_latex(
-      x = sqldf("
+      x = sqldf::sqldf("
        SELECT DISTINCT gene, sub_gene, SUB_MOD_RSD AS ppep
          FROM pseudo_ksdata
          WHERE gene IN (SELECT kinase FROM enriched_kinases)
@@ -5845,7 +5994,7 @@ if (have_kinase_descriptions) {
       underscore_whack = TRUE
     )
     data_frame_table_latex(
-      x = sqldf("
+      x = sqldf::sqldf("
          SELECT
            gene AS kinase,
            ppep,
@@ -5871,7 +6020,7 @@ if (have_kinase_descriptions) {
       underscore_whack = TRUE
     )
   }
-  all_enriched_substrates <- sqldf("
+  all_enriched_substrates <- sqldf::sqldf("
    SELECT
      gene AS kinase,
      ppep,
@@ -5899,9 +6048,7 @@ if (have_kinase_descriptions) {
     ]
 
   all_enriched_substrates$sub_gene <-
-    sub(
-      " ///.*",
-      " ...",
+    sub(" ///.*", "...",
       all_enriched_substrates$sub_gene
     )
 
@@ -5928,7 +6075,7 @@ if (have_kinase_descriptions) {
     if (nrow(m) > g_intensity_hm_rows) {
       cat(subsection_header(
         sprintf(
-          "Highest-quality %d (of %d) enriched %s-substrates",
+          "Highest-quality %d (of %d) enriched %s-sites",
           g_intensity_hm_rows,
           nrow(m),
           kinase
@@ -5941,7 +6088,7 @@ if (have_kinase_descriptions) {
         nrow_m <- nrow(m)
         cat(subsection_header(
           sprintf(
-            "%d enriched %s-substrate%s",
+            "%d enriched %s-site%s",
             nrow_m,
             kinase,
             if (nrow_m > 1) "s" else ""
@@ -6025,7 +6172,10 @@ if (have_kinase_descriptions) {
 ```
 
 ```{r enriched, echo = FALSE, fig.dim = c(12, 13.7), results = 'asis'}
+# nolint start
+#   squash un-actionable cyclomatic_complexity warning
 if (g_can_run_ksea) {
+# nolint end
   g_did_enriched_header <- FALSE
   for (kinase_name in sort(enriched_kinases$kinase)) {
     enriched_substrates <-
@@ -6048,11 +6198,13 @@ if (g_can_run_ksea) {
       )
     # Get the intensity values for the heatmap
     enriched_intensities <-
-      as.matrix(unimputed_quant_data_log[enriched_substrates$ppep, , drop = FALSE])
+      as.matrix(unimputed_quant_data_log[
+                  enriched_substrates$ppep, , drop = FALSE
+                  ])
 
     # Remove rows having too many NA values to be relevant
     good_rows <- (rowSums(enriched_intensities, na.rm = TRUE) != 0)
-    #ACE nbe(see_variable(good_rows), "\n")
+
     enriched_substrates <- enriched_substrates[good_rows, , drop = FALSE]
     enriched_intensities <- enriched_intensities[good_rows, , drop = FALSE]
 
@@ -6077,16 +6229,6 @@ if (g_can_run_ksea) {
     m <- as.matrix(enriched_intensities)
     rownames(m) <- trunc_enriched_substrate(rownames(m))
 
-    #ACE nb("m with bad rows: ", see_variable(m), "\n")
-    #ACE good_rows <- (rowSums(m, na.rm = TRUE) != 0)
-    #ACE nb(see_variable(good_rows), "\n")
-    #ACE m <- m[good_rows, , drop = FALSE]
-    #ACE nb("m without(?) bad rows: ", see_variable(m), "\n")
-    #ACE nb(see_variable(short_row_names), "\n")
-    #ACE local_short_row_names <- short_row_names[good_rows]
-    #ACE local_long_row_names  <- long_row_names[good_rows]
-    #ACE local_enriched_intensities <- enriched_intensities[local_long_row_names, ]
-
     # Draw the heading and heatmap
     nrow_m <- nrow(m)
     if (nrow_m > 0) {
@@ -6098,7 +6240,7 @@ if (g_can_run_ksea) {
       is_na_m <- is.na(m)
       cellnote_m <- is_na_m
       cellnote_m[!is_na_m] <- ""
-      cellnote_m[is_na_m] <- "NA"
+      cellnote_m[is_na_m] <- params$heatMapNAcellNote
       cut_args <- new_env()
       cut_args$cutoff <- cutoff
       cut_args$kinase <- kinase_name
@@ -6110,8 +6252,9 @@ if (g_can_run_ksea) {
           cellnote                = cellnote_m,
           cutoff                  = cut_args,
           hm_heading_function     = cat_enriched_heading,
-          hm_main_title
-            = "Unnormalized (zero-imputed) intensities of enriched kinase-substrates",
+          hm_main_title           = paste(
+            "Unnormalized (zero-imputed)",
+            "intensities of enriched kinase-substrates"),
           suppress_row_dendrogram = FALSE,
           master_cex              = 0.35,
           sepcolor                = "black",
@@ -6123,7 +6266,11 @@ if (g_can_run_ksea) {
           tryCatch(
             {
               rownames(m) <- short_row_names
-              cov_heatmap(m, nrow_m > g_intensity_hm_rows)
+              cov_heatmap(
+                m = m,
+                kinase_name = kinase_name,
+                top_substrates = nrow_m > g_intensity_hm_rows
+                )
             },
             error = function(e) {
                 cat(
@@ -6162,7 +6309,7 @@ if (g_can_run_ksea) {
         cat("\n\\newpage\n")
       cat(subsubsection_header(
         sprintf(
-          "Details for %s%s-substrates",
+          "Details for %s%s-sites",
           if (excess_substrates)
             sprintf(
               "%s \"highest quality\" ",
@@ -6190,7 +6337,7 @@ if (g_can_run_ksea) {
 
   if (print_nb_messages) nb("kinase_ppep_label <- ...\n")
   if (print_nb_messages) nbe("kinase_ppep_label <- ...\n")
-  kinase_ppep_label <- sqldf("
+  kinase_ppep_label <- sqldf::sqldf("
     WITH
       t(ppep, label) AS
         (
@@ -6230,14 +6377,15 @@ if (g_can_run_ksea) {
     WHERE
       f.Phosphopeptide = q.Phosphopeptide
     "
-  data_table_imputed <- sqldf(data_table_imputed_sql)
+  data_table_imputed <- sqldf::sqldf(data_table_imputed_sql)
   # Zap the duplicated 'Phosphopeptide' column named 'ppep'
   data_table_imputed <-
       data_table_imputed[, c(1:12, 14:ncol(data_table_imputed))]
 
   # Output imputed, un-normalized data
   if (print_nb_messages) nb("Output imputed, un-normalized data tabular file\n")
-  if (print_nb_messages) nbe("Output imputed, un-normalized data tabular file\n")
+  if (print_nb_messages) nbe(
+    "Output imputed, un-normalized data tabular file\n")
   write.table(
       data_table_imputed
     , file = imputed_data_filename
@@ -6251,7 +6399,7 @@ if (g_can_run_ksea) {
   #output quantile normalized data
   impish <- cbind(rownames(quant_data_imp_qn_log), quant_data_imp_qn_log)
   colnames(impish)[1] <- "Phosphopeptide"
-  data_table_imputed <- sqldf(data_table_imputed_sql)
+  data_table_imputed <- sqldf::sqldf(data_table_imputed_sql)
   # Zap the duplicated 'Phosphopeptide' column named 'ppep'
   data_table_imputed <-
       data_table_imputed[, c(1:12, 14:ncol(data_table_imputed))]
@@ -6266,7 +6414,7 @@ if (g_can_run_ksea) {
     quote = FALSE
   )
 
-  ppep_kinase <- sqldf("
+  ppep_kinase <- sqldf::sqldf("
     SELECT DISTINCT k.ppep, k.kinase
       FROM (
         SELECT DISTINCT gene AS kinase, SUB_MOD_RSD AS ppep
@@ -6314,8 +6462,11 @@ RSQLite::dbWriteTable(
     "
   )
 
-if (print_nb_messages) nb("Output contents of `stats_metadata_v` table to tabular file\n")
-if (print_nb_messages) nbe("Output contents of `stats_metadata_v` table to tabular file\n")
+if (print_nb_messages) nb(
+   "Output contents of `stats_metadata_v` table to tabular file\n")
+if (print_nb_messages) nbe(
+   "Output contents of `stats_metadata_v` table to tabular file\n")
+
 write.table(
   dbReadTable(db, "stats_metadata_v"),
   file = anova_ksea_mtdt_file,
