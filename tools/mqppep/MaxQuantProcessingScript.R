@@ -368,6 +368,8 @@ loc_prob_cutoff_graph_fn_svg <- args$locProbCutoffGraph_svg
 local_prob_cutoff <- args$localProbCutoff
 enriched <- args$enriched
 collapse_fn <- args$collapse_func
+if (collapse_fn == "average")
+  collapse_fn <- "mean"
 
 ### EXTRACT PARAMETERS from arguments end ------------------------------------
 
