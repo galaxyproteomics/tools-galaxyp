@@ -1,8 +1,8 @@
-import cv2
 import argparse
+import cv2
 import geojson
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 
 def draw_poly(input_df, input_img, col=(0, 0, 0)):
