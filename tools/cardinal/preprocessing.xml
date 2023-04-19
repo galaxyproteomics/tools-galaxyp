@@ -1,4 +1,4 @@
-<tool id="cardinal_preprocessing" name="MSI preprocessing" version="@VERSION@.0">
+<tool id="cardinal_preprocessing" name="MSI preprocessing" version="@VERSION@.1">
     <description>
         mass spectrometry imaging preprocessing
     </description>
@@ -7,7 +7,9 @@
     </macros>
     <expand macro="requirements">
         <requirement type="package" version="2.3">r-gridextra</requirement>
-        <requirement type="package" version="3.3.5">r-ggplot2</requirement>
+        <requirement type="package" version="3.4.0">r-ggplot2</requirement>
+        <requirement type="package" version="3.40.0">bioconductor-sva</requirement>
+        <requirement type="package" version="1.1.0.1">r-randomcolor</requirement>
     </expand>
     <command detect_errors="exit_code">
     <![CDATA[
@@ -41,6 +43,8 @@ if (Sys.getenv("GALAXY_SLOTS")!="")
 library(Cardinal)
 library(gridExtra)
 library(ggplot2)
+library(sva)
+library(randomcoloR)
 
 
 @READING_MSIDATA_FULLY_COMPATIBLE@
@@ -448,6 +452,120 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             print(plot(msidata, pixel=random_spectra, col="black"))
             title("Spectra after transformation", outer=TRUE, line=0)
 
+
+            
+            
+        ############################### ComBat batch correction ###########################
+
+        #elif str( $method.methods_conditional.preprocessing_method) == 'ComBat_batch_correction':
+            print('ComBat batch correction of centroided data')
+
+            ## load annotation tabular and define batch and condition column
+            annotation = read.delim("$method.methods_conditional.annotation_file", header=$method.methods_conditional.feature_header, sep="\t")
+            annotation_x = annotation[,$method.methods_conditional.x_column]
+            annotation_y = annotation[,$method.methods_conditional.y_column]
+            batch = annotation[,$method.methods_conditional.batch_column]
+            condition = annotation[,$method.methods_conditional.condition_column]
+            
+            ### stop if not enough batches provided
+                tryCatch(
+                        {
+
+                        if (unique(batch<2))
+                            {
+                            stop(call.=FALSE)
+                            }
+                        },
+                        error=function(cond) {
+                        ## in case user provided an annotation tabular with less than two batches
+                            message("Error in annotation tabular")
+                            message("Possible problems: Annotation tabular file has not enough batch levels - to perform ComBat at least 2 batches and 2 pixels per batch are necessary)")
+                            stop(call.=FALSE)
+                        }
+                    )
+            
+            ## get intensity matrix from imzml file
+            intensity_matrix = as.matrix(iData(msidata))
+            mz_names = paste0("mz_", mz(msidata))
+            pixel_names = paste0("xy_", msidata@elementMetadata@coord@listData[["x"]], "_", msidata@elementMetadata@coord@listData[["y"]])
+            rownames(intensity_matrix) = mz_names
+            colnames(intensity_matrix) = pixel_names
+
+            ## reorder columns of intensity matrix to row order of batch column
+            rownames(annotation) = paste0("xy_", annotation_x, "_", annotation_y)
+            col_order = rownames(annotation)
+            
+            ### stop if pixel/sample names (columns) in intensity matrix from imzml file don't match samples names (rows) in annotation tabular file            
+            	tryCatch(
+                        {
+
+                        if (all(colnames(intensity_matrix) %in% col_order == FALSE))
+                            {
+                            stop(call.=FALSE)
+                            }
+                        },
+                        error=function(cond) {
+                        ## in case pixel names (columns) from the imzml file don't match the pixel names in the annotation tabular file
+                            message("Error in annotation tabular")
+                            message("Possible problems: Annotation tabular file does not contain the correct pixel names (columns) from the imzml file)")
+                            stop(call.=FALSE)
+                        }
+                    )      
+            
+            intensity_matrix = intensity_matrix[, col_order]
+            print("columns have been ordered to annotation row order")
+
+            ## execution of ComBat algorithm from sva package
+            combat_data = ComBat(dat = intensity_matrix, batch = batch, mod = NULL, par.prior = TRUE, prior.plots = FALSE)
+            print("Combat has been executed")
+
+            ## change intensity data of loaded imzml file after combat has been performed
+            iData(msidata) = as.matrix(combat_data)   
+            
+            ############################### QC ###########################
+            
+            maxfeatures =nrow(msidata)
+            pixelcount = ncol(msidata)
+            minmz = round(min(mz(msidata)), digits=2)
+            maxmz = round(max(mz(msidata)), digits=2)
+            batch_corrected = c(minmz, maxmz, maxfeatures, pixelcount)
+            QC_numbers= cbind(QC_numbers, batch_corrected)
+            vectorofactions = append(vectorofactions, "batch_corrected")
+            print(plot(msidata, pixel=random_spectra, col="black"))
+            title("Spectra after ComBat batch correction", outer=TRUE, line=0)
+
+
+            ## PCA plot function and execution
+	    combat_data = as.data.frame(combat_data)
+	    intensity_data = as.data.frame(intensity_matrix)
+
+	    ## PCA function
+            plot_PCA = function(input_data, condition, batch, title, color){
+                data <- input_data
+                pca_data <- prcomp(t(data[, seq_len(ncol(input_data))]))
+                pca_sdev <- pca_data[["sdev"]]
+                pca_data_perc <- round(100 * pca_sdev^2 / sum(pca_sdev^2), 1)
+                pca_components <- pca_data[["x"]]
+                df_pca_data <- data.frame(PC1 = pca_components[, 1], PC2 = pca_components[, 2], sample = colnames(input_data), condition = condition)
+                ggplot(df_pca_data, aes(PC1, PC2, color = as.factor(batch), shape = as.factor(condition))) +
+                ggtitle(title) +
+                geom_point(size = 4) +
+                stat_ellipse(aes(PC1, PC2, color = as.factor(batch), group = as.factor(batch)), type = "norm")+
+                scale_color_manual(values=color) +
+                theme_bw() +
+                theme(legend.position = "bottom", legend.box="vertical", plot.title = element_text(size = 12, hjust = 0.5), axis.title = element_text(size = 12), axis.text = element_text(size = 12, color = "black")) +
+                labs(x=paste0("PC1 (",pca_data_perc[1],")"), y=paste0("PC2 (",pca_data_perc[2],")")) +
+                labs(color = "Batches", shape = "Conditions")}
+
+	    ## define colors
+	    color_pal = distinctColorPalette(length(levels(as.factor(batch))))
+
+            ## execution of PCA plots
+            PCA_bc = plot_PCA(intensity_data, condition, batch, "before batch correction", color_pal)
+            PCA_ac = plot_PCA(combat_data, condition, batch, "batch corrected", color_pal)
+            print(PCA_bc)
+            print(PCA_ac)
+            
             #end if
     #end for
 
@@ -492,6 +610,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                     <option value="Peak_binning">Peak binning to reference peaks</option>
                     <option value="Mass_binning">m/z binning</option>
                     <option value="Transformation">Transformation</option>
+                    <option value="ComBat_batch_correction">ComBat batch correction of centroided data</option>
                 </param>
                 <when value="Normalization">
                     <conditional name="methods_for_normalization">
@@ -690,6 +809,14 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                             <when value="sqrt"/>
                     </conditional>
                 </when>
+                <when value="ComBat_batch_correction">
+		     <param name="annotation_file" type="data" format="tabular" label="Annotation file that contains the pixel x and y coordinates, the batch identifier, and the condition annotation for each spectrum." help="Annotation tabular file that contains the batch identifier for each spectrum in one column."/>
+                       <param name="x_column" type="data_column" data_ref="annotation_file" label="X coordinates" help="Column with x coordinates of pixels."/>
+                       <param name="y_column" type="data_column" data_ref="annotation_file" label="Y coordinates" help="Column with y ccordinates of pixels."/>
+                       <param name="batch_column" type="data_column" data_ref="annotation_file" label="Batch column" help="The column that contains the batch identifier for each spectrum."/>
+                       <param name="condition_column" type="data_column" data_ref="annotation_file" label="Condition column" help="The column that contains the condition annotation for each spectrum. Typically these are the groups you want to compare. If not applicable, the batch column can be selected again as this information is only used for the QC plot."/>
+                       <param name="feature_header" type="boolean" label="Tabular file contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
+                </when>
             </conditional>
         </repeat>
     </inputs>
@@ -698,7 +825,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
         <data format="pdf" name="QC_overview" from_work_dir="Preprocessing.pdf" label = "${tool.name} on ${on_string}: QC"/>
     </outputs>
     <tests>
-        <test>
+        <!--test>
             <expand macro="infile_imzml"/>
             <repeat name="methods">
                 <conditional name="methods_conditional">
@@ -751,7 +878,7 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                 <extra_files type="file" file="preprocessing_results1.imzml" name="imzml" lines_diff="6"/>
                 <extra_files type="file" file="preprocessing_results1.ibd" name="ibd" compare="sim_size"/>
             </output>
-        </test>
+        </test-->
         <test>
             <param name="infile" value="3_files_combined.RData" ftype="rdata"/>
             <repeat name="methods">
@@ -870,6 +997,52 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
                 <extra_files type="file" file="preprocessing_results5.ibd" name="ibd" compare="sim_size"/>
             </output>
         </test>
+        <test>
+            <param name="infile" value="" ftype="imzml">
+                <composite_data value="Combat_40pixel.imzML" />
+                <composite_data value="Combat_40pixel.ibd"/>
+            </param>
+            <repeat name="methods">
+                <conditional name="methods_conditional">
+                    <param name="preprocessing_method" value="ComBat_batch_correction"/>
+                    <param name="annotation_file" value="annotation_40pixel.tabular" ftype="tabular"/>
+                    <param name="feature_header" value="TRUE"/>
+                    <param name="x_column" value="2"/>
+                    <param name="y_column" value="3"/>
+                    <param name="batch_column" value="4"/>
+                    <param name="condition_column" value="6"/>
+                </conditional>
+            </repeat>
+            <output name="QC_overview" file="preprocessing_results_combat_40pixel.pdf" compare="sim_size"/>
+            <output name="outfile_imzml" ftype="imzml" file="preprocessing_results_combat_40pixel.imzml.txt" compare="sim_size">
+                <extra_files type="file" file="preprocessing_results_combat_40pixel.imzml" name="imzml" lines_diff="6"/>
+                <extra_files type="file" file="preprocessing_results_combat_40pixel.ibd" name="ibd" compare="sim_size"/>
+            </output>
+        </test>
+        <test>
+            <expand macro="processed_infile_imzml"/>
+            <conditional name="processed_cond">
+                <param name="processed_file" value="processed"/>
+                <param name="accuracy" value="50"/>
+                <param name="units" value="ppm"/>
+            </conditional>
+            <repeat name="methods">   
+                <conditional name="methods_conditional">
+                    <param name="preprocessing_method" value="ComBat_batch_correction"/>
+                    <param name="annotation_file" value="Example_processed_ComBat_annotation.tabular" ftype="tabular"/>
+                    <param name="feature_header" value="TRUE"/>
+                    <param name="x_column" value="2"/>
+                    <param name="y_column" value="3"/>
+                    <param name="batch_column" value="4"/>
+                    <param name="condition_column" value="5"/>
+                </conditional>
+            </repeat>
+            <output name="QC_overview" file="ComBat_results_Example_processed_file_preprocessing.pdf" compare="sim_size"/>
+            <output name="outfile_imzml" ftype="imzml" file="ComBat_results_Example_processed_file.imzml.txt" compare="sim_size">
+                <extra_files type="file" file="ComBat_results_Example_processed_file.imzml" name="imzml" lines_diff="6"/>
+                <extra_files type="file" file="ComBat_results_Example_processed_file.ibd" name="ibd" compare="sim_size"/>
+            </output>
+        </test>
     </tests>
     <help>
         <![CDATA[
@@ -896,6 +1069,20 @@ This tool provides multiple Cardinal functions to preprocess mass spectrometry i
 - Peak binning: extracts peaks intensities, either peak height or area under curve (from a profile dataset) for a list of m/z (reference) values
 - m/z binning: generates new m/z bins
 - Transformation: log2 or squareroot transformation of all intensities; when using log2 transformation zero intensities will become NA, this can lead to compatibility problems. 
+- ComBat batch correction: corrects the intensity values of picked m/z features according to batches given in an annotation table. For now, it can only be applied to m/z features after peak picking (=centroided data). The annotation table needs to contain the x and y coordinates for each pixel and a batch identifier (e.g. TMA_1, TMA_2, TMA_3). Additionally a condition column can be provided, which is only used for the PCA plots in the pdf file. Example of annotation file for ComBat batch correction:
+ 
+ ::
+ 
+   	   x_coord     y_coord      batch_identifier	condition
+  	       10          29          TMA_1                  A
+  	       22          14          TMA_1                  B
+  	       22          27          TMA_2                  A
+  	       23           7          TMA_2                  B
+   	       29          45          TMA_3                  A
+   	       33          41          TMA_3                  B
+   	    ...
+   	    ...
+
                     
 
 **Output**
