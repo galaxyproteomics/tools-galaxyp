@@ -1,0 +1,298 @@
+<tool id="calisp" name="calisp" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="21.05">
+    <description>Estimate isotopic composition of peptides from proteomics mass spectrometry data</description>
+    <macros>
+        <token name="@TOOL_VERSION@">3.0.10</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+        <xml name="input_macro" tokens="multiple">
+            <!-- According to readme mzid input is not yet implented -->
+        </xml>
+    </macros>
+    <requirements>
+        <requirement type="package" version="@TOOL_VERSION@">calisp</requirement>
+    </requirements>
+    <command detect_errors="aggressive"><![CDATA[
+#import re
+
+mkdir -p spectra &&
+#if $spectrum_cond.spectrum_sel == "batch"
+    #set escaped_specs = re.sub('[^\w\-\.,:]', '_', str($spectrum_cond.spectrum_file.element_identifier))
+    ln -s '$spectrum_file' spectra/'$escaped_specs' &&
+#else
+    #for $spec in $spectrum_cond.spectrum_file
+        #set escaped_specs = re.sub('[^\w\-\.,:]', '_', str($spec.element_identifier))
+        ln -s '$spec' spectra/'$escaped_specs' &&
+    #end for
+#end if
+
+mkdir -p psms &&
+#if $peptide_cond.peptide_sel == "batch"
+    #set escaped_peps = re.sub('[^\w\-\.,:]', '_', str($peptide_cond.peptide_file.element_identifier))
+    ln -s '$peptide_file' psms/'$escaped_peps' &&
+#else
+    #for $pep in $peptide_cond.peptide_file
+        #set escaped_peps = re.sub('[^\w\-\.,:]', '_', str($pep.element_identifier))
+        ln -s '$pep' psms/'$escaped_peps' &&
+    #end for
+#end if
+
+calisp 
+    --spectrum_file spectra/
+    --peptide_file psms/
+    --output_file calisp-output/
+    --mass_accuracy $mass_accuracy
+    --bin_delimiter '$bin_delimiter'
+    --threads "\${GALAXY_SLOTS:-1}"
+    --isotope $isotope
+    $compute_clumps &&
+'$__tool_directory__/feather2tsv.py' --calisp_output calisp-output/
+    ]]></command>
+    <inputs>
+        <conditional name="spectrum_cond">
+            <param name="spectrum_sel" type="select" label="Spectra batch mode">
+                <option value="batch">Batch</option>
+                <option value="joint">Joint</option>
+            </param>
+            <when value="batch">
+                <param argument="--spectrum_file" type="data" multiple="false" format="mzml" label="Spectrum file"/>
+            </when>
+            <when value="joint">
+                <param argument="--spectrum_file" type="data" multiple="true" format="mzml" label="Spectrum files"/>
+            </when>
+        </conditional>
+        <conditional name="peptide_cond">
+            <param name="peptide_sel" type="select" label="Peptide batch mode">
+                <option value="batch">Batch</option>
+                <option value="joint">Joint</option>
+            </param>
+            <when value="batch">
+                <param argument="--peptide_file" type="data" multiple="false" format="tabular" label="Peptide file" help="Psm file" />
+            </when>
+            <when value="joint">
+                <param argument="--peptide_file" type="data" multiple="true" format="tabular" label="Peptide files" help="Psm files" />
+            </when>
+        </conditional>
+        <param argument="--mass_accuracy" type="float" value="10" label="Mass accuracy" help="The maximum mass difference between theoretical mass and experimental mass of a peptide" />
+        <param argument="--bin_delimiter" type="text" value="_" label="Bin delimiter" help="For metagenomic data, the delimiter that separates the bin ID from the protein ID (default: &quot;_&quot;). Use &quot;-&quot; to ignore bins ID entirely.">
+           <sanitizer invalid_char="">
+                <valid initial="string.ascii_letters,string.digits">
+                    <add value="_" />
+                    <add value="-" />
+                    <add value=":" />
+                </valid>
+            </sanitizer> 
+        </param>
+        <param argument="--isotope" type="select" label="Target isotope">
+            <option value="13C" selected="true">13C</option>
+            <option value="14C">14C</option>
+            <option value="15N">15N</option>
+            <option value="17O">17O</option>
+            <option value="18O">18O</option>
+            <option value="2H">2H</option>
+            <option value="3H">3H</option>
+            <option value="33S">33S</option>
+            <option value="34S">34S</option>
+            <option value="36S">36S</option>
+        </param>
+        <param argument="--compute_clumps" type="boolean" truevalue="--compute_clumps" falsevalue="" checked="false" label="Compute clumps" help="To compute clumpiness of carbon assimilation. Only use when samples are labeled tosaturation. Estimation of clumpiness takes much additional time." />
+    </inputs>
+    <outputs>
+        <collection name="output" type="list">
+            <discover_datasets pattern="(?P&lt;designation&gt;.*)\.tsv" format="tabular" directory="calisp-output"/>
+        </collection>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <conditional name="spectrum_cond">
+                <param name="spectrum_sel" value="batch"/>
+                <param name="spectrum_file" value="calisp_test_data.mzML" ftype="mzml"/>
+            </conditional>
+            <conditional name="peptide_cond">
+                <param name="peptide_sel" value="batch"/>
+                <param name="peptide_file" value="calisp_test_data_TargetPeptideSpectrumMatch.txt" ftype="tabular"/>
+            </conditional>
+            <output_collection name="output" count="1">
+                <element name="calisp_test_data">
+                    <assert_contents>
+                        <has_text text="experiment"/>
+                        <has_text text="MKH_260min_1800ng"/>
+                        <has_text text="HOMO"/>
+                        <has_text text="P13645"/>
+                        <has_text text="NHEEEMKDLR"/>
+                        <has_text text="Oxidation"/>
+                        <has_n_columns n="85"/>
+                        <has_n_lines n="24"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- <test expect_num_outputs="1">
+            <conditional name="spectrum_cond">
+                <param name="spectrum_sel" value="batch"/>
+                <param name="spectrum_file" value="13C_test.mzML" ftype="mzml"/>
+            </conditional>
+            <conditional name="peptide_cond">
+                <param name="peptide_sel" value="batch"/>
+                <param name="peptide_file" value="13C_PSMs.txt" ftype="tabular"/>
+            </conditional>
+            <output_collection name="output" count="1">
+                <element name="180617_StS_AI_rep2">
+                    <assert_contents>
+                        <has_n_columns n="85"/>
+                        <has_n_lines n="55503"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test> -->
+        <!-- <test expect_num_outputs="1">
+            <conditional name="spectrum_cond">
+                <param name="spectrum_sel" value="batch"/>
+                <param name="spectrum_file" value="180617_StS_AI_rep2.mzML" ftype="mzml"/>
+            </conditional>
+            <conditional name="peptide_cond">
+                <param name="peptide_sel" value="batch"/>
+                <param name="peptide_file" value="180617_Test_Ecoli_AI_rep2_Deuterium.txt" ftype="tabular"/>
+            </conditional>
+            <output_collection name="output" count="1">
+                <element name="180617_StS_AI_rep2">
+                    <assert_contents>
+                        <has_n_columns n="85"/>
+                        <has_n_lines n="55503"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test> -->
+    </tests>
+    <help><![CDATA[
+Calisp (Calgary approach to isotopes in proteomics) is a program that estimates
+isotopic composition (e.g. 13C/12C, delta13C, 15N/14N etc) of peptides from
+proteomics mass spectrometry data. Input data consist of mzML files and files
+with peptide spectrum matches.
+
+Calisp was originally developed in Java. This Galaxy tool uses the python 
+reimplementation https://github.com/kinestetika/Calisp.
+Note that, in contrast to the Java version the python reimplementation does
+not use ``mcl`` .
+Compared to Java versions of calisp, the workflow has been simplified.
+Calisp does not filter out any isotopic patterns, or adds up isotopic
+patterns to reduce noise - like the Java version does. It simply estimates the
+ratio for the target isotopes (e.g. 13C/12C) for every isotopic pattern it can
+subsample. It estimates this ratio based on neutron abundance and using fast
+fourier transforms. The former applies to stable isotope probing experiments.
+The latter applies to natural abundances, or to isotope probing experiments with
+very little added label (e.g. using substrates with <1% additional 13C). The
+motivation for omitting filtering is that keeping all subsampled isotopic
+patterns, including bad ones, will enable training of machine learning
+classifiers. Also, because it was shown that the median provides better
+estimates for species in microbial communities than the mean, adding up isotopic
+patterns to improve precision has lost its purpose. There is more power (and
+sensitivity) in numbers.
+
+Because no data are filtered out and no isotopic patterns get added up,
+calisp analyzes at least ten times as many isotopic patterns compared to the
+Java version. That means calisp.py is about ten times slower, it takes about
+5-10 min per .mzML file on a Desktop computer. For natural
+abundance data, it works well to only use those spectra that have a FFT fitting
+error ("error_fft") of less than 0.001. Note that this threshold is less
+stringent then thew one used by the java program.
+
+Input
+=====
+
+Calisp needs two inputs: spectra file(s) in mzML format and tabular peptipe file (PSM).
+The PSM file contains a column "Spectrum File" that links the peptides to the
+original spectra files. The mzML files are identified by the run id
+information stored in the mzML files or the file name. 
+In order to make the association via the file name work in Galaxy one can either
+
+- use collections where the element identifiers are equal to the data in the column
+- make sure that dataset names are equal to the data in this column
+
+The user can input multipe spectra and multiple PSM files. How they are processed
+depends on the setting of the corresponding batch mode field. In general
+batch means that Galaxy will create an independent job for each of the
+data sets (i.e. process them independently). In general batch mode can be faster
+since jobs can run in parallel. 
+
+
+
+- spectra batch, peptide batch:
+- spectra batch, peptide joint:
+
+
+
+
+
+
+1. "Annotated Sequence"
+2. "Confidence"
+3. "PSM Ambiguity"
+4. "Modifications"
+5. "First Scan"
+6. "Spectrum File"
+7. "Charge"
+8. "m/z [Da]"
+9. "MH+ [Da]"
+10. "RT [min]"
+11. "XCorr"
+12. "Protein Accessions"
+13. "Master Protein Accessions"
+14. "# Proteins"
+
+Output table
+============
+
+Each row contains one isotopic pattern, defined by the following columns:
+
+========================================== ===================
+Header name                                Content
+========================================== ===================
+experiment                                 filename of the peptide spectrum match (psm) file
+ms_run                                     filename of the .mzml file
+bins                                       bin/mag ids, separated by commas. Calisp expects the protein ids in the psm file to consist of two parts, separated by a delimiter (_ by default). The first part is the bin/mag id, the second part the protein id
+proteins                                   the ids of the proteins associated with the pattern (without the bin id)
+peptide                                    the aminoacid sequence of the peptide
+peptide_mass                               the mass of the peptide
+C                                          # of carbon atoms in the peptide
+N                                          # of nitrogen atoms in the peptide
+O                                          # of oxygen atoms in the peptide
+H                                          # of hydrogen atoms in the peptide
+S                                          # of sulfur atoms in the peptide
+psm_id                                     psm id
+psm_mz                                     psm m over z
+psm_charge                                 psm charge
+psm_neutrons                               number of neutrons inferred from custom 'neutron' modifications 
+psm_rank                                   rank of the psm
+psm_precursor_id                           id of the ms1 spectrum that was the source of the psm 
+psm_precursor_mz                           mass over charge of the precursor of the psm
+pattern_charge                             charge of the pattern
+pattern_precursor_id                       id of the ms1 spectrum that was the source of the pattern
+pattern_total_intensity                    total intensity of the pattern
+pattern_peak_count                         # of peaks in the pattern
+pattern_median_peak_spacing                medium mass difference between a pattern's peaks
+spectrum_mass_irregularity                 a measure for the standard deviation in the mass difference between a pattern's peaks
+ratio_na                                   the estimated isotope ratio inferred from neutron abundance (sip experiments) 
+ratio_fft                                  the estimated isotope ratio inferred by the fft method (natural isotope abundances)
+error_fft                                  the remaining error after fitting the pattern with fft
+error_clumpy                               the remaining error after fitting the pattern with the clumpy carbon method
+flag_peptide_contains_sulfur               true if peptide contains sulfur
+flag_peptide_has_modifications             true if peptide has no modifications
+flag_peptide_assigned_to_multiple_bins     true if peptide is associated with multiple proteins from different bins/mags
+flag_peptide_assigned_to_multiple_proteins true if peptide is associated with multiple proteins
+flag_peptide_mass_and_elements_undefined   true if peptide has unknown mass and elemental composition
+flag_psm_has_low_confidence                true if psm was flagged as having low confidence (peptide identity uncertain)
+flag_psm_is_ambiguous                      true if psm could not be assigned with certainty
+flag_pattern_is_contaminated               true if multiple patterns have one or more shared peaks
+flag_pattern_is_wobbly                     true if pattern_median_peak_spacing exceeds a treshold
+flag_peak_at_minus_one_pos                 true if a peak was detected immediately before the monoisotopic peak, could indicate overlap with another pattern
+i0 - i19                                   the intensities of the first 20 peaks of the pattern  
+m0 - m19                                   the masses of the first 20 peaks of the pattern
+c1 - c6                                    contributions of clumps of 1-6 carbon to ratio_na. These are the outcomes of the clumpy carbon model. These results are only meaningful if the biomass was labeled to saturation.
+========================================== ===================
+    ]]></help>
+    <citations>
+        <citation type="doi">10.1186/s40168-022-01454-1</citation>
+        <citation type="doi">10.1073/pnas.1722325115</citation>
+        <citation type="doi">10.1101/2021.03.29.437612</citation>
+        <citation type="doi">10.1093/bioinformatics/bty046</citation>
+    </citations>
+</tool>
