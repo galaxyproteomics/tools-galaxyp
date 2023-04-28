@@ -1,0 +1,157 @@
+<tool id="protein_table_fdr" name="Calculate protein FDR" version="1.1">
+    <description>using different methods</description>
+    <requirements>
+        <requirement type="package" version="2.5">msstitch</requirement>
+    </requirements>
+    <command detect_errors="exit_code">
+        <![CDATA[
+        #if $fdr.type in ["pickfasta", "pickresult"]
+                msspeptable modelqvals -i '$targetpeptable' -o targetpeplinmod.txt
+            --scorecolpattern '$fdr.scorecolpattern' --fdrcolpattern '$fdr.qvaluecolpattern'
+            &&
+                msspeptable modelqvals -i '$decoypeptable' -o decoypeplinmod.txt
+            --scorecolpattern '$fdr.scorecolpattern' --fdrcolpattern '$fdr.qvaluecolpattern'
+        #else
+            ln -s '$targetpeptable' targetpeplinmod.txt
+            &&
+            ln -s '$decoypeptable' decoypeplinmod.txt
+        #end if
+
+        &&
+        mssprottable bestpeptide -i '$targetproteins' -o targetbestpeptides.txt --peptable targetpeplinmod.txt
+        --scorecolpattern 
+        #if $fdr.type in ["pickfasta", "pickresult"]
+            'linear model'
+        #else
+            '$fdr.scorecolpattern'
+        #end if
+            #if $minlog
+                --logscore
+            #end if
+        #if $proteincolumn.value
+            --protcolpattern '$proteincolumn'
+        #end if
+            &&
+        mssprottable bestpeptide -i '$decoyproteins' -o decoybestpeptides.txt --peptable decoypeplinmod.txt
+        --scorecolpattern
+        #if $fdr.type in ["pickfasta", "pickresult"]
+            'linear model'
+        #else
+            '$fdr.scorecolpattern'
+        #end if
+            #if $minlog
+                --logscore
+            #end if
+        #if $proteincolumn.value
+            --protcolpattern '$proteincolumn'
+        #end if
+        &&
+        mssprottable
+        #if $fdr.type in ["pickfasta", "pickresult"]
+            pickedfdr
+                #if str($fdr.type) == "pickfasta"
+                    --picktype fasta --targetfasta '$tfasta' --decoyfasta '$dfasta'
+                #if $fdr.fastadelim
+                    --fastadelim '$fdr.fastadelim'
+                #end if
+                #if $fdr.genefield
+                    --genefield $fdr.genefield
+                #end if
+                #else
+                --picktype result
+                #end if
+        #else if $fdr.type=="protfdr"
+            protfdr
+        #end if
+            -i targetbestpeptides.txt --decoyfn decoybestpeptides.txt
+        -o '$output'
+        ]]>
+    </command>
+    
+    <inputs>
+      <param name="targetproteins" type="data" format="tabular" label="Target protein table"/>
+      <param name="decoyproteins" type="data" format="tabular" label="Decoy protein table"/>
+      <param name="targetpeptable" type="data" format="tabular" label="Target peptide table"/>
+      <param name="decoypeptable" type="data" format="tabular" label="Decoy peptide table"/>
+      <param name="proteincolumn" type="text" label="Text pattern for peptide table column with protein accessions if not standard Master protein column" help="E.g. '^Gene, Protein, Master, Symbol" optional="true" />
+      <param name="minlog" type="boolean" label="Use -log10 of a peptide's score" help="E.g. when using q-values to calculate best peptide Q-score" truevalue="true" falsevalue="false"/>
+
+      <conditional name="fdr">
+          <param name="type" type="select" display="radio" label="FDR method to use" help="All use best peptide per protein, picked fdr also does a linear modeling on the q-values">
+              <option value="pickfasta">Picked FDR with FASTA</option>
+              <option value="pickresult">Picked FDR from protein table</option>
+              <option value="protfdr">Conventional FDR</option>
+          </param>
+          <when value="pickfasta">
+              <param name="scorecolpattern" type="text" label="Regular expression pattern to determine scorecolumn for linear modeling of q-values in peptide file" help="E.g. ^percolator svm" />
+              <param name="qvaluecolpattern" type="text" label="Regular expression pattern to determine q-value column in peptide file" help="E.g. ^q-value" />
+              <param name="tfasta" type="data" format="fasta" label="Target FASTA" help="Must match decoy FASTA" />
+              <param name="dfasta" type="data" format="fasta" label="Decoy FASTA" help="Must match target FASTA" />
+              <param name="fastadelim" type="select" label="FASTA delimiter" optional="true" help="In case FASTA is not ENSEMBL or Uniprot you may be able to use a simple splitter to parse out the gene names. The delimiter is what splits the fields.">
+                  <option value="pipe">| (pipe)</option>
+                  <option value="tab">tab</option>
+                  <option value="semicolon">; (semicolon)</option>
+              </param>
+              <param name="genefield" type="integer" label="Gene field number" optional="true" help="To be used together with FASTA delimiter, this is the number of the field in which the gene name is in. First field is nr. 1" />
+          </when>
+          <when value="pickresult">
+              <param name="scorecolpattern" type="text" label="Regular expression pattern to determine scorecolumn for linear modeling of q-values in peptide file" help="E.g. ^percolator svm" />
+              <param name="qvaluecolpattern" type="text" label="Regular expression pattern to determine q-value column in peptide file" help="E.g. ^q-value" />
+          </when>
+          <when value="protfdr">
+              <param name="scorecolpattern" type="text" label="Regular expression pattern to determine scorecolumn for getting best peptide for protein" help="E.g. ^q-value or svm" />
+              <param name="qvaluecolpattern" type="text" label="Regular expression pattern to determine q-value column in peptide file" help="E.g. ^q-value" />
+          </when>
+    </conditional>
+    </inputs>
+    <outputs>
+        <data format="tabular" name="output"/>
+    </outputs>
+    <tests>
+        <test>
+            <param name="targetproteins" value="protein_table.txt" />
+            <param name="decoyproteins" value="protein_table_decoy.txt" />
+            <param name="targetpeptable" value="peptide_table.txt" />
+            <param name="decoypeptable" value="peptide_table_decoy.txt" />
+            <param name="proteincolumn" value="Master" />
+            <param name="minlog" value="false" />
+            <param name="fdr|type" value="protfdr" />
+            <param name="fdr|scorecolpattern" value="svm" />
+            <output name="output" value="protein_fdr.txt" />
+        </test>
+        <test>
+            <param name="targetproteins" value="symbol_table.txt" />
+            <param name="decoyproteins" value="symbol_table_decoy.txt" />
+            <param name="targetpeptable" value="peptide_table.txt" />
+            <param name="decoypeptable" value="peptide_table_decoy.txt" />
+            <param name="proteincolumn" value="Symbol" />
+            <param name="minlog" value="true" />
+            <param name="fdr|type" value="pickresult" />
+            <param name="fdr|scorecolpattern" value="svm" />
+            <param name="fdr|qvaluecolpattern" value="^q-value" />
+            <output name="output" value="external_gene_id_picked_fdr.txt" />
+        </test>
+        <test>
+            <param name="targetproteins" value="gene_table.txt" />
+            <param name="decoyproteins" value="gene_table_decoy.txt" />
+            <param name="targetpeptable" value="peptide_table.txt" />
+            <param name="decoypeptable" value="peptide_table_decoy.txt" />
+            <param name="proteincolumn" value="Gene" />
+            <param name="minlog" value="true" />
+            <param name="fdr|type" value="pickfasta" />
+            <param name="fdr|scorecolpattern" value="svm" />
+            <param name="fdr|qvaluecolpattern" value="^q-value" />
+            <param name="fdr|tfasta" value="ensembl85_small.fasta" />
+            <param name="fdr|dfasta" value="decoy_ensembl85_small.fasta" />
+            <output name="output" value="gene_picked_fdr.txt" />
+        </test>
+    </tests>
+    <help>
+        This tool takes a protein table and adds protein FDR columns to it. It follows
+        Savitsky et al and can deliver picked FDR for gene tables, or from the same
+        paper deliver FDRs derived from the protein's Q-score (-log10 of q-value of the protein's best peptide).
+    </help>
+    <citations>
+        <citation type="doi">10.1074/mcp.M114.046995</citation>
+    </citations>
+</tool>
