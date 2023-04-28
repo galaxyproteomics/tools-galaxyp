@@ -1,0 +1,659 @@
+<tool id="massPix" name="massPix" version="0.1.0">
+  <description>
+    Processes high resolution mass spectrometry imaging data,
+    performs multivariate statistics (PCA, clustering) and lipid
+    identification.
+  </description>
+  <macros>
+    <import>macros.xml</import>
+  </macros>
+  <expand macro="requirements" />
+  <expand macro="stdio" />
+
+  <command>
+    <![CDATA[
+      ln -s '${imzml_file.extra_files_path}/imzml' data.imzml &&
+      ln -s '${imzml_file.extra_files_path}/ibd' data.ibd &&
+
+      Rscript '${__tool_directory__}/masspix.R'
+      --imzml_file data.imzml
+
+      --process '$process.process_selector'      
+      #if $process.process_selector =="TRUE":
+
+          ## Making library
+          --ionisation_mode '$process.make_library.ionisation_mode'
+          --fixed '$process.make_library.fixed'
+          --fixed_fa '$process.make_library.fixed_fa'
+          
+          ## mz_extractor
+          --thres_int '$process.mz_extractor.thres_int' 
+          --thres_low '$process.mz_extractor.thres_low'
+          --thres_high '$process.mz_extractor.thres_high'
+          
+          ## peak_piucker_bin
+          --bin_ppm '$process.peak_piucker_bin.bin_ppm'
+          
+          ## subset_image
+          --percentage_deiso '$process.subset_image.percentage_deiso'
+          
+          ## filter
+          --steps '$process.filter.steps'
+          --thres_filter '$process.filter.thres_filter'
+          
+          ## deisotope
+          --ppm '$process.deisotope.ppm'
+          --no_isotopes '$process.deisotope.no_isotopes'
+          --prop_1 '$process.deisotope.prop_1'
+          --prop_2 '$process.deisotope.prop_2'
+          --search_mod '$process.deisotope.search_mod'
+
+          ##--mod '$process.deisotope.mod'
+          ## wl-25-11-2017, Sat: Must add single quotes here since mod
+          ##   content includes parentheses. Otherwise error:
+          ##   syntax error near unexpected token `('
+
+          ## 04-10-2019, Fri: added by Melanie Foll. Great job.
+          #set $NL_var = 'F'
+          #set $label_var = 'F'
+          #set $desat_var = 'F'
+          #set $oxidised_var = 'F'
+          
+          ## 21-08-2020, Fri: correct a mistake by wl
+          #if 'nl' in str($process.deisotope.mod).split(","): 
+              #set $NL_var = 'T'
+          #end if
+          #if 'lab' in str($process.deisotope.mod).split(","):
+              #set $label_var = 'T'
+          #end if
+          #if 'des' in str($process.deisotope.mod).split(","): 
+              #set $desat_var = 'T'
+          #end if
+          #if 'ox' in str($process.deisotope.mod).split(","): 
+              #set $oxidised_var = 'T'
+          #end if
+
+          --mod "c(NL = $NL_var, label = $label_var, oxidised = $oxidised_var, desat = $desat_var)"
+
+          ## annotate
+          --ppm_annotate '$process.annotate.ppm_annotate'
+          
+          ## normalise
+          --norm_type '$process.normalise.norm_type.norm_type_selector'
+          #if $process.normalise.norm_type.norm_type_selector == 'standards':
+            --standards '$process.normalise.norm_type.standards'
+          #end if
+
+          ## save processed image 
+          --image_out '$image_out'
+          #if $process.rdata: 
+            --rdata_out '$rdata_out'
+          #end if
+      #else:
+          --image_file '$process.image_file'
+      #end if
+
+      ## plot
+      --scale '$plot.scale'
+      --nlevels '$plot.nlevels'
+      --res_spatial '$plot.res_spatial'
+      --rem_outliers '$plot.rem_outliers'
+      --summary '$plot.summary'
+      --title '$plot.title'
+
+      --pca '$pca.pca_selector'
+      #if $pca.pca_selector =="TRUE":
+          --pca_out '$pca_out'    
+          --scale_type '$pca.scale_type'
+          --transform '$pca.transform'
+          --pc_num '$pca.pc_num'
+          --loading '$pca.loading'
+          #if $pca.loading:
+            --loading_out '$loading_out'
+          #end if  
+      #end if
+
+      --slice $slice_selector
+      #if $slice_selector:
+          --row '$row'
+          --slice_out '$slice_out'
+      #end if
+
+      --clus '$cluster.cluster_selector'
+      #if $cluster.cluster_selector =="TRUE":
+          --clus_out '$clus_out'
+          --cluster_type '$cluster.cluster_type'
+          --clusters '$cluster.clusters'
+          --intensity '$cluster.intensity'
+          #if $cluster.intensity:
+            --intensity_out '$intensity_out'
+          #end if  
+      #end if
+    ]]>
+  </command>
+
+  <!-- =============================================================== -->
+  <inputs>
+
+    <param name="imzml_file" type="data" format="imzml" 
+           label="Choose an imzml composite file"
+           help="imzml file contains imaging meta data. The imaging binary 
+                 data file (*.ibd) contains the mass spectral data. The two
+                 files must be uploaded as an 'imzml' 'composite' data type 
+                 via 'Get Data'. " />
+
+        <conditional name="process">
+            <param label="Process mass spectrometry imaging data"
+                 name="process_selector"
+                 type="select"
+                 help="Choose if you want to process MSI data or only visualise
+                       processed MSI data." >
+                <option value="TRUE" selected="True">perform processing</option>
+                <option value="FALSE">visualisation of processed file</option>
+            </param>
+
+            <when value="TRUE">
+
+        <section name="make_library" title="Making library" > 
+
+          <param name="ionisation_mode" type="select"
+                 label="Specify ionisation mode"
+                 help="Choose 'positive' or 'negative', will determine
+                       which lipid classes are in database"
+                 display="radio">
+                <option value="positive" selected="True">positive</option>
+                <option value="negative">negative</option>
+          </param>
+
+          <param name="fixed" type="boolean" 
+                 truevalue="TRUE" falsevalue="FALSE" 
+                 checked="false" label="SN position fixed or not"
+                 help="Defines if one of the SN positions is fixed, default
+                       is false." />
+
+          <param name="fixed_fa" type="float" value="16"
+                 label="Fixed FA"
+                 help="Defines the name of the fixed FA eg 16, 18.1, 20.4." />
+        </section>
+
+        <section name="mz_extractor" title="Extract m/z and pick peaks" >
+
+          <param name="thres_int" type="integer" value="100000"
+                 label="Intensity threshold"
+                 help="Defines the intensity threshold, above which ions are 
+                       retained"/>
+          
+          <param name="thres_low" type="integer" value="200"
+                 label="Minumum m/z threshold"
+                 help="Defines the minimum m/z threshold, above which ions 
+                       will be retained"/>
+
+          <param name="thres_high" type="integer" value="1000"
+                 label="Maximum m/z threshold"
+                 help="Defines the maximum m/z threshold, below which ions 
+                       will be retained"/>
+          
+        </section>
+
+        <section name="peak_piucker_bin" title="Bin all m/zs by ppm bucket">
+          
+          <param name="bin_ppm" type="integer" value="10"
+                 label="Bin width (ppm)"
+                 help="Mass accuracy for binning between spectra. Suggest
+                       starting with 10 ppm bin width for data acquired with mass
+                       resolving power 60,000 at m/z 400; increase/decrease with
+                       lower/higher resolving power, respectively. Used to group
+                       common ions across all spectra (pixels) where ions are
+                       measured with slightly different m/z."  /> 
+         </section>
+
+        <section name="subset_image"
+                 title="Generate subset of first image file to improve speed
+                        of deisotoping">
+
+          <param name="percentage_deiso" type="integer" value="3"
+                 label="Proportion of deisotoping"
+                 help="Defines the proportion of total pixels to select,
+                       at random from the first file to produce a subset
+                       of the image"/>
+        </section>
+
+        <section name="filter"
+                 title="Filter to a matrix subset that includes
+                        variables above a threshold of missing values">
+          <param name="steps" type="float" value="0.05"
+                 min="0" max="1"
+                 label="Steps for filtering"
+                 help="This produces a sequence of values between 0 and 1 
+                       that defines the thresholds of missing values to test. 
+                       Do not change this value from 0.05 but rather change 
+                       Threshold for filtering to adjust missing value tolerance." />
+          
+          <param name="thres_filter" type="integer" value="11"
+                 min="1" max="21"
+                 label="Threshold for filtering"
+                 help="Defines threshold for proportion of missing values
+                       (this is the step number, not the actual proportion).
+                       Range is 1-21, where each step size corresponds to an increase 
+                       in 0.05 (5 %) missing values allowed. For example: 
+                       Step 1:  0 threshold - no missing values allowed (feature must 
+                       be present in at least 100% pixels)
+                       Step 6: 0.25 threshold -25 % missing values allowed (feature 
+                       must be present in at least 75 % pixels)
+                       Step 11: 0.5 threshold - 50 % missing values allowed (feature 
+                       must be present in at least 50 % pixels)
+                       Step 16: 0.75 threshold - 75 % missing values allowed (feature 
+                       must be present in at least 25 % pixels)
+                       Step 21:  1 threshold - 100 % missing values allowed (feature 
+                       must be present in at least 0 % pixels)."
+                 />
+        </section>
+
+        <section name="deisotope"
+                 title="Perform deisotoping on a subset of the image">
+          
+          <param name="ppm" type="integer" value="3" label="Tolerance (ppm)"
+                 help="Tolerance (ppm) within which mass of isotope must
+                       be within"/>
+
+          <param name="no_isotopes" type="integer" value="2"
+                 min="1" max="2"
+                 label="Number of isotopes"
+                 help="Number of isotopes to consider (1 or 2)"/>
+
+          <param name="prop_1" type="float" value="0.9" min="0" max="1"
+                 label="First Proportion"
+                 help="Proportion of monoisotope intensity the 1st isotope
+                       intensity must not exceed"/>
+
+          <param name="prop_2" type="float" value="0.5" min="0" max="1"
+                 label="Second proportion"
+                 help="Proportion of monoisotope intensity the 2nd isotope
+                       intensity must not exceed"/>
+          
+          <param name="search_mod" type="boolean" 
+                 truevalue="TRUE" falsevalue="FALSE" checked="true" 
+                 label="Search modifications"
+                 help="Search modifications T/F."/>
+
+
+          <param name="mod" type="select"
+                 optional="True" display="checkboxes" multiple="True"
+                 label="Specify modifications to search"
+                 help="Modifications to search eg.neutral loss of
+                       head group or water; 13C palmitate lablled;
+                       1 to 4 additional desaturations; oxidised">
+              <option value="nl" selected="True">Neutral loss</option>
+              <option value="lab">13C palmitate labelled</option>
+              <option value="ox"> Oxidised</option>
+              <option value="des">1 to 4 additional desaturations</option>
+          </param>
+
+        </section>
+
+        <section name="annotate"
+                 title="Perform putative annotation on deisotoped image">
+          <param name="ppm_annotate" type="integer" value="10"
+                 label="Specify ppm threshold for annotation"
+                 help="Defines ppm threshold for which |observed m/z -
+                       theoretical m/z| must be less than for annotation to be
+                       retained. Suggest to use same mass tolerance 
+                       as bin width." /> 
+        </section>
+
+        <section name="normalise" title="Normalise image">
+          <conditional name="norm_type">
+
+            <param name="norm_type_selector" type="select"
+                   label="Select a method for normalisation"
+                   help="Mode of normalisation" >
+              <option value="TIC" selected="true">Total Ion Current</option>
+              <option value="standards">Standard</option>
+              <option value="median">Median</option>
+              <option value="none">None</option>
+            </param>
+            <when value="standards">
+              <!-- FIXME: not sure 'text' is the right type for standards -->
+              <!-- wl-25-11-2017, Sat: R has a class of NULL. Convert text
+               "NULL" to NULL in R: as.null("NULL") -->
+              <param name="standards" type="text" value="NULL"
+                     label="Specify vector of row"
+                     help="Vector of row indices corresponding to variables
+                           that are standards. The input format should follow the 
+                           example: 'c(1,3:21,35)' where ':' stands for the range. 
+                           If the input is 'NULL', all rows will be used."/>
+             </when> 
+             <when value="TIC" />
+             <when value="median" />
+             <when value="none" />
+
+           </conditional>
+         </section>
+       
+         <param name="rdata" type="boolean" truevalue="TRUE" 
+                falsevalue="FALSE" checked="true"
+                label="Save all R running results"
+                help="Save all running results for inspection" />
+
+       </when>
+
+      <when value="FALSE">
+        <param name="image_file" format="tabular" type="data"
+               label="Choose processed data"
+               help="Choose processed data file for PCA or clustering analysys" />
+      </when>
+      
+    </conditional>
+
+    <section name="plot" title="Specify plot parameters">
+          <param name="scale" type="integer" value="100"
+                 label="Specify scale range"
+                 help="Range of scale that intensity values will be
+                       scaled to."/>
+
+          <param name="nlevels" type="integer" value="50"
+                 label="Specify Graduations"
+                 help="Graduations of colour scale."/>
+
+          <param name="res_spatial" type="integer" value="50"
+                 label="Specify spatial resolution"
+                 help="Spatial resolution of image" />
+
+          <!-- FIXME: Problem: mix str and boolean. Change as boolean.  -->
+          <param name="rem_outliers" type="boolean" truevalue="TRUE"
+                 falsevalue="FALSE" checked="true"
+                 label="Remove outliers or not"
+                 help="Remove intensities that are outliers or not" />
+
+          <param name="summary" type="boolean" 
+                 truevalue="TRUE" falsevalue="FALSE"
+                 checked="false"
+                 label="Give summary information or not"
+                 help="Summary information with boxplot and histogram"/>
+
+          <param name="title" type="boolean" 
+                 truevalue="TRUE" falsevalue="FALSE"
+                 checked="true"
+                 label="Show plot title or not"
+                 help="Provide plot title for outlier handling."/>
+    </section>
+    
+    <conditional name="pca">
+        <param name="pca_selector"
+             type="select"
+             label="Generate PCA plot"
+             help="Select generating a PCA plot or not" >
+                <option value="TRUE" selected="True">Generate PCA plot</option>
+                <option value="FALSE">no PCA plot</option>
+            </param>
+
+            <when value="TRUE">
+                  <param name="scale_type" type="select"
+                         label="Select a method for scaling"
+                         help="Mode of scaling. Valid argument: center, 
+                               center and pareto, pareto and none">
+                    <option value="cs" selected="true">Center and Pareto</option>
+                    <option value="c">Center</option>
+                    <option value="pareto">Pareto</option>
+                    <option value="none">None</option>
+                  </param>
+
+                  <param name="transform" type="boolean" 
+                         truevalue="TRUE" falsevalue="FALSE" checked="false"
+                         label="Transformation or not"
+                         help="Log transform data T/F"/>
+
+                  <param name="pc_num" type="integer" value="5" label="Specify PCs"
+                         help="Number of PCs to consider" /> 
+
+                  <param name="loading" type="boolean" 
+                         truevalue="TRUE" falsevalue="FALSE" checked="true"
+                         label="Save loading values"
+                         help="Save loading values for inspection."/>
+            </when>
+
+            <when value="FALSE" />
+        </conditional>
+
+        <param name="slice_selector" type="boolean" 
+               truevalue="TRUE" falsevalue="FALSE" checked="true"
+               label="Plot ion slice or not"
+               help="Make ion slice if requested" >
+        </param>
+
+        <param name="row" type="integer" value="12"
+             label="For ion slice plotting: specify row"
+             help="Row number to plot - this can be determined by 
+                   opening the processed image data file."
+             optional="True"/>
+    
+    <conditional name="cluster"> 
+        <param name="cluster_selector" type="select" 
+               label="Perform clustering or not"
+               help="Perform clustering or not" >
+            <option value="TRUE" selected="True">Perform clustering</option>
+            <option value="FALSE">No clustering</option>
+        </param>
+
+      <when value="TRUE">
+          <param name="cluster_type" type="select"
+                 label="Select a clustering method"
+                 help="Currently only 'kmeans' supported" >
+            <option value="kmeans" selected="true">k-means</option>
+          </param>
+
+          <param name="clusters" type="integer" value="5"
+                 label="Specify cluster numbers"
+                 help="Number of clusters to use" />
+
+          <param name="intensity" type="boolean" 
+                 truevalue="TRUE" falsevalue="FALSE" checked="true"
+                 label="Save cluster intensity values"
+                 help="Save cluster intensity for inspection."/>
+      </when>
+
+      <when value="FALSE" />
+
+    </conditional>
+  </inputs>
+
+  <outputs>
+    <data format="tabular" name="image_out"
+          label="Processed imaging data on ${on_string}">
+      <filter> process['process_selector'] == "TRUE" </filter>
+    </data>
+    
+    <data format="rdata" name="rdata_out"
+          label="R running results on ${on_string}">
+          <filter> 
+            ((
+            process['process_selector'] == "TRUE" and
+            process['rdata'] == True
+            ))
+          </filter>
+    </data>
+
+    <data format="pdf" name="pca_out"
+          label="PCA plots on ${on_string}">
+      <filter> pca['pca_selector'] == "TRUE" </filter>
+    </data>
+
+    <data format="tabular" name="loading_out"
+          label="PCA loading file on ${on_string}">
+          <filter> 
+            ((
+            pca['pca_selector'] == "TRUE" and
+            pca['loading'] == True
+            ))
+          </filter>
+    </data>
+
+    <data format="pdf" name="slice_out"
+          label="Slice plots on ${on_string}">
+      <filter> slice_selector = True </filter>
+    </data>
+
+    <data format="pdf" name="clus_out"
+          label="Cluster plots on ${on_string}">
+      <filter> cluster['cluster_selector'] == "TRUE" </filter>
+    </data>
+
+    <data format="tabular" name="intensity_out"
+          label="Cluster intensity file on ${on_string}">
+          <filter> 
+            ((
+            cluster['cluster_selector'] == "TRUE" and
+            cluster['intensity'] == True
+            ))
+          </filter>
+    </data>
+
+  </outputs>
+
+  <tests>
+    <test expect_num_outputs="7">
+      <expand macro="infile_imzml"/>
+      <param name="process_selector" value="TRUE" /> 
+      <param name="rem_outliers" value="TRUE" /> 
+      <param name="summary" value="TRUE" /> 
+      <param name="rdata" value="TRUE" /> 
+      <param name="pca_selector" value="TRUE" /> 
+      <param name="loading" value="TRUE" /> 
+      <param name="slice_selector" value="TRUE" /> 
+      <param name="cluster_selector" value="TRUE" /> 
+      <param name="intensity" value="TRUE" /> 
+      <output name="image_out" file="res/image.tsv" />
+      <output name="loading_out" file="res/loading.tsv" />
+      <output name="intensity_out" file="res/intensity.tsv" />
+     </test>
+
+  </tests>
+
+  <help>
+massPix
+=======
+
+Description
+-----------
+
+massPix_ processes high resolution mass spectrometry imaging data, performs
+multivariate statistics (PCA, clustering) and lipid identification.
+
+The overall data processing workflow consists of initial data
+pre-processing, filtering, image subsetting, deisotoping, annotation,
+normalisation, scaling, image "slicing" and multivariate statistics.
+
+Data in imzML format is parsed to R. Ions with intensities greater than a
+threshold, from each spectra, are extracted and grouped to user-adjustable
+mass bins. Spectral features are defined by the median m/z value in each
+bin, and only features detected above a threshold proportion of spectra are
+retained. Average intensities for all features from a random subset of
+pixels are computed and used to perform deisotoping. The deisotoping
+algorithm identifies the molecular ion (M) and removes isotopes at m/z (M+1)
+and (M+2) which are within a calculated proportion of the intensity of M.
+
+Putative lipid annotation by accurate mass is achieved by searching
+deisotoped ions against a generated library of lipid m/z ratios computed for
+all combinations of common fatty acids, lipid head-groups and anticipated
+adducts in each ionisation mode (functions: ``makelibrary`` and
+``annotate``).  The criteria for a match can be adjusted according to
+different MS performance capabilities. Lipid classes searched in positive
+ion mode are diacylglycerides (DAG), triacylglycerides (TAG),
+phosphatidylcholines (PC), phosphatidylethanolamines (PE),
+phosphatidylserines (PS), LysoPC, cholesteryl esters (CE), sphingomyelins
+(SM) and ceramides (Cer). In negative ion mode, lipid classes searched are
+PC, phosphatidic acid (PA), PE, PS, phosphatidylglycerols (PG),
+phosphatidylinositols (PI), Cer and free fatty acids (FFA). Whilst this list
+is not exhaustive, it does cover the most common lipid classes. Possible
+adducts considered are [M+K]+, [M+H]+, [M+Na]+, [M+NH4]+ in positive ion
+mode and [M–H]-, [M+Cl]-, [M+OAc]- in negative ion mode. It is important to
+point out that a database hit based on accurate mass should only be
+considered the first step in metabolite identification, and confirmation
+carried out using MS/MS is required, where this appropriate.
+
+massPix_ has the further capability to perform difference matching on
+deisotoped features to search for mass differences associated with
+measurement-introduced alternation (e.g. loss of headgroup, loss of water)
+or biological modifications (e.g. oxidation). 
+
+The final image is constructed, based on all pixels. Ion intensities are 
+then normalised either to the median or total ion count, or to the 
+average intensity of a set of standard ions. 
+Single ion images can be produced, or 
+normalised intensities used to create multivariate statistical images 
+based on k-means clustering or PCA following 
+centering and Pareto scaling. 
+The analysis can be readily customised by replacing default parameters 
+for filtering, normalisation and scaling, library composition, lipid 
+assignment and image reporting.
+
+Inputs
+------
+
+**\1. Choose an imzml composite file**
+
+imzml composite file actually includes two files, ``.imzml`` and ``.ibd``.
+The former file contains imaging meta data while the later is the imaging
+binary mass spectral data. The two files must be uploaded as an ``imzml
+composite`` data type via ``Get Data``. 
+
+**\2. Choose processed data**
+
+If you have processed MSI data and saved the results as a tubular data
+before, you can upload it for further analysis such as PCA and clustering
+analysis.
+
+Beware that you still need to load the imzml composite file even you do not
+intend to process again.
+
+Parameters
+----------
+
+The parameter setting is for processing image data and plotting. Each
+section gives a brief description how to choose these parameters. 
+
+Outputs
+-------
+
+**\1. Processed image data**
+
+The processed image is saved in a tubular format: 
+
+========= =================================  =======  =====================================  ================  ================
+peak      annotated                          isotope  modification                           1                 2
+========= =================================  =======  =====================================  ================  ================
+573.4837  [DG-H20(32:0)+Na][DG-H20(34:3)+H]  [6][M]   Fragment[22] insource(phosphocholine)  568252.749061865  715704.166084769
+573.4896  [DG-H20(32:0)+Na][DG-H20(34:3)+H]           Fragment[23] insource(phosphocholine)  445494.724990511  502917.999955269
+573.4933  [DG-H20(34:3)+H]                                                                   96898.8800809354  259849.138593262
+577.5119                                     [7][M]   Fragment[28] insource(phosphocholine)  928718.952331844  365589.233479685
+577.5175  [DG-H20(34:1)+H]                   [8][M]   Fragment[29] insource(phosphocholine)  1724568.99083261  1519223.65269763
+577.5236  [DG-H20(34:1)+H]                   [9][M]   Fragment[30] insource(phosphocholine)  1069278.60455705  934887.648006579
+577.5277                                     [10][M]                                         147309.77849969   144416.617387283
+========= =================================  =======  =====================================  ================  ================
+
+      |
+
+**\2. R running results** (OPTIONAL)
+
+All running results are saved as an R file ``rdata`` for advanced user to
+further analysis.
+
+**\3. PCA plots** (OPTIONAL) 
+
+PCA as well as its loading are plotted. Also the loading values are saved as
+an Excel file. (OPTIONAL)
+
+**\4. Slice plots** (OPTIONAL)
+
+**\5. Cluster plots** (OPTIONAL)
+
+Besides the cluster plots, the cluster intensity values can be saved as a
+tabular format. (OPTIONAL)
+
+  </help>
+  
+  <citations>
+    <citation type="doi">10.1007/s11306-017-1252-5</citation>
+  </citations>
+
+</tool>
