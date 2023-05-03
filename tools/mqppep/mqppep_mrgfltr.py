@@ -87,7 +87,10 @@ def __main__():
         nargs=1,
         required=True,
         dest="phosphopeptides",
-        help="Phosphopeptide data for experimental results, including the intensities and the mapping to kinase domains, in tabular format",
+        help=" ".join([
+            "Phosphopeptide data for experimental results, including the",
+            "intensities and the mapping to kinase domains, in tabular format"
+        ]),
     )
     #   UniProtKB/SwissProt DB input, SQLite
     parser.add_argument(
@@ -106,7 +109,10 @@ def __main__():
         required=False,
         default=[],
         dest="species",
-        help="limit PhosphoSitePlus records to indicated species (field may be empty)",
+        help=" ".join([
+            "limit PhosphoSitePlus records to indicated species",
+            "(field may be empty)"
+        ]),
     )
 
     # outputs:
@@ -174,7 +180,7 @@ def __main__():
     # determine species to limit records from PSP_Regulatory_Sites
     if options.species is None:
         exit(
-            'Argument "species" is required (and may be empty) but not supplied'
+            'Argument "species" is required (& may be empty) but not supplied'
         )
     try:
         if len(options.species) > 0:
@@ -216,20 +222,25 @@ def __main__():
         FUNCTION_PHOSPHORESIDUE = (
             "Function Phosphoresidue(PSP=PhosphoSitePlus.org)"
         )
-        GENE_NAME = "Gene_Name"  # Gene Name from UniProtKB
-        ON_FUNCTION = (
-            "ON_FUNCTION"  # ON_FUNCTION column from PSP_Regulatory_Sites
-        )
-        ON_NOTES = "NOTES"  # NOTES column from PSP_Regulatory_Sites
-        ON_OTHER_INTERACT = "ON_OTHER_INTERACT"  # ON_OTHER_INTERACT column from PSP_Regulatory_Sites
-        ON_PROCESS = (
-            "ON_PROCESS"  # ON_PROCESS column from PSP_Regulatory_Sites
-        )
-        ON_PROT_INTERACT = "ON_PROT_INTERACT"  # ON_PROT_INTERACT column from PSP_Regulatory_Sites
+        # Gene Name from UniProtKB
+        GENE_NAME = "Gene_Name"
+        # ON_FUNCTION column from PSP_Regulatory_Sites
+        ON_FUNCTION = ("ON_FUNCTION")
+        # NOTES column from PSP_Regulatory_Sites
+        ON_NOTES = "NOTES"
+        # ON_OTHER_INTERACT column from PSP_Regulatory_Sites
+        ON_OTHER_INTERACT = "ON_OTHER_INTERACT"
+        # ON_PROCESS column from PSP_Regulatory_Sites
+        ON_PROCESS = ("ON_PROCESS")
+        # ON_PROT_INTERACT column from PSP_Regulatory_Sites
+        ON_PROT_INTERACT = "ON_PROT_INTERACT"
         PHOSPHOPEPTIDE = "Phosphopeptide"
         PHOSPHOPEPTIDE_MATCH = "Phosphopeptide_match"
         PHOSPHORESIDUE = "Phosphoresidue"
-        PUTATIVE_UPSTREAM_DOMAINS = "Putative Upstream Kinases(PSP=PhosphoSitePlus.org)/Phosphatases/Binding Domains"
+        PUTATIVE_UPSTREAM_DOMAINS = " ".join([
+            "Putative Upstream Kinases(PSP=PhosphoSitePlus.org)/",
+            "Phosphatases/Binding Domains"
+        ])
         SEQUENCE = "Sequence"
         SEQUENCE10 = "Sequence10"
         SEQUENCE7 = "Sequence7"
@@ -328,8 +339,26 @@ def __main__():
             CitationData
           ) VALUES (?,?)
           """
-        CITATION_INSERT_PSP = 'PhosphoSitePlus(R) (PSP) was created by Cell Signaling Technology Inc. It is licensed under a Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported License. When using PSP data or analyses in printed publications or in online resources, the following acknowledgements must be included: (a) the words "PhosphoSitePlus(R), www.phosphosite.org" must be included at appropriate places in the text or webpage, and (b) the following citation must be included in the bibliography: "Hornbeck PV, Zhang B, Murray B, Kornhauser JM, Latham V, Skrzypek E PhosphoSitePlus, 2014: mutations, PTMs and recalibrations. Nucleic Acids Res. 2015 43:D512-20. PMID: 25514926."'
-        CITATION_INSERT_PSP_REF = 'Hornbeck, 2014, "PhosphoSitePlus, 2014: mutations, PTMs and recalibrations.", https://pubmed.ncbi.nlm.nih.gov/22135298, https://doi.org/10.1093/nar/gkr1122'
+        CITATION_INSERT_PSP = " ".join([
+            "PhosphoSitePlus(R) (PSP) was created by Cell Signaling",
+            "Technology Inc. It is licensed under a Creative Commons",
+            "Attribution-NonCommercial-ShareAlike 3.0 Unported License.",
+            "When using PSP data or analyses in printed publications or",
+            "in online resources, the following acknowledgements must be",
+            "included: (a) the words",
+            '"PhosphoSitePlus(R), www.phosphosite.org" must',
+            "be included at appropriate places in the text or webpage,",
+            "and (b) the following citation must be included in the",
+            'bibliography: "Hornbeck PV, Zhang B, Murray B, Kornhauser',
+            "JM, Latham V, Skrzypek E PhosphoSitePlus, 2014: mutations,",
+            "PTMs and recalibrations. Nucleic Acids Res. 2015",
+            '43:D512-20. PMID: 25514926."'
+        ])
+        CITATION_INSERT_PSP_REF = " ".join([
+            'Hornbeck, 2014, "PhosphoSitePlus, 2014: mutations, PTMs and',
+            'recalibrations.", https://pubmed.ncbi.nlm.nih.gov/22135298,',
+            "https://doi.org/10.1093/nar/gkr1122"
+        ])
 
         MRGFLTR_METADATA_COLUMNS = [
             "ppep_id",
@@ -388,7 +417,8 @@ def __main__():
         file1.close()
         file1_encoded.close()
 
-        # Get the list of phosphopeptides with the p's that represent the phosphorylation sites removed
+        # Get the list of phosphopeptides with the p's that represent
+        #     the phosphorylation sites removed
         re_phos = re.compile("p")
 
         end_time = time.process_time()  # timer
@@ -397,7 +427,7 @@ def __main__():
             file=sys.stderr,
         )
 
-        # ----------- Get SwissProt data from SQLite database (start) -----------
+        # -------- Get SwissProt data from SQLite database (start) -----------
         # build UniProt sequence LUT and list of unique SwissProt sequences
 
         # Open SwissProt SQLite database
@@ -465,7 +495,7 @@ def __main__():
         Description = ""
         Gene_Name = ""
 
-        # ----------- Get SwissProt data from SQLite database (finish) -----------
+        # -------- Get SwissProt data from SQLite database (finish) -----------
 
         end_time = time.process_time()  # timer
         print(
@@ -473,12 +503,13 @@ def __main__():
             file=sys.stderr,
         )
 
-        # ----------- Get SwissProt data from SQLite database (start) -----------
+        # -------- Get SwissProt data from SQLite database (start) -----------
         # Open SwissProt SQLite database
         conn = sql.connect(uniprot_sqlite)
         cur = conn.cursor()
 
-        # Set up dictionary to aggregate results for phosphopeptides correspounding to dephosphoeptide
+        # Set up dictionary to aggregate results for phosphopeptides
+        #     corresponding to dephosphoeptide
         DephosphoPep_UniProtSeq_LUT = {}
 
         # Set up dictionary to accumulate results
@@ -548,7 +579,7 @@ def __main__():
                     # Get one tuple for each `phospho_pep`
                     #   in DephosphoPep_UniProtSeq_LUT[dephospho_pep]
                     for (upid, gn, desc) in r:
-                        # Append pseudo-tuple per UniProt_ID but only when it is not present
+                        # Append pseudo-tuple per UniProt_ID iff not present
                         if (
                             upid
                             not in DephosphoPep_UniProtSeq_LUT[
@@ -571,7 +602,7 @@ def __main__():
         phospho_pep = dephospho_pep = sequence = 0
         upid = gn = desc = r = ""
 
-        # ----------- Get SwissProt data from SQLite database (finish) -----------
+        # -------- Get SwissProt data from SQLite database (finish) -----------
 
         end_time = time.process_time()  # timer
         print(
@@ -608,33 +639,6 @@ def __main__():
             file=sys.stderr,
         )  # timer
 
-        # ########################################################################
-        # # trim upstream_data to include only the upstream map columns
-        # old_cols = upstream_data.columns.tolist()
-        # i = 0
-        # first_intensity = -1
-        # last_intensity = -1
-        # intensity_re = re.compile("Intensity.*")
-        # for col_name in old_cols:
-        #     m = intensity_re.match(col_name)
-        #     if m:
-        #         last_intensity = i
-        #         if first_intensity == -1:
-        #             first_intensity = i
-        #     i += 1
-        # # print('last intensity = %d' % last_intensity)
-        # col_PKCalpha = last_intensity + 2
-        #
-        # data_in_cols = [old_cols[0]] + old_cols[
-        #     first_intensity: last_intensity + 1
-        # ]
-        #
-        # if upstream_data.empty:
-        #     print("upstream_data is empty")
-        #     exit(0)
-        #
-        # data_in = upstream_data.copy(deep=True)[data_in_cols]
-        ########################################################################
         # trim upstream_data to include only the upstream map columns
         old_cols = upstream_data.columns.tolist()
         i = 0
@@ -666,7 +670,7 @@ def __main__():
         data_in.columns = data_col_names
         print("data_in")
         print(data_in)
-        ########################################################################
+        ######################################################################
 
         # Convert floating-point integers to int64 integers
         #   ref: https://stackoverflow.com/a/68497603/15509512
@@ -689,7 +693,7 @@ def __main__():
         )  # timer
 
         # Produce a dictionary of metadata for a single phosphopeptide.
-        #   This is a replacement of `UniProtInfo_subdict` in the original code.
+        #   This is replaces `UniProtInfo_subdict` from the original code.
         def pseq_to_subdict(phospho_pep):
             # Strip "p" from phosphopeptide sequence
             dephospho_pep = re_phos.sub("", phospho_pep)
@@ -733,19 +737,28 @@ def __main__():
             if phospho_pep not in PhosphoPep_UniProtSeq_LUT:
                 raise PreconditionError(
                     phospho_pep,
-                    "no matching phosphopeptide found in PhosphoPep_UniProtSeq_LUT",
+                    " ".join([
+                        "no matching phosphopeptide found in",
+                        "PhosphoPep_UniProtSeq_LUT"
+                    ])
                 )
             if dephospho_pep not in DephosphoPep_UniProtSeq_LUT:
                 raise PreconditionError(
                     dephospho_pep,
-                    "dephosphorylated phosphopeptide not found in DephosphoPep_UniProtSeq_LUT",
+                    " ".join([
+                        "dephosphorylated phosphopeptide not found",
+                        "in DephosphoPep_UniProtSeq_LUT"
+                    ])
                 )
             if (
-                dephospho_pep != PhosphoPep_UniProtSeq_LUT[(phospho_pep, DEPHOSPHOPEP)]
+                dephospho_pep != PhosphoPep_UniProtSeq_LUT[
+                    (phospho_pep, DEPHOSPHOPEP)]
             ):
                 my_err_msg = "dephosphorylated phosphopeptide does not match "
-                my_err_msg += "PhosphoPep_UniProtSeq_LUT[(phospho_pep,DEPHOSPHOPEP)] = "
-                my_err_msg += PhosphoPep_UniProtSeq_LUT[(phospho_pep, DEPHOSPHOPEP)]
+                my_err_msg += "PhosphoPep_UniProtSeq_LUT"
+                my_err_msg += "[(phospho_pep,DEPHOSPHOPEP)] = "
+                my_err_msg += PhosphoPep_UniProtSeq_LUT[
+                    (phospho_pep, DEPHOSPHOPEP)]
                 raise PreconditionError(dephospho_pep, my_err_msg)
 
             result[SEQUENCE] = [dephospho_pep]
@@ -761,20 +774,18 @@ def __main__():
             if (dephospho_pep, SEQUENCE) not in DephosphoPep_UniProtSeq_LUT:
                 raise PreconditionError(
                     dephospho_pep,
-                    "no matching phosphopeptide found in DephosphoPep_UniProtSeq_LUT",
+                    "".join(
+                        "no matching phosphopeptide found",
+                        "in DephosphoPep_UniProtSeq_LUT")
                 )
             UniProtSeqList = DephosphoPep_UniProtSeq_LUT[
                 (dephospho_pep, SEQUENCE)
             ]
             if len(UniProtSeqList) < 1:
                 print(
-                    "Skipping DephosphoPep_UniProtSeq_LUT[('%s',SEQUENCE)] because value has zero length"
-                    % dephospho_pep
+                    "Skipping DephosphoPep_UniProtSeq_LUT[('%s',SEQUENCE)] %s"
+                    % (dephospho_pep, "because value has zero length")
                 )
-                # raise PreconditionError(
-                #     "DephosphoPep_UniProtSeq_LUT[('" + dephospho_pep + ",SEQUENCE)",
-                #      'value has zero length'
-                #      )
             for UniProtSeq in UniProtSeqList:
                 i = 0
                 phosphoresidues = []
@@ -854,13 +865,15 @@ def __main__():
                     # add Sequence10
                     if psite < 10:  # phospho_pep at N terminus
                         seq10 = (
-                            str(UniProtSeq)[:psite] + "p" + str(UniProtSeq)[psite: psite + 11]
+                            str(UniProtSeq)[:psite] + "p" + str(
+                                UniProtSeq)[psite: psite + 11]
                         )
                     elif (
                         len(UniProtSeq) - psite < 11
                     ):  # phospho_pep at C terminus
                         seq10 = (
-                            str(UniProtSeq)[psite - 10: psite] + "p" + str(UniProtSeq)[psite:]
+                            str(UniProtSeq)[psite - 10: psite] + "p" + str(
+                                UniProtSeq)[psite:]
                         )
                     else:
                         seq10 = str(UniProtSeq)[psite - 10: psite + 11]
@@ -922,23 +935,6 @@ def __main__():
             newstring = "; ".join(
                 [", ".join(prez) for prez in result[PHOSPHORESIDUE]]
             )
-            # #separate the isoforms in PHOSPHORESIDUE column with ";"
-            # oldstring = result[PHOSPHORESIDUE]
-            # oldlist = list(oldstring)
-            # newstring = ""
-            # i = 0
-            # for e in oldlist:
-            #     if e == ";":
-            #         if numps > 1:
-            #             if i%numps:
-            #                 newstring = newstring + ";"
-            #             else:
-            #                 newstring = newstring + ","
-            #         else:
-            #             newstring = newstring + ";"
-            #         i +=1
-            #     else:
-            #         newstring = newstring + e
             result[PHOSPHORESIDUE] = newstring
 
             # separate sequence7's by |
@@ -973,7 +969,8 @@ def __main__():
         )  # timer
 
         # Construct dictionary from list of lists
-        #   ref: https://www.8bitavenue.com/how-to-convert-list-of-lists-to-dictionary-in-python/
+        #   ref: https://www.8bitavenue.com/\
+        #        how-to-convert-list-of-lists-to-dictionary-in-python/
         UniProt_Info = {
             result[0]: result[1]
             for result in result_list
@@ -982,8 +979,8 @@ def __main__():
 
         end_time = time.process_time()  # timer
         print(
-            "%0.6f create dictionary mapping phosphopeptide to metadata dictionary [C]"
-            % (end_time - start_time,),
+            "%0.6f create dictionary mapping phosphopeptide %s"
+            % (end_time - start_time, "to metadata dictionary [C]"),
             file=sys.stderr,
         )  # timer
 
@@ -1042,14 +1039,13 @@ def __main__():
         ).reset_index()
         seq7_df.columns = [SEQUENCE7, PHOSPHOPEPTIDE]
 
-        # --- -------------- begin read PSP_Regulatory_sites ---------------------------------
-        # read in PhosphoSitePlus Regulatory Sites dataset
-        # ----------- Get PhosphoSitePlus Regulatory Sites data from SQLite database (start) -----------
+        # read in PhosphoSitePlus Regulatory Sites dataset from SQLite
+        # --- -------------- begin read PSP_Regulatory_sites -----
         conn = sql.connect(uniprot_sqlite)
         regsites_df = pandas.read_sql_query(PSP_REGSITE_SQL, conn)
         # Close SwissProt SQLite database
         conn.close()
-        # ... -------------- end read PSP_Regulatory_sites ------------------------------------
+        # ... -------------- end read PSP_Regulatory_sites -------
 
         # keep only the human entries in dataframe
         if len(species) > 0:
@@ -1127,7 +1123,8 @@ def __main__():
             fp_series[i] = fp_series[i].replace("; ; ; ", "; ")
             fp_series[i] = fp_series[i].replace("; ; ", "; ")
 
-            # turn blanks into N_A to signify the info was searched for but cannot be found
+            # turn blanks into N_A to signify the info
+            #     that was searched for but cannot be found
             if fp_series[i] == "":
                 fp_series[i] = N_A
 
@@ -1203,7 +1200,6 @@ def __main__():
             inplace=True,
         )
 
-        # data_in.sort_values(PHOSPHOPEPTIDE_MATCH, inplace=True, kind='mergesort')
         res2 = sorted(
             data_in[PHOSPHOPEPTIDE_MATCH].tolist(), key=lambda s: s.casefold()
         )
@@ -1228,21 +1224,6 @@ def __main__():
             % (end_time - start_time,),
             file=sys.stderr,
         )  # timer
-
-        # #rename upstream columns in new list
-        # new_cols = []
-        # for name in cols:
-        #     if "_NetworKIN" in name:
-        #         name = name.split("_")[0]
-        #     if " motif" in name:
-        #         name = name.split(" motif")[0]
-        #     if " sequence " in name:
-        #         name = name.split(" sequence")[0]
-        #     if "_Phosida" in name:
-        #         name = name.split("_")[0]
-        #     if "_PhosphoSite" in name:
-        #         name = name.split("_")[0]
-        #     new_cols.append(name)
 
         # rename upstream columns in new list
         def col_rename(name):
@@ -1276,8 +1257,8 @@ def __main__():
         upstream_data_cast.columns = new_cols_cast
         upstream_data_cast["p_peptide"] = upstream_data.index
 
-        # --- -------------- begin read upstream_data_melt ------------------------------------
-        # ----------- Get melted kinase mapping data from SQLite database (start) -----------
+        # Get melted kinase mapping data from SQLite database
+        # --- begin read upstream_data_melt ---------------------------------
         conn = sql.connect(uniprot_sqlite)
         upstream_data_melt_df = pandas.read_sql_query(PPEP_MELT_SQL, conn)
         # Close SwissProt SQLite database
@@ -1303,8 +1284,7 @@ def __main__():
             % (end_time - start_time, len(upstream_data_melt.axes[0])),
             file=sys.stderr,
         )
-        # ----------- Get melted kinase mapping data from SQLite database (finish) -----------
-        # ... -------------- end read upstream_data_melt --------------------------------------
+        # ... end read upstream_data_melt ---------------------------------
 
         end_time = time.process_time()  # timer
         print(
@@ -1332,10 +1312,13 @@ def __main__():
             if p_peptide in melt_dict:
                 melt_dict[p_peptide].append(characterization)
             else:
-                exit(
-                    'Phosphopeptide %s not found in ppep_mapping_db: "phopsphopeptides" and "ppep_mapping_db" must both originate from the same run of mqppep_kinase_mapping'
-                    % (p_peptide)
-                )
+                los = [
+                    "Phosphopeptide %s" % p_peptide,
+                    "not found in ppep_mapping_db:",
+                    '"phopsphopeptides" and "ppep_mapping_db" must both',
+                    "originate from the same run of mqppep_kinase_mapping"
+                ]
+                exit(" ".join(los))
 
         end_time = time.process_time()  # timer
         print(
@@ -1397,29 +1380,12 @@ def __main__():
             ]
         ]
 
-        # cols_output_prelim = output_df.columns.tolist()
-        #
-        # print("cols_output_prelim")
-        # print(cols_output_prelim)
-        #
-        # cols_output = cols_output_prelim[:8]+[cols_output_prelim[9]]+[cols_output_prelim[10]]
-        #
-        # print("cols_output with p-peptide")
-        # print(cols_output)
-        #
-        # cols_output = [col for col in cols_output if not col == "p-peptide"]
-        #
-        # print("cols_output")
-        # print(cols_output)
-        #
-        # output_df = output_df[cols_output]
-
         # join output_df back to quantitative columns in data_in df
         quant_cols = data_in.columns.tolist()
         quant_cols = quant_cols[1:]
         quant_data = data_in[quant_cols]
 
-        # ----------- Write merge/filter metadata to SQLite database (start) -----------
+        # ---- Write merge/filter metadata to SQLite database (start) ----
         # Open SwissProt SQLite database
         conn = sql.connect(output_sqlite)
         cur = conn.cursor()
@@ -1467,7 +1433,7 @@ def __main__():
 
         # Close SwissProt SQLite database
         conn.close()
-        # ----------- Write merge/filter metadata to SQLite database (finish) -----------
+        # ---- Write merge/filter metadata to SQLite database (finish) ----
 
         output_df = output_df.merge(
             quant_data,
@@ -1480,15 +1446,18 @@ def __main__():
         output_df = output_df[output_cols]
 
         # cosmetic changes to Upstream column
+        # fill the NaN with "" for those Phosphopeptides that got a
+        #   "WARNING: Failed match for " in the upstream mapping
         output_df[PUTATIVE_UPSTREAM_DOMAINS] = output_df[
             PUTATIVE_UPSTREAM_DOMAINS
         ].fillna(
             ""
-        )  # fill the NaN with "" for those Phosphopeptides that got a "WARNING: Failed match for " in the upstream mapping
+        )
         us_series = pandas.Series(output_df[PUTATIVE_UPSTREAM_DOMAINS])
         i = 0
         while i < len(us_series):
-            # turn blanks into N_A to signify the info was searched for but cannot be found
+            # turn blanks into N_A to signify the info
+            #   that was searched for but cannot be found
             if us_series[i] == "":
                 us_series[i] = N_A
             i += 1
@@ -1530,8 +1499,9 @@ def __main__():
         # Rev. 7/1/2016
         # Rev. 7/3/2016 : fill NaN in Upstream column to replace to N/A's
         # Rev. 7/3/2016:  renamed Upstream column to PUTATIVE_UPSTREAM_DOMAINS
-        # Rev. 12/2/2021: Converted to Python from ipynb; use fast Aho-Corasick searching; \
-        #                read from SwissProt SQLite database
+        # Rev. 12/2/2021: Converted to Python from ipynb; use fast \
+        #                 Aho-Corasick searching; \
+        #                 read from SwissProt SQLite database
         # Rev. 12/9/2021: Transfer code to Galaxy tool wrapper
 
         #

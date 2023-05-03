@@ -1,21 +1,22 @@
 #!/usr/bin/env bash
 
-VERSION=2.6
-FILETYPES="filetypes.txt"
-PROFILE="20.05"
+VERSION=2.8
+FILETYPES="aux/filetypes.txt"
+# TODO make 21.01
+PROFILE="21.05"
 ## FILETYPES_RE=$(grep -v "^#" $FILETYPES | grep -v "^$" | cut -f 1 -d" " | tr '\n' '|' | sed 's/|$//'| sed 's/|/\\|/g')
 
 export tmp=$(mktemp -d)
+# export tmp="/tmp/openms-stuff/"
 
 export CTDCONVERTER="$tmp/CTDConverter"
-export PYTHONPATH="$CTDCONVERTER"
 ###############################################################################
 ## reset old data
 ###############################################################################
-# rm $(ls *xml |grep -v macros)
-# rm -rf ctd
-# mkdir -p ctd
-# echo "" > prepare_test_data.sh
+rm $(ls *xml |grep -v macros)
+rm -rf ctd
+mkdir -p ctd
+echo "" > prepare_test_data.sh
 
 ###############################################################################
 ## generate tests
@@ -47,32 +48,32 @@ bash ./test-data.sh ./macros_autotest.xml
 # fi
 if [ ! -d $CTDCONVERTER ]; then
 	#git clone https://github.com/WorkflowConversion/CTDConverter.git CTDConverter
-	git clone -b topic/fix-selects https://github.com/bernt-matthias/CTDConverter.git $CTDCONVERTER
+	git clone -b topic/fix-selects2 https://github.com/bernt-matthias/CTDConverter.git $CTDCONVERTER
 fi
+
 ###############################################################################
 ## conversion ctd->xml 
 ###############################################################################
 
+>&2 echo "generate tool xml from ctd files"
 find . -maxdepth 0 -name "[A-Z]*xml" -delete
 source $(dirname $(which conda))/../etc/profile.d/conda.sh
 conda activate OpenMS$VERSION-env
-python $CTDCONVERTER/convert.py galaxy -i ctd/*ctd -o ./ -s tools_blacklist.txt -f "$FILETYPES" -m macros.xml -t tool.conf  -p hardcoded_params.json --test-macros macros_autotest.xml --test-macros-prefix autotest_  --test-macros macros_test.xml --test-macros-prefix manutest_ --tool-version $VERSION --tool-profile $PROFILE --bump-file bump.json > convert.out 2> convert.err
+CTDConverter galaxy -i ctd/*ctd -o ./ -s aux/tools_blacklist.txt -f "$FILETYPES" \
+	-m macros.xml -t tool.conf  -p aux/hardcoded_params.json \
+	--test-macros macros_autotest.xml --test-macros-prefix autotest_  --test-macros aux/macros_test.xml --test-macros-prefix manutest_ \
+	--tool-version $VERSION --tool-profile $PROFILE --bump-file aux/bump.json > convert.out 2> convert.err
 if [[ "$?" -ne "0" ]]; then >&2 echo 'CTD -> XML conversion failed'; >&2 echo -e "stderr:\n$(cat convert.err)"; fi
 conda deactivate
 
-patch PepNovoAdapter.xml < PepNovoAdapter.patch
-patch OMSSAAdapter.xml < OMSSAAdapter.patch
-# this should not be necessary from 2.7 https://github.com/OpenMS/OpenMS/pull/5087
-patch PSMFeatureExtractor.xml < PSMFeatureExtractor.patch
+>&2 echo "apply patches"
+patch PepNovoAdapter.xml < aux/PepNovoAdapter.patch
+patch OMSSAAdapter.xml < aux/OMSSAAdapter.patch
 
 # https://github.com/OpenMS/OpenMS/pull/4984
-sed -i -e 's@http://www.openms.de/documentation/@http://www.openms.de/doxygen/release/2.6.0/html/@' ./*xml
-# https://github.com/OpenMS/OpenMS/pull/4984#issuecomment-702641976
-patch -p0 <404-urls.patch
+sed -i -e 's@http://www.openms.de/doxygen/nightly/html/@http://www.openms.de/doxygen/release/2.8.0/html/@' ./*xml
 
-# #-b version log debug test in_type executable pepnovo_executable param_model_directory rt_concat_trafo_out param_id_pool
+# TODO should be fixed in >2.8 https://github.com/OpenMS/OpenMS/pull/6018
+sed -i -e 's@https://ccms-ucsd.github.io/GNPSDocumentation/featurebasedmolecularnetworking_with_openms@https://ccms-ucsd.github.io/GNPSDocumentation/featurebasedmolecularnetworking-with-openms@' ./*xml
 
-# for i in A-E F-H I-L M-N O-P Q-Z
-# do
-# 	planemo t [$i]*xml --galaxy_branch release_20.05 --galaxy_python_version 3.7 --test_output $i.html --test_output_json $i.json &
-# done
+rm -rf macros_autotest.xml macros_discarded_auto.xml prepare_test_data.sh ctd

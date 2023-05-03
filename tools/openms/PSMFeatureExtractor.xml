@@ -1,13 +1,11 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
 <!--Proposed Tool Section: [Utilities]-->
-<tool id="PSMFeatureExtractor" name="PSMFeatureExtractor" version="@TOOL_VERSION@+galaxy1" profile="20.05">
+<tool id="PSMFeatureExtractor" name="PSMFeatureExtractor" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="21.05">
   <description>Computes extra features for each input PSM.</description>
   <macros>
     <token name="@EXECUTABLE@">PSMFeatureExtractor</token>
     <import>macros.xml</import>
-    <import>macros_autotest.xml</import>
-    <import>macros_test.xml</import>
   </macros>
   <expand macro="requirements"/>
   <expand macro="stdio"/>
@@ -16,12 +14,12 @@
 #import re
 
 ## Preprocessing
-mkdir in &&
-#if $in
-mkdir ${' '.join(["'in/%s'" % (i) for i, f in enumerate($in) if f])} && 
-${' '.join(["ln -s '%s' 'in/%s/%s.%s' && " % (f, i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in) if f])}
-#else if $in_single
-ln -s '$in_single' 'in/${re.sub("[^\w\-_]", "_", $in_single.element_identifier)}.$gxy2omsext($in_single.ext)' &&  
+mkdir in_cond.in &&
+#if $in_cond.in_select == "no"
+mkdir ${' '.join(["'in_cond.in/%s'" % (i) for i, f in enumerate($in_cond.in) if f])} && 
+${' '.join(["ln -s '%s' 'in_cond.in/%s/%s.%s' && " % (f, i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in_cond.in) if f])}
+#else
+ln -s '$in_cond.in' 'in_cond.in/${re.sub("[^\w\-_]", "_", $in_cond.in.element_identifier)}.$gxy2omsext($in_cond.in.ext)' &&
 #end if
 mkdir out &&
 
@@ -32,10 +30,10 @@ set -o pipefail &&
 python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
 @EXECUTABLE@ -ini @EXECUTABLE@.ctd
 -in
-#if $in
-${' '.join(["'in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in) if f])}
-#else if $in_single
-'in/${re.sub("[^\w\-_]", "_", $in_single.element_identifier)}.$gxy2omsext($in_single.ext)'
+#if $in_cond.in_select == "no"
+${' '.join(["'in_cond.in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in_cond.in) if f])}
+#else
+'in_cond.in/${re.sub("[^\w\-_]", "_", $in_cond.in.element_identifier)}.$gxy2omsext($in_cond.in.ext)'
 #end if
 -out
 'out/output.${out_type}'
@@ -50,25 +48,35 @@ ${' '.join(["'in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $
     <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
   </configfiles>
   <inputs>
-    <param name="in_single" argument="-in" type="data" format="idxml,mzid" multiple="false" optional="true" label="Input file for batch processing" help="(exactly one of the two inputs required) select idxml,mzid data sets(s)"/>
-    <param name="in" argument="-in" type="data" format="idxml,mzid" multiple="true" optional="true" label="Input files for joint processing" help="(exactly one of the two inputs is required) select idxml,mzid data sets(s)"/>
-    <param name="out_type" argument="-out_type" display="checkboxes" type="select" optional="false" label="Output file type -- default: determined from file extension or content" help="">
+    <conditional name="in_cond">
+      <param name="in_select" type="select" label="Run tool in batch mode for -in">
+        <option value="no">No: process all datasets jointly</option>
+        <option value="yes">Yes: process each dataset in an independent job</option>
+      </param>
+      <when value="no">
+        <param argument="-in" type="data" format="idxml,mzid" multiple="true" optional="false" label="Input file(s)" help=" select idxml,mzid data sets(s)"/>
+      </when>
+      <when value="yes">
+        <param argument="-in" type="data" format="idxml,mzid" multiple="false" optional="false" label="Input file(s)" help=" select idxml,mzid data sets(s)"/>
+      </when>
+    </conditional>
+    <param argument="-out_type" display="radio" type="select" optional="false" label="Output file type -- default: determined from file extension or content" help="">
       <option value="idXML">idxml</option>
       <option value="mzid">mzid</option>
       <expand macro="list_string_san" name="out_type"/>
     </param>
-    <param name="extra" argument="-extra" type="text" optional="true" value="" label="List of the MetaData parameters to be included in a feature set for precolato" help=" (space separated list, in order to allow for spaces in list items surround them by single quotes)">
+    <param argument="-extra" type="text" optional="true" value="" label="List of the MetaData parameters to be included in a feature set for precolato" help=" (space separated list, in order to allow for spaces in list items surround them by single quotes)">
       <expand macro="list_string_val" name="extra"/>
       <expand macro="list_string_san" name="extra"/>
     </param>
-    <param name="multiple_search_engines" argument="-multiple_search_engines" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Combine PSMs from different search engines by merging on scan level" help=""/>
+    <param argument="-multiple_search_engines" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Combine PSMs from different search engines by merging on scan level" help=""/>
     <expand macro="adv_opts_macro">
-      <param name="skip_db_check" argument="-skip_db_check" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Manual override to skip the check if same settings for multiple search engines were applied" help="Only valid together with -multiple_search_engines flag"/>
-      <param name="concat" argument="-concat" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Naive merging of PSMs from different search engines: concatenate multiple search results instead of merging on scan level" help="Only valid together with -multiple_search_engines flag"/>
-      <param name="impute" argument="-impute" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Will instead of discarding all PSM not unanimously detected by all SE, impute missing values by their respective scores min/max observed" help="Only valid together with -multiple_search_engines flag"/>
-      <param name="limit_imputation" argument="-limit_imputation" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Will impute missing scores with the worst numerical limit (instead of min/max observed) of the respective score" help="Only valid together with -multiple_search_engines flag"/>
-      <param name="force" argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
-      <param name="test" argument="-test" type="hidden" optional="false" value="False" label="Enables the test mode (needed for internal use only)" help="">
+      <param argument="-skip_db_check" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Manual override to skip the check if same settings for multiple search engines were applied" help="Only valid together with -multiple_search_engines flag"/>
+      <param argument="-concat" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Naive merging of PSMs from different search engines: concatenate multiple search results instead of merging on scan level" help="Only valid together with -multiple_search_engines flag"/>
+      <param argument="-impute" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Will instead of discarding all PSM not unanimously detected by all SE, impute missing values by their respective scores min/max observed" help="Only valid together with -multiple_search_engines flag"/>
+      <param argument="-limit_imputation" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Will impute missing scores with the worst numerical limit (instead of min/max observed) of the respective score" help="Only valid together with -multiple_search_engines flag"/>
+      <param argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
+      <param argument="-test" type="hidden" optional="true" value="False" label="Enables the test mode (needed for internal use only)" help="">
         <expand macro="list_string_san" name="test"/>
       </param>
     </expand>
@@ -86,13 +94,34 @@ ${' '.join(["'in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $
       <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
     </data>
   </outputs>
-  <tests>
-    <expand macro="autotest_PSMFeatureExtractor"/>
-    <expand macro="manutest_PSMFeatureExtractor"/>
-  </tests>
+  <tests><test expect_num_outputs="1"><!-- using the idXML outputs of two SearchAdapters that should be compatible -->
+    <param name="adv_opts|test" value="true"/>
+    <param name="adv_opts|skip_db_check" value="true"/>
+    <param name="in" ftype="idxml" value="MSGFPlusAdapter_1_out.idXML,XTandemAdapter_1_out.idXML"/>
+    <param name="multiple_search_engines" value="true"/>
+    <param name="out_type" value="idxml"/>
+    <output name="out" ftype="idxml" value="PSMFeatureExtractor.idxml" compare="sim_size" delta="500"/>
+  </test>
+  <test expect_num_outputs="1"><!-- using the idXML outputs of two SearchAdapters that should be compatible -->
+    <param name="adv_opts|test" value="true"/>
+    <param name="adv_opts|skip_db_check" value="true"/>
+    <param name="in" ftype="idxml" value="MSGFPlusAdapter_1_out.idXML,XTandemAdapter_1_out.idXML"/>
+    <param name="multiple_search_engines" value="true"/>
+    <param name="out_type" value="mzid"/>
+    <output name="out" ftype="mzid" value="PSMFeatureExtractor.mzid" compare="sim_size" delta="500"/>
+  </test>
+  <!-- test for the batch conditional crated for data parameters with multiple="true" -->
+  <test expect_num_outputs="1"><!-- using the idXML outputs of two SearchAdapters that should be compatible -->
+    <param name="adv_opts|test" value="true"/>
+    <param name="in_select" value="yes"/>
+    <param name="in" ftype="idxml" value="MSGFPlusAdapter_1_out.idXML"/>
+    <param name="out_type" value="idxml"/>
+    <output name="out" ftype="idxml" value="PSMFeatureExtractor_3.idXML" compare="sim_size" delta="500"/>
+  </test>
+</tests>
   <help><![CDATA[Computes extra features for each input PSM.
 
 
-For more information, visit http://www.openms.de/doxygen/release/2.6.0/html/UTILS_PSMFeatureExtractor.html]]></help>
+For more information, visit http://www.openms.de/doxygen/release/2.8.0/html/UTILS_PSMFeatureExtractor.html]]></help>
   <expand macro="references"/>
 </tool>

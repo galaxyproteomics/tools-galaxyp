@@ -1,13 +1,11 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
 <!--Proposed Tool Section: [File Handling]-->
-<tool id="IDMerger" name="IDMerger" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@" profile="20.05">
+<tool id="IDMerger" name="IDMerger" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="21.05">
   <description>Merges several protein/peptide identification files into one file.</description>
   <macros>
     <token name="@EXECUTABLE@">IDMerger</token>
     <import>macros.xml</import>
-    <import>macros_autotest.xml</import>
-    <import>macros_test.xml</import>
   </macros>
   <expand macro="requirements"/>
   <expand macro="stdio"/>
@@ -16,9 +14,13 @@
 #import re
 
 ## Preprocessing
-mkdir in &&
-mkdir ${' '.join(["'in/%s'" % (i) for i, f in enumerate($in) if f])} && 
-${' '.join(["ln -s '%s' 'in/%s/%s.%s' && " % (f, i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in) if f])}
+mkdir in_cond.in &&
+#if $in_cond.in_select == "no"
+mkdir ${' '.join(["'in_cond.in/%s'" % (i) for i, f in enumerate($in_cond.in) if f])} && 
+${' '.join(["ln -s '%s' 'in_cond.in/%s/%s.%s' && " % (f, i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in_cond.in) if f])}
+#else
+ln -s '$in_cond.in' 'in_cond.in/${re.sub("[^\w\-_]", "_", $in_cond.in.element_identifier)}.$gxy2omsext($in_cond.in.ext)' &&
+#end if
 mkdir out &&
 #if $add_to:
   mkdir add_to &&
@@ -32,16 +34,20 @@ set -o pipefail &&
 python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
 @EXECUTABLE@ -ini @EXECUTABLE@.ctd
 -in
-${' '.join(["'in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in) if f])}
+#if $in_cond.in_select == "no"
+${' '.join(["'in_cond.in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in_cond.in) if f])}
+#else
+'in_cond.in/${re.sub("[^\w\-_]", "_", $in_cond.in.element_identifier)}.$gxy2omsext($in_cond.in.ext)'
+#end if
 -out
-'out/output.${gxy2omsext("idxml")}'
+'out/output.${out_type}'
 #if $add_to:
   -add_to
   'add_to/${re.sub("[^\w\-_]", "_", $add_to.element_identifier)}.$gxy2omsext($add_to.ext)'
 #end if
 
 ## Postprocessing
-&& mv 'out/output.${gxy2omsext("idxml")}' '$out'
+&& mv 'out/output.${out_type}' '$out'
 #if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
   && mv '@EXECUTABLE@.ctd' '$ctd_out'
 #end if]]></command>
@@ -50,14 +56,30 @@ ${' '.join(["'in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $
     <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
   </configfiles>
   <inputs>
-    <param name="in" argument="-in" type="data" format="idxml" multiple="true" optional="false" label="Input files separated by blanks" help=" select idxml data sets(s)"/>
-    <param name="add_to" argument="-add_to" type="data" format="idxml" optional="true" label="Optional input file" help="IDs from 'in' are added to this file, but only if the (modified) peptide sequences are not present yet (considering only best hits per spectrum) select idxml data sets(s)"/>
-    <param name="annotate_file_origin" argument="-annotate_file_origin" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Store the original filename in each protein/peptide identification (meta value: file_origin)" help=""/>
-    <param name="pepxml_protxml" argument="-pepxml_protxml" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Merge idXML files derived from a pepXML and corresponding protXML file" help="Exactly two input files are expected in this case. Not compatible with 'add_to'"/>
-    <param name="merge_proteins_add_PSMs" argument="-merge_proteins_add_PSMs" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Merge all identified proteins by accession into one protein identification run but keep all the PSMs with updated links to potential new protein ID#s" help="Not compatible with 'add_to'"/>
+    <conditional name="in_cond">
+      <param name="in_select" type="select" label="Run tool in batch mode for -in">
+        <option value="no">No: process all datasets jointly</option>
+        <option value="yes">Yes: process each dataset in an independent job</option>
+      </param>
+      <when value="no">
+        <param argument="-in" type="data" format="idxml,sqlite" multiple="true" optional="false" label="Input files separated by blanks (all must have the same type)" help=" select idxml,sqlite data sets(s)"/>
+      </when>
+      <when value="yes">
+        <param argument="-in" type="data" format="idxml,sqlite" multiple="false" optional="false" label="Input files separated by blanks (all must have the same type)" help=" select idxml,sqlite data sets(s)"/>
+      </when>
+    </conditional>
+    <param argument="-out_type" display="radio" type="select" optional="false" label="Output file type (default: determined from file extension)" help="">
+      <option value="idXML">idxml</option>
+      <option value="oms">sqlite (oms)</option>
+      <expand macro="list_string_san" name="out_type"/>
+    </param>
+    <param argument="-add_to" type="data" format="idxml" optional="true" label="Optional input file" help="IDs from 'in' are added to this file, but only if the (modified) peptide sequences are not present yet (considering only best hits per spectrum) select idxml data sets(s)"/>
+    <param argument="-annotate_file_origin" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Store the original filename in each protein/peptide identification (meta value: 'file_origin') - idXML input/output only" help=""/>
+    <param argument="-pepxml_protxml" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Merge idXML files derived from a pepXML and corresponding protXML file" help="Exactly two input files are expected in this case. Not compatible with 'add_to'"/>
+    <param argument="-merge_proteins_add_PSMs" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Merge all identified proteins by accession into one protein identification run but keep all the PSMs with updated links to potential new protein ID#s" help="Not compatible with 'add_to'"/>
     <expand macro="adv_opts_macro">
-      <param name="force" argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
-      <param name="test" argument="-test" type="hidden" optional="false" value="False" label="Enables the test mode (needed for internal use only)" help="">
+      <param argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
+      <param argument="-test" type="hidden" optional="true" value="False" label="Enables the test mode (needed for internal use only)" help="">
         <expand macro="list_string_san" name="test"/>
       </param>
     </expand>
@@ -66,18 +88,167 @@ ${' '.join(["'in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $
     </param>
   </inputs>
   <outputs>
-    <data name="out" label="${tool.name} on ${on_string}: out" format="idxml"/>
+    <data name="out" label="${tool.name} on ${on_string}: out" format="idxml">
+      <change_format>
+        <when input="out_type" value="oms" format="sqlite"/>
+      </change_format>
+    </data>
     <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
       <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
     </data>
   </outputs>
-  <tests>
-    <expand macro="autotest_IDMerger"/>
-    <expand macro="manutest_IDMerger"/>
+  <tests><!-- TOPP_IDMerger_1 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <conditional name="in_cond">
+        <param name="in" value="IDMerger_1_input1.idXML,IDMerger_1_input2.idXML"/>
+      </conditional>
+      <output name="out" file="IDMerger_1_output.idXML" compare="sim_size" delta_frac="0.7" ftype="idxml"/>
+      <param name="out_type" value="idXML"/>
+      <param name="annotate_file_origin" value="true"/>
+      <param name="pepxml_protxml" value="false"/>
+      <param name="merge_proteins_add_PSMs" value="false"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+    </test>
+    <!-- TOPP_IDMerger_2 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <conditional name="in_cond">
+        <param name="in" value="IDMerger_2_input1.idXML,IDMerger_2_input2.idXML"/>
+      </conditional>
+      <output name="out" file="IDMerger_2_output.idXML" compare="sim_size" delta_frac="0.7" ftype="idxml"/>
+      <param name="out_type" value="idXML"/>
+      <param name="annotate_file_origin" value="false"/>
+      <param name="pepxml_protxml" value="true"/>
+      <param name="merge_proteins_add_PSMs" value="false"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+    </test>
+    <!-- TOPP_IDMerger_3 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <conditional name="in_cond">
+        <param name="in" value="IDMerger_1_input1.idXML,IDMerger_1_input1_2.idXML"/>
+      </conditional>
+      <output name="out" file="IDMerger_3_output.idXML" compare="sim_size" delta_frac="0.7" ftype="idxml"/>
+      <param name="out_type" value="idXML"/>
+      <param name="annotate_file_origin" value="false"/>
+      <param name="pepxml_protxml" value="false"/>
+      <param name="merge_proteins_add_PSMs" value="false"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+    </test>
+    <!-- TOPP_IDMerger_4 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <conditional name="in_cond">
+        <param name="in" value="degenerated_empty.idXML,degenerated_empty_2.idXML"/>
+      </conditional>
+      <output name="out" file="IDMerger_4_output.idXML" compare="sim_size" delta_frac="0.7" ftype="idxml"/>
+      <param name="out_type" value="idXML"/>
+      <param name="annotate_file_origin" value="false"/>
+      <param name="pepxml_protxml" value="false"/>
+      <param name="merge_proteins_add_PSMs" value="false"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+    </test>
+    <!-- TOPP_IDMerger_5 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <conditional name="in_cond">
+        <param name="in" value="IDMerger_2_input1.idXML"/>
+      </conditional>
+      <output name="out" file="IDMerger_5_output.idXML" compare="sim_size" delta_frac="0.7" ftype="idxml"/>
+      <param name="out_type" value="idXML"/>
+      <param name="add_to" value="IDMerger_5_input1.idXML"/>
+      <param name="annotate_file_origin" value="false"/>
+      <param name="pepxml_protxml" value="false"/>
+      <param name="merge_proteins_add_PSMs" value="false"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+    </test>
+    <!-- TOPP_IDMerger_6 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <conditional name="in_cond">
+        <param name="in" value="IDMerger_6_input1.oms,IDMerger_6_input2.oms"/>
+      </conditional>
+      <output name="out" file="IDMerger_6_output1.oms" compare="sim_size" delta_frac="0.7" ftype="sqlite"/>
+      <param name="out_type" value="oms"/>
+      <param name="annotate_file_origin" value="true"/>
+      <param name="pepxml_protxml" value="false"/>
+      <param name="merge_proteins_add_PSMs" value="false"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+    </test>
+    <!-- TOPP_IDRipper_3_prep -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <conditional name="in_cond">
+        <param name="in" value="IDRipper_3_input1.idXML,IDRipper_3_input2.idXML"/>
+      </conditional>
+      <output name="out" file="IDRipper_3_output.idXML" compare="sim_size" delta_frac="0.7" ftype="idxml"/>
+      <param name="out_type" value="idXML"/>
+      <param name="annotate_file_origin" value="true"/>
+      <param name="pepxml_protxml" value="false"/>
+      <param name="merge_proteins_add_PSMs" value="false"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+    </test>
   </tests>
   <help><![CDATA[Merges several protein/peptide identification files into one file.
 
 
-For more information, visit http://www.openms.de/doxygen/release/2.6.0/html/TOPP_IDMerger.html]]></help>
+For more information, visit http://www.openms.de/doxygen/release/2.8.0/html/TOPP_IDMerger.html]]></help>
   <expand macro="references"/>
 </tool>
