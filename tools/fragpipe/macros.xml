@@ -1,7 +1,7 @@
 <macros>
     <import>msfragger_macros.xml</import>
-    <token name="@TOOL_VERSION@">18.0</token>
-    <token name="@VERSION_SUFFIX@">dev4</token>
+    <token name="@TOOL_VERSION@">19.1</token>
+    <token name="@VERSION_SUFFIX@">dev8</token>
     <xml name="requirements">
         <requirements>
             <requirement type="package" version="@TOOL_VERSION@">fragpipe</requirement>
@@ -29,14 +29,12 @@
     <!-- iTRAQ-4 "114, 115, 116, 117" -->
     <!-- iTRAQ-8 "113, 114, 115, 116, 117, 118, 119, 121" -->
 
-    <xml name="sample_input" token_scanformat="mzml" token_annotation_optional="true" token_samplename="">
+    <xml name="sample_input" token_scanformat="mzml" token_samplename="">
         <param name="sample_name" type="text" value="@SAMPLENAME@" label="Sample Name">
             <help>Only use letters, numbers, and chars: _- </help>
             <validator type="regex" message="only letters, numbers, and underscores">[a-zA-Z0-9_-]+</validator>
         </param>
         <expand macro="scan_inputs" scanformat="@SCANFORMAT@"/>
-        <param name="annotation" type="data" format="txt" optional="@ANNOTATION_OPTIONAL@" label="annotation file" 
-            help=""/>
     </xml>
     <xml name="sample_data" token_scanformat="mzml" >
         <conditional name="scans"> 
@@ -45,11 +43,11 @@
                 <option value="yes">Yes</option>
             </param>
             <when value="no">
-                <expand macro="sample_input" scanformat="@SCANFORMAT@" annotation_optional="true" samplename="scans"/>
+                <expand macro="sample_input" scanformat="@SCANFORMAT@" samplename="scans"/>
             </when>
             <when value="yes">
                 <repeat name="samples" title="Sample Groups" min="1">
-                    <expand macro="sample_input" scanformat="@SCANFORMAT@" annotation_optional="false"/>
+                    <expand macro="sample_input" scanformat="@SCANFORMAT@"/>
                 </repeat>
             </when>
         </conditional>
@@ -79,8 +77,8 @@
         #set $scandir = $s.sample_name
         #silent $i_names.append($scandir)
         mkdir -p '$scandir' &&
-        #if $s.annotation
-          cp -p '$s.annotation' '${scandir}/annotation.txt' &&
+        #if $wf.workflow_name == 'TMT10' or $wf.workflow_name == 'TMT11':
+          cp -p '$wf.annotation' '${scandir}/annotation.txt' &&
         #end if
         #for $sf in $s.inputs
           #set $i_name = $ln_name($sf)
@@ -102,25 +100,21 @@
 
     <xml name="fragger_database">
         <param name="database_name" argument="database_name" type="data" format="fasta" label="Proteomics Search Database in FASTA format"/>
-	<param name="decoy_prefix" type="text" value="rev_" label="Prefix of the decoy protein entries." help="Used for parameter optimization only."/>
-        <conditional name="decoy_database">
-            <param name="create_decoy_database" type="select" label="Create Decoy Database">
-                <option value="yes" selected="@YES@">yes</option>
-                <option value="no" selected="@NO@">no</option>
-            </param>
-            <when value="yes">
-	        <param name="decoy_prefix" type="text" value="rev_" label="The decoy prefix"></param>
-            </when>
-        </conditional>
+        <param name="database_options" type="select" label="Decoys and contaminants" help="Default decoy prefix is &quot;rev_&quot;.">
+            <option value="decoy_and_contam" selected="true">Add decoys and contaminants</option>
+            <option value="decoy">Add decoys</option>
+            <option value="none">Don't add decoys or contaminants</option>
+        </param>
+        <param name="num_slices" type="integer" label="Split database" value="1" help="The number of chunks in which to split the database."/>
     </xml>
     <token name="@FRAGGER_DATABASE@">
     </token>
     <token name="@LINK_FRAGGER_DATABASE@"><![CDATA[
-    #if $decoy_database.create_decoy_database
-        #set $db_name = 'decoys-contam-database.fas'
-    #else
+    #if str($database_options) == "none"
         #set $db_name = $ln_name($database_name)
         ln -s '$database_name' '$db_name' &&
+    #else
+        #set $db_name = 'decoys-contam-database.fas'
     #end if
     ]]></token>
     <token name="@FASTA_INPUT@">
@@ -162,6 +156,7 @@
                 <option value="TMT10-phospho">TMT10-phospho</option>
                 <option value="TMT10-ubiquitin">TMT10-ubiquitin</option>
                 <option value="TMT10">TMT10</option>
+                <option value="TMT11">TMT11</option>
                 <option value="TMT16-MS3">TMT16-MS3</option>
                 <option value="TMT16-acetyl">TMT16-acetyl</option>
                 <option value="TMT16-phospho">TMT16-phospho</option>
@@ -278,7 +273,7 @@
             <when value="TMT10-phospho-bridge">
                 <section name="msfragger" expanded="false" title="MSFragger Options">
                      <!-- fix this -->
-                    <expand macro="closed_search"/>
+                    <expand macro="TMT10_search"/>
                 </section>
                 <expand macro="validation" pep="false" perc="true" boost="false" no="false" masswidth="1000" clevel="2" accmass="false" decoyprobs="true" nonparam="true" expectscore="true" ppm="false" combined_pepxml="true">
                 </expand>
@@ -289,9 +284,22 @@
             <when value="TMT10-ubiquitin">
             </when>
             <when value="TMT10">
+            <param name="annotation" type="data" format="txt" optional="false" label="annotation file"
+                help=""/>
                 <section name="msfragger" expanded="false" title="MSFragger Options">
                      <!-- fix this --> 
-                    <expand macro="closed_search"/>
+                    <expand macro="TMT10_search"/>
+                </section>
+                <expand macro="validation" pep="false" perc="true" boost="false" no="false" masswidth="1000" clevel="2" accmass="false" decoyprobs="true" nonparam="true" expectscore="true" ppm="false" combined_pepxml="true" protein_prophet_cmd_opts="--maxppmdiff 2000000 --minprob 0.5">
+                </expand>
+                <expand macro="isobaric_quantification" yes="true" no="false" plex="10" level="2" ref_tag="Bridge" mod_tag="none"/>
+            </when>
+            <when value="TMT11">
+            <param name="annotation" type="data" format="txt" optional="false" label="annotation file"
+                help=""/>
+                <section name="msfragger" expanded="false" title="MSFragger Options">
+                     <!-- fix this -->
+                    <expand macro="TMT10_search"/>
                 </section>
                 <expand macro="validation" pep="false" perc="true" boost="false" no="false" masswidth="1000" clevel="2" accmass="false" decoyprobs="true" nonparam="true" expectscore="true" ppm="false" combined_pepxml="true" protein_prophet_cmd_opts="--maxppmdiff 2000000 --minprob 0.5">
                 </expand>
@@ -365,6 +373,8 @@
     #set $wfdict['database.db-path'] = ''
 #end if
 
+#set $wfdict['msfragger.misc.slice-db'] = $num_slices
+
 #if $wf.workflow_name != 'history'
 ## Get the MSFragger Params (shared with the MSFragger tool)
 #set $prefix = $wf.msfragger
@@ -408,6 +418,7 @@
 #elif $wf.workflow_name == 'TMT10-phospho'
 #elif $wf.workflow_name == 'TMT10-ubiquitin'
 #elif $wf.workflow_name == 'TMT10'
+#elif $wf.workflow_name == 'TMT11'
 #elif $wf.workflow_name == 'TMT16-MS3'
 #elif $wf.workflow_name == 'TMT16-acetyl'
 #elif $wf.workflow_name == 'TMT16-phospho'
@@ -1120,6 +1131,7 @@ Protein Inference:                               # ProteinProphet v5.2
     <!-- TMT-18 "126, 127N, 127C, 128N, 128C, 129N, 129C, 130N, 130C, 131N, 131C, 132N, 132C, 133N, 133C, 134N, 134C, 135N" -->
     <!-- iTRAQ-4 "114, 115, 116, 117" -->
     <!-- iTRAQ-8 "113, 114, 115, 116, 117, 118, 119, 121" -->
+
     <xml name="isobaric_quantification" token_expand="false" token_yes="true" token_no="false" token_plex="" token_level="2" token_ref_tag="" token_mod_tag="">
         <section name="quant_iso" expanded="@EXPAND@" title="Quant (Isobaric)"> 
             <conditional name="isobaric_quantification">
