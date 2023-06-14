@@ -22,11 +22,11 @@ def split_qupath_roi(in_roi):
     tma_name = qupath_roi["name"]
     cell_types = [ct.rsplit(" - ", 1)[-1] for ct in qupath_roi["featureNames"]]
 
-    # create numpy array with white background
-    img = np.zeros((dim_plt[1], dim_plt[0], 3), dtype="uint8")
-    img.fill(255)
-
     for cell_type in cell_types:
+        # create numpy array with white background
+        img = np.zeros((dim_plt[1], dim_plt[0], 3), dtype="uint8")
+        img.fill(255)
+
         for i, roi in enumerate(qupath_roi["features"]):
             if roi["properties"]["classification"]["name"] == cell_type:
                 if len(roi["geometry"]["coordinates"]) == 1:
