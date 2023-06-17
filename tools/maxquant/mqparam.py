@@ -260,13 +260,11 @@ class MQParam:
         """
         # kind of a BUG: fails if filename starts with '.'
         infilenames = [os.path.basename(f).split('.')[0] for f in infiles]
-        print(infilenames)
         filesNode = self._root.find('filePaths')
         files_from_mqpar = [e.text for e in filesNode]
         filesNode.clear()
         filesNode.tag = 'filePaths'
         for f in files_from_mqpar:
-            print(f)
             # either windows or posix path
             win = ntpath.basename(f)
             posix = os.path.basename(f)
