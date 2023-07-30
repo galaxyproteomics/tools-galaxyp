@@ -1,13 +1,11 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
 <!--Proposed Tool Section: [Utilities]-->
-<tool id="QCMerger" name="QCMerger" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@" profile="20.05">
+<tool id="QCMerger" name="QCMerger" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="21.05">
   <description>Merges two qcml files together.</description>
   <macros>
     <token name="@EXECUTABLE@">QCMerger</token>
     <import>macros.xml</import>
-    <import>macros_autotest.xml</import>
-    <import>macros_test.xml</import>
   </macros>
   <expand macro="requirements"/>
   <expand macro="stdio"/>
@@ -16,9 +14,13 @@
 #import re
 
 ## Preprocessing
-mkdir in &&
-mkdir ${' '.join(["'in/%s'" % (i) for i, f in enumerate($in) if f])} && 
-${' '.join(["ln -s '%s' 'in/%s/%s.%s' && " % (f, i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in) if f])}
+mkdir in_cond.in &&
+#if $in_cond.in_select == "no"
+mkdir ${' '.join(["'in_cond.in/%s'" % (i) for i, f in enumerate($in_cond.in) if f])} && 
+${' '.join(["ln -s '%s' 'in_cond.in/%s/%s.%s' && " % (f, i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in_cond.in) if f])}
+#else
+ln -s '$in_cond.in' 'in_cond.in/${re.sub("[^\w\-_]", "_", $in_cond.in.element_identifier)}.$gxy2omsext($in_cond.in.ext)' &&
+#end if
 mkdir out &&
 
 ## Main program call
@@ -28,7 +30,11 @@ set -o pipefail &&
 python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
 @EXECUTABLE@ -ini @EXECUTABLE@.ctd
 -in
-${' '.join(["'in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in) if f])}
+#if $in_cond.in_select == "no"
+${' '.join(["'in_cond.in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in_cond.in) if f])}
+#else
+'in_cond.in/${re.sub("[^\w\-_]", "_", $in_cond.in.element_identifier)}.$gxy2omsext($in_cond.in.ext)'
+#end if
 -out
 'out/output.${gxy2omsext("qcml")}'
 
@@ -42,13 +48,24 @@ ${' '.join(["'in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $
     <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
   </configfiles>
   <inputs>
-    <param name="in" argument="-in" type="data" format="qcml" multiple="true" optional="false" label="List of qcml files to be merged" help=" select qcml data sets(s)"/>
-    <param name="setname" argument="-setname" type="text" optional="true" value="" label="Use only when all given qcml files belong to one set, which will be held under the given name" help="">
+    <conditional name="in_cond">
+      <param name="in_select" type="select" label="Run tool in batch mode for -in">
+        <option value="no">No: process all datasets jointly</option>
+        <option value="yes">Yes: process each dataset in an independent job</option>
+      </param>
+      <when value="no">
+        <param argument="-in" type="data" format="qcml" multiple="true" optional="false" label="List of qcml files to be merged" help=" select qcml data sets(s)"/>
+      </when>
+      <when value="yes">
+        <param argument="-in" type="data" format="qcml" multiple="false" optional="false" label="List of qcml files to be merged" help=" select qcml data sets(s)"/>
+      </when>
+    </conditional>
+    <param argument="-setname" type="text" optional="true" value="" label="Use only when all given qcml files belong to one set, which will be held under the given name" help="">
       <expand macro="list_string_san" name="setname"/>
     </param>
     <expand macro="adv_opts_macro">
-      <param name="force" argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
-      <param name="test" argument="-test" type="hidden" optional="false" value="False" label="Enables the test mode (needed for internal use only)" help="">
+      <param argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
+      <param argument="-test" type="hidden" optional="true" value="False" label="Enables the test mode (needed for internal use only)" help="">
         <expand macro="list_string_san" name="test"/>
       </param>
     </expand>
@@ -62,13 +79,15 @@ ${' '.join(["'in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $
       <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
     </data>
   </outputs>
-  <tests>
-    <expand macro="autotest_QCMerger"/>
-    <expand macro="manutest_QCMerger"/>
-  </tests>
+  <tests><test expect_num_outputs="1"><!-- just using 2 outputs from QCCalculator as input (no2 did not work) -->
+    <param name="adv_opts|test" value="true"/>
+    <param name="in" ftype="qcml" value="QCCalculator1.qcML,QCCalculator3.qcML"/>
+    <output name="out" ftype="qcml" value="QCMerger.qcML"/>
+  </test>
+</tests>
   <help><![CDATA[Merges two qcml files together.
 
 
-For more information, visit http://www.openms.de/doxygen/release/2.6.0/html/UTILS_QCMerger.html]]></help>
+For more information, visit http://www.openms.de/doxygen/release/2.8.0/html/UTILS_QCMerger.html]]></help>
   <expand macro="references"/>
 </tool>

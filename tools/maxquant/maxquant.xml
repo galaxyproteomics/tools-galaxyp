@@ -1,27 +1,14 @@
-<tool id="maxquant" name="MaxQuant" version="@VERSION@+galaxy@VERSION_SUFFIX@">
+<tool id="maxquant" name="MaxQuant" version="@VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
     <macros>
-        <xml name="output" token_format="tabular" token_label="default description" token_name="default">
-            <data format="@FORMAT@" label="@LABEL@ for ${on_string}" name="@NAME@">
-                <filter>'@NAME@' in output_opts['output']</filter>
-            </data>
-        </xml>
-        <xml name="output_from_wdir" token_ext="txt" token_format="tabular" token_label="default description" token_name="default">
-            <data format="@FORMAT@" from_work_dir="combined/txt/@NAME@.@EXT@" label="@LABEL@ for ${on_string}" name="@NAME@">
-                <filter>'@NAME@' in output_opts['output']</filter>
-            </data>
-        </xml>
         <import>macros.xml</import>
     </macros>
     <expand macro="requirements"/>
+    <expand macro="required_files"/>
     <command detect_errors="exit_code"><![CDATA[
+    ## this is needed to avoid dotnet from crashing, in a newer dotnet version we can remove that
+    export COMPlus_EnableDiagnostics=0 &&
     #import re
     maxquant -c mqpar.xml 2>/dev/null  ## MQ writes success of creation to stderr
-
-    ## Workaround for wrong MQ version in MaxQuantCmd.exe created mqpar.xml (1.6.5.0 instead of 1.6.17.0)
-    ## Should be removed as soon as MQ is updated with a fixed version
-    &&
-    sed -i -E 's:(maxQuantVersion>)1.6.5.0(<):\1'1.6.17.0'\2:' mqpar.xml
-    ## ==============================================================================================
 
     #if 'config' in $output_opts.output:
       &&
@@ -67,7 +54,7 @@
           tar -zcf '$output_all' ./combined/txt
       #end if
       
-      #if $qc.do_it:
+      #if $qc.do_it == 'true':
         &&
         Rscript '$qr' '$qr_yaml'
           #if 'log' in $output_opts.output:
@@ -384,6 +371,7 @@ short peptides are usually not unique in the protein database and therefore not 
                            help="Peptides containing only these modifications will be used for the quantification of proteins in addition to unmodified peptides. This includes ratio and intensity calculations including iBAQ">
                         <expand macro="default_mod_option" value="Oxidation (M)"/>
                         <expand macro="default_mod_option" value="Acetyl (Protein N-term)"/>
+                        <expand macro="mod_option" value="Carbamidomethyl (C)"/>
                         <expand macro="modification"/>
                     </param>
                     <!-- note: the following default is different to the mquant default -->
@@ -431,7 +419,7 @@ short peptides are usually not unique in the protein database and therefore not 
 
 
         <repeat name="paramGroups" title="Parameter Group" min="1" default="1">
-            <param type="data" format="thermo.raw,mzXML,mzML" name="files" label="Infiles" multiple="true"
+            <param type="data" format="thermo.raw,mzxml,mzml" name="files" label="Infiles" multiple="true"
                    help="Only select infiles matching the filetype specified in the input options."/>
             <param type="integer" name="maxMissedCleavages"
                    label="missed cleavages" value="2"
@@ -439,14 +427,17 @@ short peptides are usually not unique in the protein database and therefore not 
             <param name="fixedModifications" type="select" label="fixed modifications"
                    multiple="true"
                    help="Select zero or more fixed modifications. They will always be attached to any occurence of the respective amino acid.">
-                <expand macro="modification"/>
+                <expand macro="mod_option" value="Acetyl (Protein N-term)"/>
                 <expand macro="default_mod_option" value="Carbamidomethyl (C)"/>
+                <expand macro="mod_option" value="Oxidation (M)"/>
+                <expand macro="modification"/>
             </param>
             <param name="variableModifications" type="select" label="variable modifications"
                    multiple="true"
                    help="Select zero or more variable modifications. Do not specify label modifications here, neither ms1 level labels, like SILAC, nor isobaric labels.">
+                <expand macro="mod_option" value="Carbamidomethyl (C)"/>
                 <expand macro="default_mod_option" value="Oxidation (M)"/>
-                <expand macro="default_mod_option" value="Acetyl (Protein N-term)"/>
+                <expand macro="mod_option" value="Acetyl (Protein N-term)"/>
                 <expand macro="modification"/>
             </param>
             <param name="enzymes" type="select" label="enzyme"
@@ -506,118 +497,10 @@ short peptides are usually not unique in the protein database and therefore not 
                     </param>
                 </when>
                 <when value="reporter_ion_ms2">
-                    <conditional name="iso_labels">
-                        <param name="labeling" type="select" label="isobaric labeling"
-                               help="Select one of the standard labelings (correction factors are zero) or create a custom labeling.">
-                            <option value="custom">custom</option>
-                            <option value="tmt2plex">TMT2plex</option>
-                            <option value="tmt6plex">TMT6plex</option>
-                            <option value="tmt8plex">TMT8plex</option>
-                            <option value="tmt10plex">TMT10plex</option>
-                            <option value="tmt11plex">TMT11plex</option>
-                            <option value="tmtpro16plex">TMTpro16plex</option>
-                            <option value="tmtpro18plex">TMTpro18plex</option>
-                            <option value="itraq4plex">iTRAQ4plex</option>
-                            <option value="itraq8plex">iTRAQ8plex</option>
-                            <option value="iodotmt6plex">iodoTMT6plex</option>
-                        </param>
-                        <when value="tmt2plex"/>
-                        <when value="tmt6plex"/>
-                        <when value="tmt8plex"/>
-                        <when value="tmt10plex"/>
-                        <when value="tmt11plex"/>
-                        <when value="tmtpro16plex"/>
-                        <when value="tmtpro18plex"/>
-                        <when value="itraq4plex"/>
-                        <when value="itraq8plex"/>
-                        <when value="iodotmt6plex"/>
-                        <when value="custom">
-                            <repeat name="iso_label" title="Isobaric Label" min="1" default="1">
-                                <param name="internallabel" type="select" label="internal label" help="contains Lys">
-                                    <expand macro="iso_labels"/>
-                                </param>
-                                <param name="terminallabel" type="select" label="terminal label" help="contains Nter">
-                                    <option value="">None</option>
-                                    <expand macro="iso_labels"/>
-                                </param>
-                                <param name="cm2" type="float" label="correction factor -2%" value="0.0"/>
-                                <param name="cm1" type="float" label="correction factor -1%" value="0.0"/>
-                                <param name="cp1" type="float" label="correction factor +1%" value="0.0"/>
-                                <param name="cp2" type="float" label="correction factor +2%" value="0.0"/>
-                                <param type="boolean" name="tmtlike" checked="false"
-                                       label="TMT-like"
-                                       truevalue="True" falsevalue="False"/>
-                            </repeat>
-                        </when>
-                    </conditional>
-                    <conditional name="filter_by_pif">
-                        <param name="filter_pif" type="boolean" checked="false" label="Filter by PIF"
-                               truevalue="True" falsevalue="False"
-                               help="If checked, quantified PSMs will be filtered by their precursor intensity fraction to avoid using peptides that clearly suffer from co-fragmentation with other peptide species."/>
-                        <when value="True">
-                            <param name="reporter_pif" type="float" label="Minimum reporter PIF" value="0.75" min="0"
-                                   max="1"
-                                   help="MS/MS spectra with a lower value for the PIF will be discarded for isobaric label quantification."/>
-                        </when>
-                        <when value="False"/>
-                    </conditional>
+                    <expand macro="reporter_ion_macro"/>
                 </when>
                 <when value="reporter_ion_ms3">
-                    <conditional name="iso_labels">
-                        <param name="labeling" type="select" label="isobaric labeling"
-                               help="Select one of the standard labelings (correction factors are zero) or create a custom labeling.">
-                            <option value="custom">custom</option>
-                            <option value="tmt2plex">TMT2plex</option>
-                            <option value="tmt6plex">TMT6plex</option>
-                            <option value="tmt8plex">TMT8plex</option>
-                            <option value="tmt10plex">TMT10plex</option>
-                            <option value="tmt11plex">TMT11plex</option>
-                            <option value="tmtpro16plex">TMTpro16plex</option>
-                            <option value="tmtpro18plex">TMTpro18plex</option>
-                            <option value="itraq4plex">iTRAQ4plex</option>
-                            <option value="itraq8plex">iTRAQ8plex</option>
-                            <option value="iodotmt6plex">iodoTMT6plex</option>
-                        </param>
-                        <when value="tmt2plex"/>
-                        <when value="tmt6plex"/>
-                        <when value="tmt8plex"/>
-                        <when value="tmt10plex"/>
-                        <when value="tmt11plex"/>
-                        <when value="tmtpro16plex"/>
-                        <when value="tmtpro18plex"/>
-                        <when value="itraq4plex"/>
-                        <when value="itraq8plex"/>
-                        <when value="iodotmt6plex"/>
-                        <when value="custom">
-                            <repeat name="iso_label" title="Isobaric Label" min="1" default="1">
-                                <param name="internallabel" type="select" label="internal label" help="contains Lys">
-                                    <expand macro="iso_labels"/>
-                                </param>
-                                <param name="terminallabel" type="select" label="terminal label" help="contains Nter">
-                                    <option value="">None</option>
-                                    <expand macro="iso_labels"/>
-                                </param>
-                                <param name="cm2" type="float" label="correction factor -2%" value="0.0"/>
-                                <param name="cm1" type="float" label="correction factor -1%" value="0.0"/>
-                                <param name="cp1" type="float" label="correction factor +1%" value="0.0"/>
-                                <param name="cp2" type="float" label="correction factor +2%" value="0.0"/>
-                                <param type="boolean" name="tmtlike" checked="false"
-                                       label="TMT-like"
-                                       truevalue="True" falsevalue="False"/>
-                            </repeat>
-                        </when>
-                    </conditional>
-                    <conditional name="filter_by_pif">
-                        <param name="filter_pif" type="boolean" checked="false" label="Filter by PIF"
-                               truevalue="True" falsevalue="False"
-                               help="If checked, quantified PSMs will be filtered by their precursor intensity fraction to avoid using peptides that clearly suffer from co-fragmentation with other peptide species."/>
-                        <when value="True">
-                            <param name="reporter_pif" type="float" label="Minimum reporter PIF" value="0.75" min="0"
-                                   max="1"
-                                   help="MS/MS spectra with a lower value for the PIF will be discarded for isobaric label quantification."/>
-                        </when>
-                        <when value="False"/>
-                    </conditional>
+                    <expand macro="reporter_ion_macro"/>
                 </when>
             </conditional>
         </repeat>
@@ -657,8 +540,7 @@ short peptides are usually not unique in the protein database and therefore not 
 
     <tests>
         <!-- functional test with small mzXML file, no quantitation methods -->
-        <!-- Disable this test when initally testing as it takes avery long tome to run -->
-        <test expect_num_outputs="15">
+        <test expect_num_outputs="14">
             <param name="ftype" value=".mzxml" />
             <param name="fasta_files" value="bsa.fasta" />
             <param name="identifier_parse_rule" value="&gt;([^\s]*)" />
@@ -670,23 +552,62 @@ short peptides are usually not unique in the protein database and therefore not 
                 <param name="variableModifications" value="Oxidation (M)" />
                 <param name="enzymes" value="Trypsin/P" />
             </repeat>
-            <param name="output" value="evidence,msms,allPeptides,msmsScans,mzTab,mzRange,parameters,peptides,peptideSection,proteinGroups,summary,modificationSpecificPeptides,output_all,config,mqpar" />
+            <param name="output" value="evidence,msms,allPeptides,msmsScans,mzTab,mzRange,parameters,peptides,proteinGroups,summary,modificationSpecificPeptides,output_all,config,mqpar" />
             <output name="mqpar" file="01/mqpar.xml" lines_diff="6"/>
-            <output name="evidence" file="01/combined/txt/evidence.txt" />
+            <output name="evidence">
+                <assert_contents>
+                    <has_n_lines n="7"/>
+                    <has_n_columns n="58"/>
+                </assert_contents>
+            </output>
             <output name="msms" file="01/combined/txt/msms.txt" />
-            <output name="mzTab" file="01/combined/txt/mzTab.mzTab" lines_diff="34"/>
-            <output name="allPeptides" file="01/combined/txt/allPeptides.txt" lines_diff="2"/>
-            <output name="msmsScans" file="01/combined/txt/msmsScans.txt" lines_diff="8"/>
-            <output name="mzRange" file="01/combined/txt/mzRange.txt" />
+            <output name="mzTab" file="01/combined/txt/mzTab.mzTab" lines_diff="34" ftype="mztab"/>
+            <output name="allPeptides">
+                <assert_contents>
+                    <has_n_lines n="159"/>
+                    <has_n_columns n="35"/>
+                </assert_contents>
+            </output>
+            <output name="msmsScans">
+                <assert_contents>
+                    <has_n_lines n="82"/>
+                    <has_n_columns n="46"/>
+                </assert_contents>
+            </output>
+            <output name="mzRange">
+                <assert_contents>
+                    <has_n_lines n="1881"/>
+                    <has_n_columns n="12"/>
+                </assert_contents>
+            </output>
             <output name="parameters" file="01/combined/txt/parameters.txt" lines_diff="10"/>
-            <output name="peptides" file="01/combined/txt/peptides.txt" />
-            <output name="peptideSection" file="01/combined/txt/peptideSection.txt" />
-            <output name="proteinGroups" file="01/combined/txt/proteinGroups.txt" />
-            <output name="summary" file="01/combined/txt/summary.txt" />
-            <output name="modificationSpecificPeptides" file="01/combined/txt/modificationSpecificPeptides.txt" />
+            <output name="peptides">
+                <assert_contents>
+                    <has_n_lines n="7"/>
+                    <has_n_columns n="57"/>
+                </assert_contents>
+            </output>
+            <output name="proteinGroups">
+                <assert_contents>
+                    <has_n_lines n="7"/>
+                    <has_n_columns n="39"/>
+                </assert_contents>
+            </output>
+            <output name="summary">
+                <assert_contents>
+                    <has_n_lines n="3"/>
+                    <has_n_columns n="51"/>
+                </assert_contents>
+            </output>
+            <output name="modificationSpecificPeptides">
+                <assert_contents>
+                    <has_n_lines n="7"/>
+                    <has_n_columns n="32"/>
+                </assert_contents>
+            </output>
             <output name="config" file="01/config.yml" lines_diff="2"/>
         </test>
-        <!-- reporter ion ms2 + multiple param groups, testing yaml conf file and mqpar.xml only -->
+        <!-- 2 reporter ion ms2 + multiple param groups, testing yaml conf file and mqpar.xml only -->
         <test expect_num_outputs="3">
             <param name="ftype" value=".mzxml" />
             <param name="fasta_files" value="bsa.fasta" />
@@ -752,10 +673,9 @@ short peptides are usually not unique in the protein database and therefore not 
             <param name="dry_run" value="True" />
             <param name="output" value="config,mqpar,mzTab" />
             <output name="config" file="02/config.yml" lines_diff="7" />
-            <!-- high difference due to unconsistant xml formatting in MQ -->
-            <output name="mqpar" file="02/mqpar.xml" lines_diff="24" />
+            <output name="mqpar" file="02/mqpar.xml" lines_diff="8" />
         </test>
-        <!-- reporter ion ms3 + multiple param groups, testing yaml conf file and mqpar.xml only -->
+        <!-- 3 reporter ion ms3 + multiple param groups, testing yaml conf file and mqpar.xml only -->
         <test expect_num_outputs="3">
             <param name="ftype" value=".mzxml" />
             <param name="fasta_files" value="bsa.fasta" />
@@ -825,13 +745,13 @@ short peptides are usually not unique in the protein database and therefore not 
                     <has_text_matching expression="lcmsRunType\: \'Reporter ion MS3\'" />
                 </assert_contents>
             </output>
-            <output name="mqpar" file="06/mqpar.xml" lines_diff="6">
+            <output name="mqpar" file="06/mqpar.xml" lines_diff="8">
                 <assert_contents>
                     <has_text_matching expression=".lcmsRunType.Reporter ion MS3.\/lcmsRunType." />
                 </assert_contents>
             </output>
         </test>
-        <!-- lfq, testing yaml conf file and mqpar.xml only -->
+        <!-- 4 lfq, testing yaml conf file and mqpar.xml only -->
         <test expect_num_outputs="2">
             <param name="ftype" value=".mzxml" />
             <param name="fasta_files" value="bsa.fasta" />
@@ -851,9 +771,9 @@ short peptides are usually not unique in the protein database and therefore not 
             <param name="dry_run" value="True" />
             <param name="output" value="config,mqpar" />
             <output name="config" file="03/config.yml" lines_diff="2" />
-            <output name="mqpar" file="03/mqpar.xml" lines_diff="10" />
+            <output name="mqpar" file="03/mqpar.xml" lines_diff="6" />
         </test>
-        <!-- Test for MBR -->
+        <!-- 5  Test for MBR -->
         <test expect_num_outputs="2">
             <param name="ftype" value=".mzxml" />
             <param name="fasta_files" value="bsa.fasta" />
@@ -878,13 +798,13 @@ short peptides are usually not unique in the protein database and therefore not 
                     <has_text_matching expression="matchBetweenRuns\: True" />
                 </assert_contents>
             </output>
-            <output name="mqpar" file="05/mqpar.xml" lines_diff="4">
+            <output name="mqpar" file="05/mqpar.xml" lines_diff="6">
                 <assert_contents>
                     <has_text_matching expression=".matchBetweenRuns.True.\/matchBetweenRuns." />
                 </assert_contents>
             </output>
         </test>
-        <!-- silac + fractions with experimental design template, testing yaml conf file and mqpar.xml only -->
+        <!-- 6 silac + fractions with experimental design template, testing yaml conf file and mqpar.xml only -->
         <test expect_num_outputs="2">
             <param name="ftype" value=".mzxml" />
             <param name="fasta_files" value="bsa.fasta" />
@@ -907,7 +827,7 @@ short peptides are usually not unique in the protein database and therefore not 
             <output name="config" file="04/config.yml" lines_diff="2" />
             <output name="mqpar" file="04/mqpar.xml" lines_diff="12" />
         </test>
-        <!-- PTXQC Test -->
+        <!-- 7 PTXQC Test -->
         <test expect_num_outputs="3">
             <param name="ftype" value=".mzxml" />
             <param name="fasta_files" value="tmt_data.fasta" />
@@ -924,14 +844,20 @@ short peptides are usually not unique in the protein database and therefore not 
                     </conditional>
                 </conditional>
             </repeat>
-            <param name="do_it" value="True" />
+            <param name="do_it" value="true" />
             <param name="output" value="config,mqpar" />
             <output name="config" file="07/config.yml" lines_diff="2" />
             <!-- high difference due to unconsistant xml formatting in MQ -->
-            <output name="mqpar" file="07/mqpar.xml" lines_diff="4" />
-            <output name="ptxqc_report" file="07/combined/txt/report_v1.0.10_combined.pdf" compare="sim_size" />
+            <output name="mqpar" file="07/mqpar.xml" lines_diff="6" />
+            <output name="ptxqc_report">
+                <assert_contents>
+                    <has_line line="%PDF-1.4"/>
+                    <!-- was 50k for older versions, now 88K (for 30-pages) -->
+                    <has_size min="40K" max="100K"/>
+                </assert_contents>
+            </output>
         </test>
-        <!-- TMTpro16plex test -->
+        <!-- 8 TMTpro16plex test -->
         <test expect_num_outputs="3">
             <param name="ftype" value=".mzxml" />
             <param name="fasta_files" value="tmt_data_16.fasta" />
@@ -948,14 +874,14 @@ short peptides are usually not unique in the protein database and therefore not 
                     </conditional>
                 </conditional>
             </repeat>
-            <param name="do_it" value="False" />
+            <param name="do_it" value="false" />
             <param name="output" value="config,mqpar,proteinGroups" />
             <output name="config" file="08/config.yml" lines_diff="2" />
             <!-- high difference due to unconsistant xml formatting in MQ -->
             <output name="mqpar" file="08/mqpar.xml" lines_diff="24" />
             <output name="proteinGroups" file="08/combined/txt/proteinGroups.txt" />
         </test>
-        <!-- TMTpro18plex test -->
+        <!-- 9 TMTpro18plex test -->
         <test expect_num_outputs="2">
             <param name="ftype" value=".mzxml" />
             <param name="fasta_files" value="tmt_data_18.fasta" />
@@ -972,7 +898,7 @@ short peptides are usually not unique in the protein database and therefore not 
                     </conditional>
                 </conditional>
             </repeat>
-            <param name="do_it" value="False" />
+            <param name="do_it" value="false" />
             <param name="output" value="msmsScans" />
             <output name="msmsScans" file="09/combined/txt/msmsScans.txt">
                 <assert_contents>
@@ -980,7 +906,7 @@ short peptides are usually not unique in the protein database and therefore not 
                 </assert_contents>
             </output>
         </test>
-        <!-- Thermo RAW file test -->
+        <!-- 10 Thermo RAW file test -->
         <test expect_num_outputs="2">
             <param name="ftype" value=".thermo.raw" />
             <param name="fasta_files" value="bsa.fasta" />
@@ -1008,9 +934,9 @@ This tool is a wrapper for MaxQuant v@VERSION@. The current version of the wrapp
 
 **Input files**
 
-- Thermo raw, mzML, mzXMLfiles (in parameter group section)
+- Thermo raw, mzML, or mzXML files (in parameter group section)
 
-    - The datatype of all files has to be either 'thermo.raw', 'mzML' or 'mzXML'. Make sure to specify the correct datatype either during upload to Galaxy or afterwards (edit attributes --> datatypes)
+    - The datatype of all files has to be either 'thermo.raw', 'mzml' or 'mzxml'. Make sure to specify the correct datatype either during upload to Galaxy or afterwards (edit attributes --> datatypes)
 - Fasta file: specify parse rules according to your fasta file (header). Some examples for different fasta headers:  
 
                 ::
