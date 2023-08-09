@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 
-VERSION=2.8
+VERSION=3.0
 FILETYPES="aux/filetypes.txt"
 # TODO make 21.01
 PROFILE="21.05"
 ## FILETYPES_RE=$(grep -v "^#" $FILETYPES | grep -v "^$" | cut -f 1 -d" " | tr '\n' '|' | sed 's/|$//'| sed 's/|/\\|/g')
 
-export tmp=$(mktemp -d)
-# export tmp="/tmp/openms-stuff/"
+# export tmp=$(mktemp -d)
+export tmp="/tmp/openms-stuff/"
 
 export CTDCONVERTER="$tmp/CTDConverter"
 ###############################################################################
@@ -76,4 +76,4 @@ sed -i -e 's@http://www.openms.de/doxygen/nightly/html/@http://www.openms.de/dox
 # TODO should be fixed in >2.8 https://github.com/OpenMS/OpenMS/pull/6018
 sed -i -e 's@https://ccms-ucsd.github.io/GNPSDocumentation/featurebasedmolecularnetworking_with_openms@https://ccms-ucsd.github.io/GNPSDocumentation/featurebasedmolecularnetworking-with-openms@' ./*xml
 
-rm -rf macros_autotest.xml macros_discarded_auto.xml prepare_test_data.sh ctd
+# rm -rf macros_autotest.xml macros_discarded_auto.xml prepare_test_data.sh ctd
