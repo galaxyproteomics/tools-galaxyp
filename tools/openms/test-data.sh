@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 
-VERSION=2.8
+# set -ex
+
+VERSION=3.0
 FILETYPES="aux/filetypes.txt"
-CONDAPKG="https://anaconda.org/bioconda/openms/2.8.0/download/linux-64/openms-2.8.0-h7ca0330_0.tar.bz2"
+CONDAPKG="https://anaconda.org/bioconda/openms/3.0.0/download/linux-64/openms-3.0.0-h8964181_1.tar.bz2"
 
 # import the magic
 . ./generate-foo.sh
@@ -45,17 +47,14 @@ eval "$(conda shell.bash hook)"
 
 echo "Clone OpenMS $VERSION sources"
 if [[ ! -d $OPENMSGIT ]]; then
-    # TODO >2.8 reenable original release branch .. also in else branch
-    # the plus branch contains commits from https://github.com/OpenMS/OpenMS/pull/5920 and https://github.com/OpenMS/OpenMS/pull/5917
-    # git clone -b release/$VERSION.0 https://github.com/OpenMS/OpenMS.git $OPENMSGIT
-    git clone -b release/$VERSION.0-plus https://github.com/bernt-matthias/OpenMS.git $OPENMSGIT
+    git clone -b release/$VERSION.0 https://github.com/OpenMS/OpenMS.git $OPENMSGIT
     cd $OPENMSGIT
     git submodule init
     git submodule update
     cd -
 else
     cd $OPENMSGIT
-    git pull origin release/$VERSION.0-plus
+    git pull origin release/$VERSION.0
     cd -
 fi
 
@@ -65,7 +64,7 @@ echo "Create OpenMS $VERSION conda env"
 if conda env list | grep "$OPENMSENV"; then
     true
 else
-    conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults -n $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION omssa=2.1.9 ctdopts=1.5 lxml
+    conda create -y --quiet --solver libmamba --override-channels --strict-channel-priority --channel conda-forge --channel bioconda -n $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION omssa=2.1.9 ctdopts=1.5 lxml
 # chmod -R u-w $OPENMSENV 
 fi
 ###############################################################################
@@ -114,7 +113,8 @@ cp -r $OPENMSGIT/share/OpenMS/MAPPING/ test-data/
 cp -r $OPENMSGIT/share/OpenMS/CHEMISTRY test-data/
 cp -r $OPENMSGIT/share/OpenMS/examples/ test-data/
 if [ ! -f test-data/MetaboliteSpectralDB.mzML ]; then 
-    wget -nc https://abibuilder.cs.uni-tuebingen.de/archive/openms/Tutorials/Data/latest/Example_Data/Metabolomics/databases/MetaboliteSpectralDB.mzML
+    wget -nc https://raw.githubusercontent.com/sneumann/OpenMS/master/share/OpenMS/CHEMISTRY/MetaboliteSpectralDB.mzML
+    # wget -nc https://abibuilder.cs.uni-tuebingen.de/archive/openms/Tutorials/Data/latest/Example_Data/Metabolomics/databases/MetaboliteSpectralDB.mzML
     mv MetaboliteSpectralDB.mzML test-data/
 fi
 ln -fs TOFCalibration_ref_masses test-data/TOFCalibration_ref_masses.txt
