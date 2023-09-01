@@ -25,9 +25,27 @@ parser.add_argument(
 parser.add_argument(
     "--out_filtered", type=str, metavar="output", help="Filtered output", required=True
 )
+parser.add_argument(
+    "--nominal_values", type=str, metavar="nominal_values", help="Table giving nominal values", default=None, required=False
+)
 
 # Indicate end of argument definitions and parse args
 args = parser.parse_args()
+
+def parse_nominal_values(filename):
+    nominal_values = {}
+    if not filename:
+        return nominal_values
+    with open(filename) as fh:
+        for line in fh:
+            line = line.strip()
+            if len(line) == 0 or line[0] == '#':
+                continue
+            line = line.split()
+            nominal_values[line[0]] = line[1]
+    return nominal_values
+
+
 
 # Benchmarking section
 # the functions for optimising calis-p data
@@ -108,7 +126,7 @@ def estimate_clumpiness(data):
 
 
 # the function for benchmarking
-def benchmark_sip_mock_community_data(data, factor):
+def benchmark_sip_mock_community_data(data, factor, nominal_values):
     background_isotope = 1 - factor
     background_unlabelled = factor
 
@@ -122,6 +140,9 @@ def benchmark_sip_mock_community_data(data, factor):
     }
 
     filenames = data["ms_run"].unique()
+    for fname in filenames:
+        print(f"Using nominal value {nominal_values.get(fname, 0)} for {fname}")
+
     bin_names = data["bins"].unique()
     peptide_sequences = data["peptide"].unique()
     benchmarking = pd.DataFrame(
@@ -146,14 +167,13 @@ def benchmark_sip_mock_community_data(data, factor):
     for p in peptide_sequences:
         pep_data = data.loc[lambda df: df["peptide"] == p, :]
         for b in bin_names:
-            bindata = data.loc[lambda df: df["bins"] == b, :]
+            # bindata = data.loc[lambda df: df["bins"] == b, :]
             for f in filenames:
                 words = f.split("_")
                 # TODO what is nominal_value doing? it uses int(the 4th component of the filename/runname)
                 # if the filename hase more than 5 components, and the nominal_value=0 otherwise
-                nominal_value = 0
-                if len(words) > 5:
-                    nominal_value = int(words[3].replace("rep", ""))
+                # USE table
+                nominal_value =  nominal_values.get(fname, 0)
                 unlabeled_fraction = 1 - nominal_value / 100
                 U = unlabeled_fraction * background_unlabelled
                 I = nominal_value / 100 + unlabeled_fraction * background_isotope
@@ -202,13 +222,13 @@ data["peptide_clean"] = data["peptide_clean"].replace("\s*\[.*\]", "", regex=Tru
 
 data["ratio_na"] = data["ratio_na"] * 100
 data["ratio_fft"] = data["ratio_fft"] * 100
-data["psm_neutrons"] = data["psm_neutrons"] * 100
 
 # The column "% label" indicates the amount of label applied (percentage of label in the glucose). The amount of
 # labeled E. coli cells added corresponded to 1 generation of labeling (50% of E. coli cells were labeled in
 # all experiments except controls)
 
-benchmarks = benchmark_sip_mock_community_data(data, args.factor)
+nominal_values = parse_nominal_values(args.nominal_values)
+benchmarks = benchmark_sip_mock_community_data(data, args.factor, nominal_values)
 benchmarks.to_csv(args.out_summary,  sep='\t', index=False)
 
 data.to_csv(args.out_filtered,  sep='\t', index=False)
