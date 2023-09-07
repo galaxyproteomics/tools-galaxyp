@@ -69,9 +69,10 @@ def load_calisp_data(filename, factor):
         data.to_csv(f"{base}.tsv", sep="\t", index=False)
 
     file_success_count = len(data["ms_run"].unique())
+    # sort proteins to always get the same output
+    data["proteins"] = data["proteins"].sort_values()
     # (2) calculate deltas
     # ((1-f)/f) - 1 == 1/f -2
-
     data["delta_na"] = data["ratio_na"] / ((1 / factor) - 2) * 1000
     data["delta_fft"] = data["ratio_fft"] / ((1 / factor) - 2) * 1000
     print(
