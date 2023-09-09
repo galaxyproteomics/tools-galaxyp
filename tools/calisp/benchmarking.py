@@ -20,17 +20,27 @@ parser.add_argument(
     "--input", type=str, metavar="data", help="Input file/folder", required=True
 )
 parser.add_argument(
-    "--out_summary", type=str, metavar="output", help="Peptide summary output", required=True
+    "--out_summary",
+    type=str,
+    metavar="output",
+    help="Peptide summary output",
+    required=False,
 )
 parser.add_argument(
-    "--out_filtered", type=str, metavar="output", help="Filtered output", required=True
+    "--out_filtered", type=str, metavar="output", help="Filtered output", required=False
 )
 parser.add_argument(
-    "--nominal_values", type=str, metavar="nominal_values", help="Table giving nominal values", default=None, required=False
+    "--nominal_values",
+    type=str,
+    metavar="nominal_values",
+    help="Table giving nominal values",
+    default=None,
+    required=False,
 )
 
 # Indicate end of argument definitions and parse args
 args = parser.parse_args()
+
 
 def parse_nominal_values(filename):
     nominal_values = {}
@@ -39,12 +49,11 @@ def parse_nominal_values(filename):
     with open(filename) as fh:
         for line in fh:
             line = line.strip()
-            if len(line) == 0 or line[0] == '#':
+            if len(line) == 0 or line[0] == "#":
                 continue
             line = line.split()
             nominal_values[line[0]] = line[1]
     return nominal_values
-
 
 
 # Benchmarking section
@@ -108,6 +117,7 @@ def filter_calisp_data(data, target):
     print(
         f"{len(subdata.index)} ({len(subdata.index)/len(data.index)*100:.1f}%) remaining after filters."
     )
+    subdata["proteins"] = subdata["proteins"].sort_values()
 
     return subdata
 
@@ -174,7 +184,7 @@ def benchmark_sip_mock_community_data(data, factor, nominal_values):
                 # TODO what is nominal_value doing? it uses int(the 4th component of the filename/runname)
                 # if the filename hase more than 5 components, and the nominal_value=0 otherwise
                 # USE table
-                nominal_value =  nominal_values.get(fname, 0)
+                nominal_value = nominal_values.get(fname, 0)
                 unlabeled_fraction = 1 - nominal_value / 100
                 U = unlabeled_fraction * background_unlabelled
                 I = nominal_value / 100 + unlabeled_fraction * background_isotope
@@ -214,22 +224,25 @@ def benchmark_sip_mock_community_data(data, factor, nominal_values):
 
 # cleaning and filtering data
 data = load_calisp_data(args.input, args.factor)
-data = filter_calisp_data(data, "na")
 
-data["peptide_clean"] = data["peptide"]
-data["peptide_clean"] = data["peptide_clean"].replace("'Oxidation'", "", regex=True)
-data["peptide_clean"] = data["peptide_clean"].replace("'Carbamidomethyl'", "", regex=True)
-data["peptide_clean"] = data["peptide_clean"].replace("\s*\[.*\]", "", regex=True)
+if args.out_filtered:
+    data = filter_calisp_data(data, "na")
+    data["peptide_clean"] = data["peptide"]
+    data["peptide_clean"] = data["peptide_clean"].replace("'Oxidation'", "", regex=True)
+    data["peptide_clean"] = data["peptide_clean"].replace(
+        "'Carbamidomethyl'", "", regex=True
+    )
+    data["peptide_clean"] = data["peptide_clean"].replace("\s*\[.*\]", "", regex=True)
 
-data["ratio_na"] = data["ratio_na"] * 100
-data["ratio_fft"] = data["ratio_fft"] * 100
+    data["ratio_na"] = data["ratio_na"] * 100
+    data["ratio_fft"] = data["ratio_fft"] * 100
+    data.to_csv(args.out_filtered, sep="\t", index=False)
 
-# The column "% label" indicates the amount of label applied (percentage of label in the glucose). The amount of
-# labeled E. coli cells added corresponded to 1 generation of labeling (50% of E. coli cells were labeled in
-# all experiments except controls)
+    # The column "% label" indicates the amount of label applied (percentage of label in the glucose). The amount of
+    # labeled E. coli cells added corresponded to 1 generation of labeling (50% of E. coli cells were labeled in
+    # all experiments except controls)
 
-nominal_values = parse_nominal_values(args.nominal_values)
-benchmarks = benchmark_sip_mock_community_data(data, args.factor, nominal_values)
-benchmarks.to_csv(args.out_summary,  sep='\t', index=False)
-
-data.to_csv(args.out_filtered,  sep='\t', index=False)
+if args.out_summary:
+    nominal_values = parse_nominal_values(args.nominal_values)
+    benchmarks = benchmark_sip_mock_community_data(data, args.factor, nominal_values)
+    benchmarks.to_csv(args.out_summary, sep="\t", index=False)
