@@ -7,17 +7,23 @@ import numpy as np
 # Define the ArgumentParser
 parser = argparse.ArgumentParser("List of natural abundances of the isotopes")
 
-# Add arguments
-parser.add_argument(
-    "-f",
-    "--factor",
-    type=float,
-    metavar="F",
-    help="Correction factor (natural abundances), e.g.:"
-    "C: 0.9889434148335, H: 0.99988, N: 0.996323567, O: 0.997574195, S: 0.9493",
-)
 parser.add_argument(
     "--input", type=str, metavar="data", help="Input file/folder", required=True
+)
+
+parser.add_argument(
+    "--isotope_abundance_matrix",
+    type=str,
+    metavar="data",
+    help="Isotope abundance matrix",
+    required=True,
+)
+parser.add_argument(
+    "--isotope",
+    type=str,
+    metavar="ISOTOPE",
+    help="Isotope",
+    required=True,
 )
 parser.add_argument(
     "--out_summary",
@@ -180,10 +186,6 @@ def benchmark_sip_mock_community_data(data, factor, nominal_values):
         for b in bin_names:
             # bindata = data.loc[lambda df: df["bins"] == b, :]
             for f in filenames:
-                words = f.split("_")
-                # TODO what is nominal_value doing? it uses int(the 4th component of the filename/runname)
-                # if the filename hase more than 5 components, and the nominal_value=0 otherwise
-                # USE table
                 nominal_value = nominal_values.get(fname, 0)
                 unlabeled_fraction = 1 - nominal_value / 100
                 U = unlabeled_fraction * background_unlabelled
@@ -222,8 +224,32 @@ def benchmark_sip_mock_community_data(data, factor, nominal_values):
     return benchmarking
 
 
+rowcol = {
+    "13C": (0, 1),
+    "14C": (0, 2),
+    "15N": (1, 1),
+    "17O": (2, 1),
+    "18O": (2, 2),
+    "2H": (3, 1),
+    "3H": (3, 2),
+    "33S": (4, 1),
+    "34S": (4, 2),
+    "36S": (4, 3),
+}
+with open(args.isotope_abundance_matrix) as iamf:
+    matrix = []
+    for line in iamf:
+        line = line.strip()
+        line = line.split("#")[0]
+        if line == "":
+            continue
+        matrix.append([float(x) for x in line.split()])
+factor = matrix[rowcol[args.isotope][0]][rowcol[args.isotope][1]]
+print(f"Using factor {factor}")
+
+
 # cleaning and filtering data
-data = load_calisp_data(args.input, args.factor)
+data = load_calisp_data(args.input, factor)
 
 if args.out_filtered:
     data = filter_calisp_data(data, "na")
@@ -232,7 +258,7 @@ if args.out_filtered:
     data["peptide_clean"] = data["peptide_clean"].replace(
         "'Carbamidomethyl'", "", regex=True
     )
-    data["peptide_clean"] = data["peptide_clean"].replace("\s*\[.*\]", "", regex=True)
+    data["peptide_clean"] = data["peptide_clean"].replace(r"\s*\[.*\]", "", regex=True)
 
     data["ratio_na"] = data["ratio_na"] * 100
     data["ratio_fft"] = data["ratio_fft"] * 100
@@ -244,5 +270,5 @@ if args.out_filtered:
 
 if args.out_summary:
     nominal_values = parse_nominal_values(args.nominal_values)
-    benchmarks = benchmark_sip_mock_community_data(data, args.factor, nominal_values)
+    benchmarks = benchmark_sip_mock_community_data(data, factor, nominal_values)
     benchmarks.to_csv(args.out_summary, sep="\t", index=False)
