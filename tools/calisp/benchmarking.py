@@ -99,24 +99,24 @@ def load_calisp_data(filename, factor):
 def filter_calisp_data(data, target):
     if target.lower() == "na":
         subdata = data.loc[
-            lambda df: (df["flag_peak_at_minus_one_pos"] == False)
-            & (df["flag_pattern_is_wobbly"] == False)
-            & (df["flag_psm_has_low_confidence"] == False)
-            & (df["flag_psm_is_ambiguous"] == False)
-            & (df["flag_pattern_is_contaminated"] == False)
-            & (df["flag_peptide_assigned_to_multiple_bins"] == False),
+            lambda df: (df["flag_peak_at_minus_one_pos"] == False)  # noqa: E712
+            & (df["flag_pattern_is_wobbly"] == False)  # noqa: E712
+            & (df["flag_psm_has_low_confidence"] == False)  # noqa: E712
+            & (df["flag_psm_is_ambiguous"] == False)  # noqa: E712
+            & (df["flag_pattern_is_contaminated"] == False)  # noqa: E712
+            & (df["flag_peptide_assigned_to_multiple_bins"] == False),  # noqa: E712
             :,
         ]
     elif target.lower() == "fft":
         subdata = data.loc[
             lambda df: (df["error_fft"] < 0.001)
-            & (df["flag_peptide_assigned_to_multiple_bins"] == False),
+            & (df["flag_peptide_assigned_to_multiple_bins"] == False),  # noqa: E712
             :,
         ]
     elif target.lower() == "clumpy":
         subdata = data.loc[
             lambda df: (df["error_clumpy"] < 0.001)
-            & (df["flag_peptide_assigned_to_multiple_bins"] == False),
+            & (df["flag_peptide_assigned_to_multiple_bins"] == False),  # noqa: E712
             :,
         ]
 
