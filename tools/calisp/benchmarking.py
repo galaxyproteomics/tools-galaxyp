@@ -1,8 +1,8 @@
 import argparse
 import os
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 # Define the ArgumentParser
 parser = argparse.ArgumentParser("List of natural abundances of the isotopes")
