@@ -1,8 +1,3 @@
-MSSimulator -test -in DecoyDatabase_1.fasta -out MSsimulator.mzml -algorithm:RandomNumberGenerators:biological reproducible -algorithm:RandomNumberGenerators:technical reproducible > MSSimulator_1.stdout 2> stderr
-if [[ "$?" -ne "0" ]]; then >&2 echo 'MSSimulator_1 failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
-
-MSSimulator -test -in DecoyDatabase_1.fasta -out MSsimulator_MALDI.mzml -algorithm:RandomNumberGenerators:biological reproducible -algorithm:RandomNumberGenerators:technical reproducible -algorithm:MSSim:Global:ionization_type MALDI > MSSimulator_2.stdout 2> stderr
-if [[ "$?" -ne "0" ]]; then >&2 echo 'MSSimulator_2 failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
 ClusterMassTracesByPrecursor -test -in_ms1 ConsensusMapNormalizer_input.consensusXML -in_swath ConsensusMapNormalizer_input.consensusXML -out ClusterMassTracesByPrecursor.mzml > ClusterMassTracesByPrecursor.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'ClusterMassTracesByPrecursor failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
@@ -13,8 +8,9 @@ if [[ "$?" -ne "0" ]]; then >&2 echo 'ClusterMassTraces failed'; >&2 echo -e "st
 CVInspector -test -cv_files CHEMISTRY/XLMOD.obo -cv_names XLMOD -mapping_file MAPPING/ms-mapping.xml -html CVInspector.html > CVInspector.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'CVInspector failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
-DeMeanderize -test -in MSsimulator_MALDI.mzml -out DeMeanderize.mzml > DeMeanderize.stdout 2> stderr
-if [[ "$?" -ne "0" ]]; then >&2 echo 'DeMeanderize failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
+# TODO new test data (old was generated with MSSimulator)
+# DeMeanderize -test -in MSsimulator_MALDI.mzml -out DeMeanderize.mzml > DeMeanderize.stdout 2> stderr
+# if [[ "$?" -ne "0" ]]; then >&2 echo 'DeMeanderize failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
 # TODO DigestorMotif
 
@@ -30,25 +26,16 @@ FeatureFinderIsotopeWavelet -test -in FeatureFinderCentroided_1_input.mzML -out 
 if [[ "$?" -ne "0" ]]; then >&2 echo 'FeatureFinderIsotopeWavelet failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
 
-FFEval -test -in  FeatureFinderCentroided_1_output.featureXML -truth  FeatureFinderCentroided_1_output.featureXML -out  FFEval.featureXML -out_roc FFEval_roc.csv  > FFEval.stdout 2> stderr
-if [[ "$?" -ne "0" ]]; then >&2 echo 'FFEval failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
-
 # TODO? deprecated IDDecoyProbability
 
 IDExtractor -test -in MSGFPlusAdapter_1_out.idXML -best_hits -number_of_peptides  1 -out  IDExtractor.idXML   > IDExtractor.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'IDExtractor failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
-
-LabeledEval -test -in  FeatureLinkerLabeled_1_input.featureXML -truth  FeatureLinkerLabeled_1_output.consensusXML> LabeledEval.txt > LabeledEval.stdout 2> stderr
-if [[ "$?" -ne "0" ]]; then >&2 echo 'LabeledEval failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
 MapStatistics -test -in SiriusAdapter_3_input.featureXML -out MapStatistics.txt > MapStatistics_1.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'MapStatistics_1 failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
 MapStatistics -test -in ConsensusXMLFile_1.consensusXML -out MapStatistics2.txt > MapStatistics_2.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'MapStatistics_2 failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
-
-MetaboliteAdductDecharger -test -in Decharger_input.featureXML -out_cm MetaboliteAdductDecharger_cm.consensusXML -out_fm MetaboliteAdductDecharger_fm.featureXML -outpairs MetaboliteAdductDecharger_pairs.consensusXML > MetaboliteAdductDecharger.stdout 2> stderr
-if [[ "$?" -ne "0" ]]; then >&2 echo 'MetaboliteAdductDecharger failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
 MetaboliteSpectralMatcher -test -in spectra.mzML -database MetaboliteSpectralDB.mzML -out MetaboliteSpectralMatcher.mzTab > MetaboliteSpectralMatcher.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'MetaboliteSpectralMatcher failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
@@ -71,9 +58,6 @@ OpenSwathRewriteToFeatureXML -featureXML OpenSwathFeatureXMLToTSV_input.featureX
 # adapted from the commented tests in OpenMS TODO may be removed later https://github.com/OpenMS/OpenMS/issues/4719
 FileConverter -in PepNovo.mzXML -out PepNovo_1.mzML > /dev/null 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'FileConverter failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
-
-PepNovoAdapter -ini PepNovoAdapter_1_parameters.ini -in PepNovo_1.mzML -out PepNovoAdapter_3_output.idXML -model_directory pepnovo_models/ -pepnovo_executable pepnovo > PepNovo_1.stdout 2> stderr
-if [[ "$?" -ne "0" ]]; then >&2 echo 'PhosphoScoring failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
 FileConverter -in PepNovo.mzData -out PepNovo_4.mzML > /dev/null 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'FileConverter failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
@@ -118,9 +102,6 @@ if [[ "$?" -ne "0" ]]; then >&2 echo 'RNADigestor failed'; >&2 echo -e "stderr:\
 RNPxlXICFilter -test -control FileFilter_1_input.mzML -treatment FileFilter_1_input.mzML -out RNPxlXICFilter.mzML > RNPxlXICFilter.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'RNPxlXICFilter failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
-RTEvaluation -in PeptideIndexer_1.idXML -out RTEvaluation.tsv > RTEvaluation.stdout 2> stderr
-if [[ "$?" -ne "0" ]]; then >&2 echo 'RTEvaluation failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
-
 SemanticValidator -test -in FileFilter_1_input.mzML -mapping_file MAPPING/ms-mapping.xml > SemanticValidator.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'SemanticValidator failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
@@ -156,9 +137,6 @@ SpectraMerger -test -in NovorAdapter_in.mzML -out SpectraMerger_1.mzML > Spectra
 if [[ "$?" -ne "0" ]]; then >&2 echo 'SpectraMerger failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
 # TODO SvmTheoreticalSpectrumGeneratorTrainer
-
-TransformationEvaluation -test -in FileInfo_16_input.trafoXML -out TransformationEvaluation.trafoXML > TransformationEvaluation.stdout 2> stderr
-if [[ "$?" -ne "0" ]]; then >&2 echo 'TransformationEvaluation failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
 XMLValidator -test -in FileFilter_1_input.mzML > XMLValidator.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'XMLValidator failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi

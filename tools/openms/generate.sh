@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 
-VERSION=3.0
+VERSION=3.1
 FILETYPES="aux/filetypes.txt"
-# TODO make 21.01
 PROFILE="21.05"
 ## FILETYPES_RE=$(grep -v "^#" $FILETYPES | grep -v "^$" | cut -f 1 -d" " | tr '\n' '|' | sed 's/|$//'| sed 's/|/\\|/g')
 
-# export tmp=$(mktemp -d)
-export tmp="/tmp/openms-stuff/"
+export tmp=$(mktemp -d)
+# export tmp="/tmp/openms-stuff/"
 
 export CTDCONVERTER="$tmp/CTDConverter"
 ###############################################################################
@@ -66,14 +65,6 @@ CTDConverter galaxy -i ctd/*ctd -o ./ -s aux/tools_blacklist.txt -f "$FILETYPES"
 if [[ "$?" -ne "0" ]]; then >&2 echo 'CTD -> XML conversion failed'; >&2 echo -e "stderr:\n$(cat convert.err)"; fi
 conda deactivate
 
->&2 echo "apply patches"
-patch PepNovoAdapter.xml < aux/PepNovoAdapter.patch
-patch OMSSAAdapter.xml < aux/OMSSAAdapter.patch
-
-# https://github.com/OpenMS/OpenMS/pull/4984
-sed -i -e 's@http://www.openms.de/doxygen/nightly/html/@http://www.openms.de/doxygen/release/2.8.0/html/@' ./*xml
-
-# TODO should be fixed in >2.8 https://github.com/OpenMS/OpenMS/pull/6018
-sed -i -e 's@https://ccms-ucsd.github.io/GNPSDocumentation/featurebasedmolecularnetworking_with_openms@https://ccms-ucsd.github.io/GNPSDocumentation/featurebasedmolecularnetworking-with-openms@' ./*xml
+sed -i -e 's@http://www.openms.de/doxygen/nightly/html/@https://openms.de/doxygen/release/'$VERSION'.0/html/@' ./*xml
 
 # rm -rf macros_autotest.xml macros_discarded_auto.xml prepare_test_data.sh ctd
