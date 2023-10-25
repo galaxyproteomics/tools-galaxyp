@@ -18,6 +18,7 @@ function get_tests2 {
     # - SiriusAdapter_4 depends on online service which may timeout .. so keep disabled https://github.com/OpenMS/OpenMS/pull/5010
     # - SiriusAdapter_10 should work in >2.8 https://github.com/OpenMS/OpenMS/issues/5869
     CMAKE=$(cat $OPENMSGIT/src/tests/topp/CMakeLists.txt $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake  |
+        grep -v "\.ini\.json" |
         sed 's@${DATA_DIR_SHARE}/@@g' |
         grep -v 'OpenSwathMzMLFileCacher .*-convert_back' |
         sed 's/${TMP_RIP_PATH}/""/' |
@@ -35,7 +36,7 @@ function get_tests2 {
         grep -iE "add_test\(\"(TOPP|UTILS)_.*/$id " | egrep -v "_prepare\"|_convert|WRITEINI|WRITECTD|INVALIDVALUE"  | while read -r line
     do
         line=$(echo "$line" | sed 's/add_test("\([^"]\+\)"/\1/; s/)$//; s/\${TOPP_BIN_PATH}\///g;s/\${DATA_DIR_TOPP}\///g; s#THIRDPARTY/##g')
-        # >&2 echo $line
+        # >&2 echo "line $line"
         test_id=$(echo "$line" | cut -d" " -f 1)
         tool_id=$(echo "$line" | cut -d" " -f 2)
         # >&2 echo "test_id $test_id"
@@ -188,7 +189,14 @@ function prepare_test_data {
 # | egrep -i "$id\_.*[0-9]+(_prepare\"|_convert)?"
 
     # TODO SiriusAdapter depends on online service which may timeout .. so keep disabled https://github.com/OpenMS/OpenMS/pull/5010
-    cat $OPENMSGIT/src/tests/topp/CMakeLists.txt  $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake | sed 's/#.*$//'| sed 's/^\s*//; s/\s*$//' | grep -v "^$"  | awk '{printf("%s@NEWLINE@", $0)}' | sed 's/)@NEWLINE@/)\n/g' | sed 's/@NEWLINE@/ /g' | 
+    cat $OPENMSGIT/src/tests/topp/CMakeLists.txt  $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake |
+        grep -v "\.ini\.json" |
+        sed 's/.ini.json /ini /' | 
+        sed 's/#.*$//'| 
+        sed 's/^\s*//; s/\s*$//' | 
+        grep -v "^$"  | 
+        awk '{printf("%s@NEWLINE@", $0)}' | 
+        sed 's/)@NEWLINE@/)\n/g' | sed 's/@NEWLINE@/ /g' | 
         sed 's/degenerate_cases\///' | 
         egrep -v "WRITEINI|WRITECTD|INVALIDVALUE|DIFF" | 
         grep add_test | 
@@ -209,7 +217,7 @@ function prepare_test_data {
         line=$(echo "$line" | sed 's/add_test("//; s/)[^)]*$//; s/\${TOPP_BIN_PATH}\///g;s/\${DATA_DIR_TOPP}\///g; s#THIRDPARTY/##g' | cut -d" " -f2-)
         # line="$(fix_tmp_files $line)"
         echo 'echo executing "'$test_id'"'
-	echo "$line > $test_id.stdout 2> $test_id.stderr"
+        echo "$line > $test_id.stdout 2> $test_id.stderr"
         echo "if [[ \"\$?\" -ne \"0\" ]]; then >&2 echo '$test_id failed'; >&2 echo -e \"stderr:\n\$(cat $test_id.stderr | sed 's/^/    /')\"; echo -e \"stdout:\n\$(cat $test_id.stdout)\";fi"    
     done
 }
