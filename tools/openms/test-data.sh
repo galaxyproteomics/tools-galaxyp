@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-# set -ex
+# set -x
 
-VERSION=3.0
+VERSION=3.1
 FILETYPES="aux/filetypes.txt"
-CONDAPKG="https://anaconda.org/bioconda/openms/3.0.0/download/linux-64/openms-3.0.0-h8964181_1.tar.bz2"
+CONDAPKG="https://anaconda.org/bioconda/openms/3.1.0/download/linux-64/openms-3.1.0-h8964181_1.tar.bz2"
 
 # import the magic
 . ./generate-foo.sh
@@ -47,11 +47,17 @@ eval "$(conda shell.bash hook)"
 
 echo "Clone OpenMS $VERSION sources"
 if [[ ! -d $OPENMSGIT ]]; then
-    git clone -b release/$VERSION.0 https://github.com/OpenMS/OpenMS.git $OPENMSGIT
-    cd $OPENMSGIT
-    git submodule init
-    git submodule update
-    cd -
+    if [[ "$created" == "yes" ]]; then
+        GIT_DIR=$(mktemp -d --dry-run)
+        GIT_EXTRA_OPTS="--separate-git-dir=$GIT_DIR"
+    fi
+    git clone -b release/$VERSION.0 --depth 1 --recurse-submodules=THIRDPARTY --shallow-submodules $GIT_EXTRA_OPTS https://github.com/OpenMS/OpenMS.git $OPENMSGIT
+    ## save some space by just keeping the needed binaries
+    find $OPENMSGIT/THIRDPARTY/ -type f -not \( -name maracluster -o -name spectrast \) -delete
+    find $OPENMSGIT/THIRDPARTY/ -empty -type d -delete
+    if [[ "$created" == "yes" ]]; then
+        rm -rf $GIT_DIR
+    fi
 else
     cd $OPENMSGIT
     git pull origin release/$VERSION.0
@@ -64,7 +70,7 @@ echo "Create OpenMS $VERSION conda env"
 if conda env list | grep "$OPENMSENV"; then
     true
 else
-    conda create -y --quiet --solver libmamba --override-channels --strict-channel-priority --channel conda-forge --channel bioconda -n $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION omssa=2.1.9 ctdopts=1.5 lxml
+    conda create -y --quiet --solver libmamba --override-channels --strict-channel-priority --channel conda-forge --channel bioconda -n $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION ctdopts=1.5 lxml
 # chmod -R u-w $OPENMSENV 
 fi
 ###############################################################################
@@ -100,11 +106,11 @@ cd -
 conda deactivate
 
 
-# ###############################################################################
-# ## copy all the test data files to test-data
-# ## most of it (outputs) will be overwritten later, but its needed for
-# ## prepare_test_data
-# ###############################################################################
+# # ###############################################################################
+# # ## copy all the test data files to test-data
+# # ## most of it (outputs) will be overwritten later, but its needed for
+# # ## prepare_test_data
+# # ###############################################################################
 echo "Get test data"
 find test-data -type f,l,d ! -name "*fa" ! -name "*loc" ! -name "test-data" -delete
 
@@ -120,14 +126,14 @@ fi
 ln -fs TOFCalibration_ref_masses test-data/TOFCalibration_ref_masses.txt
 ln -fs TOFCalibration_const test-data/TOFCalibration_const.csv
 
-if [ ! -d test-data/pepnovo_models/ ]; then
-    mkdir -p /tmp/pepnovo
-    wget -nc http://proteomics.ucsd.edu/Software/PepNovo/PepNovo.20120423.zip
-    unzip PepNovo.20120423.zip -d /tmp/pepnovo/
-    mv /tmp/pepnovo/Models test-data/pepnovo_models/
-    rm PepNovo.20120423.zip
-    rm -rf /tmp/pepnovo
-fi
+# if [ ! -d test-data/pepnovo_models/ ]; then
+#     mkdir -p /tmp/pepnovo
+#     wget -nc http://proteomics.ucsd.edu/Software/PepNovo/PepNovo.20120423.zip
+#     unzip PepNovo.20120423.zip -d /tmp/pepnovo/
+#     mv /tmp/pepnovo/Models test-data/pepnovo_models/
+#     rm PepNovo.20120423.zip
+#     rm -rf /tmp/pepnovo
+# fi
 ###############################################################################
 ## generate ctd files using the binaries in the conda package 
 ###############################################################################
@@ -180,7 +186,7 @@ echo 'export FIDO_BINARY="Fido"' >> prepare_test_data.sh
 echo 'export LUCIPHOR_BINARY="$(dirname $(realpath $(which luciphor2)))/luciphor2.jar"' >> prepare_test_data.sh
 
 echo 'export MARACLUSTER_BINARY="'"$OPENMSGIT"'/THIRDPARTY/Linux/64bit/MaRaCluster/maracluster"'>> prepare_test_data.sh
-echo 'export MSFRAGGER_BINARY="/home/berntm/Downloads/MSFragger-20171106/MSFragger-20171106.jar"'>> prepare_test_data.sh
+echo 'export MSFRAGGER_BINARY="/home/berntm/Downloads/MSFragger-3.5/MSFragger-3.5.jar"'>> prepare_test_data.sh
 echo 'export MSGFPLUS_BINARY="$(msgf_plus -get_jar_path)"' >> prepare_test_data.sh
 echo 'export MYRIMATCH_BINARY="myrimatch"'>> prepare_test_data.sh
 echo 'export NOVOR_BINARY="/home/berntm/Downloads/novor/lib/novor.jar"' >> prepare_test_data.sh
@@ -190,6 +196,7 @@ echo 'export SIRIUS_BINARY="$(which sirius)"' >> prepare_test_data.sh
 echo 'export SPECTRAST_BINARY="'"$OPENMSGIT"'/THIRDPARTY/Linux/64bit/SpectraST/spectrast"' >> prepare_test_data.sh
 echo 'export XTANDEM_BINARY="xtandem"' >> prepare_test_data.sh
 echo 'export THERMORAWFILEPARSER_BINARY="ThermoRawFileParser.exe"' >> prepare_test_data.sh
+echo 'export SAGE_BINARY=sage' >> prepare_test_data.sh
 
 prepare_test_data >> prepare_test_data.sh #tmp_test_data.sh
 
@@ -272,7 +279,7 @@ conda deactivate
 ## remove broken symlinks in test-data
 find test-data/ -xtype l -delete
 
-if [ ! -z "$created" ]; then
+if [[ "$created" == "yes" ]]; then
     echo "Removing temporary directory"
     rm -rf "$tmp"
 fi
