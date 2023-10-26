@@ -129,15 +129,6 @@ More details can be found in the comments of the shell script.
 Open problems
 =============
 
-Some tools stall in CI testing using `--biocontainers` which is why the OpenMS
-tools are currently listed in `.tt_biocontainer_skip`. This is
-
-- AssayGeneratorMetabo and SiriusAdapter (both depend on sirius)
-- OMSSAAdapter
-
-Using `docker -t` seems to solve the problem (see
-https://github.com/galaxyproject/galaxy/issues/10153).
-
 Licence (MIT)
 =============
 
