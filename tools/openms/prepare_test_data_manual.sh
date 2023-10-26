@@ -55,17 +55,6 @@ if [[ "$?" -ne "0" ]]; then >&2 echo 'OpenSwathDIAPreScoring failed'; >&2 echo -
 OpenSwathRewriteToFeatureXML -featureXML OpenSwathFeatureXMLToTSV_input.featureXML -out OpenSwathRewriteToFeatureXML.featureXML > OpenSwathRewriteToFeatureXML.stdout 2> stderr
 # if [[ "$?" -ne "0" ]]; then >&2 echo 'OpenSwathRewriteToFeatureXML failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
-# adapted from the commented tests in OpenMS TODO may be removed later https://github.com/OpenMS/OpenMS/issues/4719
-FileConverter -in PepNovo.mzXML -out PepNovo_1.mzML > /dev/null 2> stderr
-if [[ "$?" -ne "0" ]]; then >&2 echo 'FileConverter failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
-
-FileConverter -in PepNovo.mzData -out PepNovo_4.mzML > /dev/null 2> stderr
-if [[ "$?" -ne "0" ]]; then >&2 echo 'FileConverter failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
-PepNovoAdapter -ini PepNovoAdapter_1_parameters.ini -in PepNovo_4.mzML -out PepNovoAdapter_4_output.idXML -model_directory pepnovo_models/ -pepnovo_executable pepnovo > PepNovo_1.stdout 2> stderr
-if [[ "$?" -ne "0" ]]; then >&2 echo 'PhosphoScoring failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
-
-#PepNovoAdapter -ini PepNovoAdapter_5_parameters.ini -in PepNovoAdapter_5_output.pepnovo_out -out PepNovoAdapter_5_output.idXML -model_directory pepnovo_models/ 
-
 # TODO PhosphoScoring 
 PhosphoScoring -in spectra.mzML -id MSGFPlusAdapter_1_out1.tmp -out PhosphoScoring.idxml > PhosphoScoring.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'PhosphoScoring failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
@@ -135,8 +124,6 @@ if [[ "$?" -ne "0" ]]; then >&2 echo 'SpectraFilterThresholdMower failed'; >&2 e
 
 SpectraMerger -test -in NovorAdapter_in.mzML -out SpectraMerger_1.mzML > SpectraMerger.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'SpectraMerger failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
-
-# TODO SvmTheoreticalSpectrumGeneratorTrainer
 
 XMLValidator -test -in FileFilter_1_input.mzML > XMLValidator.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'XMLValidator failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
