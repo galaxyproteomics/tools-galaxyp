@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# set -x
+
 VERSION=3.1
 FILETYPES="aux/filetypes.txt"
 PROFILE="21.05"
@@ -58,7 +60,7 @@ find . -maxdepth 0 -name "[A-Z]*xml" -delete
 source $(dirname $(which conda))/../etc/profile.d/conda.sh
 conda activate OpenMS$VERSION-env
 CTDConverter galaxy -i ctd/*ctd -o ./ -s aux/tools_blacklist.txt -f "$FILETYPES" \
-	-m macros.xml -t tool.conf  -p aux/hardcoded_params.json \
+	-m macros.xml -p aux/hardcoded_params.json \
 	--test-macros macros_autotest.xml --test-macros-prefix autotest_  --test-macros aux/macros_test.xml --test-macros-prefix manutest_ \
 	--tool-version $VERSION --tool-profile $PROFILE --bump-file aux/bump.json > convert.out 2> convert.err
 if [[ "$?" -ne "0" ]]; then >&2 echo 'CTD -> XML conversion failed'; >&2 echo -e "stderr:\n$(cat convert.err)"; fi
