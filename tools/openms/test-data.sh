@@ -240,7 +240,9 @@ echo "<macros>" > "$autotests"
 for i in $(ls ctd/*ctd)
 do
     b=$(basename "$i" .ctd)
-    get_tests2 "$b" >> "$autotests"
+    ./get_tests.py --id "$b" --cmake "$OPENMSGIT"/src/tests/topp/CMakeLists.txt "$OPENMSGIT"/src/tests/topp/THIRDPARTY/third_party_tests.cmake >> "$autotests"
+    # get_tests2 "$b" >> "$autotests"
+    wc -l "$autotests"
 done
 echo "</macros>" >> "$autotests"
 
@@ -261,6 +263,7 @@ echo "</macros>" >> "$autotests"
 #
 # not able to specify composite test data  
 # -> SpectraSTSearchAdapter 
+echo "Discard some tests"
 if [[ ! -z "$1" ]]; then
     echo "" > macros_discarded_auto.xml
     for i in OpenSwathFileSplitter IDRipper MzMLSplitter SeedListGenerator MSFraggerAdapter MaRaClusterAdapter NovorAdapter SpectraSTSearchAdapter
