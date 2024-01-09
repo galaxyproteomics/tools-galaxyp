@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import argparse
-import collections
 import os.path
 import re
 import shlex
@@ -15,13 +14,17 @@ from typing import (
     Tuple,
 )
 
+from ctdconverter.galaxy.converter import convert_models
+from ctdconverter.common.utils import (
+    parse_hardcoded_parameters,
+    parse_input_ctds,
+    ParameterHardcoder,
+)
 from CTDopts.CTDopts import (
     CTDModel,
     ModelTypeError,
-    Parameters
+    Parameters,
 )
-from ctdconverter.galaxy.converter import convert_models
-from ctdconverter.common.utils import parse_input_ctds, parse_hardcoded_parameters
 
 SKIP_LIST = [
     r"_prepare\"",
@@ -34,13 +37,14 @@ SKIP_LIST = [
     r"MaRaClusterAdapter.*-consensus_out",  # - MaRaCluster with -consensus_out (parameter blacklister: https://github.com/OpenMS/OpenMS/issues/4456)
     r"FileMerger_1_input1.dta2d.*FileMerger_1_input2.dta ",  # - FileMerger with mixed dta dta2d input (ftype can not be specified in the test, dta can not be sniffed)
     r'TOPP_OpenSwathAnalyzer_test_3"|TOPP_OpenSwathAnalyzer_test_4"',
-    #TODO r's/\("TOPP_SiriusAdapter_4".*\)-sirius:database all\(.*\)/\1-sirius:database pubchem\2/',  # - SiriusAdapter_4 depends on online service which may timeout .. so keep disabled https://github.com/OpenMS/OpenMS/pull/5010
-    r'"TOPP_SiriusAdapter_10"'  # - SiriusAdapter_10 should work in >2.8 https://github.com/OpenMS/OpenMS/issues/5869)
+    # TODO r's/\("TOPP_SiriusAdapter_4".*\)-sirius:database all\(.*\)/\1-sirius:database pubchem\2/',  # - SiriusAdapter_4 depends on online service which may timeout .. so keep disabled https://github.com/OpenMS/OpenMS/pull/5010
+    r'"TOPP_SiriusAdapter_10"',  # - SiriusAdapter_10 should work in >2.8 https://github.com/OpenMS/OpenMS/issues/5869)
 ]
+
 
 def get_failing_tests(cmake: List[str]) -> List[str]:
     failing_tests = []
-    re_fail = re.compile(r'set_tests_properties\(\"([^\"]+)\" PROPERTIES WILL_FAIL 1\)')
+    re_fail = re.compile(r"set_tests_properties\(\"([^\"]+)\" PROPERTIES WILL_FAIL 1\)")
 
     for cmake in args.cmake:
         with open(cmake) as cmake_fh:
@@ -50,13 +54,14 @@ def get_failing_tests(cmake: List[str]) -> List[str]:
                     failing_tests.append(match.group(1))
     return failing_tests
 
-def fix_tmp_files(line: str, diff_pairs: Dict[str,str]) -> str:
+
+def fix_tmp_files(line: str, diff_pairs: Dict[str, str]) -> str:
     """
     OpenMS tests output to tmp files and compare with FuzzyDiff to the expected file.
     problem: the extension of the tmp files is unusable for test generation.
     unfortunately the extensions used in the DIFF lines are not always usable for the CLI
     (e.g. for prepare_test_data, e.g. CLI expects csv but test file is txt)
-    this function replaces the tmp file by the expected file. 
+    this function replaces the tmp file by the expected file.
     """
     cmd = shlex.split(line)
     for i, e in enumerate(cmd):
@@ -69,6 +74,7 @@ def fix_tmp_files(line: str, diff_pairs: Dict[str,str]) -> str:
             cmd[i] = diff_pairs[e]
     return shlex.join(cmd)
 
+
 def get_ini(line: str, tool_id: str) -> Tuple[str, str]:
     """
     if there is an ini file then we use this to generate the test
@@ -79,12 +85,13 @@ def get_ini(line: str, tool_id: str) -> Tuple[str, str]:
     ini = None
     for i, e in enumerate(cmd):
         if e == "-ini":
-            ini = cmd[i+1]
-            cmd = cmd[:i] + cmd[i+2:]
+            ini = cmd[i + 1]
+            cmd = cmd[:i] + cmd[i + 2 :]
     if ini:
         return os.path.join("test-data", ini), shlex.join(cmd)
     else:
         return os.path.join("ctd", f"{tool_id}.ctd"), line
+
 
 def unique_files(line: str):
     """
@@ -95,7 +102,7 @@ def unique_files(line: str):
     files = {}
     # determine the list of indexes where each file argument (anything appearing in test-data/) appears
     for idx, e in enumerate(cmd):
-        p = os.path.join('test-data', e)
+        p = os.path.join("test-data", e)
         if not os.path.exists(p):
             continue
         try:
@@ -112,10 +119,13 @@ def unique_files(line: str):
             new_f = ".".join(f_parts)
             if os.path.exists(os.path.join("test-data", f)):
                 os.unlink(os.path.join("test-data", f))
-            sys.stderr.write(f'symlink {os.path.join("test-data", new_f)} {os.path.join("test-data", f)}\n')
+            sys.stderr.write(
+                f'symlink {os.path.join("test-data", new_f)} {os.path.join("test-data", f)}\n'
+            )
             os.symlink(f, os.path.join("test-data", new_f))
             cmd[idx] = new_f
     return shlex.join(cmd)
+
 
 def fill_ctd_clargs(ini: str, line: str, ctd_tmp: TextIO) -> None:
     cmd = shlex.split(line)
@@ -130,26 +140,32 @@ def fill_ctd_clargs(ini: str, line: str, ctd_tmp: TextIO) -> None:
         ini_model = Parameters(from_file=ini)
     except ModelTypeError:
         pass
-    assert ini_model is not None, "Could not parse %s, seems to be no CTD/PARAMS" % (args.ini_file)
+    assert ini_model is not None, "Could not parse %s, seems to be no CTD/PARAMS" % (
+        args.ini_file
+    )
 
     # get a dictionary of the ctd arguments where the values of the parameters
     # given on the command line are overwritten
     ini_values = ini_model.parse_cl_args(cl_args=cmd, ignore_required=True)
     ctd_tree = ini_model.write_ctd(ctd_tmp, ini_values)
 
-def process_test_line(
-        id: str,
-        line: str,
-        failing_tests: List[str],
-        skip_list: List[str],
-        diff_pairs: Dict[str, str]
-    ) -> Optional[str]:
 
-    re_test_id = re.compile(r'add_test\(\"([^\"]+)\" ([^ ]+) (.*)')
-    re_id_out_test = re.compile(r'_out_?[0-9]?') 
+def process_test_line(
+    id: str,
+    line: str,
+    failing_tests: List[str],
+    skip_list: List[str],
+    diff_pairs: Dict[str, str],
+) -> Optional[str]:
+
+    re_test_id = re.compile(r"add_test\(\"([^\"]+)\" ([^ ]+) (.*)")
+    re_id_out_test = re.compile(r"_out_?[0-9]?")
 
     # TODO auto extract from  set(OLD_OSW_PARAM ... lin
-    line = line.replace("${OLD_OSW_PARAM}", " -test -mz_extraction_window 0.05 -mz_extraction_window_unit Th -ms1_isotopes 0 -Scoring:TransitionGroupPicker:compute_peak_quality -Scoring:Scores:use_ms1_mi false -Scoring:Scores:use_mi_score false")
+    line = line.replace(
+        "${OLD_OSW_PARAM}",
+        " -test -mz_extraction_window 0.05 -mz_extraction_window_unit Th -ms1_isotopes 0 -Scoring:TransitionGroupPicker:compute_peak_quality -Scoring:Scores:use_ms1_mi false -Scoring:Scores:use_mi_score false",
+    )
 
     line = line.replace("${TOPP_BIN_PATH}/", "")
     line = line.replace("${DATA_DIR_TOPP}/", "")
@@ -165,7 +181,13 @@ def process_test_line(
         sys.exit(f"Ill formated test line {line}\n")
     test_id = match.group(1)
     tool_id = match.group(2)
+
     line = f"{match.group(2)} {match.group(3)}"
+
+    if test_id in failing_tests:
+        sys.stderr.write(f"    skip failing {test_id} {line}\n")
+        return
+
     if id != tool_id:
         sys.stderr.write(f"    skip {test_id} ({id} != {tool_id}) {line}\n")
         return
@@ -190,7 +212,7 @@ def process_test_line(
         output_destination: str
         default_executable_path: Optional[str] = None
         hardcoded_parameters: Optional[str] = None
-        parameter_hardcoder: Optional["ParameterHardcoder"] = None
+        parameter_hardcoder: Optional[ParameterHardcoder] = None
         xsd_location: Optional[str] = None
         formats_file: Optional[str] = None
         add_to_command_line: str = ""
@@ -210,25 +232,40 @@ def process_test_line(
     # create an ini/ctd file where the values are equal to the arguments from the command line
     # and transform it to xml
     test = [f"<!-- {test_id} -->\n"]
-    with tempfile.NamedTemporaryFile(mode='w+', delete_on_close=False) as ctd_tmp, tempfile.NamedTemporaryFile(mode='w+', delete_on_close=False) as xml_tmp:
+    with tempfile.NamedTemporaryFile(
+        mode="w+", delete_on_close=False
+    ) as ctd_tmp, tempfile.NamedTemporaryFile(
+        mode="w+", delete_on_close=False
+    ) as xml_tmp:
         fill_ctd_clargs(ini, line, ctd_tmp)
         ctd_tmp.close()
         xml_tmp.close()
         parsed_ctd = parse_input_ctds(None, [ctd_tmp.name], xml_tmp.name, "xml")
         ctd_args = CTDConverterArgs(
-            input_files = [ctd_tmp.name],
+            input_files=[ctd_tmp.name],
             output_destination=xml_tmp.name,
-            macros_files = ["macros.xml"],
-            skip_tools_file = "aux/tools_blacklist.txt",
-            formats_file = "aux/filetypes.txt",
+            macros_files=["macros.xml"],
+            skip_tools_file="aux/tools_blacklist.txt",
+            formats_file="aux/filetypes.txt",
             # tool_conf_destination = "tool.conf",
-            hardcoded_parameters = "aux/hardcoded_params.json",
-            tool_version = "3.1",
-            test_only = True,
-            test_unsniffable = ["csv", "tsv", "txt", "dta", "dta2d", "edta", "mrm", "splib"],
-            test_condition = ["compare=sim_size", "delta_frac=0.7"],
+            hardcoded_parameters="aux/hardcoded_params.json",
+            tool_version="3.1",
+            test_only=True,
+            test_unsniffable=[
+                "csv",
+                "tsv",
+                "txt",
+                "dta",
+                "dta2d",
+                "edta",
+                "mrm",
+                "splib",
+            ],
+            test_condition=["compare=sim_size", "delta_frac=0.7"],
         )
-        ctd_args.parameter_hardcoder = parse_hardcoded_parameters(ctd_args.hardcoded_parameters)
+        ctd_args.parameter_hardcoder = parse_hardcoded_parameters(
+            ctd_args.hardcoded_parameters
+        )
         convert_models(ctd_args, parsed_ctd)
         xml_tmp = open(xml_tmp.name, "r")
         for l in xml_tmp:
@@ -236,19 +273,19 @@ def process_test_line(
 
     return "".join(test)
 
-parser = argparse.ArgumentParser(description='Create Galaxy tests for a OpenMS tools')
-parser.add_argument('--id', dest='id', help='tool id')
-parser.add_argument('--cmake', nargs='+', help='OpenMS test CMake files')
+
+parser = argparse.ArgumentParser(description="Create Galaxy tests for a OpenMS tools")
+parser.add_argument("--id", dest="id", help="tool id")
+parser.add_argument("--cmake", nargs="+", help="OpenMS test CMake files")
 args = parser.parse_args()
 sys.stderr.write(f"generate tests for {args.id}\n")
 
-re_comment = re.compile('#.*')
-re_empty_prefix = re.compile(r'^\s*')
-re_empty_suffix = re.compile(r'\s*$')
-re_add_test = re.compile(r'add_test\(\"(TOPP|UTILS)_.*/'+args.id)
-re_diff = re.compile(r'\$\{DIFF\}.* -in1 ([^ ]+) -in2 ([^ ]+)')
+re_comment = re.compile("#.*")
+re_empty_prefix = re.compile(r"^\s*")
+re_empty_suffix = re.compile(r"\s*$")
+re_add_test = re.compile(r"add_test\(\"(TOPP|UTILS)_.*/" + args.id)
+re_diff = re.compile(r"\$\{DIFF\}.* -in1 ([^ ]+) -in2 ([^ ]+)")
 failing_tests = get_failing_tests(args.cmake)
-
 tests = []
 
 # process the given CMake files and compile lists of
@@ -277,8 +314,8 @@ for cmake in args.cmake:
             line, jline = jline, ""
             match = re_diff.search(line)
             if match:
-                in1 = match.group(1).split('/')[-1]
-                in2 = match.group(2).split('/')[-1]
+                in1 = match.group(1).split("/")[-1]
+                in2 = match.group(2).split("/")[-1]
                 if in1 != in2:
                     diff_pairs[in1] = in2
             elif re_add_test.match(line):
@@ -290,8 +327,10 @@ for line in test_lines:
         tests.append(test)
 
 tests = "\n".join(tests)
-print(f'''
+print(
+    f"""
 <xml name="autotest_{args.id}">
 {tests}
 </xml>
-''')
+"""
+)
