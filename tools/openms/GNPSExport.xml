@@ -1,9 +1,7 @@
-<?xml version='1.0' encoding='UTF-8'?>
 <!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
-<!--Proposed Tool Section: [File Handling]-->
+<!--Proposed Tool Section: [File Converter]-->
 <tool id="GNPSExport" name="GNPSExport" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="21.05">
-  <description>Tool to export representative consensus MS/MS scan per consensusElement into a .MGF file format.
-See the documentation on https://ccms-ucsd.github.io/GNPSDocumentation/featurebasedmolecularnetworking-with-openms</description>
+  <description>Tool to export representative consensus MS/MS scan per consensusElement into a .MGF file format</description>
   <macros>
     <token name="@EXECUTABLE@">GNPSExport</token>
     <import>macros.xml</import>
@@ -25,6 +23,13 @@ ${' '.join(["ln -s '%s' 'in_mzml_cond.in_mzml/%s/%s.%s' && " % (f, i, re.sub('[^
 ln -s '$in_mzml_cond.in_mzml' 'in_mzml_cond.in_mzml/${re.sub("[^\w\-_]", "_", $in_mzml_cond.in_mzml.element_identifier)}.$gxy2omsext($in_mzml_cond.in_mzml.ext)' &&
 #end if
 mkdir out &&
+mkdir out_quantification &&
+#if "out_pairs_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir out_pairs &&
+#end if
+#if "out_meta_values_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir out_meta_values &&
+#end if
 
 ## Main program call
 
@@ -42,9 +47,29 @@ ${' '.join(["'in_mzml_cond.in_mzml/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.elem
 #end if
 -out
 'out/output.${gxy2omsext("mgf")}'
+-out_quantification
+'out_quantification/output.${gxy2omsext("txt")}'
+#if "out_pairs_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  -out_pairs
+  'out_pairs/output.${gxy2omsext("csv")}'
+#end if
+#if "out_meta_values_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  -out_meta_values
+  'out_meta_values/output.${gxy2omsext("tabular")}'
+#end if
+#if len(str($OPTIONAL_OUTPUTS).split(',')) == 0
+  | tee '$stdout'
+#end if
 
 ## Postprocessing
 && mv 'out/output.${gxy2omsext("mgf")}' '$out'
+&& mv 'out_quantification/output.${gxy2omsext("txt")}' '$out_quantification'
+#if "out_pairs_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  && mv 'out_pairs/output.${gxy2omsext("csv")}' '$out_pairs'
+#end if
+#if "out_meta_values_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  && mv 'out_meta_values/output.${gxy2omsext("tabular")}' '$out_meta_values'
+#end if
 #if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
   && mv '@EXECUTABLE@.ctd' '$ctd_out'
 #end if]]></command>
@@ -66,15 +91,15 @@ ${' '.join(["'in_mzml_cond.in_mzml/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.elem
         <param argument="-in_mzml" type="data" format="mzml" multiple="false" optional="false" label="Original mzml files containing the ms2 spectra (aka peptide annotation)" help="Must be in order that the consensusXML file maps the original mzML files select mzml data sets(s)"/>
       </when>
     </conditional>
-    <param argument="-output_type" type="select" optional="true" label="specificity of mgf output information" help="">
+    <param argument="-output_type" type="select" optional="false" display="radio" label="specificity of mgf output information" help="">
       <option value="merged_spectra">merged_spectra</option>
       <option value="most_intense" selected="true">most_intense</option>
       <expand macro="list_string_san" name="output_type"/>
     </param>
-    <param argument="-peptide_cutoff" type="integer" optional="true" min="-1" value="5" label="Number of most intense peptides to consider per consensus element; '-1' to consider all identifications" help=""/>
-    <param argument="-ms2_bin_size" type="float" optional="true" min="0.0" value="0.019999999552965" label="Bin size (Da) for fragment ions when merging ms2 scans" help=""/>
+    <param argument="-peptide_cutoff" type="integer" optional="false" min="-1" value="5" label="Number of most intense peptides to consider per consensus element; '-1' to consider all identifications" help=""/>
+    <param argument="-ms2_bin_size" type="float" optional="false" min="0.0" value="0.019999999552965" label="Bin size (Da) for fragment ions when merging ms2 scans" help=""/>
     <section name="merged_spectra" title="Options for exporting mgf file with merged spectra per consensusElement" help="" expanded="false">
-      <param name="cos_similarity" argument="-merged_spectra:cos_similarity" type="float" optional="true" min="0.0" value="0.9" label="Cosine similarity threshold for merged_spectra output" help=""/>
+      <param name="cos_similarity" argument="-merged_spectra:cos_similarity" type="float" optional="false" min="0.0" value="0.9" label="Cosine similarity threshold for merged_spectra output" help=""/>
     </section>
     <expand macro="adv_opts_macro">
       <param argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
@@ -83,92 +108,29 @@ ${' '.join(["'in_mzml_cond.in_mzml/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.elem
       </param>
     </expand>
     <param name="OPTIONAL_OUTPUTS" type="select" optional="true" multiple="true" label="Optional outputs">
+      <option value="out_pairs_FLAG">out_pairs (Output supplementary pairs table for IIMN)</option>
+      <option value="out_meta_values_FLAG">out_meta_values (Output meta value file)</option>
       <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
     </param>
   </inputs>
   <outputs>
     <data name="out" label="${tool.name} on ${on_string}: out" format="mgf"/>
+    <data name="out_quantification" label="${tool.name} on ${on_string}: out_quantification" format="txt"/>
+    <data name="out_pairs" label="${tool.name} on ${on_string}: out_pairs" format="csv">
+      <filter>OPTIONAL_OUTPUTS is not None and "out_pairs_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+    <data name="out_meta_values" label="${tool.name} on ${on_string}: out_meta_values" format="tabular">
+      <filter>OPTIONAL_OUTPUTS is not None and "out_meta_values_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
     <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
       <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
     </data>
   </outputs>
-  <tests><!-- TOPP_GNPSExport_1 -->
-    <test expect_num_outputs="2">
-      <section name="adv_opts">
-        <param name="force" value="false"/>
-        <param name="test" value="true"/>
-      </section>
-      <param name="in_cm" value="GNPSExport_cons1.consensusXML"/>
-      <conditional name="in_mzml_cond">
-        <param name="in_mzml" value="GNPSExport_mzml1.mzML,GNPSExport_mzml2.mzML"/>
-      </conditional>
-      <output name="out" file="GNPSExport_1_out.mgf" compare="sim_size" delta_frac="0.7" ftype="mgf"/>
-      <param name="output_type" value="most_intense"/>
-      <param name="peptide_cutoff" value="10"/>
-      <param name="ms2_bin_size" value="2.0"/>
-      <section name="merged_spectra">
-        <param name="cos_similarity" value="0.85"/>
-      </section>
-      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
-      <output name="ctd_out" ftype="xml">
-        <assert_contents>
-          <is_valid_xml/>
-        </assert_contents>
-      </output>
-    </test>
-    <!-- TOPP_GNPSExport_2 -->
-    <test expect_num_outputs="2">
-      <section name="adv_opts">
-        <param name="force" value="false"/>
-        <param name="test" value="true"/>
-      </section>
-      <param name="in_cm" value="GNPSExport_cons1.consensusXML"/>
-      <conditional name="in_mzml_cond">
-        <param name="in_mzml" value="GNPSExport_mzml1.mzML,GNPSExport_mzml2.mzML"/>
-      </conditional>
-      <output name="out" file="GNPSExport_2_out.mgf" compare="sim_size" delta_frac="0.7" ftype="mgf"/>
-      <param name="output_type" value="merged_spectra"/>
-      <param name="peptide_cutoff" value="10"/>
-      <param name="ms2_bin_size" value="2.0"/>
-      <section name="merged_spectra">
-        <param name="cos_similarity" value="0.85"/>
-      </section>
-      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
-      <output name="ctd_out" ftype="xml">
-        <assert_contents>
-          <is_valid_xml/>
-        </assert_contents>
-      </output>
-    </test>
-    <!-- TOPP_GNPSExport_3 -->
-    <test expect_num_outputs="2">
-      <section name="adv_opts">
-        <param name="force" value="false"/>
-        <param name="test" value="true"/>
-      </section>
-      <param name="in_cm" value="GNPSExport_cons1.consensusXML"/>
-      <conditional name="in_mzml_cond">
-        <param name="in_mzml" value="GNPSExport_mzml1.mzML,GNPSExport_mzml2.mzML"/>
-      </conditional>
-      <output name="out" file="GNPSExport_3_out.mgf" compare="sim_size" delta_frac="0.7" ftype="mgf"/>
-      <param name="output_type" value="most_intense"/>
-      <param name="peptide_cutoff" value="10"/>
-      <param name="ms2_bin_size" value="0.02"/>
-      <section name="merged_spectra">
-        <param name="cos_similarity" value="0.85"/>
-      </section>
-      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
-      <output name="ctd_out" ftype="xml">
-        <assert_contents>
-          <is_valid_xml/>
-        </assert_contents>
-      </output>
-    </test>
-  </tests>
+  <tests/>
   <help><![CDATA[Tool to export representative consensus MS/MS scan per consensusElement into a .MGF file format.
 See the documentation on https://ccms-ucsd.github.io/GNPSDocumentation/featurebasedmolecularnetworking-with-openms
 
 
-For more information, visit http://www.openms.de/doxygen/release/2.8.0/html/TOPP_GNPSExport.html]]></help>
+For more information, visit https://openms.de/doxygen/release/3.1.0/html/TOPP_GNPSExport.html]]></help>
   <expand macro="references"/>
 </tool>

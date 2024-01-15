@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 
-VERSION=2.8
+# set -x
+
+VERSION=3.1
 FILETYPES="aux/filetypes.txt"
-# TODO make 21.01
 PROFILE="21.05"
 ## FILETYPES_RE=$(grep -v "^#" $FILETYPES | grep -v "^$" | cut -f 1 -d" " | tr '\n' '|' | sed 's/|$//'| sed 's/|/\\|/g')
 
-export tmp=$(mktemp -d)
-# export tmp="/tmp/openms-stuff/"
-
-export CTDCONVERTER="$tmp/CTDConverter"
+# export tmp=$(mktemp -d)
+export tmp="/tmp/openms-stuff/"
+# export CTDCONVERTER="$tmp/CTDConverter"
 ###############################################################################
 ## reset old data
 ###############################################################################
@@ -60,20 +60,12 @@ find . -maxdepth 0 -name "[A-Z]*xml" -delete
 source $(dirname $(which conda))/../etc/profile.d/conda.sh
 conda activate OpenMS$VERSION-env
 CTDConverter galaxy -i ctd/*ctd -o ./ -s aux/tools_blacklist.txt -f "$FILETYPES" \
-	-m macros.xml -t tool.conf  -p aux/hardcoded_params.json \
+	-m macros.xml -p aux/hardcoded_params.json \
 	--test-macros macros_autotest.xml --test-macros-prefix autotest_  --test-macros aux/macros_test.xml --test-macros-prefix manutest_ \
 	--tool-version $VERSION --tool-profile $PROFILE --bump-file aux/bump.json > convert.out 2> convert.err
 if [[ "$?" -ne "0" ]]; then >&2 echo 'CTD -> XML conversion failed'; >&2 echo -e "stderr:\n$(cat convert.err)"; fi
 conda deactivate
 
->&2 echo "apply patches"
-patch PepNovoAdapter.xml < aux/PepNovoAdapter.patch
-patch OMSSAAdapter.xml < aux/OMSSAAdapter.patch
+sed -i -e 's@http://www.openms.de/doxygen/nightly/html/@https://openms.de/doxygen/release/'$VERSION'.0/html/@' ./*xml
 
-# https://github.com/OpenMS/OpenMS/pull/4984
-sed -i -e 's@http://www.openms.de/doxygen/nightly/html/@http://www.openms.de/doxygen/release/2.8.0/html/@' ./*xml
-
-# TODO should be fixed in >2.8 https://github.com/OpenMS/OpenMS/pull/6018
-sed -i -e 's@https://ccms-ucsd.github.io/GNPSDocumentation/featurebasedmolecularnetworking_with_openms@https://ccms-ucsd.github.io/GNPSDocumentation/featurebasedmolecularnetworking-with-openms@' ./*xml
-
-rm -rf macros_autotest.xml macros_discarded_auto.xml prepare_test_data.sh ctd
+# rm -rf macros_autotest.xml macros_discarded_auto.xml prepare_test_data.sh ctd
