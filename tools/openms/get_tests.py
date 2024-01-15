@@ -14,12 +14,12 @@ from typing import (
     Tuple,
 )
 
-from ctdconverter.galaxy.converter import convert_models
 from ctdconverter.common.utils import (
+    ParameterHardcoder,
     parse_hardcoded_parameters,
     parse_input_ctds,
-    ParameterHardcoder,
 )
+from ctdconverter.galaxy.converter import convert_models
 from CTDopts.CTDopts import (
     CTDModel,
     ModelTypeError,
@@ -86,7 +86,7 @@ def get_ini(line: str, tool_id: str) -> Tuple[str, str]:
     for i, e in enumerate(cmd):
         if e == "-ini":
             ini = cmd[i + 1]
-            cmd = cmd[:i] + cmd[i + 2 :]
+            cmd = cmd[:i] + cmd[i + 2:]
     if ini:
         return os.path.join("test-data", ini), shlex.join(cmd)
     else:
@@ -147,7 +147,7 @@ def fill_ctd_clargs(ini: str, line: str, ctd_tmp: TextIO) -> None:
     # get a dictionary of the ctd arguments where the values of the parameters
     # given on the command line are overwritten
     ini_values = ini_model.parse_cl_args(cl_args=cmd, ignore_required=True)
-    ctd_tree = ini_model.write_ctd(ctd_tmp, ini_values)
+    ini_model.write_ctd(ctd_tmp, ini_values)
 
 
 def process_test_line(
