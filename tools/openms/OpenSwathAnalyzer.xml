@@ -1,13 +1,11 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
 <!--Proposed Tool Section: [Targeted Experiments]-->
-<tool id="OpenSwathAnalyzer" name="OpenSwathAnalyzer" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@" profile="20.05">
+<tool id="OpenSwathAnalyzer" name="OpenSwathAnalyzer" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="21.05">
   <description>Picks peaks and finds features in an SWATH-MS or SRM experiment.</description>
   <macros>
     <token name="@EXECUTABLE@">OpenSwathAnalyzer</token>
     <import>macros.xml</import>
-    <import>macros_autotest.xml</import>
-    <import>macros_test.xml</import>
   </macros>
   <expand macro="requirements"/>
   <expand macro="stdio"/>
@@ -25,10 +23,14 @@ ln -s '$tr' 'tr/${re.sub("[^\w\-_]", "_", $tr.element_identifier)}.$gxy2omsext($
   ln -s '$rt_norm' 'rt_norm/${re.sub("[^\w\-_]", "_", $rt_norm.element_identifier)}.$gxy2omsext($rt_norm.ext)' &&
 #end if
 mkdir out &&
-#if $swath_files:
-  mkdir swath_files &&
-  mkdir ${' '.join(["'swath_files/%s'" % (i) for i, f in enumerate($swath_files) if f])} && 
-  ${' '.join(["ln -s '%s' 'swath_files/%s/%s.%s' && " % (f, i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($swath_files) if f])}
+#if $swath_files_cond.swath_files:
+  mkdir swath_files_cond.swath_files &&
+  #if $swath_files_cond.swath_files_select == "no"
+  mkdir ${' '.join(["'swath_files_cond.swath_files/%s'" % (i) for i, f in enumerate($swath_files_cond.swath_files) if f])} && 
+  ${' '.join(["ln -s '%s' 'swath_files_cond.swath_files/%s/%s.%s' && " % (f, i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($swath_files_cond.swath_files) if f])}
+  #else
+  ln -s '$swath_files_cond.swath_files' 'swath_files_cond.swath_files/${re.sub("[^\w\-_]", "_", $swath_files_cond.swath_files.element_identifier)}.$gxy2omsext($swath_files_cond.swath_files.ext)' &&
+  #end if
 #end if
 
 ## Main program call
@@ -47,9 +49,13 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
 #end if
 -out
 'out/output.${gxy2omsext("featurexml")}'
-#if $swath_files:
+#if $swath_files_cond.swath_files:
   -swath_files
-  ${' '.join(["'swath_files/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($swath_files) if f])}
+  #if $swath_files_cond.swath_files_select == "no"
+  ${' '.join(["'swath_files_cond.swath_files/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($swath_files_cond.swath_files) if f])}
+  #else
+  'swath_files_cond.swath_files/${re.sub("[^\w\-_]", "_", $swath_files_cond.swath_files.element_identifier)}.$gxy2omsext($swath_files_cond.swath_files.ext)'
+  #end if
 #end if
 
 ## Postprocessing
@@ -62,14 +68,25 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
     <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
   </configfiles>
   <inputs>
-    <param name="in" argument="-in" type="data" format="mzml" optional="false" label="input file containing the chromatograms" help=" select mzml data sets(s)"/>
-    <param name="tr" argument="-tr" type="data" format="traml" optional="false" label="transition file" help=" select traml data sets(s)"/>
-    <param name="rt_norm" argument="-rt_norm" type="data" format="trafoxml" optional="true" label="RT normalization file (how to map the RTs of this run to the ones stored in the library)" help=" select trafoxml data sets(s)"/>
+    <param argument="-in" type="data" format="mzml" optional="false" label="input file containing the chromatograms" help=" select mzml data sets(s)"/>
+    <param argument="-tr" type="data" format="traml" optional="false" label="transition file" help=" select traml data sets(s)"/>
+    <param argument="-rt_norm" type="data" format="trafoxml" optional="true" label="RT normalization file (how to map the RTs of this run to the ones stored in the library)" help=" select trafoxml data sets(s)"/>
     <param name="no_strict" argument="-no-strict" type="boolean" truevalue="true" falsevalue="false" checked="false" label="run in non-strict mode and allow some chromatograms to not be mapped" help=""/>
-    <param name="swath_files" argument="-swath_files" type="data" format="mzml" multiple="true" optional="true" label="[applies only if you have full MS2 spectra maps] Swath files that were used to extract the transitions" help="If present, SWATH specific scoring will be used select mzml data sets(s)"/>
-    <param name="min_upper_edge_dist" argument="-min_upper_edge_dist" type="float" optional="false" value="0.0" label="[applies only if you have full MS2 spectra maps] Minimal distance to the edge to still consider a precursor, in Thomson (only in SWATH)" help=""/>
+    <conditional name="swath_files_cond">
+      <param name="swath_files_select" type="select" label="Run tool in batch mode for -swath_files">
+        <option value="no">No: process all datasets jointly</option>
+        <option value="yes">Yes: process each dataset in an independent job</option>
+      </param>
+      <when value="no">
+        <param argument="-swath_files" type="data" format="mzml" multiple="true" optional="true" label="[applies only if you have full MS2 spectra maps] Swath files that were used to extract the transitions" help="If present, SWATH specific scoring will be used select mzml data sets(s)"/>
+      </when>
+      <when value="yes">
+        <param argument="-swath_files" type="data" format="mzml" multiple="false" optional="true" label="[applies only if you have full MS2 spectra maps] Swath files that were used to extract the transitions" help="If present, SWATH specific scoring will be used select mzml data sets(s)"/>
+      </when>
+    </conditional>
+    <param argument="-min_upper_edge_dist" type="float" optional="true" value="0.0" label="[applies only if you have full MS2 spectra maps] Minimal distance to the edge to still consider a precursor, in Thomson (only in SWATH)" help=""/>
     <section name="model" title="Options to control the modeling of retention time transformations from data" help="" expanded="false">
-      <param name="type" argument="-model:type" display="checkboxes" type="select" optional="false" label="Type of model" help="">
+      <param name="type" argument="-model:type" type="select" optional="true" label="Type of model" help="">
         <option value="linear" selected="true">linear</option>
         <option value="b_spline">b_spline</option>
         <option value="interpolated">interpolated</option>
@@ -79,39 +96,37 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <param name="symmetric_regression" argument="-model:symmetric_regression" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Only for 'linear' model: Perform linear regression on 'y - x' vs" help="'y + x', instead of on 'y' vs. 'x'"/>
     </section>
     <section name="algorithm" title="Algorithm parameters section" help="" expanded="false">
-      <param name="stop_report_after_feature" argument="-algorithm:stop_report_after_feature" type="integer" optional="false" value="-1" label="Stop reporting after feature (ordered by quality; -1 means do not stop)" help=""/>
-      <param name="rt_extraction_window" argument="-algorithm:rt_extraction_window" type="float" optional="false" value="-1.0" label="Only extract RT around this value (-1 means extract over the whole range, a value of 500 means to extract around +/- 500 s of the expected elution)" help="For this to work, the TraML input file needs to contain normalized RT values"/>
-      <param name="rt_normalization_factor" argument="-algorithm:rt_normalization_factor" type="float" optional="false" value="1.0" label="The normalized RT is expected to be between 0 and 1" help="If your normalized RT has a different range, pass this here (e.g. it goes from 0 to 100, set this value to 100)"/>
-      <param name="quantification_cutoff" argument="-algorithm:quantification_cutoff" type="float" optional="false" min="0.0" value="0.0" label="Cutoff in m/z below which peaks should not be used for quantification any more" help=""/>
+      <param name="stop_report_after_feature" argument="-algorithm:stop_report_after_feature" type="integer" optional="true" value="-1" label="Stop reporting after feature (ordered by quality; -1 means do not stop)" help=""/>
+      <param name="rt_extraction_window" argument="-algorithm:rt_extraction_window" type="float" optional="true" value="-1.0" label="Only extract RT around this value (-1 means extract over the whole range, a value of 500 means to extract around +/- 500 s of the expected elution)" help="For this to work, the TraML input file needs to contain normalized RT values"/>
+      <param name="rt_normalization_factor" argument="-algorithm:rt_normalization_factor" type="float" optional="true" value="1.0" label="The normalized RT is expected to be between 0 and 1" help="If your normalized RT has a different range, pass this here (e.g. it goes from 0 to 100, set this value to 100)"/>
+      <param name="quantification_cutoff" argument="-algorithm:quantification_cutoff" type="float" optional="true" min="0.0" value="0.0" label="Cutoff in m/z below which peaks should not be used for quantification any more" help=""/>
       <param name="write_convex_hull" argument="-algorithm:write_convex_hull" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Whether to write out all points of all features into the featureXML" help=""/>
-      <param name="spectrum_addition_method" argument="-algorithm:spectrum_addition_method" display="checkboxes" type="select" optional="false" label="For spectrum addition, either use simple concatenation or use peak resampling" help="">
+      <param name="spectrum_addition_method" argument="-algorithm:spectrum_addition_method" type="select" optional="true" label="For spectrum addition, either use simple concatenation or use peak resampling" help="">
         <option value="simple" selected="true">simple</option>
         <option value="resample">resample</option>
         <expand macro="list_string_san" name="spectrum_addition_method"/>
       </param>
-      <param name="add_up_spectra" argument="-algorithm:add_up_spectra" type="integer" optional="false" min="1" value="1" label="Add up spectra around the peak apex (needs to be a non-even integer)" help=""/>
-      <param name="spacing_for_spectra_resampling" argument="-algorithm:spacing_for_spectra_resampling" type="float" optional="false" min="0.0" value="0.005" label="If spectra are to be added, use this spacing to add them up" help=""/>
-      <param name="uis_threshold_sn" argument="-algorithm:uis_threshold_sn" type="integer" optional="false" value="-1" label="S/N threshold to consider identification transition (set to -1 to consider all)" help=""/>
-      <param name="uis_threshold_peak_area" argument="-algorithm:uis_threshold_peak_area" type="integer" optional="false" value="0" label="Peak area threshold to consider identification transition (set to -1 to consider all)" help=""/>
-      <param name="scoring_model" argument="-algorithm:scoring_model" display="checkboxes" type="select" optional="false" label="Scoring model to use" help="">
+      <param name="add_up_spectra" argument="-algorithm:add_up_spectra" type="integer" optional="true" min="1" value="1" label="Add up spectra around the peak apex (needs to be a non-even integer)" help=""/>
+      <param name="spacing_for_spectra_resampling" argument="-algorithm:spacing_for_spectra_resampling" type="float" optional="true" min="0.0" value="0.005" label="If spectra are to be added, use this spacing to add them up" help=""/>
+      <param name="uis_threshold_sn" argument="-algorithm:uis_threshold_sn" type="integer" optional="true" value="-1" label="S/N threshold to consider identification transition (set to -1 to consider all)" help=""/>
+      <param name="uis_threshold_peak_area" argument="-algorithm:uis_threshold_peak_area" type="integer" optional="true" value="0" label="Peak area threshold to consider identification transition (set to -1 to consider all)" help=""/>
+      <param name="scoring_model" argument="-algorithm:scoring_model" type="select" optional="true" label="Scoring model to use" help="">
         <option value="default" selected="true">default</option>
         <option value="single_transition">single_transition</option>
         <expand macro="list_string_san" name="scoring_model"/>
       </param>
-      <param name="im_extra_drift" argument="-algorithm:im_extra_drift" type="float" optional="false" min="0.0" value="0.0" label="Extra drift time to extract for IM scoring (as a fraction" help="e.g. 0.25 means 25% extra on each side)"/>
-      <param name="strict" argument="-algorithm:strict" type="text" optional="false" value="true" label="Whether to error (true) or skip (false) if a transition in a transition group does not have a corresponding chromatogram" help="">
-        <expand macro="list_string_san" name="strict"/>
-      </param>
+      <param name="im_extra_drift" argument="-algorithm:im_extra_drift" type="float" optional="true" min="0.0" value="0.0" label="Extra drift time to extract for IM scoring (as a fraction" help="e.g. 0.25 means 25% extra on each side)"/>
+      <param name="strict" argument="-algorithm:strict" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Whether to error (true) or skip (false) if a transition in a transition group does not have a corresponding chromatogram" help=""/>
       <section name="TransitionGroupPicker" title="" help="" expanded="false">
-        <param name="stop_after_feature" argument="-algorithm:TransitionGroupPicker:stop_after_feature" type="integer" optional="false" value="-1" label="Stop finding after feature (ordered by intensity; -1 means do not stop)" help=""/>
-        <param name="stop_after_intensity_ratio" argument="-algorithm:TransitionGroupPicker:stop_after_intensity_ratio" type="float" optional="false" value="0.0001" label="Stop after reaching intensity ratio" help=""/>
-        <param name="min_peak_width" argument="-algorithm:TransitionGroupPicker:min_peak_width" type="float" optional="false" value="-1.0" label="Minimal peak width (s), discard all peaks below this value (-1 means no action)" help=""/>
-        <param name="peak_integration" argument="-algorithm:TransitionGroupPicker:peak_integration" display="checkboxes" type="select" optional="false" label="Calculate the peak area and height either the smoothed or the raw chromatogram data" help="">
+        <param name="stop_after_feature" argument="-algorithm:TransitionGroupPicker:stop_after_feature" type="integer" optional="true" value="-1" label="Stop finding after feature (ordered by intensity; -1 means do not stop)" help=""/>
+        <param name="stop_after_intensity_ratio" argument="-algorithm:TransitionGroupPicker:stop_after_intensity_ratio" type="float" optional="true" value="0.0001" label="Stop after reaching intensity ratio" help=""/>
+        <param name="min_peak_width" argument="-algorithm:TransitionGroupPicker:min_peak_width" type="float" optional="true" value="0.001" label="Minimal peak width (s), discard all peaks below this value (-1 means no action)" help=""/>
+        <param name="peak_integration" argument="-algorithm:TransitionGroupPicker:peak_integration" type="select" optional="true" label="Calculate the peak area and height either the smoothed or the raw chromatogram data" help="">
           <option value="original" selected="true">original</option>
           <option value="smoothed">smoothed</option>
           <expand macro="list_string_san" name="peak_integration"/>
         </param>
-        <param name="background_subtraction" argument="-algorithm:TransitionGroupPicker:background_subtraction" display="checkboxes" type="select" optional="false" label="Remove background from peak signal using estimated noise levels" help="The 'original' method is only provided for historical purposes, please use the 'exact' method and set parameters using the PeakIntegrator: settings. The same original or smoothed chromatogram specified by peak_integration will be used for background estimation">
+        <param name="background_subtraction" argument="-algorithm:TransitionGroupPicker:background_subtraction" type="select" optional="true" label="Remove background from peak signal using estimated noise levels" help="The 'original' method is only provided for historical purposes, please use the 'exact' method and set parameters using the PeakIntegrator: settings. The same original or smoothed chromatogram specified by peak_integration will be used for background estimation">
           <option value="none" selected="true">none</option>
           <option value="original">original</option>
           <option value="exact">exact</option>
@@ -120,29 +135,29 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="recalculate_peaks" argument="-algorithm:TransitionGroupPicker:recalculate_peaks" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Tries to get better peak picking by looking at peak consistency of all picked peaks" help="Tries to use the consensus (median) peak border if the variation within the picked peaks is too large"/>
         <param name="use_precursors" argument="-algorithm:TransitionGroupPicker:use_precursors" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Use precursor chromatogram for peak picking (note that this may lead to precursor signal driving the peak picking)" help=""/>
         <param name="use_consensus" argument="-algorithm:TransitionGroupPicker:use_consensus" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Use consensus peak boundaries when computing transition group picking (if false, compute independent peak boundaries for each transition)" help=""/>
-        <param name="recalculate_peaks_max_z" argument="-algorithm:TransitionGroupPicker:recalculate_peaks_max_z" type="float" optional="false" value="1.0" label="Determines the maximal Z-Score (difference measured in standard deviations) that is considered too large for peak boundaries" help="If the Z-Score is above this value, the median is used for peak boundaries (default value 1.0)"/>
-        <param name="minimal_quality" argument="-algorithm:TransitionGroupPicker:minimal_quality" type="float" optional="false" value="-10000.0" label="Only if compute_peak_quality is set, this parameter will not consider peaks below this quality threshold" help=""/>
-        <param name="resample_boundary" argument="-algorithm:TransitionGroupPicker:resample_boundary" type="float" optional="false" value="15.0" label="For computing peak quality, how many extra seconds should be sample left and right of the actual peak" help=""/>
+        <param name="recalculate_peaks_max_z" argument="-algorithm:TransitionGroupPicker:recalculate_peaks_max_z" type="float" optional="true" value="1.0" label="Determines the maximal Z-Score (difference measured in standard deviations) that is considered too large for peak boundaries" help="If the Z-Score is above this value, the median is used for peak boundaries (default value 1.0)"/>
+        <param name="minimal_quality" argument="-algorithm:TransitionGroupPicker:minimal_quality" type="float" optional="true" value="-10000.0" label="Only if compute_peak_quality is set, this parameter will not consider peaks below this quality threshold" help=""/>
+        <param name="resample_boundary" argument="-algorithm:TransitionGroupPicker:resample_boundary" type="float" optional="true" value="15.0" label="For computing peak quality, how many extra seconds should be sample left and right of the actual peak" help=""/>
         <param name="compute_peak_quality" argument="-algorithm:TransitionGroupPicker:compute_peak_quality" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Tries to compute a quality value for each peakgroup and detect outlier transitions" help="The resulting score is centered around zero and values above 0 are generally good and below -1 or -2 are usually bad"/>
         <param name="compute_peak_shape_metrics" argument="-algorithm:TransitionGroupPicker:compute_peak_shape_metrics" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Calculates various peak shape metrics" help="(e.g., tailing) that can be used for downstream QC/QA"/>
         <param name="compute_total_mi" argument="-algorithm:TransitionGroupPicker:compute_total_mi" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Compute mutual information metrics for individual transitions that can be used for OpenSWATH/IPF scoring" help=""/>
-        <param name="boundary_selection_method" argument="-algorithm:TransitionGroupPicker:boundary_selection_method" display="checkboxes" type="select" optional="false" label="Method to use when selecting the best boundaries for peaks" help="">
+        <param name="boundary_selection_method" argument="-algorithm:TransitionGroupPicker:boundary_selection_method" type="select" optional="true" label="Method to use when selecting the best boundaries for peaks" help="">
           <option value="largest" selected="true">largest</option>
           <option value="widest">widest</option>
           <expand macro="list_string_san" name="boundary_selection_method"/>
         </param>
         <section name="PeakPickerMRM" title="" help="" expanded="false">
-          <param name="sgolay_frame_length" argument="-algorithm:TransitionGroupPicker:PeakPickerMRM:sgolay_frame_length" type="integer" optional="false" value="15" label="The number of subsequent data points used for smoothing" help="This number has to be uneven. If it is not, 1 will be added"/>
-          <param name="sgolay_polynomial_order" argument="-algorithm:TransitionGroupPicker:PeakPickerMRM:sgolay_polynomial_order" type="integer" optional="false" value="3" label="Order of the polynomial that is fitted" help=""/>
-          <param name="gauss_width" argument="-algorithm:TransitionGroupPicker:PeakPickerMRM:gauss_width" type="float" optional="false" value="50.0" label="Gaussian width in seconds, estimated peak size" help=""/>
+          <param name="sgolay_frame_length" argument="-algorithm:TransitionGroupPicker:PeakPickerMRM:sgolay_frame_length" type="integer" optional="true" value="15" label="The number of subsequent data points used for smoothing" help="This number has to be uneven. If it is not, 1 will be added"/>
+          <param name="sgolay_polynomial_order" argument="-algorithm:TransitionGroupPicker:PeakPickerMRM:sgolay_polynomial_order" type="integer" optional="true" value="3" label="Order of the polynomial that is fitted" help=""/>
+          <param name="gauss_width" argument="-algorithm:TransitionGroupPicker:PeakPickerMRM:gauss_width" type="float" optional="true" value="50.0" label="Gaussian width in seconds, estimated peak size" help=""/>
           <param name="use_gauss" argument="-algorithm:TransitionGroupPicker:PeakPickerMRM:use_gauss" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Use Gaussian filter for smoothing (alternative is Savitzky-Golay filter)" help=""/>
-          <param name="peak_width" argument="-algorithm:TransitionGroupPicker:PeakPickerMRM:peak_width" type="float" optional="false" value="-1.0" label="Force a certain minimal peak_width on the data" help="(e.g. extend the peak at least by this amount on both sides) in seconds. -1 turns this feature off"/>
-          <param name="signal_to_noise" argument="-algorithm:TransitionGroupPicker:PeakPickerMRM:signal_to_noise" type="float" optional="false" min="0.0" value="1.0" label="Signal-to-noise threshold at which a peak will not be extended any more" help="Note that setting this too high (e.g. 1.0) can lead to peaks whose flanks are not fully captured"/>
-          <param name="sn_win_len" argument="-algorithm:TransitionGroupPicker:PeakPickerMRM:sn_win_len" type="float" optional="false" value="1000.0" label="Signal to noise window length" help=""/>
-          <param name="sn_bin_count" argument="-algorithm:TransitionGroupPicker:PeakPickerMRM:sn_bin_count" type="integer" optional="false" value="30" label="Signal to noise bin count" help=""/>
+          <param name="peak_width" argument="-algorithm:TransitionGroupPicker:PeakPickerMRM:peak_width" type="float" optional="true" value="-1.0" label="Force a certain minimal peak_width on the data" help="(e.g. extend the peak at least by this amount on both sides) in seconds. -1 turns this feature off"/>
+          <param name="signal_to_noise" argument="-algorithm:TransitionGroupPicker:PeakPickerMRM:signal_to_noise" type="float" optional="true" min="0.0" value="1.0" label="Signal-to-noise threshold at which a peak will not be extended any more" help="Note that setting this too high (e.g. 1.0) can lead to peaks whose flanks are not fully captured"/>
+          <param name="sn_win_len" argument="-algorithm:TransitionGroupPicker:PeakPickerMRM:sn_win_len" type="float" optional="true" value="1000.0" label="Signal to noise window length" help=""/>
+          <param name="sn_bin_count" argument="-algorithm:TransitionGroupPicker:PeakPickerMRM:sn_bin_count" type="integer" optional="true" value="30" label="Signal to noise bin count" help=""/>
           <param name="write_sn_log_messages" argument="-algorithm:TransitionGroupPicker:PeakPickerMRM:write_sn_log_messages" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Write out log messages of the signal-to-noise estimator in case of sparse windows or median in rightmost histogram bin" help=""/>
           <param name="remove_overlapping_peaks" argument="-algorithm:TransitionGroupPicker:PeakPickerMRM:remove_overlapping_peaks" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Try to remove overlapping peaks during peak picking" help=""/>
-          <param name="method" argument="-algorithm:TransitionGroupPicker:PeakPickerMRM:method" display="checkboxes" type="select" optional="false" label="Which method to choose for chromatographic peak-picking (OpenSWATH legacy on raw data, corrected picking on smoothed chromatogram or Crawdad on smoothed chromatogram)" help="">
+          <param name="method" argument="-algorithm:TransitionGroupPicker:PeakPickerMRM:method" type="select" optional="true" label="Which method to choose for chromatographic peak-picking (OpenSWATH legacy on raw data, corrected picking on smoothed chromatogram or Crawdad on smoothed chromatogram)" help="">
             <option value="legacy">legacy</option>
             <option value="corrected" selected="true">corrected</option>
             <option value="crawdad">crawdad</option>
@@ -150,13 +165,13 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
           </param>
         </section>
         <section name="PeakIntegrator" title="" help="" expanded="false">
-          <param name="integration_type" argument="-algorithm:TransitionGroupPicker:PeakIntegrator:integration_type" display="checkboxes" type="select" optional="false" label="The integration technique to use in integratePeak() and estimateBackground() which uses either the summed intensity, integration by Simpson's rule or trapezoidal integration" help="">
+          <param name="integration_type" argument="-algorithm:TransitionGroupPicker:PeakIntegrator:integration_type" type="select" optional="true" label="The integration technique to use in integratePeak() and estimateBackground() which uses either the summed intensity, integration by Simpson's rule or trapezoidal integration" help="">
             <option value="intensity_sum" selected="true">intensity_sum</option>
             <option value="simpson">simpson</option>
             <option value="trapezoid">trapezoid</option>
             <expand macro="list_string_san" name="integration_type"/>
           </param>
-          <param name="baseline_type" argument="-algorithm:TransitionGroupPicker:PeakIntegrator:baseline_type" display="checkboxes" type="select" optional="false" label="The baseline type to use in estimateBackground() based on the peak boundaries" help="A rectangular baseline shape is computed based either on the minimal intensity of the peak boundaries, the maximum intensity or the average intensity (base_to_base)">
+          <param name="baseline_type" argument="-algorithm:TransitionGroupPicker:PeakIntegrator:baseline_type" type="select" optional="true" label="The baseline type to use in estimateBackground() based on the peak boundaries" help="A rectangular baseline shape is computed based either on the minimal intensity of the peak boundaries, the maximum intensity or the average intensity (base_to_base)">
             <option value="base_to_base" selected="true">base_to_base</option>
             <option value="vertical_division">vertical_division</option>
             <option value="vertical_division_min">vertical_division_min</option>
@@ -167,26 +182,27 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         </section>
       </section>
       <section name="DIAScoring" title="" help="" expanded="false">
-        <param name="dia_extraction_window" argument="-algorithm:DIAScoring:dia_extraction_window" type="float" optional="false" min="0.0" value="0.05" label="DIA extraction window in Th or ppm" help=""/>
-        <param name="dia_extraction_unit" argument="-algorithm:DIAScoring:dia_extraction_unit" display="checkboxes" type="select" optional="false" label="DIA extraction window unit" help="">
+        <param name="dia_extraction_window" argument="-algorithm:DIAScoring:dia_extraction_window" type="float" optional="true" min="0.0" value="0.05" label="DIA extraction window in Th or ppm" help=""/>
+        <param name="dia_extraction_unit" argument="-algorithm:DIAScoring:dia_extraction_unit" type="select" optional="true" label="DIA extraction window unit" help="">
           <option value="Th" selected="true">Th</option>
           <option value="ppm">ppm</option>
           <expand macro="list_string_san" name="dia_extraction_unit"/>
         </param>
         <param name="dia_centroided" argument="-algorithm:DIAScoring:dia_centroided" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Use centroided DIA data" help=""/>
-        <param name="dia_byseries_intensity_min" argument="-algorithm:DIAScoring:dia_byseries_intensity_min" type="float" optional="false" min="0.0" value="300.0" label="DIA b/y series minimum intensity to conside" help=""/>
-        <param name="dia_byseries_ppm_diff" argument="-algorithm:DIAScoring:dia_byseries_ppm_diff" type="float" optional="false" min="0.0" value="10.0" label="DIA b/y series minimal difference in ppm to conside" help=""/>
-        <param name="dia_nr_isotopes" argument="-algorithm:DIAScoring:dia_nr_isotopes" type="integer" optional="false" min="0" value="4" label="DIA number of isotopes to conside" help=""/>
-        <param name="dia_nr_charges" argument="-algorithm:DIAScoring:dia_nr_charges" type="integer" optional="false" min="0" value="4" label="DIA number of charges to conside" help=""/>
-        <param name="peak_before_mono_max_ppm_diff" argument="-algorithm:DIAScoring:peak_before_mono_max_ppm_diff" type="float" optional="false" min="0.0" value="20.0" label="DIA maximal difference in ppm to count a peak at lower m/z when searching for evidence that a peak might not be monoisotopic" help=""/>
+        <param name="dia_byseries_intensity_min" argument="-algorithm:DIAScoring:dia_byseries_intensity_min" type="float" optional="true" min="0.0" value="300.0" label="DIA b/y series minimum intensity to conside" help=""/>
+        <param name="dia_byseries_ppm_diff" argument="-algorithm:DIAScoring:dia_byseries_ppm_diff" type="float" optional="true" min="0.0" value="10.0" label="DIA b/y series minimal difference in ppm to conside" help=""/>
+        <param name="dia_nr_isotopes" argument="-algorithm:DIAScoring:dia_nr_isotopes" type="integer" optional="true" min="0" value="4" label="DIA number of isotopes to conside" help=""/>
+        <param name="dia_nr_charges" argument="-algorithm:DIAScoring:dia_nr_charges" type="integer" optional="true" min="0" value="4" label="DIA number of charges to conside" help=""/>
+        <param name="peak_before_mono_max_ppm_diff" argument="-algorithm:DIAScoring:peak_before_mono_max_ppm_diff" type="float" optional="true" min="0.0" value="20.0" label="DIA maximal difference in ppm to count a peak at lower m/z when searching for evidence that a peak might not be monoisotopic" help=""/>
       </section>
       <section name="EMGScoring" title="" help="" expanded="false">
-        <param name="interpolation_step" argument="-algorithm:EMGScoring:interpolation_step" type="float" optional="false" value="0.2" label="Sampling rate for the interpolation of the model function" help=""/>
-        <param name="tolerance_stdev_bounding_box" argument="-algorithm:EMGScoring:tolerance_stdev_bounding_box" type="float" optional="false" value="3.0" label="Bounding box has range [minimim of data, maximum of data] enlarged by tolerance_stdev_bounding_box times the standard deviation of the data" help=""/>
-        <param name="max_iteration" argument="-algorithm:EMGScoring:max_iteration" type="integer" optional="false" value="500" label="Maximum number of iterations using by Levenberg-Marquardt algorithm" help=""/>
+        <param name="interpolation_step" argument="-algorithm:EMGScoring:interpolation_step" type="float" optional="true" value="0.2" label="Sampling rate for the interpolation of the model function" help=""/>
+        <param name="tolerance_stdev_bounding_box" argument="-algorithm:EMGScoring:tolerance_stdev_bounding_box" type="float" optional="true" value="3.0" label="Bounding box has range [minimim of data, maximum of data] enlarged by tolerance_stdev_bounding_box times the standard deviation of the data" help=""/>
+        <param name="max_iteration" argument="-algorithm:EMGScoring:max_iteration" type="integer" optional="true" value="500" label="Maximum number of iterations using by Levenberg-Marquardt algorithm" help=""/>
+        <param name="init_mom" argument="-algorithm:EMGScoring:init_mom" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Initialize parameters using method of moments estimators" help=""/>
         <section name="statistics" title="" help="" expanded="false">
-          <param name="mean" argument="-algorithm:EMGScoring:statistics:mean" type="float" optional="false" value="1.0" label="Centroid position of the model" help=""/>
-          <param name="variance" argument="-algorithm:EMGScoring:statistics:variance" type="float" optional="false" value="1.0" label="Variance of the model" help=""/>
+          <param name="mean" argument="-algorithm:EMGScoring:statistics:mean" type="float" optional="true" value="1.0" label="Centroid position of the model" help=""/>
+          <param name="variance" argument="-algorithm:EMGScoring:statistics:variance" type="float" optional="true" value="1.0" label="Variance of the model" help=""/>
         </section>
       </section>
       <section name="Scores" title="" help="" expanded="false">
@@ -208,11 +224,13 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="use_ms1_fullscan" argument="-algorithm:Scores:use_ms1_fullscan" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Use the full MS1 scan at the peak apex for scoring (ppm accuracy of precursor and isotopic pattern)" help=""/>
         <param name="use_ms1_mi" argument="-algorithm:Scores:use_ms1_mi" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Use the MS1 MI score" help=""/>
         <param name="use_uis_scores" argument="-algorithm:Scores:use_uis_scores" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Use UIS scores for peptidoform identification" help=""/>
+        <param name="use_ionseries_scores" argument="-algorithm:Scores:use_ionseries_scores" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Use MS2-level b/y ion-series scores for peptidoform identification" help=""/>
+        <param name="use_ms2_isotope_scores" argument="-algorithm:Scores:use_ms2_isotope_scores" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Use MS2-level isotope scores (pearson &amp; manhattan) across product transitions (based on ID if annotated or averagine)" help=""/>
       </section>
     </section>
     <expand macro="adv_opts_macro">
-      <param name="force" argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
-      <param name="test" argument="-test" type="hidden" optional="false" value="False" label="Enables the test mode (needed for internal use only)" help="">
+      <param argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
+      <param argument="-test" type="hidden" optional="true" value="False" label="Enables the test mode (needed for internal use only)" help="">
         <expand macro="list_string_san" name="test"/>
       </param>
     </expand>
@@ -226,13 +244,1050 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
     </data>
   </outputs>
-  <tests>
-    <expand macro="autotest_OpenSwathAnalyzer"/>
-    <expand macro="manutest_OpenSwathAnalyzer"/>
+  <tests><!-- TOPP_OpenSwathAnalyzer_test_1 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="OpenSwathAnalyzer_1_input_chrom.mzML"/>
+      <param name="tr" value="OpenSwathAnalyzer_1_input.TraML"/>
+      <param name="rt_norm" value="OpenSwathAnalyzer_input.trafoXML"/>
+      <output name="out" file="OpenSwathAnalyzer_1_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <param name="no_strict" value="false"/>
+      <param name="min_upper_edge_dist" value="0.0"/>
+      <section name="model">
+        <param name="type" value="linear"/>
+        <param name="symmetric_regression" value="false"/>
+      </section>
+      <section name="algorithm">
+        <param name="stop_report_after_feature" value="-1"/>
+        <param name="rt_extraction_window" value="-1.0"/>
+        <param name="rt_normalization_factor" value="1.0"/>
+        <param name="quantification_cutoff" value="0.0"/>
+        <param name="write_convex_hull" value="false"/>
+        <param name="spectrum_addition_method" value="simple"/>
+        <param name="add_up_spectra" value="1"/>
+        <param name="spacing_for_spectra_resampling" value="0.005"/>
+        <param name="uis_threshold_sn" value="-1"/>
+        <param name="uis_threshold_peak_area" value="0"/>
+        <param name="scoring_model" value="default"/>
+        <param name="im_extra_drift" value="0.0"/>
+        <param name="strict" value="true"/>
+        <section name="TransitionGroupPicker">
+          <param name="stop_after_feature" value="-1"/>
+          <param name="stop_after_intensity_ratio" value="0.0001"/>
+          <param name="min_peak_width" value="0.001"/>
+          <param name="peak_integration" value="original"/>
+          <param name="background_subtraction" value="none"/>
+          <param name="recalculate_peaks" value="false"/>
+          <param name="use_precursors" value="false"/>
+          <param name="use_consensus" value="true"/>
+          <param name="recalculate_peaks_max_z" value="1.0"/>
+          <param name="minimal_quality" value="-10000.0"/>
+          <param name="resample_boundary" value="15.0"/>
+          <param name="compute_peak_quality" value="false"/>
+          <param name="compute_peak_shape_metrics" value="false"/>
+          <param name="compute_total_mi" value="false"/>
+          <param name="boundary_selection_method" value="largest"/>
+          <section name="PeakPickerMRM">
+            <param name="sgolay_frame_length" value="15"/>
+            <param name="sgolay_polynomial_order" value="3"/>
+            <param name="gauss_width" value="50.0"/>
+            <param name="use_gauss" value="true"/>
+            <param name="peak_width" value="40.0"/>
+            <param name="signal_to_noise" value="1.0"/>
+            <param name="sn_win_len" value="1000.0"/>
+            <param name="sn_bin_count" value="30"/>
+            <param name="write_sn_log_messages" value="false"/>
+            <param name="remove_overlapping_peaks" value="false"/>
+            <param name="method" value="legacy"/>
+          </section>
+          <section name="PeakIntegrator">
+            <param name="integration_type" value="intensity_sum"/>
+            <param name="baseline_type" value="base_to_base"/>
+            <param name="fit_EMG" value="false"/>
+          </section>
+        </section>
+        <section name="DIAScoring">
+          <param name="dia_extraction_window" value="0.05"/>
+          <param name="dia_extraction_unit" value="Th"/>
+          <param name="dia_centroided" value="false"/>
+          <param name="dia_byseries_intensity_min" value="300.0"/>
+          <param name="dia_byseries_ppm_diff" value="10.0"/>
+          <param name="dia_nr_isotopes" value="4"/>
+          <param name="dia_nr_charges" value="4"/>
+          <param name="peak_before_mono_max_ppm_diff" value="20.0"/>
+        </section>
+        <section name="EMGScoring">
+          <param name="interpolation_step" value="0.2"/>
+          <param name="tolerance_stdev_bounding_box" value="3.0"/>
+          <param name="max_iteration" value="500"/>
+          <param name="init_mom" value="false"/>
+          <section name="statistics">
+            <param name="mean" value="1.0"/>
+            <param name="variance" value="1.0"/>
+          </section>
+        </section>
+        <section name="Scores">
+          <param name="use_shape_score" value="true"/>
+          <param name="use_coelution_score" value="true"/>
+          <param name="use_rt_score" value="true"/>
+          <param name="use_library_score" value="true"/>
+          <param name="use_elution_model_score" value="true"/>
+          <param name="use_intensity_score" value="true"/>
+          <param name="use_nr_peaks_score" value="true"/>
+          <param name="use_total_xic_score" value="true"/>
+          <param name="use_total_mi_score" value="false"/>
+          <param name="use_sn_score" value="true"/>
+          <param name="use_mi_score" value="false"/>
+          <param name="use_dia_scores" value="true"/>
+          <param name="use_ms1_correlation" value="false"/>
+          <param name="use_sonar_scores" value="false"/>
+          <param name="use_ion_mobility_scores" value="false"/>
+          <param name="use_ms1_fullscan" value="false"/>
+          <param name="use_ms1_mi" value="false"/>
+          <param name="use_uis_scores" value="false"/>
+          <param name="use_ionseries_scores" value="true"/>
+          <param name="use_ms2_isotope_scores" value="true"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+    </test>
+    <!-- TOPP_OpenSwathAnalyzer_test_2 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="OpenSwathAnalyzer_1_input_chrom.mzML"/>
+      <param name="tr" value="OpenSwathAnalyzer_1_input.TraML"/>
+      <output name="out" file="OpenSwathAnalyzer_2_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <param name="no_strict" value="false"/>
+      <conditional name="swath_files_cond">
+        <param name="swath_files" value="OpenSwathAnalyzer_2_swathfile.mzML"/>
+      </conditional>
+      <param name="min_upper_edge_dist" value="0.0"/>
+      <section name="model">
+        <param name="type" value="linear"/>
+        <param name="symmetric_regression" value="false"/>
+      </section>
+      <section name="algorithm">
+        <param name="stop_report_after_feature" value="-1"/>
+        <param name="rt_extraction_window" value="-1.0"/>
+        <param name="rt_normalization_factor" value="1.0"/>
+        <param name="quantification_cutoff" value="0.0"/>
+        <param name="write_convex_hull" value="false"/>
+        <param name="spectrum_addition_method" value="simple"/>
+        <param name="add_up_spectra" value="1"/>
+        <param name="spacing_for_spectra_resampling" value="0.005"/>
+        <param name="uis_threshold_sn" value="-1"/>
+        <param name="uis_threshold_peak_area" value="0"/>
+        <param name="scoring_model" value="default"/>
+        <param name="im_extra_drift" value="0.0"/>
+        <param name="strict" value="true"/>
+        <section name="TransitionGroupPicker">
+          <param name="stop_after_feature" value="-1"/>
+          <param name="stop_after_intensity_ratio" value="0.0001"/>
+          <param name="min_peak_width" value="0.001"/>
+          <param name="peak_integration" value="original"/>
+          <param name="background_subtraction" value="none"/>
+          <param name="recalculate_peaks" value="false"/>
+          <param name="use_precursors" value="false"/>
+          <param name="use_consensus" value="true"/>
+          <param name="recalculate_peaks_max_z" value="1.0"/>
+          <param name="minimal_quality" value="-10000.0"/>
+          <param name="resample_boundary" value="15.0"/>
+          <param name="compute_peak_quality" value="false"/>
+          <param name="compute_peak_shape_metrics" value="false"/>
+          <param name="compute_total_mi" value="false"/>
+          <param name="boundary_selection_method" value="largest"/>
+          <section name="PeakPickerMRM">
+            <param name="sgolay_frame_length" value="15"/>
+            <param name="sgolay_polynomial_order" value="3"/>
+            <param name="gauss_width" value="50.0"/>
+            <param name="use_gauss" value="true"/>
+            <param name="peak_width" value="40.0"/>
+            <param name="signal_to_noise" value="1.0"/>
+            <param name="sn_win_len" value="1000.0"/>
+            <param name="sn_bin_count" value="30"/>
+            <param name="write_sn_log_messages" value="false"/>
+            <param name="remove_overlapping_peaks" value="false"/>
+            <param name="method" value="legacy"/>
+          </section>
+          <section name="PeakIntegrator">
+            <param name="integration_type" value="intensity_sum"/>
+            <param name="baseline_type" value="base_to_base"/>
+            <param name="fit_EMG" value="false"/>
+          </section>
+        </section>
+        <section name="DIAScoring">
+          <param name="dia_extraction_window" value="0.05"/>
+          <param name="dia_extraction_unit" value="Th"/>
+          <param name="dia_centroided" value="false"/>
+          <param name="dia_byseries_intensity_min" value="300.0"/>
+          <param name="dia_byseries_ppm_diff" value="10.0"/>
+          <param name="dia_nr_isotopes" value="4"/>
+          <param name="dia_nr_charges" value="4"/>
+          <param name="peak_before_mono_max_ppm_diff" value="20.0"/>
+        </section>
+        <section name="EMGScoring">
+          <param name="interpolation_step" value="0.2"/>
+          <param name="tolerance_stdev_bounding_box" value="3.0"/>
+          <param name="max_iteration" value="500"/>
+          <param name="init_mom" value="false"/>
+          <section name="statistics">
+            <param name="mean" value="1.0"/>
+            <param name="variance" value="1.0"/>
+          </section>
+        </section>
+        <section name="Scores">
+          <param name="use_shape_score" value="true"/>
+          <param name="use_coelution_score" value="true"/>
+          <param name="use_rt_score" value="true"/>
+          <param name="use_library_score" value="true"/>
+          <param name="use_elution_model_score" value="true"/>
+          <param name="use_intensity_score" value="true"/>
+          <param name="use_nr_peaks_score" value="true"/>
+          <param name="use_total_xic_score" value="true"/>
+          <param name="use_total_mi_score" value="false"/>
+          <param name="use_sn_score" value="true"/>
+          <param name="use_mi_score" value="false"/>
+          <param name="use_dia_scores" value="true"/>
+          <param name="use_ms1_correlation" value="false"/>
+          <param name="use_sonar_scores" value="false"/>
+          <param name="use_ion_mobility_scores" value="false"/>
+          <param name="use_ms1_fullscan" value="false"/>
+          <param name="use_ms1_mi" value="false"/>
+          <param name="use_uis_scores" value="false"/>
+          <param name="use_ionseries_scores" value="true"/>
+          <param name="use_ms2_isotope_scores" value="true"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+    </test>
+    <!-- TOPP_OpenSwathAnalyzer_test_5_mod -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="OpenSwathAnalyzer_1_input_chrom.mzML"/>
+      <param name="tr" value="OpenSwathAnalyzer_mod_input.TraML"/>
+      <output name="out" file="OpenSwathAnalyzer_5_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <param name="no_strict" value="false"/>
+      <conditional name="swath_files_cond">
+        <param name="swath_files" value="OpenSwathAnalyzer_2_swathfile.mzML"/>
+      </conditional>
+      <param name="min_upper_edge_dist" value="0.0"/>
+      <section name="model">
+        <param name="type" value="linear"/>
+        <param name="symmetric_regression" value="false"/>
+      </section>
+      <section name="algorithm">
+        <param name="stop_report_after_feature" value="-1"/>
+        <param name="rt_extraction_window" value="-1.0"/>
+        <param name="rt_normalization_factor" value="1.0"/>
+        <param name="quantification_cutoff" value="0.0"/>
+        <param name="write_convex_hull" value="false"/>
+        <param name="spectrum_addition_method" value="simple"/>
+        <param name="add_up_spectra" value="1"/>
+        <param name="spacing_for_spectra_resampling" value="0.005"/>
+        <param name="uis_threshold_sn" value="-1"/>
+        <param name="uis_threshold_peak_area" value="0"/>
+        <param name="scoring_model" value="default"/>
+        <param name="im_extra_drift" value="0.0"/>
+        <param name="strict" value="true"/>
+        <section name="TransitionGroupPicker">
+          <param name="stop_after_feature" value="-1"/>
+          <param name="stop_after_intensity_ratio" value="0.0001"/>
+          <param name="min_peak_width" value="-1.0"/>
+          <param name="peak_integration" value="original"/>
+          <param name="background_subtraction" value="none"/>
+          <param name="recalculate_peaks" value="false"/>
+          <param name="use_precursors" value="false"/>
+          <param name="use_consensus" value="true"/>
+          <param name="recalculate_peaks_max_z" value="1.0"/>
+          <param name="minimal_quality" value="-10000.0"/>
+          <param name="resample_boundary" value="15.0"/>
+          <param name="compute_peak_quality" value="false"/>
+          <param name="compute_peak_shape_metrics" value="false"/>
+          <param name="compute_total_mi" value="false"/>
+          <param name="boundary_selection_method" value="largest"/>
+          <section name="PeakPickerMRM">
+            <param name="sgolay_frame_length" value="15"/>
+            <param name="sgolay_polynomial_order" value="3"/>
+            <param name="gauss_width" value="50.0"/>
+            <param name="use_gauss" value="true"/>
+            <param name="peak_width" value="40.0"/>
+            <param name="signal_to_noise" value="1.0"/>
+            <param name="sn_win_len" value="1000.0"/>
+            <param name="sn_bin_count" value="30"/>
+            <param name="write_sn_log_messages" value="true"/>
+            <param name="remove_overlapping_peaks" value="false"/>
+            <param name="method" value="legacy"/>
+          </section>
+          <section name="PeakIntegrator">
+            <param name="integration_type" value="intensity_sum"/>
+            <param name="baseline_type" value="base_to_base"/>
+            <param name="fit_EMG" value="false"/>
+          </section>
+        </section>
+        <section name="DIAScoring">
+          <param name="dia_extraction_window" value="0.05"/>
+          <param name="dia_extraction_unit" value="Th"/>
+          <param name="dia_centroided" value="false"/>
+          <param name="dia_byseries_intensity_min" value="8.0"/>
+          <param name="dia_byseries_ppm_diff" value="15.0"/>
+          <param name="dia_nr_isotopes" value="4"/>
+          <param name="dia_nr_charges" value="4"/>
+          <param name="peak_before_mono_max_ppm_diff" value="20.0"/>
+        </section>
+        <section name="EMGScoring">
+          <param name="interpolation_step" value="0.2"/>
+          <param name="tolerance_stdev_bounding_box" value="3.0"/>
+          <param name="max_iteration" value="500"/>
+          <param name="init_mom" value="false"/>
+          <section name="statistics">
+            <param name="mean" value="1.0"/>
+            <param name="variance" value="1.0"/>
+          </section>
+        </section>
+        <section name="Scores">
+          <param name="use_shape_score" value="true"/>
+          <param name="use_coelution_score" value="true"/>
+          <param name="use_rt_score" value="true"/>
+          <param name="use_library_score" value="true"/>
+          <param name="use_elution_model_score" value="true"/>
+          <param name="use_intensity_score" value="true"/>
+          <param name="use_nr_peaks_score" value="true"/>
+          <param name="use_total_xic_score" value="true"/>
+          <param name="use_total_mi_score" value="false"/>
+          <param name="use_sn_score" value="true"/>
+          <param name="use_mi_score" value="false"/>
+          <param name="use_dia_scores" value="true"/>
+          <param name="use_ms1_correlation" value="false"/>
+          <param name="use_sonar_scores" value="false"/>
+          <param name="use_ion_mobility_scores" value="false"/>
+          <param name="use_ms1_fullscan" value="false"/>
+          <param name="use_ms1_mi" value="false"/>
+          <param name="use_uis_scores" value="false"/>
+          <param name="use_ionseries_scores" value="true"/>
+          <param name="use_ms2_isotope_scores" value="true"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+    </test>
+    <!-- TOPP_OpenSwathAnalyzer_test_6_nomod -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="OpenSwathAnalyzer_1_input_chrom.mzML"/>
+      <param name="tr" value="OpenSwathAnalyzer_1_input.TraML"/>
+      <output name="out" file="OpenSwathAnalyzer_6_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <param name="no_strict" value="false"/>
+      <conditional name="swath_files_cond">
+        <param name="swath_files" value="OpenSwathAnalyzer_2_swathfile.mzML"/>
+      </conditional>
+      <param name="min_upper_edge_dist" value="0.0"/>
+      <section name="model">
+        <param name="type" value="linear"/>
+        <param name="symmetric_regression" value="false"/>
+      </section>
+      <section name="algorithm">
+        <param name="stop_report_after_feature" value="-1"/>
+        <param name="rt_extraction_window" value="-1.0"/>
+        <param name="rt_normalization_factor" value="1.0"/>
+        <param name="quantification_cutoff" value="0.0"/>
+        <param name="write_convex_hull" value="false"/>
+        <param name="spectrum_addition_method" value="simple"/>
+        <param name="add_up_spectra" value="1"/>
+        <param name="spacing_for_spectra_resampling" value="0.005"/>
+        <param name="uis_threshold_sn" value="-1"/>
+        <param name="uis_threshold_peak_area" value="0"/>
+        <param name="scoring_model" value="default"/>
+        <param name="im_extra_drift" value="0.0"/>
+        <param name="strict" value="true"/>
+        <section name="TransitionGroupPicker">
+          <param name="stop_after_feature" value="-1"/>
+          <param name="stop_after_intensity_ratio" value="0.0001"/>
+          <param name="min_peak_width" value="-1.0"/>
+          <param name="peak_integration" value="original"/>
+          <param name="background_subtraction" value="none"/>
+          <param name="recalculate_peaks" value="false"/>
+          <param name="use_precursors" value="false"/>
+          <param name="use_consensus" value="true"/>
+          <param name="recalculate_peaks_max_z" value="1.0"/>
+          <param name="minimal_quality" value="-10000.0"/>
+          <param name="resample_boundary" value="15.0"/>
+          <param name="compute_peak_quality" value="false"/>
+          <param name="compute_peak_shape_metrics" value="false"/>
+          <param name="compute_total_mi" value="false"/>
+          <param name="boundary_selection_method" value="largest"/>
+          <section name="PeakPickerMRM">
+            <param name="sgolay_frame_length" value="15"/>
+            <param name="sgolay_polynomial_order" value="3"/>
+            <param name="gauss_width" value="50.0"/>
+            <param name="use_gauss" value="true"/>
+            <param name="peak_width" value="40.0"/>
+            <param name="signal_to_noise" value="1.0"/>
+            <param name="sn_win_len" value="1000.0"/>
+            <param name="sn_bin_count" value="30"/>
+            <param name="write_sn_log_messages" value="true"/>
+            <param name="remove_overlapping_peaks" value="false"/>
+            <param name="method" value="legacy"/>
+          </section>
+          <section name="PeakIntegrator">
+            <param name="integration_type" value="intensity_sum"/>
+            <param name="baseline_type" value="base_to_base"/>
+            <param name="fit_EMG" value="false"/>
+          </section>
+        </section>
+        <section name="DIAScoring">
+          <param name="dia_extraction_window" value="0.05"/>
+          <param name="dia_extraction_unit" value="Th"/>
+          <param name="dia_centroided" value="false"/>
+          <param name="dia_byseries_intensity_min" value="8.0"/>
+          <param name="dia_byseries_ppm_diff" value="15.0"/>
+          <param name="dia_nr_isotopes" value="4"/>
+          <param name="dia_nr_charges" value="4"/>
+          <param name="peak_before_mono_max_ppm_diff" value="20.0"/>
+        </section>
+        <section name="EMGScoring">
+          <param name="interpolation_step" value="0.2"/>
+          <param name="tolerance_stdev_bounding_box" value="3.0"/>
+          <param name="max_iteration" value="500"/>
+          <param name="init_mom" value="false"/>
+          <section name="statistics">
+            <param name="mean" value="1.0"/>
+            <param name="variance" value="1.0"/>
+          </section>
+        </section>
+        <section name="Scores">
+          <param name="use_shape_score" value="true"/>
+          <param name="use_coelution_score" value="true"/>
+          <param name="use_rt_score" value="true"/>
+          <param name="use_library_score" value="true"/>
+          <param name="use_elution_model_score" value="true"/>
+          <param name="use_intensity_score" value="true"/>
+          <param name="use_nr_peaks_score" value="true"/>
+          <param name="use_total_xic_score" value="true"/>
+          <param name="use_total_mi_score" value="false"/>
+          <param name="use_sn_score" value="true"/>
+          <param name="use_mi_score" value="false"/>
+          <param name="use_dia_scores" value="true"/>
+          <param name="use_ms1_correlation" value="false"/>
+          <param name="use_sonar_scores" value="false"/>
+          <param name="use_ion_mobility_scores" value="false"/>
+          <param name="use_ms1_fullscan" value="false"/>
+          <param name="use_ms1_mi" value="false"/>
+          <param name="use_uis_scores" value="false"/>
+          <param name="use_ionseries_scores" value="true"/>
+          <param name="use_ms2_isotope_scores" value="true"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+    </test>
+    <!-- TOPP_OpenSwathAnalyzer_test_7_backgroundSubtraction -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="OpenSwathAnalyzer_1_input_chrom.mzML"/>
+      <param name="tr" value="OpenSwathAnalyzer_1_input.TraML"/>
+      <output name="out" file="OpenSwathAnalyzer_7_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <param name="no_strict" value="false"/>
+      <param name="min_upper_edge_dist" value="0.0"/>
+      <section name="model">
+        <param name="type" value="linear"/>
+        <param name="symmetric_regression" value="false"/>
+      </section>
+      <section name="algorithm">
+        <param name="stop_report_after_feature" value="-1"/>
+        <param name="rt_extraction_window" value="-1.0"/>
+        <param name="rt_normalization_factor" value="1.0"/>
+        <param name="quantification_cutoff" value="0.0"/>
+        <param name="write_convex_hull" value="false"/>
+        <param name="spectrum_addition_method" value="simple"/>
+        <param name="add_up_spectra" value="1"/>
+        <param name="spacing_for_spectra_resampling" value="0.005"/>
+        <param name="uis_threshold_sn" value="-1"/>
+        <param name="uis_threshold_peak_area" value="0"/>
+        <param name="scoring_model" value="default"/>
+        <param name="im_extra_drift" value="0.0"/>
+        <param name="strict" value="true"/>
+        <section name="TransitionGroupPicker">
+          <param name="stop_after_feature" value="-1"/>
+          <param name="stop_after_intensity_ratio" value="0.0001"/>
+          <param name="min_peak_width" value="-1.0"/>
+          <param name="peak_integration" value="original"/>
+          <param name="background_subtraction" value="original"/>
+          <param name="recalculate_peaks" value="false"/>
+          <param name="use_precursors" value="false"/>
+          <param name="use_consensus" value="true"/>
+          <param name="recalculate_peaks_max_z" value="1.0"/>
+          <param name="minimal_quality" value="-10000.0"/>
+          <param name="resample_boundary" value="15.0"/>
+          <param name="compute_peak_quality" value="false"/>
+          <param name="compute_peak_shape_metrics" value="false"/>
+          <param name="compute_total_mi" value="false"/>
+          <param name="boundary_selection_method" value="largest"/>
+          <section name="PeakPickerMRM">
+            <param name="sgolay_frame_length" value="15"/>
+            <param name="sgolay_polynomial_order" value="3"/>
+            <param name="gauss_width" value="50.0"/>
+            <param name="use_gauss" value="true"/>
+            <param name="peak_width" value="40.0"/>
+            <param name="signal_to_noise" value="1.0"/>
+            <param name="sn_win_len" value="1000.0"/>
+            <param name="sn_bin_count" value="30"/>
+            <param name="write_sn_log_messages" value="true"/>
+            <param name="remove_overlapping_peaks" value="false"/>
+            <param name="method" value="legacy"/>
+          </section>
+          <section name="PeakIntegrator">
+            <param name="integration_type" value="intensity_sum"/>
+            <param name="baseline_type" value="base_to_base"/>
+            <param name="fit_EMG" value="false"/>
+          </section>
+        </section>
+        <section name="DIAScoring">
+          <param name="dia_extraction_window" value="0.05"/>
+          <param name="dia_extraction_unit" value="Th"/>
+          <param name="dia_centroided" value="false"/>
+          <param name="dia_byseries_intensity_min" value="300.0"/>
+          <param name="dia_byseries_ppm_diff" value="10.0"/>
+          <param name="dia_nr_isotopes" value="4"/>
+          <param name="dia_nr_charges" value="4"/>
+          <param name="peak_before_mono_max_ppm_diff" value="20.0"/>
+        </section>
+        <section name="EMGScoring">
+          <param name="interpolation_step" value="0.2"/>
+          <param name="tolerance_stdev_bounding_box" value="3.0"/>
+          <param name="max_iteration" value="500"/>
+          <param name="init_mom" value="false"/>
+          <section name="statistics">
+            <param name="mean" value="1.0"/>
+            <param name="variance" value="1.0"/>
+          </section>
+        </section>
+        <section name="Scores">
+          <param name="use_shape_score" value="true"/>
+          <param name="use_coelution_score" value="true"/>
+          <param name="use_rt_score" value="true"/>
+          <param name="use_library_score" value="true"/>
+          <param name="use_elution_model_score" value="true"/>
+          <param name="use_intensity_score" value="true"/>
+          <param name="use_nr_peaks_score" value="true"/>
+          <param name="use_total_xic_score" value="true"/>
+          <param name="use_total_mi_score" value="false"/>
+          <param name="use_sn_score" value="true"/>
+          <param name="use_mi_score" value="false"/>
+          <param name="use_dia_scores" value="true"/>
+          <param name="use_ms1_correlation" value="false"/>
+          <param name="use_sonar_scores" value="false"/>
+          <param name="use_ion_mobility_scores" value="false"/>
+          <param name="use_ms1_fullscan" value="false"/>
+          <param name="use_ms1_mi" value="false"/>
+          <param name="use_uis_scores" value="false"/>
+          <param name="use_ionseries_scores" value="true"/>
+          <param name="use_ms2_isotope_scores" value="true"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+    </test>
+    <!-- TOPP_OpenSwathAnalyzer_test_8 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="OpenSwathAnalyzer_1_input_chrom.mzML"/>
+      <param name="tr" value="OpenSwathAnalyzer_1_input.TraML"/>
+      <param name="rt_norm" value="OpenSwathAnalyzer_input.trafoXML"/>
+      <output name="out" file="OpenSwathAnalyzer_8_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <param name="no_strict" value="false"/>
+      <param name="min_upper_edge_dist" value="0.0"/>
+      <section name="model">
+        <param name="type" value="linear"/>
+        <param name="symmetric_regression" value="false"/>
+      </section>
+      <section name="algorithm">
+        <param name="stop_report_after_feature" value="-1"/>
+        <param name="rt_extraction_window" value="-1.0"/>
+        <param name="rt_normalization_factor" value="1.0"/>
+        <param name="quantification_cutoff" value="0.0"/>
+        <param name="write_convex_hull" value="false"/>
+        <param name="spectrum_addition_method" value="simple"/>
+        <param name="add_up_spectra" value="1"/>
+        <param name="spacing_for_spectra_resampling" value="0.005"/>
+        <param name="uis_threshold_sn" value="-1"/>
+        <param name="uis_threshold_peak_area" value="0"/>
+        <param name="scoring_model" value="default"/>
+        <param name="im_extra_drift" value="0.0"/>
+        <param name="strict" value="true"/>
+        <section name="TransitionGroupPicker">
+          <param name="stop_after_feature" value="-1"/>
+          <param name="stop_after_intensity_ratio" value="0.0001"/>
+          <param name="min_peak_width" value="0.001"/>
+          <param name="peak_integration" value="original"/>
+          <param name="background_subtraction" value="none"/>
+          <param name="recalculate_peaks" value="false"/>
+          <param name="use_precursors" value="false"/>
+          <param name="use_consensus" value="true"/>
+          <param name="recalculate_peaks_max_z" value="1.0"/>
+          <param name="minimal_quality" value="-10000.0"/>
+          <param name="resample_boundary" value="15.0"/>
+          <param name="compute_peak_quality" value="false"/>
+          <param name="compute_peak_shape_metrics" value="false"/>
+          <param name="compute_total_mi" value="false"/>
+          <param name="boundary_selection_method" value="largest"/>
+          <section name="PeakPickerMRM">
+            <param name="sgolay_frame_length" value="15"/>
+            <param name="sgolay_polynomial_order" value="3"/>
+            <param name="gauss_width" value="50.0"/>
+            <param name="use_gauss" value="true"/>
+            <param name="peak_width" value="40.0"/>
+            <param name="signal_to_noise" value="1.0"/>
+            <param name="sn_win_len" value="1000.0"/>
+            <param name="sn_bin_count" value="30"/>
+            <param name="write_sn_log_messages" value="false"/>
+            <param name="remove_overlapping_peaks" value="false"/>
+            <param name="method" value="legacy"/>
+          </section>
+          <section name="PeakIntegrator">
+            <param name="integration_type" value="intensity_sum"/>
+            <param name="baseline_type" value="base_to_base"/>
+            <param name="fit_EMG" value="false"/>
+          </section>
+        </section>
+        <section name="DIAScoring">
+          <param name="dia_extraction_window" value="0.05"/>
+          <param name="dia_extraction_unit" value="Th"/>
+          <param name="dia_centroided" value="false"/>
+          <param name="dia_byseries_intensity_min" value="300.0"/>
+          <param name="dia_byseries_ppm_diff" value="10.0"/>
+          <param name="dia_nr_isotopes" value="4"/>
+          <param name="dia_nr_charges" value="4"/>
+          <param name="peak_before_mono_max_ppm_diff" value="20.0"/>
+        </section>
+        <section name="EMGScoring">
+          <param name="interpolation_step" value="0.2"/>
+          <param name="tolerance_stdev_bounding_box" value="3.0"/>
+          <param name="max_iteration" value="500"/>
+          <param name="init_mom" value="false"/>
+          <section name="statistics">
+            <param name="mean" value="1.0"/>
+            <param name="variance" value="1.0"/>
+          </section>
+        </section>
+        <section name="Scores">
+          <param name="use_shape_score" value="true"/>
+          <param name="use_coelution_score" value="true"/>
+          <param name="use_rt_score" value="true"/>
+          <param name="use_library_score" value="true"/>
+          <param name="use_elution_model_score" value="true"/>
+          <param name="use_intensity_score" value="true"/>
+          <param name="use_nr_peaks_score" value="true"/>
+          <param name="use_total_xic_score" value="true"/>
+          <param name="use_total_mi_score" value="true"/>
+          <param name="use_sn_score" value="true"/>
+          <param name="use_mi_score" value="true"/>
+          <param name="use_dia_scores" value="true"/>
+          <param name="use_ms1_correlation" value="false"/>
+          <param name="use_sonar_scores" value="false"/>
+          <param name="use_ion_mobility_scores" value="false"/>
+          <param name="use_ms1_fullscan" value="false"/>
+          <param name="use_ms1_mi" value="true"/>
+          <param name="use_uis_scores" value="false"/>
+          <param name="use_ionseries_scores" value="true"/>
+          <param name="use_ms2_isotope_scores" value="true"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+    </test>
+    <!-- TOPP_OpenSwathAnalyzer_test_9 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="OpenSwathAnalyzer_1_input_chrom.mzML"/>
+      <param name="tr" value="OpenSwathAnalyzer_1_input.TraML"/>
+      <param name="rt_norm" value="OpenSwathAnalyzer_input.trafoXML"/>
+      <output name="out" file="OpenSwathAnalyzer_9_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <param name="no_strict" value="false"/>
+      <param name="min_upper_edge_dist" value="0.0"/>
+      <section name="model">
+        <param name="type" value="linear"/>
+        <param name="symmetric_regression" value="false"/>
+      </section>
+      <section name="algorithm">
+        <param name="stop_report_after_feature" value="-1"/>
+        <param name="rt_extraction_window" value="-1.0"/>
+        <param name="rt_normalization_factor" value="1.0"/>
+        <param name="quantification_cutoff" value="0.0"/>
+        <param name="write_convex_hull" value="false"/>
+        <param name="spectrum_addition_method" value="simple"/>
+        <param name="add_up_spectra" value="1"/>
+        <param name="spacing_for_spectra_resampling" value="0.005"/>
+        <param name="uis_threshold_sn" value="-1"/>
+        <param name="uis_threshold_peak_area" value="0"/>
+        <param name="scoring_model" value="default"/>
+        <param name="im_extra_drift" value="0.0"/>
+        <param name="strict" value="true"/>
+        <section name="TransitionGroupPicker">
+          <param name="stop_after_feature" value="-1"/>
+          <param name="stop_after_intensity_ratio" value="0.0001"/>
+          <param name="min_peak_width" value="0.001"/>
+          <param name="peak_integration" value="original"/>
+          <param name="background_subtraction" value="none"/>
+          <param name="recalculate_peaks" value="false"/>
+          <param name="use_precursors" value="false"/>
+          <param name="use_consensus" value="true"/>
+          <param name="recalculate_peaks_max_z" value="1.0"/>
+          <param name="minimal_quality" value="-10000.0"/>
+          <param name="resample_boundary" value="15.0"/>
+          <param name="compute_peak_quality" value="false"/>
+          <param name="compute_peak_shape_metrics" value="false"/>
+          <param name="compute_total_mi" value="false"/>
+          <param name="boundary_selection_method" value="largest"/>
+          <section name="PeakPickerMRM">
+            <param name="sgolay_frame_length" value="15"/>
+            <param name="sgolay_polynomial_order" value="3"/>
+            <param name="gauss_width" value="50.0"/>
+            <param name="use_gauss" value="true"/>
+            <param name="peak_width" value="40.0"/>
+            <param name="signal_to_noise" value="1.0"/>
+            <param name="sn_win_len" value="1000.0"/>
+            <param name="sn_bin_count" value="30"/>
+            <param name="write_sn_log_messages" value="false"/>
+            <param name="remove_overlapping_peaks" value="false"/>
+            <param name="method" value="legacy"/>
+          </section>
+          <section name="PeakIntegrator">
+            <param name="integration_type" value="intensity_sum"/>
+            <param name="baseline_type" value="base_to_base"/>
+            <param name="fit_EMG" value="false"/>
+          </section>
+        </section>
+        <section name="DIAScoring">
+          <param name="dia_extraction_window" value="0.05"/>
+          <param name="dia_extraction_unit" value="Th"/>
+          <param name="dia_centroided" value="false"/>
+          <param name="dia_byseries_intensity_min" value="300.0"/>
+          <param name="dia_byseries_ppm_diff" value="10.0"/>
+          <param name="dia_nr_isotopes" value="4"/>
+          <param name="dia_nr_charges" value="4"/>
+          <param name="peak_before_mono_max_ppm_diff" value="20.0"/>
+        </section>
+        <section name="EMGScoring">
+          <param name="interpolation_step" value="0.2"/>
+          <param name="tolerance_stdev_bounding_box" value="3.0"/>
+          <param name="max_iteration" value="500"/>
+          <param name="init_mom" value="false"/>
+          <section name="statistics">
+            <param name="mean" value="1.0"/>
+            <param name="variance" value="1.0"/>
+          </section>
+        </section>
+        <section name="Scores">
+          <param name="use_shape_score" value="true"/>
+          <param name="use_coelution_score" value="true"/>
+          <param name="use_rt_score" value="true"/>
+          <param name="use_library_score" value="true"/>
+          <param name="use_elution_model_score" value="true"/>
+          <param name="use_intensity_score" value="true"/>
+          <param name="use_nr_peaks_score" value="true"/>
+          <param name="use_total_xic_score" value="true"/>
+          <param name="use_total_mi_score" value="false"/>
+          <param name="use_sn_score" value="true"/>
+          <param name="use_mi_score" value="true"/>
+          <param name="use_dia_scores" value="true"/>
+          <param name="use_ms1_correlation" value="false"/>
+          <param name="use_sonar_scores" value="false"/>
+          <param name="use_ion_mobility_scores" value="false"/>
+          <param name="use_ms1_fullscan" value="false"/>
+          <param name="use_ms1_mi" value="false"/>
+          <param name="use_uis_scores" value="false"/>
+          <param name="use_ionseries_scores" value="true"/>
+          <param name="use_ms2_isotope_scores" value="true"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+    </test>
+    <!-- TOPP_OpenSwathAnalyzer_test_10 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="OpenSwathAnalyzer_1_input_chrom.mzML"/>
+      <param name="tr" value="OpenSwathAnalyzer_1_input.TraML"/>
+      <param name="rt_norm" value="OpenSwathAnalyzer_input.trafoXML"/>
+      <output name="out" file="OpenSwathAnalyzer_10_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <param name="no_strict" value="false"/>
+      <param name="min_upper_edge_dist" value="0.0"/>
+      <section name="model">
+        <param name="type" value="linear"/>
+        <param name="symmetric_regression" value="false"/>
+      </section>
+      <section name="algorithm">
+        <param name="stop_report_after_feature" value="-1"/>
+        <param name="rt_extraction_window" value="-1.0"/>
+        <param name="rt_normalization_factor" value="1.0"/>
+        <param name="quantification_cutoff" value="0.0"/>
+        <param name="write_convex_hull" value="false"/>
+        <param name="spectrum_addition_method" value="simple"/>
+        <param name="add_up_spectra" value="1"/>
+        <param name="spacing_for_spectra_resampling" value="0.005"/>
+        <param name="uis_threshold_sn" value="-1"/>
+        <param name="uis_threshold_peak_area" value="0"/>
+        <param name="scoring_model" value="default"/>
+        <param name="im_extra_drift" value="0.0"/>
+        <param name="strict" value="true"/>
+        <section name="TransitionGroupPicker">
+          <param name="stop_after_feature" value="-1"/>
+          <param name="stop_after_intensity_ratio" value="0.0001"/>
+          <param name="min_peak_width" value="0.001"/>
+          <param name="peak_integration" value="original"/>
+          <param name="background_subtraction" value="none"/>
+          <param name="recalculate_peaks" value="false"/>
+          <param name="use_precursors" value="false"/>
+          <param name="use_consensus" value="true"/>
+          <param name="recalculate_peaks_max_z" value="1.0"/>
+          <param name="minimal_quality" value="-10000.0"/>
+          <param name="resample_boundary" value="15.0"/>
+          <param name="compute_peak_quality" value="false"/>
+          <param name="compute_peak_shape_metrics" value="false"/>
+          <param name="compute_total_mi" value="false"/>
+          <param name="boundary_selection_method" value="largest"/>
+          <section name="PeakPickerMRM">
+            <param name="sgolay_frame_length" value="15"/>
+            <param name="sgolay_polynomial_order" value="3"/>
+            <param name="gauss_width" value="50.0"/>
+            <param name="use_gauss" value="true"/>
+            <param name="peak_width" value="40.0"/>
+            <param name="signal_to_noise" value="1.0"/>
+            <param name="sn_win_len" value="1000.0"/>
+            <param name="sn_bin_count" value="30"/>
+            <param name="write_sn_log_messages" value="false"/>
+            <param name="remove_overlapping_peaks" value="false"/>
+            <param name="method" value="legacy"/>
+          </section>
+          <section name="PeakIntegrator">
+            <param name="integration_type" value="intensity_sum"/>
+            <param name="baseline_type" value="base_to_base"/>
+            <param name="fit_EMG" value="false"/>
+          </section>
+        </section>
+        <section name="DIAScoring">
+          <param name="dia_extraction_window" value="0.05"/>
+          <param name="dia_extraction_unit" value="Th"/>
+          <param name="dia_centroided" value="false"/>
+          <param name="dia_byseries_intensity_min" value="300.0"/>
+          <param name="dia_byseries_ppm_diff" value="10.0"/>
+          <param name="dia_nr_isotopes" value="4"/>
+          <param name="dia_nr_charges" value="4"/>
+          <param name="peak_before_mono_max_ppm_diff" value="20.0"/>
+        </section>
+        <section name="EMGScoring">
+          <param name="interpolation_step" value="0.2"/>
+          <param name="tolerance_stdev_bounding_box" value="3.0"/>
+          <param name="max_iteration" value="500"/>
+          <param name="init_mom" value="false"/>
+          <section name="statistics">
+            <param name="mean" value="1.0"/>
+            <param name="variance" value="1.0"/>
+          </section>
+        </section>
+        <section name="Scores">
+          <param name="use_shape_score" value="true"/>
+          <param name="use_coelution_score" value="true"/>
+          <param name="use_rt_score" value="true"/>
+          <param name="use_library_score" value="true"/>
+          <param name="use_elution_model_score" value="true"/>
+          <param name="use_intensity_score" value="true"/>
+          <param name="use_nr_peaks_score" value="true"/>
+          <param name="use_total_xic_score" value="true"/>
+          <param name="use_total_mi_score" value="true"/>
+          <param name="use_sn_score" value="true"/>
+          <param name="use_mi_score" value="true"/>
+          <param name="use_dia_scores" value="true"/>
+          <param name="use_ms1_correlation" value="false"/>
+          <param name="use_sonar_scores" value="false"/>
+          <param name="use_ion_mobility_scores" value="false"/>
+          <param name="use_ms1_fullscan" value="false"/>
+          <param name="use_ms1_mi" value="false"/>
+          <param name="use_uis_scores" value="false"/>
+          <param name="use_ionseries_scores" value="true"/>
+          <param name="use_ms2_isotope_scores" value="true"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+    </test>
+    <!-- TOPP_OpenSwathAnalyzer_test_11 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="OpenSwathAnalyzer_1_input_chrom.mzML"/>
+      <param name="tr" value="OpenSwathAnalyzer_1_input.TraML"/>
+      <param name="rt_norm" value="OpenSwathAnalyzer_input.trafoXML"/>
+      <output name="out" file="OpenSwathAnalyzer_11_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <param name="no_strict" value="false"/>
+      <param name="min_upper_edge_dist" value="0.0"/>
+      <section name="model">
+        <param name="type" value="linear"/>
+        <param name="symmetric_regression" value="false"/>
+      </section>
+      <section name="algorithm">
+        <param name="stop_report_after_feature" value="-1"/>
+        <param name="rt_extraction_window" value="-1.0"/>
+        <param name="rt_normalization_factor" value="1.0"/>
+        <param name="quantification_cutoff" value="0.0"/>
+        <param name="write_convex_hull" value="false"/>
+        <param name="spectrum_addition_method" value="simple"/>
+        <param name="add_up_spectra" value="1"/>
+        <param name="spacing_for_spectra_resampling" value="0.005"/>
+        <param name="uis_threshold_sn" value="-1"/>
+        <param name="uis_threshold_peak_area" value="0"/>
+        <param name="scoring_model" value="default"/>
+        <param name="im_extra_drift" value="0.0"/>
+        <param name="strict" value="true"/>
+        <section name="TransitionGroupPicker">
+          <param name="stop_after_feature" value="-1"/>
+          <param name="stop_after_intensity_ratio" value="0.0001"/>
+          <param name="min_peak_width" value="0.001"/>
+          <param name="peak_integration" value="original"/>
+          <param name="background_subtraction" value="none"/>
+          <param name="recalculate_peaks" value="false"/>
+          <param name="use_precursors" value="false"/>
+          <param name="use_consensus" value="true"/>
+          <param name="recalculate_peaks_max_z" value="1.0"/>
+          <param name="minimal_quality" value="-10000.0"/>
+          <param name="resample_boundary" value="15.0"/>
+          <param name="compute_peak_quality" value="false"/>
+          <param name="compute_peak_shape_metrics" value="false"/>
+          <param name="compute_total_mi" value="false"/>
+          <param name="boundary_selection_method" value="largest"/>
+          <section name="PeakPickerMRM">
+            <param name="sgolay_frame_length" value="15"/>
+            <param name="sgolay_polynomial_order" value="3"/>
+            <param name="gauss_width" value="50.0"/>
+            <param name="use_gauss" value="true"/>
+            <param name="peak_width" value="40.0"/>
+            <param name="signal_to_noise" value="1.0"/>
+            <param name="sn_win_len" value="1000.0"/>
+            <param name="sn_bin_count" value="30"/>
+            <param name="write_sn_log_messages" value="false"/>
+            <param name="remove_overlapping_peaks" value="false"/>
+            <param name="method" value="legacy"/>
+          </section>
+          <section name="PeakIntegrator">
+            <param name="integration_type" value="intensity_sum"/>
+            <param name="baseline_type" value="base_to_base"/>
+            <param name="fit_EMG" value="false"/>
+          </section>
+        </section>
+        <section name="DIAScoring">
+          <param name="dia_extraction_window" value="0.05"/>
+          <param name="dia_extraction_unit" value="Th"/>
+          <param name="dia_centroided" value="false"/>
+          <param name="dia_byseries_intensity_min" value="300.0"/>
+          <param name="dia_byseries_ppm_diff" value="10.0"/>
+          <param name="dia_nr_isotopes" value="4"/>
+          <param name="dia_nr_charges" value="4"/>
+          <param name="peak_before_mono_max_ppm_diff" value="20.0"/>
+        </section>
+        <section name="EMGScoring">
+          <param name="interpolation_step" value="0.2"/>
+          <param name="tolerance_stdev_bounding_box" value="3.0"/>
+          <param name="max_iteration" value="500"/>
+          <param name="init_mom" value="false"/>
+          <section name="statistics">
+            <param name="mean" value="1.0"/>
+            <param name="variance" value="1.0"/>
+          </section>
+        </section>
+        <section name="Scores">
+          <param name="use_shape_score" value="true"/>
+          <param name="use_coelution_score" value="true"/>
+          <param name="use_rt_score" value="true"/>
+          <param name="use_library_score" value="true"/>
+          <param name="use_elution_model_score" value="true"/>
+          <param name="use_intensity_score" value="true"/>
+          <param name="use_nr_peaks_score" value="true"/>
+          <param name="use_total_xic_score" value="true"/>
+          <param name="use_total_mi_score" value="true"/>
+          <param name="use_sn_score" value="true"/>
+          <param name="use_mi_score" value="false"/>
+          <param name="use_dia_scores" value="true"/>
+          <param name="use_ms1_correlation" value="false"/>
+          <param name="use_sonar_scores" value="false"/>
+          <param name="use_ion_mobility_scores" value="false"/>
+          <param name="use_ms1_fullscan" value="false"/>
+          <param name="use_ms1_mi" value="false"/>
+          <param name="use_uis_scores" value="false"/>
+          <param name="use_ionseries_scores" value="true"/>
+          <param name="use_ms2_isotope_scores" value="true"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+    </test>
   </tests>
   <help><![CDATA[Picks peaks and finds features in an SWATH-MS or SRM experiment.
 
 
-For more information, visit http://www.openms.de/doxygen/release/2.6.0/html/TOPP_OpenSwathAnalyzer.html]]></help>
+For more information, visit http://www.openms.de/doxygen/release/2.8.0/html/TOPP_OpenSwathAnalyzer.html]]></help>
   <expand macro="references"/>
 </tool>

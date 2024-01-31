@@ -1,0 +1,275 @@
+<tool id="proteomiqon_proteininference" name="ProteomIQon ProteinInference" version="@VERSION@" profile="20.05">
+    <description>
+        uses identified peptides to infere proteins explaining their presence in the sample.
+    </description>
+    <macros>
+        <token name="@VERSION@">0.0.7</token>
+    </macros>
+    <requirements>
+        <requirement type="package" version="@VERSION@">proteomiqon-proteininference</requirement>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        #import re
+        #if $PSMInputModeCond.PSMInputMode == "single"
+            #set basename = $re.sub(r'[^\w ,.\-+]','_',$PSMInputModeCond.scoredPSMs.element_identifier)
+            ln -s '$scoredPSMs' '${basename}.qpsm' &&
+            mkdir './out' &&
+            ln -s '$out_prot' './out/${basename}.prot' &&
+        #elif $PSMInputModeCond.PSMInputMode == "multi"
+            #for $psmfile in $PSMInputModeCond.scoredPSMs
+                #set basename = $re.sub(r'[^\w ,.\-+]','_',$psmfile.element_identifier)
+                ln -s '$psmfile' '${basename}.qpsm' &&
+            #end for
+        #end if
+        #if $outputParamfile:
+            cat '$paramfile' >> '$out_paramfile' &&
+        #end if
+        proteomiqon-proteininference -i './' -d '$peptideDB' -p '$paramfile' -o './out'
+    ]]>
+    </command>
+    <configfiles>
+        <configfile name="paramfile">
+            <![CDATA[
+            {
+                "ProteinIdentifierRegex": "${ProteinIdentifierRegex}",
+                "Protein": {
+                  "Case": "${Protein}"
+                },
+                "Peptide": {
+                  "Case": "${Peptide}"
+                },
+                #if $PSMInputModeCond.PSMInputMode == "multi"
+                "GroupFiles": ${PSMInputModeCond.GroupFiles},
+                #else
+                "GroupFiles": false,
+                #end if
+                #if $GetQValueCond.GetQValue == "LogisticRegression"
+                "GetQValue": {
+                  "Case": "${GetQValueCond.GetQValue}",
+                  "Fields": [
+                    {
+                      "Case": "${GetQValueCond.LogisticRegressionType}"
+                    }
+                  ]
+                }
+                #else
+                "GetQValue": {
+                    "Case": "${GetQValueCond.GetQValue}",
+                }
+                #end if
+            }
+            ]]>
+        </configfile>
+    </configfiles>
+    <inputs>
+        <param name="peptideDB" type="data" format="sqlite" label="Peptide database" help="Specify the peptide data base."/>
+        <conditional name="PSMInputModeCond">
+            <param name="PSMInputMode" type="select" label="PSM file input mode">
+                <option value="single">Single File</option>
+                <option value="multi">Multiple Files</option>
+            </param>
+            <when value="single">
+                <param name="scoredPSMs" type="data" format="tabular" label="Scored PSM file" help="Specify peptide identifications." />
+            </when>
+            <when value="multi">
+                <param name="scoredPSMs" type="data" format="tabular" label="Scored PSM files" help="Specify list of peptide identifications." multiple="true"/>
+                <param name="GroupFiles" type="boolean" checked="true" label="Groupe files" help="If checked, protein inference is carried out using peptide information from all files simultaneously."/>
+            </when>
+        </conditional>
+        <param name="ProteinIdentifierRegex" type="text" value="id" label="Protein identifier regex pattern" help="Fasta headers do often contain additional information in addition to your protein identifier, by specifying a regex pattern the tool can extract the protein IDs. If you fasta headers are already cleaned you can leave this field empty.">
+            <sanitizer sanitize="false" />
+        </param>
+        <param name="Protein" type="select" label="Protein" help="Specify how protein groups are created. For details please refer to the description below.">
+            <option value="Minimal">Minimal</option>
+            <option value="Maximal" selected="true">Maximal</option>
+        </param>
+        <param name="Peptide" type="select" label="Peptide" help="Specify how peptides are used to infer protein groups. For details please refer to the description below.">
+            <option value="Minimal" selected="true">Minimal</option>
+            <option value="Maximal">Maximal</option>
+            <option value="MaximalInverse">MaximalInverse</option>
+        </param>
+        <conditional name="GetQValueCond">
+            <param name="GetQValue" type="select" label="Q-Value method" help="Specify if and how q-value calculation should be carried out.">
+                <option value="Storey" selected="true">Storey</option>
+                <option value="LogisticRegression">Logistic Regression</option>
+                <option value="NoQValue">NoQValue</option>
+            </param>
+            <when value="Storey"/>
+            <when value="LogisticRegression">
+                <param name="LogisticRegressionType" type="select" label="Logistic regression type">
+                    <option value="Conservative">Conservative</option>
+                    <option value="MAYU" selected="true">MAYU</option>
+                    <option value="DecoyTargetRatio">DecoyTargetRatio</option>
+                </param>
+            </when>
+            <when value="NoQValue"/>
+        </conditional>
+        <param name="outputParamfile" type="boolean" value="false" label="Output parameter file"/>
+    </inputs>
+    <outputs>
+        <data format="tabular" name="out_prot" >
+            <filter>PSMInputModeCond['PSMInputMode'] == 'single'</filter>
+        </data>
+        <collection type="list" format="tabular" name="out_prot_collection" >
+            <discover_datasets pattern="(?P&lt;designation&gt;.+\.prot)" directory="out" />
+            <filter>PSMInputModeCond['PSMInputMode'] == 'multi'</filter>
+        </collection>
+        <data format="json" name="out_paramfile">
+            <filter>outputParamfile</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <param name="peptideDB" value="sample.db"/>
+            <conditional name="PSMInputModeCond">
+                <param name="PSMInputMode" value="single"/>
+                <param name="scoredPSMs" value="sample_1.qpsm"/>
+            </conditional>
+            <param name="ProteinIdentifierRegex" value="id"/>
+            <param name="Protein" value="Minimal"/>
+            <param name="Peptide" value="Minimal"/>
+            <param name="outputParamfile" value="false"/>
+        </test>
+        <test expect_num_outputs="2">
+            <param name="peptideDB" value="sample.db"/>
+            <conditional name="PSMInputModeCond">
+                <param name="PSMInputMode" value="single"/>
+                <param name="scoredPSMs" value="sample_1.qpsm"/>
+            </conditional>
+            <param name="ProteinIdentifierRegex" value="id"/>
+            <param name="Protein" value="Maximal"/>
+            <param name="Peptide" value="Maximal"/>
+            <conditional name="GetQValueCond">
+                <param name="GetQValue" value="Storey"/>
+            </conditional>
+            <param name="outputParamfile" value="true"/>
+            <output name="out_paramfile" file="result_1.json" />
+        </test>
+        <test expect_num_outputs="2">
+            <param name="peptideDB" value="sample.db"/>
+            <conditional name="PSMInputModeCond">
+                <param name="PSMInputMode" value="single"/>
+                <param name="scoredPSMs" value="sample_1.qpsm"/>
+            </conditional>
+            <param name="ProteinIdentifierRegex" value="id"/>
+            <param name="Protein" value="Minimal"/>
+            <param name="Peptide" value="MaximalInverse"/>
+            <conditional name="GetQValueCond">
+                <param name="GetQValue" value="NoQValue"/>
+            </conditional>
+            <param name="outputParamfile" value="true"/>
+            <output name="out_paramfile" file="result_2.json" />
+        </test>
+        <test expect_num_outputs="2">
+            <param name="peptideDB" value="sample.db"/>
+            <conditional name="PSMInputModeCond">
+                <param name="PSMInputMode" value="single"/>
+                <param name="scoredPSMs" value="sample_1.qpsm"/>
+            </conditional>
+            <param name="ProteinIdentifierRegex" value="id"/>
+            <param name="Protein" value="Minimal"/>
+            <param name="Peptide" value="MaximalInverse"/>
+            <conditional name="GetQValueCond">
+                <param name="GetQValue" value="LogisticRegression"/>
+                <param name="LogisticRegressionType" value="Conservative"/>
+            </conditional>
+            <param name="outputParamfile" value="true"/>
+            <output name="out_paramfile" file="result_3.json" />
+        </test>
+        <test expect_num_outputs="2">
+            <param name="peptideDB" value="sample.db"/>
+            <conditional name="PSMInputModeCond">
+                <param name="PSMInputMode" value="single"/>
+                <param name="scoredPSMs" value="sample_1.qpsm"/>
+            </conditional>
+            <param name="ProteinIdentifierRegex" value="id"/>
+            <param name="Protein" value="Minimal"/>
+            <param name="Peptide" value="MaximalInverse"/>
+            <conditional name="GetQValueCond">
+                <param name="GetQValue" value="LogisticRegression"/>
+                <param name="LogisticRegressionType" value="MAYU"/>
+            </conditional>
+            <param name="outputParamfile" value="true"/>
+            <output name="out_paramfile" file="result_4.json" />
+        </test>
+        <test expect_num_outputs="2">
+            <param name="peptideDB" value="sample.db"/>
+            <conditional name="PSMInputModeCond">
+                <param name="PSMInputMode" value="single"/>
+                <param name="scoredPSMs" value="sample_1.qpsm"/>
+            </conditional>
+            <param name="ProteinIdentifierRegex" value="id"/>
+            <param name="Protein" value="Minimal"/>
+            <param name="Peptide" value="MaximalInverse"/>
+            <conditional name="GetQValueCond">
+                <param name="GetQValue" value="LogisticRegression"/>
+                <param name="LogisticRegressionType" value="DecoyTargetRatio"/>
+            </conditional>
+            <param name="outputParamfile" value="true"/>
+            <output name="out_paramfile" file="result_5.json" />
+        </test>
+        <test expect_num_outputs="2">
+            <param name="peptideDB" value="sample.db"/>
+            <conditional name="PSMInputModeCond">
+                <param name="PSMInputMode" value="multi"/>
+                <param name="scoredPSMs" value="sample_1.qpsm,sample_2.qpsm,sample_3.qpsm"/>
+            </conditional>
+            <param name="ProteinIdentifierRegex" value="id"/>
+            <param name="Protein" value="Maximal"/>
+            <param name="Peptide" value="Maximal"/>
+            <param name="GroupFiles" value="true"/>
+            <conditional name="GetQValueCond">
+                <param name="GetQValue" value="NoQValue"/>
+            </conditional>
+            <param name="outputParamfile" value="true"/>
+            <output_collection name="out_prot_collection" type="list" count="3" />
+            <output name="out_paramfile" file="result_6.json" />
+        </test>
+        <test expect_num_outputs="2">
+            <param name="peptideDB" value="sample.db"/>
+            <conditional name="PSMInputModeCond">
+                <param name="PSMInputMode" value="multi"/>
+                <param name="scoredPSMs" value="sample_1.qpsm,sample_2.qpsm"/>
+            </conditional>
+            <param name="ProteinIdentifierRegex" value="id"/>
+            <param name="Protein" value="Maximal"/>
+            <param name="Peptide" value="Maximal"/>
+            <param name="GroupFiles" value="false"/>
+            <conditional name="GetQValueCond">
+                <param name="GetQValue" value="NoQValue"/>
+            </conditional>
+            <param name="outputParamfile" value="true"/>
+            <output_collection name="out_prot_collection" type="list" count="2" />
+            <output name="out_paramfile" file="result_7.json" />
+        </test>
+    </tests>
+    <help>
+    <![CDATA[
+What It Does
+------------
+**Disclaimer** Disclaimer this tool needs a `peptide database <https://csbiology.github.io/ProteomIQon/tools/PeptideDB.html>`_ and `peptide spectrum matches <https://csbiology.github.io/ProteomIQon/tools/PeptideSpectrumMatching.html>`_ which `passed fdr thresholds <https://csbiology.github.io/ProteomIQon/tools/PSMStatistics.html>`_.
+
+MS-based shotgun proteomics estimates protein abundances using a proxy: peptides. The process of 'Protein Inference' is concerned with the mapping of identified peptides to the proteins they putatively originated from. This process is not as straightforward as one might think at a first glance on the subject, since the peptide-to-protein mapping is not necessarily a one-to-one relationship but in many cases a one-to-many relationship. This is due to the fact that many proteins share peptides with an identical sequence, e.g. two proteins originating from two different splice variants of the same gene.
+
+One way to cope with this problem is to introduce the concept of protein groups, which allow us to report the aggregation of all peptides which map to all isoforms of a gene independently from the peptides mapping uniquely to a single isoform. 
+While this approach has its merits it leaves room for fine tuning when implemented. 
+Lets say we have two proteins pA and pB which were both discovered by one peptide uniquely mapping to each of them and additionally by a third peptide, which maps to both of them: How do we report our findings? 
+We could report both proteins seperately and as a protein group, we could only report the protein group, or we could report both proteins but not the protein group. 
+A problem of comparable complexity occurs when we think about peptides when calculating the abundances for the proteingroup pA;pB. 
+Do we use the peptides only once, or do we also use the peptides mapping uniquely to protein pA and pB? 
+Fortunately, the tool ProteinInference gives you the possibility to choose any of the described scenarios by tuning the parameters described below. 
+The following scheme gives an overview how parameter settings influence inferred protein groups:
+
+.. image:: $PATH_TO_IMAGES/ProteinInference.png
+            :width: 1048pt
+            :height: 358pt
+
+Moreover, we report each protein group with a so called 'Peptide evidence class'. This metric gives an indication how pure the peptide composition of a protein group is and lets us differentiate between protein groups that consist of isoforms of a splice variant or contain a rather arbitrary mix of proteins. 
+In order to determine these inter-protein relationships the user can optionally supply a gff3 file.
+
+Further Reading
+---------------
+Additional information about the tool can be found in the `documentation <https://csbiology.github.io/ProteomIQon/tools/ProteinInference.html>`_.  
+    ]]>
+    </help>
+</tool>

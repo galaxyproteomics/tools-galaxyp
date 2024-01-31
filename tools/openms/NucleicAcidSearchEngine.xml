@@ -1,13 +1,11 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
 <!--Proposed Tool Section: [Utilities]-->
-<tool id="NucleicAcidSearchEngine" name="NucleicAcidSearchEngine" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@" profile="20.05">
+<tool id="NucleicAcidSearchEngine" name="NucleicAcidSearchEngine" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="21.05">
   <description>Annotate nucleic acid identifications to MS/MS spectra.</description>
   <macros>
     <token name="@EXECUTABLE@">NucleicAcidSearchEngine</token>
     <import>macros.xml</import>
-    <import>macros_autotest.xml</import>
-    <import>macros_test.xml</import>
   </macros>
   <expand macro="requirements"/>
   <expand macro="stdio"/>
@@ -18,11 +16,23 @@
 ## Preprocessing
 mkdir in &&
 ln -s '$in' 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)' &&
-mkdir database &&
-ln -s '$database' 'database/${re.sub("[^\w\-_]", "_", $database.element_identifier)}.$gxy2omsext($database.ext)' &&
+#if $database:
+  mkdir database &&
+  ln -s '$database' 'database/${re.sub("[^\w\-_]", "_", $database.element_identifier)}.$gxy2omsext($database.ext)' &&
+#end if
+#if $digest:
+  mkdir digest &&
+  ln -s '$digest' 'digest/${re.sub("[^\w\-_]", "_", $digest.element_identifier)}.$gxy2omsext($digest.ext)' &&
+#end if
 mkdir out &&
 #if "id_out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
   mkdir id_out &&
+#end if
+#if "db_out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir db_out &&
+#end if
+#if "digest_out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir digest_out &&
 #end if
 #if "lfq_out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
   mkdir lfq_out &&
@@ -42,13 +52,27 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
 @EXECUTABLE@ -ini @EXECUTABLE@.ctd
 -in
 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
--database
-'database/${re.sub("[^\w\-_]", "_", $database.element_identifier)}.$gxy2omsext($database.ext)'
+#if $database:
+  -database
+  'database/${re.sub("[^\w\-_]", "_", $database.element_identifier)}.$gxy2omsext($database.ext)'
+#end if
+#if $digest:
+  -digest
+  'digest/${re.sub("[^\w\-_]", "_", $digest.element_identifier)}.$gxy2omsext($digest.ext)'
+#end if
 -out
 'out/output.${gxy2omsext("mztab")}'
 #if "id_out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
   -id_out
   'id_out/output.${gxy2omsext("idxml")}'
+#end if
+#if "db_out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  -db_out
+  'db_out/output.${gxy2omsext("sqlite")}'
+#end if
+#if "digest_out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  -digest_out
+  'digest_out/output.${gxy2omsext("sqlite")}'
 #end if
 #if "lfq_out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
   -lfq_out
@@ -71,6 +95,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
 #if "id_out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
   && mv 'id_out/output.${gxy2omsext("idxml")}' '$id_out'
 #end if
+#if "db_out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  && mv 'db_out/output.${gxy2omsext("sqlite")}' '$db_out'
+#end if
+#if "digest_out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  && mv 'digest_out/output.${gxy2omsext("sqlite")}' '$digest_out'
+#end if
 #if "lfq_out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
   && mv 'lfq_out/output.${gxy2omsext("tabular")}' '$lfq_out'
 #end if
@@ -88,36 +118,37 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
     <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
   </configfiles>
   <inputs>
-    <param name="in" argument="-in" type="data" format="mzml" optional="false" label="Input file: spectra" help=" select mzml data sets(s)"/>
-    <param name="database" argument="-database" type="data" format="fasta" optional="false" label="Input file: sequence database" help=" select fasta data sets(s)"/>
-    <section name="precursor" title="Precursor (Parent Ion) Options" help="" expanded="false">
-      <param name="mass_tolerance" argument="-precursor:mass_tolerance" type="float" optional="false" value="10.0" label="Precursor mass tolerance (+/- around uncharged precursor mass)" help=""/>
-      <param name="mass_tolerance_unit" argument="-precursor:mass_tolerance_unit" display="checkboxes" type="select" optional="false" label="Unit of precursor mass tolerance" help="">
+    <param argument="-in" type="data" format="mzml" optional="false" label="Input file: spectra" help=" select mzml data sets(s)"/>
+    <param argument="-database" type="data" format="fasta" optional="true" label="Input file: sequence database" help="Required unless 'digest' is set select fasta data sets(s)"/>
+    <param argument="-digest" type="data" format="sqlite" optional="true" label="Input file: pre-digested sequence database" help="Can be used instead of 'database'. Sets all 'oligo:...' parameters select sqlite data sets(s)"/>
+    <section name="precursor" title="Precursor (parent ion) options" help="" expanded="false">
+      <param name="mass_tolerance" argument="-precursor:mass_tolerance" type="float" optional="true" value="10.0" label="Precursor mass tolerance (+/- around uncharged precursor mass)" help=""/>
+      <param name="mass_tolerance_unit" argument="-precursor:mass_tolerance_unit" type="select" optional="true" label="Unit of precursor mass tolerance" help="">
         <option value="Da">Da</option>
         <option value="ppm" selected="true">ppm</option>
         <expand macro="list_string_san" name="mass_tolerance_unit"/>
       </param>
-      <param name="min_charge" argument="-precursor:min_charge" type="integer" optional="false" value="-1" label="Minimum precursor charge to be considered" help=""/>
-      <param name="max_charge" argument="-precursor:max_charge" type="integer" optional="false" value="-20" label="Maximum precursor charge to be considered" help=""/>
+      <param name="min_charge" argument="-precursor:min_charge" type="integer" optional="true" value="-1" label="Minimum precursor charge to be considered" help=""/>
+      <param name="max_charge" argument="-precursor:max_charge" type="integer" optional="true" value="-20" label="Maximum precursor charge to be considered" help=""/>
       <param name="include_unknown_charge" argument="-precursor:include_unknown_charge" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Include MS2 spectra with unknown precursor charge - try to match them in any possible charge between 'min_charge' and 'max_charge', at the risk of a higher error rate" help=""/>
       <param name="use_avg_mass" argument="-precursor:use_avg_mass" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Use average instead of monoisotopic precursor masses (appropriate for low-resolution instruments)" help=""/>
       <param name="use_adducts" argument="-precursor:use_adducts" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Consider possible salt adducts (see 'precursor:potential_adducts') when matching precursor masses" help=""/>
-      <param name="potential_adducts" argument="-precursor:potential_adducts" type="text" optional="false" value="Na:+" label="Adducts considered to explain mass differences" help="Format: 'Element:Charge(+/-)', i.e. the number of '+' or '-' indicates the charge, e.g. 'Ca:++' indicates +2. Only used if 'precursor:use_adducts' is set (space separated list, in order to allow for spaces in list items surround them by single quotes)">
+      <param name="potential_adducts" argument="-precursor:potential_adducts" type="text" optional="true" value="Na:+" label="Adducts considered to explain mass differences" help="Format: 'Element:Charge(+/-)', i.e. the number of '+' or '-' indicates the charge, e.g. 'Ca:++' indicates +2. Only used if 'precursor:use_adducts' is set (space separated list, in order to allow for spaces in list items surround them by single quotes)">
         <expand macro="list_string_val" name="potential_adducts"/>
         <expand macro="list_string_san" name="potential_adducts"/>
       </param>
-      <param name="isotopes" argument="-precursor:isotopes" type="text" optional="false" value="0 1 2 3 4" label="Correct for mono-isotopic peak misassignments" help="E.g.: 1 = precursor may be misassigned to the first isotopic peak. Ignored if 'use_avg_mass' is set (space separated list, in order to allow for spaces in list items surround them by single quotes)">
+      <param name="isotopes" argument="-precursor:isotopes" type="text" optional="true" value="0 1 2 3 4" label="Correct for mono-isotopic peak misassignments" help="E.g.: 1 = precursor may be misassigned to the first isotopic peak. Ignored if 'use_avg_mass' is set (space separated list, in order to allow for spaces in list items surround them by single quotes)">
         <expand macro="list_integer_valsan" name="isotopes"/>
       </param>
     </section>
     <section name="fragment" title="Fragment (Product Ion) Options" help="" expanded="false">
-      <param name="mass_tolerance" argument="-fragment:mass_tolerance" type="float" optional="false" value="10.0" label="Fragment mass tolerance (+/- around fragment m/z)" help=""/>
-      <param name="mass_tolerance_unit" argument="-fragment:mass_tolerance_unit" display="checkboxes" type="select" optional="false" label="Unit of fragment mass tolerance" help="">
+      <param name="mass_tolerance" argument="-fragment:mass_tolerance" type="float" optional="true" value="10.0" label="Fragment mass tolerance (+/- around fragment m/z)" help=""/>
+      <param name="mass_tolerance_unit" argument="-fragment:mass_tolerance_unit" type="select" optional="true" label="Unit of fragment mass tolerance" help="">
         <option value="Da">Da</option>
         <option value="ppm" selected="true">ppm</option>
         <expand macro="list_string_san" name="mass_tolerance_unit"/>
       </param>
-      <param name="ions" argument="-fragment:ions" multiple="true" type="select" optional="false" label="Fragment ions to include in theoretical spectra" help="">
+      <param name="ions" argument="-fragment:ions" multiple="true" type="select" optional="true" label="Fragment ions to include in theoretical spectra" help="">
         <option value="a-B" selected="true">a-B</option>
         <option value="a" selected="true">a</option>
         <option value="b" selected="true">b</option>
@@ -130,7 +161,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <expand macro="list_string_san" name="ions"/>
       </param>
     </section>
-    <section name="modifications" title="Modifications Options" help="" expanded="false">
+    <section name="modifications" title="Modification options" help="" expanded="false">
       <param name="variable" argument="-modifications:variable" multiple="true" type="select" optional="true" label="Variable modifications" help="">
         <option value="m1Am">m1Am</option>
         <option value="m1Gm">m1Gm</option>
@@ -300,6 +331,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <option value="mcmo5U">mcmo5U</option>
         <option value="yW">yW</option>
         <option value="imG">imG</option>
+        <option value="dA">dA</option>
+        <option value="dC">dC</option>
+        <option value="dG">dG</option>
+        <option value="dU">dU</option>
+        <option value="dT">dT</option>
         <option value="3'-p">3'-p</option>
         <option value="5'-p">5'-p</option>
         <option value="mA">mA</option>
@@ -331,45 +367,49 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <option value="acp3U/cmnm5Um?">acp3U/cmnm5Um?</option>
         <expand macro="list_string_san" name="variable"/>
       </param>
-      <param name="variable_max_per_oligo" argument="-modifications:variable_max_per_oligo" type="integer" optional="false" value="2" label="Maximum number of residues carrying a variable modification per candidate oligonucleotide" help=""/>
+      <param name="variable_max_per_oligo" argument="-modifications:variable_max_per_oligo" type="integer" optional="true" value="2" label="Maximum number of residues carrying a variable modification per candidate oligonucleotide" help=""/>
       <param name="resolve_ambiguities" argument="-modifications:resolve_ambiguities" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Attempt to resolve ambiguous modifications" help="(e.g. 'mA?' for 'mA'/'Am') based on a-B ions.. This incurs a performance cost because two modifications have to be considered for each case.. Requires a-B ions to be enabled in parameter 'fragment:ions'"/>
     </section>
-    <section name="oligo" title="Oligonucleotide Options" help="" expanded="false">
-      <param name="min_size" argument="-oligo:min_size" type="integer" optional="false" value="5" label="Minimum size an oligonucleotide must have after digestion to be considered in the search" help=""/>
-      <param name="max_size" argument="-oligo:max_size" type="integer" optional="false" value="0" label="Maximum size an oligonucleotide must have after digestion to be considered in the search, leave at 0 for no limit" help=""/>
-      <param name="missed_cleavages" argument="-oligo:missed_cleavages" type="integer" optional="false" value="1" label="Number of missed cleavages" help=""/>
-      <param name="enzyme" argument="-oligo:enzyme" type="select" optional="false" label="The enzyme used for RNA digestion" help="">
+    <section name="oligo" title="Oligonucleotide (digestion) options (ignored if 'digest' input is used)" help="" expanded="false">
+      <param name="min_size" argument="-oligo:min_size" type="integer" optional="true" value="5" label="Minimum size an oligonucleotide must have after digestion to be considered in the search" help=""/>
+      <param name="max_size" argument="-oligo:max_size" type="integer" optional="true" value="0" label="Maximum size an oligonucleotide must have after digestion to be considered in the search, leave at 0 for no limit" help=""/>
+      <param name="missed_cleavages" argument="-oligo:missed_cleavages" type="integer" optional="true" value="1" label="Number of missed cleavages" help=""/>
+      <param name="enzyme" argument="-oligo:enzyme" type="select" optional="true" label="The enzyme used for RNA digestion" help="">
         <option value="RNase_T1">RNase_T1</option>
         <option value="cusativin">cusativin</option>
+        <option value="RNase_H">RNase_H</option>
+        <option value="mazF">mazF</option>
+        <option value="colicin_E5">colicin_E5</option>
+        <option value="no cleavage" selected="true">no cleavage</option>
         <option value="RNase_U2">RNase_U2</option>
         <option value="RNase_A">RNase_A</option>
         <option value="RNase_MC1">RNase_MC1</option>
-        <option value="RNase_H">RNase_H</option>
-        <option value="no cleavage" selected="true">no cleavage</option>
         <option value="unspecific cleavage">unspecific cleavage</option>
         <expand macro="list_string_san" name="enzyme"/>
       </param>
     </section>
     <section name="report" title="Reporting Options" help="" expanded="false">
-      <param name="top_hits" argument="-report:top_hits" type="integer" optional="false" min="0" value="1" label="Maximum number of top-scoring hits per spectrum that are reported ('0' for all hits)" help=""/>
+      <param name="top_hits" argument="-report:top_hits" type="integer" optional="true" min="0" value="1" label="Maximum number of top-scoring hits per spectrum that are reported ('0' for all hits)" help=""/>
     </section>
-    <section name="fdr" title="False Discovery Rate Options" help="" expanded="false">
+    <section name="fdr" title="False Discovery Rate options" help="" expanded="false">
       <param name="decoy_pattern" argument="-fdr:decoy_pattern" type="text" optional="true" value="" label="String used as part of the accession to annotate decoy sequences" help="(e.g. 'DECOY_'). Leave empty to skip the FDR/q-value calculation">
         <expand macro="list_string_san" name="decoy_pattern"/>
       </param>
-      <param name="cutoff" argument="-fdr:cutoff" type="float" optional="false" min="0.0" max="1.0" value="1.0" label="Cut-off for FDR filtering; search hits with higher q-values will be removed" help=""/>
+      <param name="cutoff" argument="-fdr:cutoff" type="float" optional="true" min="0.0" max="1.0" value="1.0" label="Cut-off for FDR filtering; search hits with higher q-values will be removed" help=""/>
       <param name="remove_decoys" argument="-fdr:remove_decoys" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Do not score hits to decoy sequences and remove them when filtering" help=""/>
     </section>
     <expand macro="adv_opts_macro">
-      <param name="decharge_ms2" argument="-decharge_ms2" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Decharge the MS2 spectra for scoring" help=""/>
-      <param name="force" argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
-      <param name="test" argument="-test" type="hidden" optional="false" value="False" label="Enables the test mode (needed for internal use only)" help="">
+      <param argument="-decharge_ms2" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Decharge the MS2 spectra for scoring" help=""/>
+      <param argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
+      <param argument="-test" type="hidden" optional="true" value="False" label="Enables the test mode (needed for internal use only)" help="">
         <expand macro="list_string_san" name="test"/>
       </param>
     </expand>
     <param name="OPTIONAL_OUTPUTS" type="select" optional="true" multiple="true" label="Optional outputs">
       <option value="id_out_FLAG">id_out (Output file: idXML (for visualization in TOPPView))</option>
-      <option value="lfq_out_FLAG">lfq_out (Output file: Targets for label-free quantification using FeatureFinderMetaboIdent ('id' input))</option>
+      <option value="db_out_FLAG">db_out (Output file: oms (SQLite database))</option>
+      <option value="digest_out_FLAG">digest_out (Output file: sequence database digest)</option>
+      <option value="lfq_out_FLAG">lfq_out (Output file: targets for label-free quantification using FeatureFinderMetaboIdent ('id' input))</option>
       <option value="theo_ms2_out_FLAG">theo_ms2_out (Output file: theoretical MS2 spectra for precursor mass matches)</option>
       <option value="exp_ms2_out_FLAG">exp_ms2_out (Output file: experimental MS2 spectra for precursor mass matches)</option>
       <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
@@ -379,6 +419,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
     <data name="out" label="${tool.name} on ${on_string}: out" format="mztab"/>
     <data name="id_out" label="${tool.name} on ${on_string}: id_out" format="idxml">
       <filter>OPTIONAL_OUTPUTS is not None and "id_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+    <data name="db_out" label="${tool.name} on ${on_string}: db_out" format="sqlite">
+      <filter>OPTIONAL_OUTPUTS is not None and "db_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+    <data name="digest_out" label="${tool.name} on ${on_string}: digest_out" format="sqlite">
+      <filter>OPTIONAL_OUTPUTS is not None and "digest_out_FLAG" in OPTIONAL_OUTPUTS</filter>
     </data>
     <data name="lfq_out" label="${tool.name} on ${on_string}: lfq_out" format="tabular">
       <filter>OPTIONAL_OUTPUTS is not None and "lfq_out_FLAG" in OPTIONAL_OUTPUTS</filter>
@@ -393,13 +439,119 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
     </data>
   </outputs>
-  <tests>
-    <expand macro="autotest_NucleicAcidSearchEngine"/>
-    <expand macro="manutest_NucleicAcidSearchEngine"/>
+  <tests><!-- UTILS_NucleicAcidSearchEngine_1 -->
+    <test expect_num_outputs="5">
+      <section name="adv_opts">
+        <param name="decharge_ms2" value="false"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="NucleicAcidSearchEngine_1.mzML"/>
+      <param name="database" value="NucleicAcidSearchEngine_1.fasta"/>
+      <output name="out" file="NucleicAcidSearchEngine_12_out.mzTab" compare="sim_size" delta_frac="0.7" ftype="mztab"/>
+      <output name="id_out" file="NucleicAcidSearchEngine_11_out.idXML" compare="sim_size" delta_frac="0.7" ftype="idxml"/>
+      <output name="db_out" file="NucleicAcidSearchEngine_13_out.tmp" compare="sim_size" delta_frac="0.7" ftype="sqlite"/>
+      <output name="digest_out" file="NucleicAcidSearchEngine_1_digest.oms" compare="sim_size" delta_frac="0.7" ftype="sqlite"/>
+      <section name="precursor">
+        <param name="mass_tolerance" value="5.0"/>
+        <param name="mass_tolerance_unit" value="ppm"/>
+        <param name="min_charge" value="-2"/>
+        <param name="max_charge" value="-14"/>
+        <param name="include_unknown_charge" value="true"/>
+        <param name="use_avg_mass" value="false"/>
+        <param name="use_adducts" value="false"/>
+        <param name="potential_adducts" value="&quot;K:+&quot; &quot;Na:+&quot; &quot;Na2:++&quot; &quot;K2:++&quot; &quot;NaK:++&quot; &quot;K3:+++&quot; &quot;Na3:+++&quot; &quot;NaK2:+++&quot; &quot;Na2K:+++&quot;"/>
+        <param name="isotopes" value="0 1 2"/>
+      </section>
+      <section name="fragment">
+        <param name="mass_tolerance" value="5.0"/>
+        <param name="mass_tolerance_unit" value="ppm"/>
+        <param name="ions" value="a-B,c,w,y"/>
+      </section>
+      <section name="modifications">
+        <param name="variable"/>
+        <param name="variable_max_per_oligo" value="2"/>
+        <param name="resolve_ambiguities" value="false"/>
+      </section>
+      <section name="oligo">
+        <param name="min_size" value="5"/>
+        <param name="max_size" value="0"/>
+        <param name="missed_cleavages" value="22"/>
+        <param name="enzyme" value="no cleavage"/>
+      </section>
+      <section name="report">
+        <param name="top_hits" value="1"/>
+      </section>
+      <section name="fdr">
+        <param name="decoy_pattern" value="DECOY_"/>
+        <param name="cutoff" value="0.05"/>
+        <param name="remove_decoys" value="true"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG,id_out_FLAG,db_out_FLAG,digest_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+    </test>
+    <!-- UTILS_NucleicAcidSearchEngine_2 -->
+    <test expect_num_outputs="4">
+      <section name="adv_opts">
+        <param name="decharge_ms2" value="false"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="NucleicAcidSearchEngine_1.mzML"/>
+      <param name="digest" value="NucleicAcidSearchEngine_1_digest.oms"/>
+      <output name="out" file="NucleicAcidSearchEngine_12_out.mzTab" compare="sim_size" delta_frac="0.7" ftype="mztab"/>
+      <output name="id_out" file="NucleicAcidSearchEngine_11_out.idXML" compare="sim_size" delta_frac="0.7" ftype="idxml"/>
+      <output name="db_out" file="NucleicAcidSearchEngine_23_out.tmp" compare="sim_size" delta_frac="0.7" ftype="sqlite"/>
+      <section name="precursor">
+        <param name="mass_tolerance" value="5.0"/>
+        <param name="mass_tolerance_unit" value="ppm"/>
+        <param name="min_charge" value="-2"/>
+        <param name="max_charge" value="-14"/>
+        <param name="include_unknown_charge" value="true"/>
+        <param name="use_avg_mass" value="false"/>
+        <param name="use_adducts" value="false"/>
+        <param name="potential_adducts" value="&quot;K:+&quot; &quot;Na:+&quot; &quot;Na2:++&quot; &quot;K2:++&quot; &quot;NaK:++&quot; &quot;K3:+++&quot; &quot;Na3:+++&quot; &quot;NaK2:+++&quot; &quot;Na2K:+++&quot;"/>
+        <param name="isotopes" value="0 1 2"/>
+      </section>
+      <section name="fragment">
+        <param name="mass_tolerance" value="5.0"/>
+        <param name="mass_tolerance_unit" value="ppm"/>
+        <param name="ions" value="a-B,c,w,y"/>
+      </section>
+      <section name="modifications">
+        <param name="variable"/>
+        <param name="variable_max_per_oligo" value="2"/>
+        <param name="resolve_ambiguities" value="false"/>
+      </section>
+      <section name="oligo">
+        <param name="min_size" value="5"/>
+        <param name="max_size" value="0"/>
+        <param name="missed_cleavages" value="22"/>
+        <param name="enzyme" value="no cleavage"/>
+      </section>
+      <section name="report">
+        <param name="top_hits" value="1"/>
+      </section>
+      <section name="fdr">
+        <param name="decoy_pattern" value="DECOY_"/>
+        <param name="cutoff" value="0.05"/>
+        <param name="remove_decoys" value="true"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG,id_out_FLAG,db_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+    </test>
   </tests>
   <help><![CDATA[Annotate nucleic acid identifications to MS/MS spectra.
 
 
-For more information, visit http://www.openms.de/doxygen/release/2.6.0/html/UTILS_NucleicAcidSearchEngine.html]]></help>
+For more information, visit http://www.openms.de/doxygen/release/2.8.0/html/UTILS_NucleicAcidSearchEngine.html]]></help>
   <expand macro="references"/>
 </tool>

@@ -1,0 +1,385 @@
+<tool id="proteomiqon_psmbasedquantification" name="Proteomiqon PSMBasedQuantification" version="@VERSION@" profile="20.05">
+    <description>
+        allows label-free quantification as well as quantification of full metabolic labeled samples.
+    </description>
+    <macros>
+        <token name="@VERSION@">0.0.8</token>
+    </macros>
+    <requirements>
+        <requirement type="package" version="@VERSION@">proteomiqon-psmbasedquantification</requirement>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        #import re
+        #set instrumentOutput_basename = $re.sub(r'[^\w ,.\-+]','_',$instrumentOutput.element_identifier)
+        #set scoredPSMs_basename = $re.sub(r'[^\w ,.\-+]','_',$scoredPSMs.element_identifier)
+        #set peptideDB_basename = $re.sub(r'[^\w ,.\-+]','_',$peptideDB.element_identifier)
+        #if $outputParamfile:
+            cat '$paramfile' >> '$out_paramfile' &&
+        #end if
+        ln -s '$instrumentOutput' '${instrumentOutput_basename}.mzlite' &&
+        ln -s '$scoredPSMs' '${scoredPSMs_basename}.qpsm' &&
+        ln -s '$peptideDB' '${peptideDB_basename}.db' &&
+        ln -s '$out_quant' '${instrumentOutput_basename}.quant' &&  
+        proteomiqon-psmbasedquantification -i './${instrumentOutput_basename}.mzlite' -ii './${scoredPSMs_basename}.qpsm' -d './${peptideDB_basename}.db' -p '$paramfile' -o ./
+    ]]>
+    </command>
+    <configfiles>
+        <configfile name="paramfile">
+            <![CDATA[
+            {
+                "PerformLabeledQuantification": ${PerformLabeledQuantification},
+                "XicExtraction":
+                {
+                    "ScanTimeWindow": ${XicExtraction.ScanTimeWindow},
+                    "MzWindow_Da": {
+                        "Case": "${XicExtraction.MzWindow_DaTypeCond.MzWindow_DaType}",
+                        #if $XicExtraction.MzWindow_DaTypeCond.MzWindow_DaType == "Fixed"
+                        "Fields": [
+                            ${XicExtraction.MzWindow_DaTypeCond.MzWindow_Da}
+                        ]
+                        #end if
+                    },
+                    "XicProcessing": {
+                        #if $XicExtraction.XicProcessing.ProcessingTypeCond.ProcessingType == "Wavelet"
+                        "Case": "Wavelet",
+                        "Fields": [
+                            {
+                                #if $XicExtraction.XicProcessing.ProcessingTypeCond.BorderPadding
+                                "Borderpadding": {
+                                    "Case": "Some",
+                                    "Fields": [
+                                        ${XicExtraction.XicProcessing.ProcessingTypeCond.BorderPadding}
+                                    ]
+                                },
+                                #else
+                                "Borderpadding": null,
+                                #end if
+                                "BorderPadMethod": {
+                                    "Case": "${XicExtraction.XicProcessing.ProcessingTypeCond.BorderPadMethod}"
+                                },
+                                "InternalPaddingMethod": {
+                                    "Case": "${XicExtraction.XicProcessing.ProcessingTypeCond.InternalPaddingMethod}"
+                                },
+                                "HugeGapPaddingMethod": {
+                                    "Case": "${XicExtraction.XicProcessing.ProcessingTypeCond.HugeGapPaddingMethod}"
+                                },
+                                "HugeGapPaddingDistance": ${XicExtraction.XicProcessing.ProcessingTypeCond.HugeGapPaddingDistance},
+                                #if $XicExtraction.XicProcessing.ProcessingTypeCond.MinPeakDistance
+                                "MinPeakDistance": {
+                                    "Case": "Some",
+                                    "Fields": [
+                                        ${XicExtraction.XicProcessing.ProcessingTypeCond.MinPeakDistance},
+                                    ]
+                                },
+                                #else
+                                "MinPeakDistance": null,
+                                #end if
+                                #if $XicExtraction.XicProcessing.ProcessingTypeCond.MinPeakLength
+                                "MinPeakLength": {
+                                    "Case": "Some",
+                                    "Fields": [
+                                        ${XicExtraction.XicProcessing.ProcessingTypeCond.MinPeakLength}
+                                    ]
+                                },
+                                #else
+                                "MinPeakLength": null,
+                                #end if
+                                "MaxPeakLength": ${XicExtraction.XicProcessing.ProcessingTypeCond.MaxPeakLength},
+                                "NoiseQuantile": ${XicExtraction.XicProcessing.ProcessingTypeCond.NoiseQuantile},
+                                "MinSNR": ${XicExtraction.XicProcessing.ProcessingTypeCond.MinSNR},
+                            }
+                        ]
+                        #else
+                        "Case": "SecondDerivative",
+                        "Fields": [
+                            {
+                                "MinSNR": ${XicExtraction.XicProcessing.ProcessingTypeCond.MinSNR},
+                                "PolynomOrder": ${XicExtraction.XicProcessing.ProcessingTypeCond.PolynomOrder},
+                                "WindowSize": {
+                                    "Case": "${XicExtraction.XicProcessing.ProcessingTypeCond.WindowSizeCond.WindowSizeType}",
+                                    "Fields" : [
+                                        ${XicExtraction.XicProcessing.ProcessingTypeCond.WindowSizeCond.WindowSize}                 
+                                    ]
+                                }
+                            }
+                        ]    
+                        #end if
+                    },
+                    #if $XicExtraction.TopKPSMs
+                    "TopKPSMs": {
+                        "Case": "Some",
+                        "Fields": [
+                            ${XicExtraction.TopKPSMs}
+                        ]
+                    }
+                    #else
+                    "TopKPSMs": null
+                    #end if
+                },
+                #if $BaseLineCorrectionCond.BaseLineCorrectionEnabled == "yes"
+                "BaseLineCorrection": {
+                    "Case": "Some",
+                    "Fields": [
+                        {
+                            "MaxIterations":$BaseLineCorrectionCond.MaxIterations,
+                            "Lambda":$BaseLineCorrectionCond.Lambda,
+                            "P":$BaseLineCorrectionCond.P
+                        }
+                    ]
+                }
+                #else
+                "BaseLineCorrection": null
+                #end if
+            }
+            ]]>
+        </configfile>
+    </configfiles>
+    <inputs>
+        <param name="instrumentOutput" type="data" format="sqlite" label="Instrument output" help="Specify mass spectrometry data you want to analyze."/>
+        <param name="scoredPSMs" type="data" format="tabular" label="Scored PSM file" help="Specify list of peptide identifications."/>
+        <param name="peptideDB" type="data" format="sqlite" label="Peptide database" help="Specify the peptide data base."/>
+        <param name="PerformLabeledQuantification" type="boolean" checked="true" label="Perform labeled quantification" help="If checked, a quantification of peptides which contain an isotopic modification is performed. Additionally, for every identified peptide we check if the mass spectrometry run contains a peak at the m/z of the labeled/unlabeled counterpart and quantify it."/>
+        <section name="XicExtraction" title="XIC extraction">
+            <param name="ScanTimeWindow" type="float" value="2.0" label="Scan timewindow" help="Specify the length of the scan time window used for XIC creation."/>
+            <conditional name="MzWindow_DaTypeCond">
+                <param name="MzWindow_DaType" type="select" label="MzWindow_Da type" help="Specify the MzWindow Da Type">
+                    <option value="Fixed" selected="true">Fixed</option>
+                    <option value="Estimate">Estimate</option>
+                </param>
+                <when value="Fixed">
+                    <param name="MzWindow_Da" type="float" value="0.07" label="Window width" help="Specify the m/z window set centered on the target m/z used for XIC creation" />
+                </when>
+                <when value="Estimate">
+                </when>
+            </conditional>
+            <section name="XicProcessing" title="Xic processing">
+                <conditional name="ProcessingTypeCond">
+                    <param name="ProcessingType" type="select" label="Processing type">
+                        <option value="SecondDerivative">Second Derivative</option>
+                        <option value="Wavelet" selected="true">Wavelet</option>
+                    </param>
+                    <when value="SecondDerivative">
+                        <param name="MinSNR" type="float" value="2.0" label="Min SNR" />
+                        <param name="PolynomOrder" type="integer" value="2" label="Polynom order" />
+                        <conditional name="WindowSizeCond">
+                            <param name="WindowSizeType" type="select" label="Window size type">
+                                <option value="Fixed" selected="true">Fixed</option>
+                                <option value="EstimateUsingAutoCorrelation">Estimate using auto correlation</option>
+                            </param>
+                            <when value="Fixed">
+                                <param name="WindowSize" type="integer" value="11" label="Value" />
+                            </when>
+                            <when value="EstimateUsingAutoCorrelation">
+                                <param name="WindowSize" type="float" value="11.0" label="Value" />
+                            </when>               
+                        </conditional>
+                    </when>
+                    <when value="Wavelet">
+                        <param name="BorderPadding" type="integer" value="2" optional="true" label="Border padding amount" />
+                        <param name="BorderPadMethod" type="select" label="Border padding method">
+                            <option value="Random" selected="true">Random</option>
+                            <option value="Zero">Zero</option>
+                        </param>
+                        <param name="InternalPaddingMethod" type="select" label="Internal padding method">
+                            <option value="Random">Random</option>
+                            <option value="NaN">NaN</option>
+                            <option value="Delete">Delete</option>
+                            <option value="Zero">Zero</option>
+                            <option value="LinearInterpolation" selected="true">Linear Interpolation</option>
+                        </param>
+                        <param name="HugeGapPaddingMethod" type="select" label="Huge gap padding method">
+                            <option value="Random">Random</option>
+                            <option value="NaN">NaN</option>
+                            <option value="Delete">Delete</option>
+                            <option value="Zero" selected="true">Zero</option>
+                            <option value="LinearInterpolation">Linear Interpolation</option>
+                        </param>
+                        <param name="HugeGapPaddingDistance" type="float" value="100.0" label="Huge gap padding distance" />
+                        <param name="MinPeakDistance" type="float" value="" optional="true" label="Min peak distance" />
+                        <param name="MinPeakLength" type="float" value="0.1" optional="true" label="Min peak length" />
+                        <param name="MaxPeakLength" type="float" value="1.5" label="Max peak length" />
+                        <param name="NoiseQuantile" type="float" value="0.01" label="Noise quantile" />
+                        <param name="MinSNR" type="float" value="0.01" label="Min SNR" />
+                    </when>
+                </conditional>
+            </section>
+            <param name="TopKPSMs" type="integer" value="3" optional="true" label="Top KPSMs" />
+        </section>
+        <conditional name="BaseLineCorrectionCond">
+            <param name="BaseLineCorrectionEnabled" type="select" label="Use baseline correction">
+                <option value="yes" selected="true">Yes</option>
+                <option value="no">No</option>
+            </param> 
+            <when value="yes">
+                <param name="MaxIterations" type="integer" value="10" label="Max iterations" />
+                <param name="Lambda" type="integer" value="6" label="Lambda" />
+                <param name="P" type="float" value="0.05" label="P" />
+            </when>
+            <when value="no">
+            </when>
+        </conditional>
+        <param name="outputParamfile" type="boolean" value="false" label="Output parameter file"/>
+    </inputs>
+    <outputs>
+        <data format="tabular" name="out_quant" />
+        <data format="json" name="out_paramfile">
+            <filter>outputParamfile</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <param name="instrumentOutput" value="sample.mzlite"/>
+            <param name="scoredPSMs" value="sample.qpsm"/>
+            <param name="peptideDB" value="sample.db"/>
+            <param name="PerformLabeledQuantification" value="true"/>
+            <section name="XicExtraction">
+                <param name="ScanTimeWindow" value="2.0"/>
+                <section name="XicProcessing">
+                    <conditional name="ProcessingTypeCond">
+                        <param name="ProcessingType" value="SecondDerivate" />
+                        <param name="MinSNR" value="2.0"/>
+                        <param name="PolynomOrder" value="2"/>
+                    </conditional>
+                </section>
+                <conditional name="WindowSizeCond">
+                    <param name="WindowSizeType" value="Fixed"/>
+                    <param name="WindowSize" value="11"/>
+                </conditional>
+            </section>
+            <param name="TopKPSMs" value=""/>
+            <conditional name="BaseLineCorrectionCond">
+                <param name="BaseLineCorrectionEnabled" value="yes"/>
+                <param name="MaxIterations" value="10"/>
+                <param name="Lambda" value="6"/>
+                <param name="P" value="0.05"/>
+            </conditional>
+            <param name="outputParamfile" value="false"/>
+        </test>
+        <test expect_num_outputs="2">
+            <param name="instrumentOutput" value="sample.mzlite"/>
+            <param name="scoredPSMs" value="sample.qpsm"/>
+            <param name="peptideDB" value="sample.db"/>
+            <param name="PerformLabeledQuantification" value="true"/>
+            <section name="XicExtraction">
+                <param name="ScanTimeWindow" value="2.0"/>
+                <conditional name="MzWindow_DaTypeCond">
+                    <param name="MzWindow_DaType" value="Fixed"/>
+                    <param name="MzWindow_Da" value="0.07"/>
+                </conditional>
+                <section name="XicProcessing">
+                    <conditional name="ProcessingTypeCond">
+                        <param name="ProcessingType" value="SecondDerivative" />
+                        <param name="MinSNR" value="2.0"/>
+                        <param name="PolynomOrder" value="2"/>
+                    </conditional>
+                </section>
+                <conditional name="WindowSizeCond">
+                    <param name="WindowSizeType" value="Fixed"/>
+                    <param name="WindowSize" value="11"/>
+                </conditional>
+            </section>
+            <param name="TopKPSMs" value=""/>
+            <conditional name="BaseLineCorrectionCond">
+                <param name="BaseLineCorrectionEnabled" value="yes"/>
+                <param name="MaxIterations" value="10"/>
+                <param name="Lambda" value="6"/>
+                <param name="P" value="0.05"/>
+            </conditional>
+            <param name="outputParamfile" value="true"/>
+            <output name="out_paramfile" file="result_1.json" />
+        </test>
+        <test expect_num_outputs="2">
+            <param name="instrumentOutput" value="sample.mzlite"/>
+            <param name="scoredPSMs" value="sample.qpsm"/>
+            <param name="peptideDB" value="sample.db"/>
+            <param name="PerformLabeledQuantification" value="true"/>
+            <section name="XicExtraction">
+                <param name="ScanTimeWindow" value="2.0"/>
+                <conditional name="MzWindow_DaTypeCond">
+                    <param name="MzWindow_DaType" value="Estimate"/>
+                </conditional>
+                <section name="XicProcessing">
+                    <conditional name="ProcessingTypeCond">
+                        <param name="ProcessingType" value="Wavelet" />
+                        <param name="BorderPadding" value="2"/>
+                        <param name="BorderPadMethod" value="Random" />
+                        <param name="InternalPaddingMethod" value="LinearInterpolation"/>
+                        <param name="HugeGapPaddingMethod" value="Zero"/>
+                        <param name="HugeGapPaddingDistance" value="100.0"/>
+                        <param name="MinPeakDistance" value=""/>
+                        <param name="MinPeakLength" value="0.1"/>
+                        <param name="MaxPeakLength" value="1.5"/>
+                        <param name="NoiseQuantile" value="0.01"/>
+                        <param name="MinSNR" value="0.01" />
+                    </conditional>
+                </section>
+            </section>
+            <param name="TopKPSMs" value="3"/>
+            <conditional name="BaseLineCorrectionCond">
+                <param name="BaseLineCorrectionEnabled" value="no"/>
+            </conditional>
+            <param name="outputParamfile" value="true"/>
+            <output name="out_paramfile" file="result_2.json" />
+        </test>
+        <test expect_num_outputs="2">
+            <param name="instrumentOutput" value="sample.mzlite"/>
+            <param name="scoredPSMs" value="sample.qpsm"/>
+            <param name="peptideDB" value="sample.db"/>
+            <param name="PerformLabeledQuantification" value="true"/>
+            <section name="XicExtraction">
+                <param name="ScanTimeWindow" value="2.0"/>
+                <conditional name="MzWindow_DaTypeCond">
+                    <param name="MzWindow_DaType" value="Estimate"/>
+                </conditional>
+                <section name="XicProcessing">
+                    <conditional name="ProcessingTypeCond">
+                        <param name="ProcessingType" value="Wavelet" />
+                        <param name="BorderPadding" value=""/>
+                        <param name="BorderPadMethod" value="Zero" />
+                        <param name="InternalPaddingMethod" value="Zero"/>
+                        <param name="HugeGapPaddingMethod" value="Delete"/>
+                        <param name="HugeGapPaddingDistance" value="101.0"/>
+                        <param name="MinPeakDistance" value="2.0"/>
+                        <param name="MinPeakLength" value=""/>
+                        <param name="MaxPeakLength" value="1.5"/>
+                        <param name="NoiseQuantile" value="0.01"/>
+                        <param name="MinSNR" value="0.01" />
+                    </conditional>
+                </section>
+            </section>
+            <param name="TopKPSMs" value=""/>
+            <conditional name="BaseLineCorrectionCond">
+                <param name="BaseLineCorrectionEnabled" value="no"/>
+            </conditional>
+            <param name="outputParamfile" value="true"/>
+            <output name="out_paramfile" file="result_3.json" />
+        </test>
+    </tests>
+    <help>
+    <![CDATA[
+What It Does
+------------
+**Disclaimer** Disclaimer this tool needs a `peptide database <https://csbiology.github.io/ProteomIQon/tools/PeptideDB.html>`_ and `peptide spectrum matches <https://csbiology.github.io/ProteomIQon/tools/PeptideSpectrumMatching.html>`_ which `passed fdr thresholds <https://csbiology.github.io/ProteomIQon/tools/PSMStatistics.html>`_.
+
+Once a MS/MS spectrum is mapped to a peptide sequence the quantity of the fragmented peptide ion comes into view.
+
+Given an MS run in the mzLite or mzml format and a list of fdr controlled peptide spectrum matches, this tool iterates accross all identified MS/MS scans and groups them by the assigned peptide ion. 
+The scan times of each MS/MS spectrum are then weighted according to the quality of each match to build an reliable estimator for the scan time of the peptide ion in question. 
+This scan time estimator, combined with the monoisotopic m/z, is then used to extract an ion chromatogram. 
+Using wavelet based peak detection techniques we identify all peaks present in the XIC and select the most probable peak our target for quantification. 
+Using parameter estimation techniques we subsequently use peak fitting to fit a set of two gaussian models to the detected peak, from whom the one with the better fit is selected. 
+This allows us not only to report how well the signal fitted to the theoretical expected peak shape but also to obtain accurate estimates for the peak area, our estimator for peptide ion abundance.
+
+.. image:: LabeledQuant.png
+            :width: 768pt
+            :height: 228pt
+
+The quantification tool was designed to allow label-free quantification as well as quantification of full metabolic labeled samples. 
+For this we use the known identity of one of the the peptide ions and calculate the m/z of the unobserved differentially labeled counterpart to extract and quantify the corresponding XIC.
+
+Further Reading
+---------------
+Additional information about the tool can be found in the `documentation <https://csbiology.github.io/ProteomIQon/tools/PSMBasedQuantification.html>`_.  
+    ]]>
+    </help>
+</tool>

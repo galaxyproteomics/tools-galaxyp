@@ -32,7 +32,7 @@ def mergeDicts(d, e):
     for k, v in e.items():
         if (k in d and isinstance(d[k], dict) and isinstance(e[k], collections.abc.Mapping)):
             mergeDicts(d[k], e[k])
-        elif k not in d and not isinstance(e[k], collections.abc.Mapping):
+        elif k not in d:
             d[k] = e[k]
         else:
             sys.stderr.write("fill_ctd.py: could not merge key %s for %s in %s" % (k, d, e))
@@ -135,9 +135,10 @@ with open(sys.argv[3]) as fh:
 # insert the hc_args into the args
 mergeDicts(args, hc_args)
 
-if "adv_opts_cond" in args:
-    args.update(args["adv_opts_cond"])
-    del args["adv_opts_cond"]
+# put the contents of the advanced options section into the main dict
+if "adv_opts" in args:
+    args.update(args["adv_opts"])
+    del args["adv_opts"]
 
 # IDMapper has in and spectra:in params, in is used in out as format_source",
 # which does not work in Galaxy: https://github.com/galaxyproject/galaxy/pull/9493"

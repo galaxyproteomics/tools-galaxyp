@@ -1,0 +1,267 @@
+<tool id="diffacto" name="Diffacto" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" python_template_version="3.5">
+    <description>Comparative Protein Abundance from Covariation of Peptide Abundances</description>
+    <macros>
+        <token name="@TOOL_VERSION@">1.0.6</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+    </macros>
+    <requirements>
+        <requirement type="package" version="@TOOL_VERSION@">diffacto</requirement>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        tr '\t' ',' < '$input' > input.csv &&
+        diffacto
+        -i input.csv
+        #if $db
+            -db '$db'
+        #end if
+        #if $samples
+            -samples '$samples'
+        #end if
+        -reference '$reference'
+        #if $normalize
+            -normalize $normalize
+        #end if
+        #if $farms_mu
+            -farms_mu $farms_mu
+        #end if
+        #if $farms_alpha
+            -farms_alpha $farms_alpha
+        #end if
+        -min_samples $min_samples
+        -impute_threshold $impute_threshold
+        -cutoff_weight $cutoff_weight
+        $use_unique
+        #if $scale == 'log2'
+            -log2 True
+        #else
+            -log2 False
+        #end if
+        $fast
+        -out '$output'
+        #if $mcfdr
+            -mc_out '$mc_out'
+        #end if
+        #if $loadings
+            -loadings_out '$loadings_out'
+        #end if
+    ]]></command>
+    <inputs>
+        <param name="input" argument="-i" type="data" format="tabular,csv" label="Peptides abundances">
+            <help><![CDATA[
+                Peptides abundances in tabular or csv format. 
+                <ul>
+                <li>The first row is column headers and should contain the sample name for each sample column. </li>
+                <li>The first column should contain unique peptide sequences. </li>
+                <li><i>Optionally, the second column may be ProteinID assignments, else the <b>Protein database</b> input is required.</i></li>
+                <li>Each remaining column is a sample column with numeric abundance values.</li>
+                <li>Missing values should be empty instead of zeros.</li>
+                </ul>
+            ]]></help>
+        </param>
+        <param argument="-db" type="data" format="fasta" label="Protein database" optional="true"
+               help="Required if the Peptide abundances input does not have Protein IDs in the second column"/> 
+        <param argument="-samples" type="data" format="tabular" label="Sample Groups" optional="true">
+            <help><![CDATA[
+               <i>Optional: By default, each Sample column in Peptide abundances is treated as a singleton group.</i> 
+               <br>
+               Groups the samples from the Peptides abundance input for comparison.
+               Each sample column from Peptides abundance input should be on a line with 2 columns:
+               <ol> 
+               <li>Sample name for header line of the Peptides abundance input.</li>
+               <li>Group Name assignemnt for the sample</li>
+               </ol>
+            ]]></help>
+        </param>
+        <param argument="-reference" type="text" value="" label="Reference sample groups" optional="true">
+            <help><![CDATA[
+            <i>Optional: By default, Diffacto uses the average of all samples/groups as the reference.</i> 
+            <br>
+            Names of sample groups <i>(separated by semicolon)</i> treated as the comparison reference.
+            <ul>
+            <li>If a Sample Groups input was used, the reference names should be Group names from column 2.</li>
+            <li>Otherwise, the reference names should be Sample names from the Peptides abundance column header line.</li>
+	    </ul>
+            ]]></help>
+        </param>
+        <param name="scale" argument="-log2" type="select" label="Peptides abundance scale">
+            <option value="linear">linear</option>
+            <option value="log2">log2</option>
+        </param>
+        <param argument="-normalize" type="select" label="Sample-wise normalization" optional="true">
+            <option value="average">average</option>
+            <option value="median">median</option>
+            <option value="GMM">GMM</option>
+        </param>
+        <param argument="-farms_mu" type="float" value="0.1" min="0.0" max="1.0" optional="true" label="Hyperparameter mu"
+            help="Hyperparameter mu (default: 0.1)"/>
+        <param argument="-farms_alpha" type="float" value="0.1" min="0.0" max="1.0" optional="true" label="Hyperparameter alpha"
+            help="Hyperparameter weight of prior probability (default: 0.1)"/>
+        <param argument="-min_samples" type="integer" value="1" min="1" label="Minimum samples for peptide"
+            help="Minimum number of samples peptides needed to be quantified in"/>
+        <param argument="-impute_threshold" type="float" value="0.99" min="0.1" max="1.0" label="Minimum fraction of missing values in the group"
+            help="Impute missing values if missing fraction is larger than the threshold."/>
+        <param argument="-cutoff_weight" type="float" value="0.5" min="0." max="1.0" label="Peptide cutoff weight"
+            help="Peptides weighted lower than the cutoff will be excluded."/>
+        <param argument="-use_unique" type="boolean" truevalue="-use_unique True" falsevalue="" checked="false" label="Use unique peptides only"/>
+        <param argument="-fast" type="boolean" truevalue="-fast True" falsevalue="" checked="false" label="Allow early termination in EM calculation when noise is sufficiently small."/>
+        <param name="mcfdr" argument="-mc_out" type="boolean" truevalue="True" falsevalue="False" checked="false" label="Perform Monte Carlo FDR simulation"/>
+        <param name="loadings" argument="-loadings_out" type="boolean" truevalue="True" falsevalue="False" checked="false" label="Output Protein Peptide loadings file"/>
+    </inputs>
+    <outputs>
+        <data name="output" format="tabular" label="${tool.name} on ${on_string}: Protein Abundance">
+            <actions>
+                <action name="comment_lines" type="metadata" default="1" />
+                <action name="column_names" type="metadata" default="Protein,N.Pept,Q.Pept,S/N,P(PECA)" />
+            </actions>
+        </data>
+        <data name="mc_out" format="tabular" label="${tool.name} on ${on_string}: MC FDR">
+            <filter>mcfdr == True</filter>
+            <actions>
+                <action name="comment_lines" type="metadata" default="1" />
+                <action name="column_names" type="metadata" default="Protein,P(MC),MCFDR" />
+            </actions>
+        </data>
+        <data name="loadings_out" format="tabular" label="${tool.name} on ${on_string}: Protein Peptide loading">
+            <filter>loadings == True</filter>
+            <actions>
+                <action name="comment_lines" type="metadata" default="1" />
+                <action name="column_names" type="metadata" default="Protein,Peptide,Loading" />
+            </actions>
+        </data>
+    </outputs>
+    <tests>
+        <test>
+            <param name="input" ftype="csv" value="HBY20Mix.peptides.csv"/>
+            <param name="db" ftype="fasta" value="UP000002311_559292.fasta"/>
+            <param name="samples" ftype="tabular" value="HBY20Mix.samples.lst"/>
+            <output name="output">
+               <assert_contents>
+                    <has_text text="P19097" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="input" ftype="tabular" value="HBY20Mix.peptides.tsv"/>
+            <param name="db" ftype="fasta" value="UP000002311_559292.fasta"/>
+            <param name="samples" ftype="tabular" value="HBY20Mix.samples.lst"/>
+            <output name="output">
+               <assert_contents>
+                    <has_text text="P19097" />
+                </assert_contents>
+            </output>
+        </test>
+
+        <test>
+            <param name="input" ftype="csv" value="iPRG.novo.pep.csv"/>
+            <param name="samples" ftype="tabular" value="iPRG.samples.lst"/>
+            <param name="min_samples" value="2"/>
+            <output name="output">
+               <assert_contents>
+                    <has_text text="FAS2" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="input" ftype="csv" value="iPRG.novo.pep.csv"/>
+            <param name="samples" ftype="tabular" value="iPRG.samples.lst"/>
+            <param name="min_samples" value="4"/>
+            <param name="use_unique" value="True"/>
+            <param name="mcfdr" value="True"/>
+            <output name="output">
+               <assert_contents>
+                    <has_text text="FAS2" />
+                </assert_contents>
+            </output>
+            <output name="mc_out">
+               <assert_contents>
+                    <has_text text="FAS2" />
+                </assert_contents>
+            </output>
+        </test>
+
+    </tests>
+    <help><![CDATA[
+**Diffacto**
+
+Diffacto_ quantifies comparative protein abundance from the covariation of peptide abundances.
+
+Diffacto_ applies factor analysis to extract the covariation of peptides' abundances. The method enables a weighted geometrical average summarization and automatic elimination of incoherent peptides, which may result from suboptimal digestion or being partially modified, and are not representative of the protein concentration.
+
+**Inputs**
+
+  - **Peptides abundances** *in tabular or csv format*
+
+    - The first row is column headers and should contain the sample name for each sample column.
+    - The first column should contain unique peptide sequences.
+    - *Optionally, the second column may be Protein ID assignments, else the* **Protein database** *input is required.*
+    - Each remaining column is a sample column with numeric abundance values.
+    - Missing values should be empty instead of zeros.
+    - Example: 
+
+      ============ ========== ========= ========= ========= =========
+      sequences    Protein    Sample1-A Sample1_B Sample2_A Sample2_B
+      ============ ========== ========= ========= ========= =========
+      AAATAAMTK    EF3A       127.35209 142.58217 135.89206 162.54500
+      AAATTGEWDK   PDC1       100.35922 114.68676 922.60617 833.97955
+      LPVLLADACCSR HSP72;PDC1 120.21570 194.99594 977.48321 219.23281
+      AAEEAGVTDVK  FAS2       442.67501 457.52266 448.52837 424.15980
+      ============ ========== ========= ========= ========= =========
+
+
+  - **Protein database** *(optional)*
+
+    - The Protein database in fasta format that has protein seqeunces containing the peptides.
+    - Required if the **Peptides abundances** input does not have a second column containing Protein ID assignments
+
+
+  - **Sample Groups** *(optional)*
+
+    - First column has the sample name
+    - Second column has the group name
+    - Example:
+
+      ========= ==
+      Sample1-A S1
+      Sample1_B S1
+      Sample2_A S2
+      Sample2_B S2
+      ========= ==
+
+
+**Outputs**
+
+  - **Protein Abundance**
+
+        ======= ====== ====== =================== =================== ================== ==================
+        Protein N.Pept Q.Pept S/N                 P(PECA)	         S1                 S2
+        ======= ====== ====== =================== =================== ================== ==================
+        EF3A    2      2      -2.874362404756714  0.2608189432601452  463172795.59269696 489796576.81520355
+        FAS2    6      4      -0.5901265476375578 0.8395809777778386  52093246.23323742  53280470.3811749
+        PDC1    3      2      6.634988423694361   0.25491030879514676 203769831.79809052 174641994.14231393
+        ======= ====== ====== =================== =================== ================== ==================
+
+  - **FDR Estimate from Monte Carlo Simulation** *(optional)*
+
+        =======  =================== ===================
+        Protein  P(MC)               MCFDR            
+        =======  =================== ===================
+        EF3A     0.1419053964023984  0.5287482885321804
+        FAS2     0.9867109634551495  0.9132662960822688
+        PDC1     0.3338088445078459  0.5287482885321804
+        =======  =================== ===================
+
+  - **Protein Peptide Loadings** *(optional)*
+
+        =======  ===========  ===================
+        EF3A     AAATAAMTK    0.5287482885321804
+        FAS2     AAEEAGVTDVK  0.9132662960822688
+        PDC1     AAATTGEWDK   0.5287482885321804
+        =======  ===========  ===================
+
+.. _Diffacto: https://github.com/statisticalbiotechnology/diffacto
+
+    ]]></help>
+    <citations>
+        <citation type="doi">10.1074/mcp.O117.067728</citation>
+    </citations>
+</tool>

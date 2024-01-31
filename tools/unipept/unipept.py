@@ -486,7 +486,7 @@ def __main__():
     parser.add_option('-T', '--tsv', dest='tsv', default=None, help='Output file path for TAB-separated-values (.tsv) formatted results')
     parser.add_option('-C', '--csv', dest='csv', default=None, help='Output file path for Comma-separated-values (.csv) formatted results')
     parser.add_option('-U', '--unmatched', dest='unmatched', default=None, help='Output file path for peptide with no matches')
-    parser.add_option('-u', '--url', dest='url', default='http://api.unipept.ugent.be/api/v1/', help='unipept url http://api.unipept.ugent.be/api/v1/')
+    parser.add_option('-u', '--url', dest='url', default='https://api.unipept.ugent.be/api/v1/', help='unipept url https://api.unipept.ugent.be/api/v1/')
     parser.add_option('-P', '--peptide_match', dest='peptide_match', choices=['best', 'full', 'report'], default='best', help='Match whole peptide')
     parser.add_option('--unmatched_aa', dest='unmatched_aa', default=None, help='Show unmatched AA in peptide as')
     # debug

@@ -1,0 +1,404 @@
+<tool id="calisp" name="calisp" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="21.05">
+    <description>Estimate isotopic composition of peptides from proteomics mass spectrometry data</description>
+    <macros>
+        <token name="@TOOL_VERSION@">3.0.13</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+        <token name="@CALISP_REPO@">https://raw.githubusercontent.com/kinestetika/Calisp/208d495674e2b52fe56cf23457c833d1c2527242</token>
+        <xml name="input_macro" tokens="multiple">
+            <!-- According to readme mzid input is not yet implented -->
+        </xml>
+    </macros>
+    <requirements>
+        <requirement type="package" version="@TOOL_VERSION@">calisp</requirement>
+    </requirements>
+    <command detect_errors="aggressive"><![CDATA[
+#import re
+
+mkdir -p spectra &&
+#set escaped_specs = re.sub('[^\w\-\.,:]', '_', str($spectrum_file.element_identifier))
+ln -s '$spectrum_file' spectra/'$escaped_specs' &&
+
+mkdir -p psms &&
+#set escaped_peps = re.sub('[^\w\-\.,:]', '_', str($peptide_file.element_identifier))
+ln -s '$peptide_file' psms/'$escaped_peps' &&
+
+calisp 
+    --spectrum_file spectra/
+    --peptide_file psms/
+    --output_file calisp-output/
+    --mass_accuracy $mass_accuracy
+    --bin_delimiter '$bin_delimiter'
+    --threads "\${GALAXY_SLOTS:-1}"
+    --isotope $isotope
+    $compute_clumps
+#if $isotope_abundance_matrix
+    --isotope_abundance_matrix '$isotope_abundance_matrix'
+#end if
+
+#if $isotope_abundance_matrix
+    && ISOTOPE_ABUNDANCE_MATRIX="$isotope_abundance_matrix"
+#else
+    && ISOTOPE_ABUNDANCE_MATRIX="\$(python -c 'import site; print(f"{site.getsitepackages()[0]}/calisp/isotope_matrix.txt")')"
+#end if
+
+    && python '$__tool_directory__/benchmarking.py'
+        --input calisp-output/
+        --isotope_abundance_matrix "\$ISOTOPE_ABUNDANCE_MATRIX"
+        --isotope $isotope
+#if $benchmark_cond.benchmark == 'yes'
+        --out_filtered '$filtered'
+        --out_summary '$summary'
+        #if $benchmark_cond.nominal_values
+            --nominal_values '$benchmark_cond.nominal_values'
+        #end if
+#end if
+    ]]></command>
+    <inputs>
+        <param argument="--spectrum_file" type="data" multiple="false" format="mzml" label="Spectrum file"/>
+        <param argument="--peptide_file" type="data" multiple="false" format="tabular" label="Peptide file" help="Psm file" />
+        <param argument="--mass_accuracy" type="float" value="10" label="Mass accuracy" help="The maximum mass difference between theoretical mass and experimental mass of a peptide" />
+        <param argument="--bin_delimiter" type="text" value="_" label="Bin delimiter" help="For metagenomic data, the delimiter that separates the bin ID from the protein ID (default: &quot;_&quot;). Use &quot;-&quot; to ignore bins ID entirely.">
+           <sanitizer invalid_char="">
+                <valid initial="string.ascii_letters,string.digits">
+                    <add value="_" />
+                    <add value="-" />
+                    <add value=":" />
+                </valid>
+            </sanitizer> 
+        </param>
+        <param argument="--isotope" type="select" label="Target isotope">
+            <option value="13C" selected="true">13C</option>
+            <option value="14C">14C</option>
+            <option value="15N">15N</option>
+            <option value="17O">17O</option>
+            <option value="18O">18O</option>
+            <option value="2H">2H</option>
+            <option value="3H">3H</option>
+            <option value="33S">33S</option>
+            <option value="34S">34S</option>
+            <option value="36S">36S</option>
+        </param>
+        <param argument="--compute_clumps" type="boolean" truevalue="--compute_clumps" falsevalue="" checked="false" label="Compute clumps" help="To compute clumpiness of carbon assimilation. Only use when samples are labeled tosaturation. Estimation of clumpiness takes much additional time." />
+        <param argument="--isotope_abundance_matrix" type="data" format="tabular" optional="true" label="Custom isotope abundance matrix" help="If not given the built in matrix will be used" />
+        <conditional name="benchmark_cond">
+            <param name="benchmark" type="select" label="Run benchmarking">
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+            </param>
+            <when value="yes">
+                <param name="nominal_values" type="data" format="tabular" optional="true" label="Nominal values" help="A table containing ms_run and their nominal value (1, 5, or 10)"/>
+            </when>
+            <when value="no"/>
+        </conditional>
+    </inputs>
+    <outputs>
+        <collection name="output" type="list">
+            <discover_datasets pattern="(?P&lt;designation&gt;.*)\.tsv" format="tabular" directory="calisp-output"/>
+        </collection>
+        <data name="filtered" format="tabular" label="${tool.name} on ${on_string}: filtered">
+            <filter>benchmark_cond['benchmark'] == 'yes'</filter>
+        </data>
+        <data name="summary" format="tabular" label="${tool.name} on ${on_string}: peptide summary">
+            <filter>benchmark_cond['benchmark'] == 'yes'</filter>
+        </data>
+    </outputs>
+    <tests>
+        <!-- TODO test data to large, avilable from here: https://github.com/kinestetika/Calisp/tree/master/test
+            if possible inlcude via location in the future -->
+        <!-- <test expect_num_outputs="3">
+            <param name="spectrum_file" location="https://raw.githubusercontent.com/kinestetika/Calisp/v@TOOL_VERSION@/test/calisp_test_data.mzML" ftype="mzml"/>
+            <param name="peptide_file" location="https://raw.githubusercontent.com/kinestetika/Calisp/v@TOOL_VERSION@/test/calisp_test_data_TargetPeptideSpectrumMatch.txt" ftype="tabular"/>
+            <param name="benchmark" value="true"/>
+            <output_collection name="output" count="1">
+                <element name="calisp_test_data">
+                    <assert_contents>
+                        <has_text text="experiment"/>
+                        <has_text text="MKH_260min_1800ng"/>
+                        <has_text text="HOMO"/>
+                        <has_text text="P13645"/>
+                        <has_text text="NHEEEMKDLR"/>
+                        <has_text text="Oxidation"/>
+                        <has_n_columns n="84"/>
+                        <has_n_lines n="24"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output name="filtered" ftype="tabular">
+                <assert_contents>
+                    <has_n_lines n="24"/>
+                    <has_n_columns n="87"/>
+                </assert_contents>
+            </output>
+            <output name="summary" value="summary.tsv" ftype="tabular"/>
+        </test> -->
+
+        <!-- same test, but with isotope abundance matrix supplied by the user
+             (using the same as the built in => same results)
+            
+            TODO: test will only work with 23.1 tool-utils package available -->
+        <!-- <test expect_num_outputs="3">
+            <param name="spectrum_file" location="https://raw.githubusercontent.com/kinestetika/Calisp/v@TOOL_VERSION@/test/calisp_test_data.mzML" ftype="mzml"/>
+            <param name="peptide_file" location="https://raw.githubusercontent.com/kinestetika/Calisp/v@TOOL_VERSION@/test/calisp_test_data_TargetPeptideSpectrumMatch.txt" ftype="tabular"/>
+            <param name="isotope_abundance_matrix" location="https://raw.githubusercontent.com/kinestetika/Calisp/v@TOOL_VERSION@/src/calisp/isotope_matrix.txt" ftype="tabular"/>
+            <param name="benchmark" value="true"/>
+            <output_collection name="output" count="1">
+                <element name="calisp_test_data">
+                    <assert_contents>
+                        <has_text text="experiment"/>
+                        <has_text text="MKH_260min_1800ng"/>
+                        <has_text text="HOMO"/>
+                        <has_text text="P13645"/>
+                        <has_text text="NHEEEMKDLR"/>
+                        <has_text text="Oxidation"/>
+                        <has_n_columns n="84"/>
+                        <has_n_lines n="24"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output name="filtered" ftype="tabular">
+                <assert_contents>
+                    <has_n_lines n="24"/>
+                    <has_n_columns n="87"/>
+                </assert_contents>
+            </output>
+            <output name="summary" value="summary.tsv" ftype="tabular"/>
+        </test> -->
+
+        <!--  trst output filters for no benchmarking -->
+        <!-- <test expect_num_outputs="1">
+            <param name="spectrum_file" location="https://raw.githubusercontent.com/kinestetika/Calisp/v@TOOL_VERSION@/test/calisp_test_data.mzML" ftype="mzml"/>
+            <param name="peptide_file" location="https://raw.githubusercontent.com/kinestetika/Calisp/v@TOOL_VERSION@/test/calisp_test_data_TargetPeptideSpectrumMatch.txt" ftype="tabular"/>
+            <conditional name="benchmark_cond">
+                <param name="benchmark" value="no"/>
+            </conditional>
+            <output_collection name="output" count="1">
+                <element name="calisp_test_data">
+                    <assert_contents>
+                        <has_text text="experiment"/>
+                        <has_text text="MKH_260min_1800ng"/>
+                        <has_text text="HOMO"/>
+                        <has_text text="P13645"/>
+                        <has_text text="NHEEEMKDLR"/>
+                        <has_text text="Oxidation"/>
+                        <has_n_columns n="84"/>
+                        <has_n_lines n="24"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test> -->
+    </tests>
+    <help><![CDATA[
+Calisp (Calgary approach to isotopes in proteomics) is a program that estimates
+isotopic composition (e.g. 13C/12C, delta13C, 15N/14N etc) of peptides from
+proteomics mass spectrometry data. Input data consist of mzML files and files
+with peptide spectrum matches.
+
+Calisp was originally developed in Java. This Galaxy tool uses the python 
+reimplementation https://github.com/kinestetika/Calisp.
+Note that, in contrast to the Java version the python reimplementation does
+not use ``mcl`` .
+Compared to Java versions of calisp, the workflow has been simplified.
+Calisp does not filter out any isotopic patterns, or adds up isotopic
+patterns to reduce noise - like the Java version does. It simply estimates the
+ratio for the target isotopes (e.g. 13C/12C) for every isotopic pattern it can
+subsample. It estimates this ratio based on neutron abundance and using fast
+fourier transforms. The former applies to stable isotope probing experiments.
+The latter applies to natural abundances, or to isotope probing experiments with
+very little added label (e.g. using substrates with <1% additional 13C). The
+motivation for omitting filtering is that keeping all subsampled isotopic
+patterns, including bad ones, will enable training of machine learning
+classifiers. Also, because it was shown that the median provides better
+estimates for species in microbial communities than the mean, adding up isotopic
+patterns to improve precision has lost its purpose. There is more power (and
+sensitivity) in numbers.
+
+Because no data are filtered out and no isotopic patterns get added up,
+calisp analyzes at least ten times as many isotopic patterns compared to the
+Java version. That means calisp.py is about ten times slower, it takes about
+5-10 min per .mzML file on a Desktop computer. For natural
+abundance data, it works well to only use those spectra that have a FFT fitting
+error ("error_fft") of less than 0.001. Note that this threshold is less
+stringent then thew one used by the java program.
+
+Input
+=====
+
+Calisp needs two inputs: a spectra file in mzML format and tabular peptipe file (PSM).
+The PSM file contains a column "Spectrum File" that links the peptides to the
+original spectra files. The mzML files are identified by the run id
+information stored in the mzML files or the file name. 
+In order to make the association via the file name work in Galaxy one can either
+
+- use collections where the element identifiers are equal to the data in the column
+- make sure that dataset names are equal to the data in this column
+
+Output table
+============
+
+Each row contains one isotopic pattern, defined by the following columns:
+
+========================================== ===================
+Header name                                Content
+========================================== ===================
+experiment                                 filename of the peptide spectrum match (psm) file
+ms_run                                     filename of the .mzml file
+bins                                       bin/mag ids, separated by commas. Calisp expects the protein ids in the psm file to consist of two parts, separated by a delimiter (_ by default). The first part is the bin/mag id, the second part the protein id
+proteins                                   the ids of the proteins associated with the pattern (without the bin id)
+peptide                                    the aminoacid sequence of the peptide
+peptide_mass                               the mass of the peptide
+C                                          # of carbon atoms in the peptide
+N                                          # of nitrogen atoms in the peptide
+O                                          # of oxygen atoms in the peptide
+H                                          # of hydrogen atoms in the peptide
+S                                          # of sulfur atoms in the peptide
+psm_id                                     psm id
+psm_mz                                     psm m over z
+psm_charge                                 psm charge
+psm_neutrons                               number of neutrons inferred from custom 'neutron' modifications 
+psm_rank                                   rank of the psm
+psm_precursor_id                           id of the ms1 spectrum that was the source of the psm 
+psm_precursor_mz                           mass over charge of the precursor of the psm
+pattern_charge                             charge of the pattern
+pattern_precursor_id                       id of the ms1 spectrum that was the source of the pattern
+pattern_total_intensity                    total intensity of the pattern
+pattern_peak_count                         # of peaks in the pattern
+pattern_median_peak_spacing                medium mass difference between a pattern's peaks
+spectrum_mass_irregularity                 a measure for the standard deviation in the mass difference between a pattern's peaks
+ratio_na                                   the estimated isotope ratio (in percent) inferred from neutron abundance (sip experiments) 
+ratio_fft                                  the estimated isotope ratio (in percent) inferred by the fft method (natural isotope abundances)
+error_fft                                  the remaining error after fitting the pattern with fft
+error_clumpy                               the remaining error after fitting the pattern with the clumpy carbon method
+flag_peptide_contains_sulfur               true if peptide contains sulfur
+flag_peptide_has_modifications             true if peptide has no modifications
+flag_peptide_assigned_to_multiple_bins     true if peptide is associated with multiple proteins from different bins/mags
+flag_peptide_assigned_to_multiple_proteins true if peptide is associated with multiple proteins
+flag_peptide_mass_and_elements_undefined   true if peptide has unknown mass and elemental composition
+flag_psm_has_low_confidence                true if psm was flagged as having low confidence (peptide identity uncertain)
+flag_psm_is_ambiguous                      true if psm could not be assigned with certainty
+flag_pattern_is_contaminated               true if multiple patterns have one or more shared peaks
+flag_pattern_is_wobbly                     true if pattern_median_peak_spacing exceeds a treshold
+flag_peak_at_minus_one_pos                 true if a peak was detected immediately before the monoisotopic peak, could indicate overlap with another pattern
+i0 - i19                                   the intensities of the first 20 peaks of the pattern  
+m0 - m19                                   the masses of the first 20 peaks of the pattern
+c1 - c6                                    contributions of clumps of 1-6 carbon to ratio_na. These are the outcomes of the clumpy carbon model. These results are only meaningful if the biomass was labeled to saturation.
+========================================== ===================
+
+Benchmarking
+============
+
+If the user chooses to run the additional benchmarking script two additional
+outputs are created as follows.
+
+Load data:
+----------
+
+- Concatenate calisp result tables
+- add column ``delta_na`` = 1000 * ``ratio_na`` / (1/factor-2)
+- add column ``delta_fft`` = 1000 * ``ratio_fft`` / (1/factor-2)
+
+Filter data:
+------------
+
+Rows are removed for which any of the following criteria applies
+
+- flag_peak_at_minus_one_pos
+- flag_pattern_is_wobbly
+- flag_psm_has_low_confidence
+- flag_psm_is_ambiguous
+- flag_pattern_is_contaminated
+- flag_peptide_assigned_to_multiple_bins
+
+Furthermore in the ``peptide`` column the strings ``"Oxidation"``, ``"Carbamidomethyl"``,
+and text in brackets (i.e. ``[]``) preceded by any number of spaces
+is removed.
+
+Benchmarking:
+-------------
+
+Iterate through all combinations of unique peptides, proteins, and samples
+and output the following tabular information
+
+=================== ===========================
+Column              Content
+=================== ===========================
+file                The name of the mzML spectrum file comprising the peptide
+bin                 bin/mag ids, separated by commas. Calisp expects the protein ids in the psm file to consist of two parts, separated by a delimiter (_ by default). The first part is the bin/mag id, and the second part is the protein id
+%label              The label percentage (≠ 0 if labelled components used during experiments)
+ratio               The natural abundance ratio of the target element (C, H, N, O, S)
+peptide             The labeled peptides
+psm_mz              psm m over z
+n(patterns)         The number of iterations of the same pattern for the peptides has been repeated
+mean intensity      The mean of the total intensity of the pattern
+ratio_NA median     The mean of the estimated isotope ratio inferred from neutron abundance (sip experiments)
+N mean              The mean of the number of neutrons inferred from custom 'neutron' modifications
+ratio_NA SEM        The standard error of the mean of the estimated isotope ratio inferred from neutron abundance (sip experiments)
+ratio_FFT median    The mean of the estimated isotope ratio inferred by the fft method (natural isotope abundances)
+ratio_FFT SEM       The standard error of the mean of the estimated isotope ratio inferred by the fft method (natural isotope abundances)
+False Positive      Any false positive indications
+=================== ===========================
+
+Mean, median, and standard error values are computed for
+all entries of this sample and that have the same peptide.
+
+**Isotope abundance matrix**:
+
+The isotope abundance matrix gives the background unlabeled fraction.
+The default matrix implemented in calisp is given here: 
+https://github.com/kinestetika/Calisp/blob/v@TOOL_VERSION@/src/calisp/isotope_matrix.txt. 
+Columns specify the atom of interest and the rows the isotope, i.e. 
+rows 1-5 correspond to C, N, O, H, S. For instance 
+13C is in the 2nd column of the 1st row and 14C in the 3rd column
+of the same row. 
+
+**Benchmarking without nominal values**:
+
+If no nominal values, i.e. percentage of labeled atoms are given,
+nominal values of 0 are assumed.
+
+The values in the `ratio` column is comuted as `background_isotope / background_unlabelled * 100`
+where `background_unlabelled` is taken from the isotope abundance matrix
+according to the chosen target isotope.
+Then `background_isotope` is given by `1 - background_unlabelled`
+
+All entries of the table are considered not false positive.
+
+**Benchmarking with nominal values**:
+
+The `%label` (the nominal value) of a sample is either 0 (the default),
+1, 5, or 10 and can be provided or each sample by a tabular dataset
+(column 1 should give the sample names and column 2 the nominal value).
+
+The `ratio = I / U * 100` is given by 
+`U = unlabeled_fraction * background_unlabelled` and
+`I = nominal_value / 100 + unlabeled_fraction * background_isotope`
+where 
+`unlabeled_fraction = 1 - nominal_value / 100`
+`background_isotope = 1 - background_unlabelled`
+and `background_unlabelled` is given by the isotope abundance matrix.
+
+A peptide is considered false positive if it's not a contaminant(at the moment only K12)
+and the median of `ratio_na` values for the same peptide and sample
+is greater than a threshold depending on the nominal value:
+
+"For false positive discovery rates we set the threshold at the
+isotope/unlabelled associated with 1/4 of a generation of labeling. The E.
+coli values (1.7, 4.2 and 7.1) are for 1 generation at 1, 5 and 10% label, and
+we take the background (1.07) into account as well.""
+
+============= =========
+nominal value threshold
+============= =========
+1             `1.07 + (1.7 - 1.07) / 4`
+5             `1.07 + (4.2 - 1.07) / 4`
+10            `1.07 + (7.1 - 1.07) / 4`
+============= =========
+
+File an issue at https://github.com/galaxyproteomics/tools-galaxyp/issues if
+different contaminants of thresholds should be considered.
+    ]]></help>
+    <citations>
+        <citation type="doi">10.1186/s40168-022-01454-1</citation>
+        <citation type="doi">10.1073/pnas.1722325115</citation>
+        <citation type="doi">10.1093/bioinformatics/bty046</citation>
+    </citations>
+</tool>
