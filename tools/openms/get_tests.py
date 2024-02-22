@@ -307,7 +307,7 @@ for cmake in args.cmake:
 
             # join test statements that are split over multiple lines
             if line.endswith(")"):
-                jline += line[:-1]
+                jline += " " + line[:-1]
             else:
                 jline = line
                 continue

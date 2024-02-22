@@ -8,9 +8,7 @@ if [[ "$?" -ne "0" ]]; then >&2 echo 'ClusterMassTraces failed'; >&2 echo -e "st
 CVInspector -test -cv_files CHEMISTRY/XLMOD.obo -cv_names XLMOD -mapping_file MAPPING/ms-mapping.xml -html CVInspector.html > CVInspector.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'CVInspector failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
-# TODO new test data (old was generated with MSSimulator)
-# DeMeanderize -test -in MSsimulator_MALDI.mzml -out DeMeanderize.mzml > DeMeanderize.stdout 2> stderr
-# if [[ "$?" -ne "0" ]]; then >&2 echo 'DeMeanderize failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
+# TODO DeMeanderize
 
 # TODO DigestorMotif
 
