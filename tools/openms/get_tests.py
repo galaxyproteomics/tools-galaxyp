@@ -311,7 +311,7 @@ for cmake in args.cmake:
             else:
                 jline = line
                 continue
-            line, jline = jline, ""
+            line, jline = jline.strip(), ""
             match = re_diff.search(line)
             if match:
                 in1 = match.group(1).split("/")[-1]
