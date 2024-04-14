@@ -99,17 +99,18 @@ def unique_files(line: str):
     hence we create symlinks for each file used twice
     """
     cmd = shlex.split(line)
+    # print(f"{cmd}")
     files = {}
     # determine the list of indexes where each file argument (anything appearing in test-data/) appears
     for idx, e in enumerate(cmd):
         p = os.path.join("test-data", e)
-        if not os.path.exists(p):
+        if not os.path.exists(p) and not os.path.islink(p):
             continue
         try:
             files[e].append(idx)
         except KeyError:
             files[e] = [idx]
-
+    # print(f"{files=}")
     for f in files:
         if len(files[f]) < 2:
             continue
@@ -117,12 +118,15 @@ def unique_files(line: str):
             f_parts = f.split(".")
             f_parts[0] = f"{f_parts[0]}_{i}"
             new_f = ".".join(f_parts)
-            if os.path.exists(os.path.join("test-data", f)):
-                os.unlink(os.path.join("test-data", f))
+            # if os.path.exists(os.path.join("test-data", new_f)):
+            #     os.unlink(os.path.join("test-data", new_f))
             sys.stderr.write(
-                f'symlink {os.path.join("test-data", new_f)} {os.path.join("test-data", f)}\n'
+                f'\tsymlink {os.path.join("test-data", new_f)} {os.path.join("test-data", f)}\n'
             )
-            os.symlink(f, os.path.join("test-data", new_f))
+            try:
+                os.symlink(os.path.join("test-data", f), os.path.join("test-data", new_f))
+            except FileExistsError:
+                pass
             cmd[idx] = new_f
     return shlex.join(cmd)
 
@@ -200,8 +204,11 @@ def process_test_line(
         if re.search(skip, line):
             return
 
+    # print(f"pre {line=}")
     line = fix_tmp_files(line, diff_pairs)
+    # print(f"fix {line=}")
     line = unique_files(line)
+    # print(f"unq {line=}")
     ini, line = get_ini(line, tool_id)
 
     from dataclasses import dataclass, field
