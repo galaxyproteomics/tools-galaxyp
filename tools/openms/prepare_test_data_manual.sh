@@ -120,7 +120,7 @@ if [[ "$?" -ne "0" ]]; then >&2 echo 'SpectraFilterScaler failed'; >&2 echo -e "
 SpectraFilterThresholdMower -test -in  SpectraFilterSqrtMower_1_input.mzML -out  SpectraFilterThresholdMower.mzML > SpectraFilterThresholdMower.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'SpectraFilterThresholdMower failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
-SpectraMerger -test -in NovorAdapter_in.mzML -out SpectraMerger_1.mzML > SpectraMerger.stdout 2> stderr
+SpectraMerger -test -in NovorAdapter_in.mzML -out SpectraMerger_1.mzML -algorithm:average_gaussian:ms_level 2 > SpectraMerger.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'SpectraMerger failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
 XMLValidator -test -in FileFilter_1_input.mzML > XMLValidator.stdout 2> stderr
