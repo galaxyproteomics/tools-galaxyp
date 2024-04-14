@@ -121,10 +121,10 @@ def unique_files(line: str):
             # if os.path.exists(os.path.join("test-data", new_f)):
             #     os.unlink(os.path.join("test-data", new_f))
             sys.stderr.write(
-                f'\tsymlink {os.path.join("test-data", new_f)} {os.path.join("test-data", f)}\n'
+                f'\tsymlink {os.path.join("test-data", new_f)} {f}\n'
             )
             try:
-                os.symlink(os.path.join("test-data", f), os.path.join("test-data", new_f))
+                os.symlink(f, os.path.join("test-data", new_f))
             except FileExistsError:
                 pass
             cmd[idx] = new_f
