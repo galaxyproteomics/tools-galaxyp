@@ -25,20 +25,22 @@ def draw_roi(input_roi, input_img, fill):
             # Polygon with holes
             if not isinstance(sub_roi[0][0], list):
                 if first_roi:
-                    input_img = draw_poly(sub_roi, input_img, fill=fill)
                     first_roi = False
+                    col = (0, 0, 0)
                 else:
                     # holes in ROI
-                    input_img = draw_poly(sub_roi, input_img, col=(255, 255, 255), fill=fill)
+                    col = (255, 255, 255) if not fill else (0, 0, 0)
+                input_img = draw_poly(sub_roi, input_img, col=col, fill=fill)
             else:
                 # MultiPolygon with holes
                 for sub_coord in sub_roi:
                     if first_roi:
-                        input_img = draw_poly(sub_coord, input_img, fill=fill)
                         first_roi = False
+                        col = (0, 0, 0)
                     else:
                         # holes in ROI
-                        input_img = draw_poly(sub_coord, input_img, col=(255, 255, 255), fill=fill)
+                        col = (255, 255, 255) if not fill else (0, 0, 0)
+                    input_img = draw_poly(sub_coord, input_img, col=col, fill=fill)
 
     return input_img
 
@@ -89,6 +91,10 @@ def split_qupath_roi(in_roi):
 
         coords_df.to_csv("{}_{}.txt".format(tma_name, cell_type), sep='\t', index=False)
 
+        # img save
+        if args.img:
+            cv2.imwrite("{}_{}.png".format(tma_name, cell_type), img)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Split ROI coordinates of QuPath TMA annotation by cell type (classfication)")
@@ -96,6 +102,7 @@ if __name__ == "__main__":
     parser.add_argument("--fill", action="store_true", required=False, help="Fill pixels in ROIs")
     parser.add_argument('--version', action='version', version='%(prog)s 0.1.0')
     parser.add_argument("--all", action="store_true", required=False, help="Extracts all ROIs")
+    parser.add_argument("--img", action="store_true", required=False, help="Generates image of ROIs")
     args = parser.parse_args()
 
     if args.qupath_roi:
