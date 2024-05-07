@@ -1,114 +1,88 @@
 <macros>
     <import>msfragger_macros.xml</import>
-    <token name="@TOOL_VERSION@">19.1</token>
-    <token name="@VERSION_SUFFIX@">dev8</token>
+    <token name="@TOOL_VERSION@">20.0</token>
+    <token name="@VERSION_SUFFIX@">0</token>
     <xml name="requirements">
         <requirements>
             <requirement type="package" version="@TOOL_VERSION@">fragpipe</requirement>
-            <yield/>
         </requirements>
-    </xml>
-    <xml name="citations">
-        <citations>
-            <citation type="doi">10.1038/s41592-020-0912-y</citation>
-            <citation type="doi">10.1038/nmeth.4256</citation>
-            <citation type="doi">10.1038/s41467-020-17921-y</citation>
-            <citation type="doi">10.1038/s41592-020-0967-9</citation>
-            <citation type="doi">10.1021/acs.jproteome.0c00119</citation>
-            <citation type="doi">10.1074/mcp.TIR120.002216</citation>
-            <citation type="doi">10.1074/mcp.TIR120.002048</citation>
-            <citation type="doi">10.1016/j.mcpro.2021.100077</citation>
-            <citation type="doi">10.1021/acs.jproteome.0c00544</citation>
-            <citation type="doi">10.1038/nmeth.3255</citation>
-            <yield />
-        </citations>
     </xml>
 
     <!-- TMT-n uses the following n first labels from TMT-18 -->
     <token name="@TMT_LABELS@">['126', '127N', '127C', '128N', '128C', '129N', '129C', '130N', '130C', '131N', '131C', '132N', '132C', '133N', '133C', '134N', '134C', '135N']</token>
-    <!-- iTRAQ-4 "114, 115, 116, 117" -->
-    <!-- iTRAQ-8 "113, 114, 115, 116, 117, 118, 119, 121" -->
+    <token name="@iTRAQ-4_LABELS@">['114', '115', '116', '117']</token>
+    <token name="@iTRAQ-8_LABELS@">['113', '114', '115', '116', '117', '118', '119', '121']</token>
 
-    <xml name="sample_input" token_scanformat="mzml" token_samplename="">
-        <param name="sample_name" type="text" value="@SAMPLENAME@" label="Sample Name">
-            <help>Only use letters, numbers, and chars: _- </help>
-            <validator type="regex" message="only letters, numbers, and underscores">[a-zA-Z0-9_-]+</validator>
-        </param>
-        <expand macro="scan_inputs" scanformat="@SCANFORMAT@"/>
-    </xml>
-    <xml name="sample_data" token_scanformat="mzml" >
-        <conditional name="scans"> 
-            <param name="by_sample" type="select" label="Specify sample groups">
-                <option value="no">No</option>
-                <option value="yes">Yes</option>
-            </param>
-            <when value="no">
-                <expand macro="sample_input" scanformat="@SCANFORMAT@" samplename="scans"/>
-            </when>
-            <when value="yes">
-                <repeat name="samples" title="Sample Groups" min="1">
-                    <expand macro="sample_input" scanformat="@SCANFORMAT@"/>
-                </repeat>
-            </when>
-        </conditional>
-    </xml>
+    <!--
+      User specifies input file format and selects sample files as are included by the scan_inputs macro
+
+      User must also supply their own manifest file, a TSV file of the format:
+      name, experiment, bioreplicate, data type
+    -->
     <xml name="samples">
-        <conditional name="scan"> 
+        <conditional name="scan">
             <param name="scanformat" type="select" label="Scan files format">
                 <option value="mzML">mzML</option>
                 <option value="mzXML">mzXML</option>
                 <option value="raw">Thermo.raw</option>
             </param>
             <when value="mzML">
-                <expand macro="sample_data" scanformat="mzml"/>
+                <expand macro="scan_inputs" scanformat="mzml"/>
             </when>
             <when value="mzXML">
-                <expand macro="sample_data" scanformat="mzxml"/>
+                <expand macro="scan_inputs" scanformat="mzxml"/>
             </when>
             <when value="raw">
-                <expand macro="sample_data" scanformat="thermo.raw"/>
+                <expand macro="scan_inputs" scanformat="thermo.raw"/>
             </when>
         </conditional>
+        <param name="manifest" type="data" format="tabular" label="Manifest file" help="TSV file with entries for each input scan file: Name (name of input Galaxy history item), Experiment (empty, alphanumeric, or _), Bioreplicate (empty or integer), Data type (DDA, DIA, GPF-DIA, DIA-Quant, or DIA-lib)"/>
     </xml>
+
+    <!--
+      Prepares input files.
+
+      Scans and moved to a scan directory and linked.
+
+      Annotation files are copied into the scan directory for TMT workflows.
+    -->
     <token name="@LINK_SAMPLES@"><![CDATA[
-    CWD=`pwd` &&
-    #if $scan.scans.by_sample == 'yes':
-      #for $i, $s in enumerate($scan.scans.samples)
-        #set $scandir = $s.sample_name
-        #silent $i_names.append($scandir)
-        mkdir -p '$scandir' &&
-        #if $wf.workflow_name == 'TMT10' or $wf.workflow_name == 'TMT11':
-          cp -p '$wf.annotation' '${scandir}/annotation.txt' &&
-        #end if
-        #for $sf in $s.inputs
-          #set $i_name = $ln_name($sf)
-          ln -s '$sf' '${scandir}/${i_name}' &&
-          echo -e "\$CWD/${scandir}/${i_name}\t${scandir}\t\t${s.data_type}" >> fp.manifest &&
-        #end for
-      #end for
-    #else
-      #set $scandir = $scan.scans.sample_name
-      #silent $i_names.append($scandir)
-      mkdir -p '$scandir' &&
-      #for $sf in $scan.scans.inputs
-        #set $i_name = $ln_name($sf)
-        ln -s '$sf' '${scandir}/${i_name}' &&
-        echo -e "\$CWD/${scandir}/${i_name}\t${scandir}\t\t${scan.scans.data_type}" >> fp.manifest &&
-      #end for
+    #import os
+    #set CWD = os.getcwd()
+    CWD=`pwd | sed 's/\//\\\\\//g'` &&
+
+    mkdir -p scans &&
+    #if $wf.workflow_name == "TMT10" or $wf.workflow_name == "TMT11"
+        cp -p '$wf.annotation' 'scans/annotation.txt' &&
     #end if
+
+    sed "s/^/\$CWD\/scans\//" $manifest > fp.manifest &&
+
+    #for $sf in $scan.inputs
+      #set $i_name = $ln_name($sf)
+      ln -s '$sf' 'scans/${i_name}' &&
+    #end for
+
     ]]></token>
 
+    <!-- Input database for MSFragger -->
     <xml name="fragger_database">
-        <param name="database_name" argument="database_name" type="data" format="fasta" label="Proteomics Search Database in FASTA format"/>
-        <param name="database_options" type="select" label="Decoys and contaminants" help="Default decoy prefix is &quot;rev_&quot;.">
+        <param name="database_name" type="data" format="fasta" label="Proteomics Search Database in FASTA format" help="Generic sequence headers in the input FASTA file that are not formatted according to the UniProt, NCBI, or ENSEMBL formats will be automatically prefixed with '>generic|' to avoid being misinterpreted by Philosopher."/>
+        <!-- Whether to add decoys and contaminants to the database with Philosopher -->
+        <param name="database_options"
+               type="select"
+               label="Decoys and contaminants"
+               help="The default decoy prefix is &quot;rev_&quot;.">
             <option value="decoy_and_contam" selected="true">Add decoys and contaminants</option>
             <option value="decoy">Add decoys</option>
             <option value="none">Don't add decoys or contaminants</option>
         </param>
+
+        <!-- Database may be split into chunks for performance benefits -->
         <param name="num_slices" type="integer" label="Split database" value="1" help="The number of chunks in which to split the database."/>
     </xml>
-    <token name="@FRAGGER_DATABASE@">
-    </token>
+
+    <!-- Sets db_name parameter for macro that modifies the workflow in-place. Creates symlink to input database file if no contaminants or decoys are added. -->
     <token name="@LINK_FRAGGER_DATABASE@"><![CDATA[
     #if str($database_options) == "none"
         #set $db_name = $ln_name($database_name)
@@ -117,245 +91,163 @@
         #set $db_name = 'decoys-contam-database.fas'
     #end if
     ]]></token>
-    <token name="@FASTA_INPUT@">
-    </token>
 
-    <xml name="tmt_options">
-                <section name="msfragger" expanded="false" title="MSFragger Options">
-                     <!-- fix this -->
-                    <expand macro="closed_search"/>
-                </section>
-                <expand macro="validation" pep="false" perc="true" boost="false" no="false" masswidth="1000" clevel="2" accmass="false" decoyprobs="true" nonparam="true" expectscore="true" ppm="false" combined_pepxml="true">
-                </expand>
-                <expand macro="isobaric_quantification" yes="true" no="false" plex="10" level="2" ref_tag="Bridge" mod_tag="none"/>
-    </xml>
+    <!--
+      The following macro allows users to select their FragPipe workfow.
 
+      For a given workflow selection, the relevant parameter sections are expanded. Options specific to the selected workflow
+      are passed to the parameter definitions in the expand element.
+
+      The Galaxy parameters overwrite a workflow file provided by FragPipe for the selected workflow. As a result, any parameters
+      that are not defined in the Galaxy tool will fall back on the FragPipe defaults for that workflow. This logic is defined
+      in the <configfile> element.
+    -->
     <xml name="workflow">
         <conditional name="wf">
-            <param name="workflow_name" type="select" label="Workflow">
-                <option value="history">Use workflow from history</option>
+            <param name="workflow_name" type="select" label="Workflow"  help="Note: MSBooster is currently disabled in all Galaxy FragPipe workflows.">
                 <option value="Default">Default</option>
                 <option value="Open">Open</option>
-                <option value="Mass-Offset-CommonPTMs">Mass-Offset-CommonPTMs</option>
                 <option value="Nonspecific-HLA">Nonspecific-HLA</option>
-                <option value="Nonspecific-peptidome">Nonspecific-peptidome</option>
-                <option value="DIA_DIA-Umpire_SpecLib_Quant">DIA_DIA-Umpire_SpecLib_Quant</option>
-                <option value="DIA_SpecLib_Quant">DIA_SpecLib_Quant</option>
                 <option value="LFQ-MBR">LFQ-MBR</option>
-                <option value="LFQ-phospho">LFQ-phospho</option>
-                <option value="Labile_ADP-ribosylation">Labile_ADP-ribosylation</option>
-                <option value="Labile_phospho">Labile_phospho</option>
-                <option value="SILAC3-phospho">SILAC3-phospho</option>
-                <option value="SILAC3">SILAC3</option>
-                <option value="SLC-ABPP">SLC-ABPP</option>
-                <option value="TMT10-MS3-phospho">TMT10-MS3-phospho</option>
-                <option value="TMT10-MS3">TMT10-MS3</option>
-                <option value="TMT10-acetyl">TMT10-acetyl</option>
-                <option value="TMT10-bridge">TMT10-bridge</option>
-                <option value="TMT10-phospho-bridge">TMT10-phospho-bridge</option>
-                <option value="TMT10-phospho">TMT10-phospho</option>
-                <option value="TMT10-ubiquitin">TMT10-ubiquitin</option>
                 <option value="TMT10">TMT10</option>
                 <option value="TMT11">TMT11</option>
-                <option value="TMT16-MS3">TMT16-MS3</option>
-                <option value="TMT16-acetyl">TMT16-acetyl</option>
-                <option value="TMT16-phospho">TMT16-phospho</option>
-                <option value="TMT16">TMT16</option>
-                <option value="XRNAX-MassOffset">XRNAX-MassOffset</option>
-                <option value="glyco-N-HCD">glyco-N-HCD</option>
-                <option value="glyco-N-Hybrid">glyco-N-Hybrid</option>
-                <option value="glyco-N-LFQ">glyco-N-LFQ</option>
-                <option value="glyco-N-TMT">glyco-N-TMT</option>
-                <option value="glyco-N-open-HCD">glyco-N-open-HCD</option>
-                <option value="glyco-N-open-Hybrid">glyco-N-open-Hybrid</option>
-                <option value="glyco-O-HCD">glyco-O-HCD</option>
-                <option value="glyco-O-Hybrid">glyco-O-Hybrid</option>
-                <option value="glyco-O-open-HCD">glyco-O-open-HCD</option>
-                <option value="glyco-O-open-Hybrid">glyco-O-open-Hybrid</option>
-                <option value="iTRAQ4">iTRAQ4</option>
-                <option value="ipIAA-ABPP">ipIAA-ABPP</option>
-                <option value="isoDTB-ABPP">isoDTB-ABPP</option>
-                <option value="isoTOP-ABPP">isoTOP-ABPP</option>
             </param>
-            <when value="history">
-                <param name="workflow" type="data" format="txt" label="FragPipe workflow"/>
-                <section name="msfragger" expanded="false" title="MSFragger Options">
-                    <expand macro="closed_search"/>
-                </section>
-                <expand macro="validation" pep="false" perc="false" boost="false" no="true" masswidth="5" clevel="0" accmass="true" decoyprobs="true" nonparam="true" expectscore="true" ppm="true" combined_pepxml="false"/>
-                <expand macro="ptm_shepherd" yes="false" no="false"/>
-                <expand macro="label_free_quantification" yes="false" no="false"/>
-                <expand macro="isobaric_quantification" yes="true" no="false" plex="10" level="2" ref_tag="Bridge" mod_tag="none"/>
-                <expand macro="diann_quantification" yes="false" no="false" />
-            </when>
+
             <when value="Default">
                 <section name="msfragger" expanded="false" title="MSFragger Options">
-                    <expand macro="closed_search"/>
+                    <expand macro="msfragger_default"/>
                 </section>
-                <expand macro="validation" pep="false" perc="true" boost="false" no="false" masswidth="5" clevel="0" accmass="true" decoyprobs="true" nonparam="true" expectscore="true" ppm="true" combined_pepxml="false"/>
-                <expand macro="ptm_shepherd" yes="false" no="true"/>
-                <!--
-                <expand macro="ptm_localization" yes="false" no="true"/>
-                <expand macro="protein_inference" yes="true" no="false"/>
+                <expand macro="validation"
+                  pep="false"
+                  perc="true"
+                  boost="false"
+                  no="false"
+                  masswidth="5"
+                  clevel="0"
+                  accmass="true"
+                  decoyprobs="true"
+                  nonparam="true"
+                  expectscore="true"
+                  ppm="true"
+                  combined_pepxml="false"/>
                 <expand macro="label_free_quantification" yes="false" no="true"/>
+                <expand macro="ptm_shepherd" yes="false" no="true" c="true" z="true"/>
                 <expand macro="isobaric_quantification" yes="false" no="true"/>
-                <expand macro="bio_cluster_quantification" yes="false" no="true"/>
-                <expand macro="fdr_filtering" yes="false" no="true"/>
-                <expand macro="individual_reports" yes="true" no="false"/>
-                <expand macro="integrated_reports" yes="true" no="false"/>
-                <expand macro="integrated_isobaric_quantification" yes="false" no="true"/>
-                -->
             </when>
+
             <when value="Open">
                 <section name="msfragger" expanded="false" title="MSFragger Options">
-                    <expand macro="open_search"/>
+                    <expand macro="msfragger_open"/>
                 </section>
-                <expand macro="validation" pep="true" perc="false" boost="false" no="false" masswidth="1000" clevel="-2" accmass="false" decoyprobs="true" nonparam="true" expectscore="true" ppm="true" combined_pepxml="true">
+                <expand macro="validation"
+                  pep="true"
+                  perc="false"
+                  boost="false"
+                  no="false"
+                  masswidth="1000"
+                  clevel="-2"
+                  accmass="false"
+                  decoyprobs="true"
+                  nonparam="true"
+                  expectscore="true"
+                  ppm="false"
+                  combined_pepxml="true">
                     <expand macro="crystalc"/>
                 </expand>
+                <expand macro="label_free_quantification" yes="false" no="true"/>
                 <expand macro="ptm_shepherd" yes="true" no="false"/>
+                <expand macro="isobaric_quantification" yes="false" no="true" bridge="false" pool="true"/>
             </when>
-            <when value="Mass-Offset-CommonPTMs">
-                <section name="msfragger" expanded="false" title="MSFragger Options">
-                    <expand macro="open_search"/>
-                </section>
-                <expand macro="validation" pep="true" perc="false" boost="false" no="false" masswidth="1000" clevel="2" accmass="false" decoyprobs="true" nonparam="true" expectscore="true" ppm="false" combined_pepxml="true">
-                    <expand macro="crystalc"/>
-                </expand>
-                <expand macro="ptm_shepherd" yes="true" no="false"/>
-            </when>
+
             <when value="Nonspecific-HLA">
                 <section name="msfragger" expanded="false" title="MSFragger Options">
-                    <expand macro="open_search"/>
+                    <expand macro="msfragger_nonspecific_HLA"/>
                 </section>
+                <expand macro="validation"
+                  pep="false"
+                  perc="true"
+                  boost="false"
+                  no="true"
+                  masswidth="5"
+                  clevel="0"
+                  accmass="true"
+                  decoyprobs="true"
+                  nonparam="true"
+                  expectscore="true"
+                  ppm="true"
+                  combined_pepxml="false"/>
+                <expand macro="label_free_quantification" yes="false" no="true"/>
+                <expand macro="ptm_shepherd" yes="false" no="true"/>
+                <expand macro="isobaric_quantification" yes="false" no="true"/>
             </when>
-            <when value="Nonspecific-peptidome">
-            </when>
-            <when value="DIA_DIA-Umpire_SpecLib_Quant">
-            </when>
-            <when value="DIA_SpecLib_Quant">
-            </when>
+
             <when value="LFQ-MBR">
                 <section name="msfragger" expanded="false" title="MSFragger Options">
-                    <expand macro="closed_search"/>
+                    <expand macro="msfragger_LFQ_MBR"/>
                 </section>
-                <expand macro="validation" pep="false" perc="false" boost="true" no="false" masswidth="1000" clevel="-2" accmass="false" decoyprobs="true" nonparam="true" expectscore="true" ppm="true" combined_pepxml="false"/>
-		<!-- wagnerr: add phi-report option -->
-                <expand macro="label_free_quantification" yes="false" no="false"/>
+                <!-- MSBooster should be enabled once included in FragPipe Galaxy tool -->
+                <expand macro="validation"
+                  pep="false"
+                  perc="true"
+                  boost="false"
+                  no="true"
+                  masswidth="5"
+                  clevel="0"
+                  accmass="true"
+                  decoyprobs="true"
+                  nonparam="true"
+                  expectscore="true"
+                  ppm="true"
+                  combined_pepxml="false"/>
+                <expand macro="label_free_quantification" yes="true" no="false"/>
+                <expand macro="ptm_shepherd" yes="false" no="true"/>
+                <expand macro="isobaric_quantification" yes="false" no="true"/>
             </when>
-            <when value="LFQ-phospho">
-	    </when>
-            <when value="Labile_ADP-ribosylation">
-            </when>
-            <when value="Labile_phospho">
-            </when>
-            <when value="SILAC3-phospho">
-                <section name="msfragger" expanded="false" title="MSFragger Options">
-                    <expand macro="closed_search"/>
-                </section>
-            </when>
-            <when value="SILAC3">
-                <section name="msfragger" expanded="false" title="MSFragger Options">
-                    <expand macro="closed_search"/>
-                </section>
-                <expand macro="validation" pep="false" perc="true" boost="false" no="false" masswidth="1000" clevel="2" accmass="false" decoyprobs="true" nonparam="true" expectscore="true" ppm="false" combined_pepxml="true"/>
-            </when>
-            <when value="SLC-ABPP">
-            </when>
-            <when value="TMT10-MS3-phospho">
-            </when>
-            <when value="TMT10-MS3">
-            </when>
-            <when value="TMT10-acetyl">
-            </when>
-            <when value="TMT10-bridge">
-            </when>
-            <when value="TMT10-phospho-bridge">
-                <section name="msfragger" expanded="false" title="MSFragger Options">
-                     <!-- fix this -->
-                    <expand macro="TMT10_search"/>
-                </section>
-                <expand macro="validation" pep="false" perc="true" boost="false" no="false" masswidth="1000" clevel="2" accmass="false" decoyprobs="true" nonparam="true" expectscore="true" ppm="false" combined_pepxml="true">
-                </expand>
-                <expand macro="isobaric_quantification" yes="true" no="false" plex="10" level="2" ref_tag="Bridge" mod_tag="none"/>
-            </when>
-            <when value="TMT10-phospho">
-            </when>
-            <when value="TMT10-ubiquitin">
-            </when>
+
             <when value="TMT10">
-            <param name="annotation" type="data" format="txt" optional="false" label="annotation file"
-                help=""/>
-                <section name="msfragger" expanded="false" title="MSFragger Options">
-                     <!-- fix this --> 
-                    <expand macro="TMT10_search"/>
-                </section>
-                <expand macro="validation" pep="false" perc="true" boost="false" no="false" masswidth="1000" clevel="2" accmass="false" decoyprobs="true" nonparam="true" expectscore="true" ppm="false" combined_pepxml="true" protein_prophet_cmd_opts="--maxppmdiff 2000000 --minprob 0.5">
-                </expand>
-                <expand macro="isobaric_quantification" yes="true" no="false" plex="10" level="2" ref_tag="Bridge" mod_tag="none"/>
+              <expand macro="tmt_options" plex="TMT-10"/>
             </when>
+
+            <!-- TMT11 is not in FragPipe GUI -->
             <when value="TMT11">
-            <param name="annotation" type="data" format="txt" optional="false" label="annotation file"
-                help=""/>
-                <section name="msfragger" expanded="false" title="MSFragger Options">
-                     <!-- fix this -->
-                    <expand macro="TMT10_search"/>
-                </section>
-                <expand macro="validation" pep="false" perc="true" boost="false" no="false" masswidth="1000" clevel="2" accmass="false" decoyprobs="true" nonparam="true" expectscore="true" ppm="false" combined_pepxml="true" protein_prophet_cmd_opts="--maxppmdiff 2000000 --minprob 0.5">
-                </expand>
-                <expand macro="isobaric_quantification" yes="true" no="false" plex="10" level="2" ref_tag="Bridge" mod_tag="none"/>
-            </when>
-            <when value="TMT16-MS3">
-            </when>
-            <when value="TMT16-acetyl">
-            </when>
-            <when value="TMT16-phospho">
-            </when>
-            <when value="TMT16">
-            </when>
-            <when value="XRNAX-MassOffset">
-            </when>
-            <when value="glyco-N-HCD">
-            </when>
-            <when value="glyco-N-Hybrid">
-            </when>
-            <when value="glyco-N-LFQ">
-            </when>
-            <when value="glyco-N-TMT">
-            </when>
-            <when value="glyco-N-open-HCD">
-            </when>
-            <when value="glyco-N-open-Hybrid">
-            </when>
-            <when value="glyco-O-HCD">
-            </when>
-            <when value="glyco-O-Hybrid">
-            </when>
-            <when value="glyco-O-open-HCD">
-            </when>
-            <when value="glyco-O-open-Hybrid">
-            </when>
-            <when value="iTRAQ4">
-            </when>
-            <when value="ipIAA-ABPP">
-            </when>
-            <when value="isoDTB-ABPP">
-            </when>
-            <when value="isoTOP-ABPP">
+              <expand macro="tmt_options" plex="TMT-11"/>
             </when>
         </conditional>
     </xml>
 
+    <!-- Options for TMT workflows -->
+    <xml name="tmt_options" token_plex="">
+        <param name="annotation" type="data" format="txt" optional="false" label="annotation file" help=""/>
+        <section name="msfragger" expanded="false" title="MSFragger Options">
+            <expand macro="msfragger_TMT"/>
+        </section>
+        <expand macro="validation"
+          pep="false"
+          perc="true"
+          boost="false"
+          no="false"
+          masswidth="5"
+          clevel="0"
+          accmass="true"
+          decoyprobs="true"
+          nonparam="true"
+          expectscore="true"
+          ppm="true"
+          combined_pepxml="false"
+          protp_minprob="0.5"/>
+        <expand macro="isobaric_quantification" yes="true" no="false" plex="@PLEX@" level="2" ref_tag="Bridge" mod_tag="none"/>
+        <expand macro="label_free_quantification" yes="false" no="true"/>
+        <expand macro="ptm_shepherd" yes="false" no="true" token_unimod="false" token_common="true"/>
+    </xml>
+
+    <!-- Generates the FragPipe workflow-->
     <xml name="workflow_configfile">
         <configfile name="workflow_configfile"><![CDATA[#slurp
+
 ## Create a fragpipe params dictionary from a file
 #set $comments = []
 #set $wfdict = {}
-#if $wf.workflow_name == 'history'
-    #set $wfpath = str($wf.workflow)
-#else
-    #set $wfpath = $__tool_directory__ + '/workflows/' + str($wf.workflow_name) + '.workflow'
-#end if
+#set $wfpath = $__tool_directory__ + '/workflows/' + str($wf.workflow_name) + '.workflow'
 #set $fh = open($wfpath, 'r')
 #for $line in $fh:
     #if $line.startswith('#')
@@ -365,7 +257,7 @@
         #if len($kv) < 2
             #silent $kv.append('')
         #end if
-        #set $wfdict[$kv[0]] = $kv[1]
+        #set $wfdict[$kv[0]] = '='.join($kv[1:])
     #end if
 #end for
 ## Guarantee 'database.db-path' key is in the dictionary
@@ -375,74 +267,28 @@
 
 #set $wfdict['msfragger.misc.slice-db'] = $num_slices
 
-#if $wf.workflow_name != 'history'
 ## Get the MSFragger Params (shared with the MSFragger tool)
 #set $prefix = $wf.msfragger
 @MSFRAGGER_PARAM_DICT@
-#* Fix this
+#if len($vmods) > 0
 #set $msfragger_dict['table.var-mods'] = '; '.join([$re.sub('^(.*,)(\d)$','\\1True,\\2',m) for m in $vmods])
-*#
+#end if
 #for $k in $msfragger_dict.keys()
 #set $kv = $k + '=' + str($msfragger_dict[$k])
 ## # $kv   ## print this just for debugging
     #set $wfk = 'msfragger.' + $k
     #set $wfdict[$wfk] = str($msfragger_dict[$k])
 #end for
-#end if
 
-#if $wf.workflow_name == 'history'
-#pass
-#elif $wf.workflow_name == 'Default'
 @VALIDATION@
-#elif $wf.workflow_name == 'Open'
-@VALIDATION@
-#elif $wf.workflow_name == 'Mass-Offset-CommonPTMs'
-@VALIDATION@
-#* Add these as they get worked on
-#elif $wf.workflow_name == 'Nonspecific-HLA'
-#elif $wf.workflow_name == 'Nonspecific-peptidome'
-#elif $wf.workflow_name == 'DIA_DIA-Umpire_SpecLib_Quant'
-#elif $wf.workflow_name == 'DIA_SpecLib_Quant'
-#elif $wf.workflow_name == 'LFQ-MBR'
-#elif $wf.workflow_name == 'LFQ-phospho'
-#elif $wf.workflow_name == 'Labile_ADP-ribosylation'
-#elif $wf.workflow_name == 'Labile_phospho'
-#elif $wf.workflow_name == 'SILAC3-phospho'
-#elif $wf.workflow_name == 'SILAC3'
-#elif $wf.workflow_name == 'SLC-ABPP'
-#elif $wf.workflow_name == 'TMT10-MS3-phospho'
-#elif $wf.workflow_name == 'TMT10-MS3'
-#elif $wf.workflow_name == 'TMT10-acetyl'
-#elif $wf.workflow_name == 'TMT10-bridge'
-#elif $wf.workflow_name == 'TMT10-phospho-bridge'
-#elif $wf.workflow_name == 'TMT10-phospho'
-#elif $wf.workflow_name == 'TMT10-ubiquitin'
-#elif $wf.workflow_name == 'TMT10'
-#elif $wf.workflow_name == 'TMT11'
-#elif $wf.workflow_name == 'TMT16-MS3'
-#elif $wf.workflow_name == 'TMT16-acetyl'
-#elif $wf.workflow_name == 'TMT16-phospho'
-#elif $wf.workflow_name == 'TMT16'
-#elif $wf.workflow_name == 'XRNAX-MassOffset'
-#elif $wf.workflow_name == 'glyco-N-HCD'
-#elif $wf.workflow_name == 'glyco-N-Hybrid'
-#elif $wf.workflow_name == 'glyco-N-LFQ'
-#elif $wf.workflow_name == 'glyco-N-TMT'
-#elif $wf.workflow_name == 'glyco-N-open-HCD'
-#elif $wf.workflow_name == 'glyco-N-open-Hybrid'
-#elif $wf.workflow_name == 'glyco-O-HCD'
-#elif $wf.workflow_name == 'glyco-O-Hybrid'
-#elif $wf.workflow_name == 'glyco-O-open-HCD'
-#elif $wf.workflow_name == 'glyco-O-open-Hybrid'
-#elif $wf.workflow_name == 'iTRAQ4'
-#elif $wf.workflow_name == 'ipIAA-ABPP'
-#elif $wf.workflow_name == 'isoDTB-ABPP'
-#elif $wf.workflow_name == 'isoTOP-ABPP'
-*#
-#end if
+@PTM_SHEPHERD@
+@LABEL_FREE_QUANTIFICATION@
+
 #for $comment in $comments
 $comment
 #end for
+
+## Populate the workflow with configuration dictionary entries populated by tool params.
 #for $k in sorted($wfdict.keys())
 #set $kv = $k + '=' + str($wfdict[$k])
 $kv
@@ -450,68 +296,160 @@ $kv
 #slurp]]></configfile>
     </xml>
 
+    <!-- Sets database name in workflow. Necessary because <command> section may generate new database file after configfile has been generated. -->
     <token name="@UPDATE_WORKFLOW@"><![CDATA[
 DB=`pwd`/$db_name &&
-sed "s#^database.db-path.*#\database.db-path=\$DB#" $workflow_configfile > fp.workflow; 
+sed "s#^database.db-path.*#\database.db-path=\$DB#" $workflow_configfile > fp.workflow;
     ]]></token>
 
-    <xml name="database_search">
-        <conditional name="database_search"> 
-            <param name="database_search_step" type="select" label="Perform Database Search Step">
-                <option value="yes">Yes</option>  
-                <option value="no">No</option>  
-            </param>
-        </conditional>
-        <when value="yes">
-        </when>
-        <when value="no"/>
+    <!-- Percolator options -->
+    <xml name="percolator">
+        <section name="percolator" expanded="true" title="Percolator">
+            <param name="keep_tsv_files" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Keep intermediate files"/>
+            <param name="min_prob" type="float" value="0.5" label="Minimum probability (default 0.5)"/>
+        </section>
     </xml>
-    <token name="@DATABASE_SEARCH@"><![CDATA[
-    ]]></token>
-    <token name="@MSFRAGGER_SEARCH@"><![CDATA[
+
+    <!-- Set Percolator workflow options -->
+    <token name="@PERCOLATOR@"><![CDATA[
+  #set $prc = $wf.validation.validation_tab.psm_validation.percolator
+  #set $wfdict['run-validation-tab'] = $wf.validation.validation_tab.run_validation
+  #set $wfdict['peptide-prophet.run-peptide-prophet'] = 'false'
+  #set $wfdict['percolator.run-percolator'] = 'true'
+  #set $wfdict['percolator.keep-tsv-files'] = str($prc.keep_tsv_files)
+  #set $wfdict['percolator.min-prob'] = str($prc.min_prob)
     ]]></token>
 
-    
+    <!-- Philosopher Report (phi-report) options -->
+    <xml name="phi_report">
+        <conditional name="phi_report">
+            <param name="run_phi_report" type="select" label="Generate Philosopher Reports">
+                <option value="true" selected="true">Yes</option>
+                <option value="false">No</option>
+            </param>
+            <when value="true">
+              <section name="phi_report_opts" expanded="false" title="FDR Filter and Report">
+                  <param name="dont_use_prot_prophet_file" type="boolean" truevalue="true" falsevalue="false" checked="false"/>
+                  <param name="print_decoys" type="boolean" truevalue="true" falsevalue="false" checked="false"/>
+              </section>
+            </when>
+            <when value="false"/>
+        </conditional>
+    </xml>
+
+    <!-- Set Philosopher Report (phi-report) workflow options -->
+    <token name="@PHIREPORT@"><![CDATA[
+#set $prfx = $wf.validation.validation_tab.phi_report
+#if $prfx.run_phi_report == 'true'
+  #set $wfdict['phi-report.run-report'] = 'true'
+  #set $prfx = $wf.validation.validation_tab.phi_report.phi_report_opts
+  #set $wfdict['phi-report.print-decoys'] = $prfx.print_decoys
+#else
+  #set $wfdict['phi-report.run-report'] = 'false'
+#end if
+    ]]></token>
+
+    <!-- PeptideProphet options -->
+    <xml name="peptide_prophet" token_masswidth="5" token_clevel="0" token_accmass="true" token_decoyprobs="true" token_nonparam="true" token_expectscore="true" token_ppm="true" token_combined_pepxml="false">
+        <section name="peptide_prophet" expanded="true" title="PeptideProphet">
+            <param name="combined_pepxml" type="boolean" truevalue="true" falsevalue="false" checked="@COMBINED_PEPXML@" label="Single combined pepxml per experiment or group"/>
+            <param argument="--decoyprobs" type="boolean" truevalue="--decoyprobs" falsevalue="" checked="@DECOYPROBS@" label="compute possible non-zero probabilities for Decoy entries on the last iteration"/>
+            <param argument="--ppm" type="boolean" truevalue="--ppm" falsevalue="" checked="@PPM@" label="use PPM mass error instead of Dalton for mass modeling"/>
+            <param argument="--accmass" type="boolean" truevalue="--accmass" falsevalue="" checked="@ACCMASS@" label="use Accurate Mass model binning"/>
+            <param argument="--nonparam" type="boolean" truevalue="--nonparam" falsevalue="" checked="@NONPARAM@" label="use semi-parametric modeling, must be used in conjunction with --decoy option"/>
+            <param argument="--expectscore" type="boolean" truevalue="--expectscore" falsevalue="" checked="@EXPECTSCORE@" label="use expectation value as the only contributor to the f-value for modeling"/>
+            <param argument="--masswidth" type="float" value="@MASSWIDTH@" label="model mass width (default 5)"/>
+            <param argument="--clevel" type="integer" value="@CLEVEL@" label="set Conservative Level in neg_stdev from the neg_mean, low numbers are less conservative, high numbers are more conservative"/>
+            <param argument="--glyc" type="boolean" truevalue="--glyc" falsevalue="" checked="false" label="enable peptide Glyco motif model"/>
+            <param argument="--combine" type="boolean" truevalue="--combine" falsevalue="" checked="false" label="combine the results from PeptideProphet into a single result file" />
+            <param argument="--minpeplen" type="integer" value="7" label="minimum peptide length not rejected (default 7)" />
+            <param argument="--minprob" type="float" value="0.05" label="report results with minimum probability" />
+            <param argument="--nomass" type="boolean" truevalue="--nomass" falsevalue="" checked="false" label="disable mass model" />
+            <param argument="--nonmc" type="boolean" truevalue="--nonmc" falsevalue="" checked="false" label="disable NMC missed cleavage model" />
+            <param argument="--nontt" type="boolean" truevalue="--nontt" falsevalue="" checked="false" label="disable NTT enzymatic termini model" />
+            <param argument="--phospho" type="boolean" truevalue="--phospho" falsevalue="" checked="false" label="enable peptide phospho motif model" />
+        </section>
+    </xml>
+    <token name="@PEPTIDEPROPHET@"><![CDATA[
+      #set $prfx = $wf.validation.validation_tab.psm_validation.peptide_prophet
+      #set $wfdict['peptide-prophet.run-peptide-prophet'] = 'true'
+      #set $wfdict['peptide-prophet.combine-pepxml'] = str($prfx.combined_pepxml)
+      #set $cmd_opts = [str($prfx.accmass),str($prfx.combine),str($prfx.decoyprobs),str($prfx.expectscore),str($prfx.glyc),str($prfx.nomass),str($prfx.nonmc),str($prfx.nonparam),str($prfx.nontt),str($prfx.phospho),str($prfx.ppm)]
+      #silent $cmd_opts.append('--clevel ' + str($prfx.clevel))
+      #silent $cmd_opts.append('--masswidth ' + str($prfx.masswidth))
+      #silent $cmd_opts.append('--minpeplen ' + str($prfx.minpeplen))
+      #silent $cmd_opts.append('--minprob ' + str($prfx.minprob))
+      #set $wfdict['peptide-prophet.cmd-opts'] = ' '.join($cmd_opts).strip()
+    ]]></token>
+
+    <!-- CrystalC options -->
     <xml name="crystalc">
         <param name="run_crystalc" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Run Crystal-C" help="Recommend for open searches for additional resuts cleanup"/>
     </xml>
+
+    <!-- MSBooster options. Disabled until DIA-NN integrated.
     <xml name="msbooster">
-        <section name="msbooster" expanded="false" title="MSBooster"> 
+        <section name="msbooster" expanded="false" title="MSBooster">
             <param name="predict_rt" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Predict RT"/>
             <param name="predict_spectra" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Predict spectra"/>
+            <param name="use_correlated_features" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Use correlated features"/>
         </section>
     </xml>
-    <xml name="percolator">
-        <section name="percolator" expanded="true" title="Percolator"> 
-            <param name="keep_tsv_files" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Keep intermediate files"/>
-            <param name="min_prob" type="float" value="0.05" label="Minimum probability (default 0.05)"/>
-            <param name="percolator_cmd_opts" type="text" value="--only-psms --no-terminate --post-processing-tdc" label="Percolator Cmd line options"/>
-        </section>
+     -->
+
+    <!-- Protein Prophet options -->
+    <xml name="protein_prophet" token_minprob="0.05">
+        <conditional name="protein_prophet">
+            <param name="run_protein_prophet" type="select" label="Run Protein Prophet">
+                <option value="true" selected="true">Yes</option>
+                <option value="false">No</option>
+            </param>
+            <when value="true">
+              <section name="protein_prophet_opts" expanded="true" title="Protein Prophet">
+                <param argument="--iprophet" type="boolean" truevalue="--iprophet" falsevalue="" checked="false" label="input is from iProphet" />
+                <param argument="--maxppmdiff" type="integer" value="2000000" label="maximum peptide mass difference in ppm (default 2000000)" />
+                <param argument="--minprob" type="float" value="@MINPROB@" label="PeptideProphet probability threshold (default 0.05)" />
+                <param argument="--nonsp" type="boolean" truevalue="--nonsp" falsevalue="" checked="false" label="do not use NSP model" />
+                <param argument="--subgroups" type="boolean" truevalue="--subgroups" falsevalue="" checked="false" label="do not use NOGROUPS" />
+                <param argument="--unmapped" type="boolean" truevalue="--unmapped" falsevalue="" checked="false" label="report results for UNMAPPED proteins" />
+              </section>
+            </when>
+            <when value="false"/>
+        </conditional>
     </xml>
-    <xml name="peptide_prophet" token_masswidth="5" token_clevel="0" token_accmass="true" token_decoyprobs="true" token_nonparam="true" token_expectscore="true" token_ppm="true" token_combined_pepxml="true">
-        <section name="peptide_prophet" expanded="true" title="PeptideProphet"> 
-            <param name="combined_pepxml" type="boolean" truevalue="true" falsevalue="false" checked="@COMBINED_PEPXML@" label="Single combined pepxml per experiment or group"/>
-            <param name="decoyprobs" type="boolean" truevalue="--decoyprobs" falsevalue="" checked="@DECOYPROBS@" label="compute possible non-zero probabilities for Decoy entries on the last iteration"/>
-            <param name="ppm" type="boolean" truevalue="--ppm" falsevalue="" checked="@PPM@" label="use PPM mass error instead of Dalton for mass modeling"/>
-            <param name="accmass" type="boolean" truevalue="--accmass" falsevalue="" checked="@ACCMASS@" label="use Accurate Mass model binning"/>
-            <param name="nonparam" type="boolean" truevalue="--nonparam" falsevalue="" checked="@NONPARAM@" label="use semi-parametric modeling, must be used in conjunction with --decoy option"/>
-            <param name="expectscore" type="boolean" truevalue="--expectscore" falsevalue="" checked="@EXPECTSCORE@" label="use expectation value as the only contributor to the f-value for modeling"/>
-            <param name="masswidth" type="float" value="@MASSWIDTH@" label="model mass width (default 5)"/>
-            <param name="clevel" type="integer" value="@CLEVEL@" label="set Conservative Level in neg_stdev from the neg_mean, low numbers are less conservative, high numbers are more conservative"/>
-            <param name="glyc" type="boolean" truevalue="--glyc" falsevalue="" checked="false" label="enable peptide Glyco motif model"/>
-        </section>
-    </xml>
-    <xml name="validation" token_expand="false" token_pep="false" token_perc="false" token_boost="false" token_no="true" token_masswidth="5" token_clevel="0" token_accmass="true" token_decoyprobs="true" token_nonparam="true" token_expectscore="true" token_ppm="true" token_combined_pepxml="false" token_protein_prophet_cmd_opts="--maxppmdiff 2000000">
-        <section name="validation" expanded="@EXPAND@" title="Validation"> 
+
+    <!-- Set ProteinProphet workflow options -->
+    <token name="@PROTEINPROPHET@"><![CDATA[
+     #set $prfx = $wf.validation.validation_tab.protein_prophet
+      #if $prfx.run_protein_prophet == 'true'
+      #set $prfx = $wf.validation.validation_tab.protein_prophet.protein_prophet_opts
+        #set $wfdict['protein-prophet.run-protein-prophet'] = 'true'
+        #set $cmd_opts = [str($prfx.iprophet),str($prfx.nonsp),str($prfx.subgroups),str($prfx.unmapped)]
+        #silent $cmd_opts.append('--maxppmdiff ' + str($prfx.maxppmdiff))
+        #silent $cmd_opts.append('--minprob ' + str($prfx.minprob))
+        #set $wfdict['protein-prophet.cmd-opts'] = ' '.join($cmd_opts).strip()
+      #else
+        #set $wfdict[protein-prophet.run-protein-prophet] = 'false'
+      #end if
+    ]]></token>
+
+    <!-- Validation options. Includes PeptideProphet, Percolator, MSBooster, ProteinProphet, and CrystalC -->
+    <xml name="validation" token_expand="false" token_pep="false" token_perc="false" token_boost="false" token_no="true" token_masswidth="5" token_clevel="0" token_accmass="true" token_decoyprobs="true" token_nonparam="true" token_expectscore="true" token_ppm="true" token_combined_pepxml="false" token_protp_minprob="0.05">
+        <section name="validation" expanded="@EXPAND@" title="Validation">
             <conditional name="validation_tab">
-                <param name="run_validation" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Run Validation"/>
+                <param name="run_validation" type="select" label="Run Validation">
+                    <option value="true" selected="true">Yes</option>
+                    <option value="false">No</option>
+                </param>
                 <when value="true">
                     <yield/> <!-- crystalc -->
                     <conditional name="psm_validation">
                         <param name="run_psm_validation" type="select" label="PSM Validation">
                             <option value="peptide_prophet" selected="@PEP@">Run PeptideProphet</option>
                             <option value="percolator" selected="@PERC@">Run Percolator</option>
+                            <!-- MSBooster disabled until DIA-NN integrated
                             <option value="msbooster_percolator" selected="@BOOST@">Run MSBooster and Percolator</option>
+                            -->
                             <option value="no" selected="@NO@">Use workflow values</option>
                         </param>
                         <when value="peptide_prophet">
@@ -520,14 +458,17 @@ sed "s#^database.db-path.*#\database.db-path=\$DB#" $workflow_configfile > fp.wo
                         <when value="percolator">
                             <expand macro="percolator"/>
                         </when>
+                        <!-- MSBooster disabled until DIA-NN integrated
                         <when value="msbooster_percolator">
                             <expand macro="msbooster"/>
                             <expand macro="percolator"/>
                         </when>
+                        -->
                         <when value="no">
                         </when>
                     </conditional>
-                    <expand macro="protein_prophet" cmd_opts="@PROTEIN_PROPHET_CMD_OPTS@"/>
+                    <expand macro="protein_prophet" minprob="@PROTP_MINPROB@"/>
+                    <expand macro="phi_report"/>
                 </when>
                 <when value="false">
                 </when>
@@ -535,45 +476,27 @@ sed "s#^database.db-path.*#\database.db-path=\$DB#" $workflow_configfile > fp.wo
         </section>
     </xml>
 
-    <token name="@PERCOLATOR@"><![CDATA[
-  #set $prc = $wf.validation.validation_tab.psm_validation.percolator
-  #set $wfdict['run-validation-tab=true'] = $wf.validation.validation_tab
-  #set $wfdict['peptide-prophet.run-peptide-prophet'] = 'false'
-  #set $wfdict['percolator.run-percolator'] = 'true'
-  #set $wfdict['percolator.keep-tsv-files'] = str($prc.keep_tsv_files)
-  #set $wfdict['percolator.min-prob'] = str($prc.min_prob)
-  #set $wfdict['percolator.cmd-opts'] = str($prc.percolator_cmd_opts)
-    ]]></token>
+    <!-- Set validation workflow options -->
     <token name="@VALIDATION@"><![CDATA[
 #set $prfx = $wf.validation.validation_tab.psm_validation
 #if $prfx.run_psm_validation == 'peptide_prophet'
-  #set $prft = $wf.validation.validation_tab.psm_validation.peptide_prophet
+  #set $wfdict['run-psm-validation'] = 'true'
   #set $wfdict['msbooster.run-msbooster'] = 'false'
   #set $wfdict['percolator.run-percolator'] = 'false'
-  #set $wfdict['peptide-prophet.run-peptide-prophet'] = 'true'
-  #set $wfdict['peptide-prophet.combine-pepxml'] = str($prft.combined_pepxml)
-  #set $cmd_opts = [str($prft.decoyprobs),str($prft.ppm),str($prft.nonparam),str($prft.expectscore),str($prft.glyc)]
-  #silent $cmd_opts.append('--masswidth ' + str($prft.masswidth))
-  #silent $cmd_opts.append('--clevel ' + str($prft.clevel))
-  #set $wfdict['peptide-prophet.cmd-opts'] = ' '.join($cmd_opts).strip()
+  @PEPTIDEPROPHET@
 #elif $prfx.run_psm_validation == 'percolator'
+  #set $wfdict['run-psm-validation'] = 'true'
   #set $wfdict['msbooster.run-msbooster'] = 'false'
   @PERCOLATOR@
-#elif $prfx.run_psm_validation == 'msbooster_percolator'
-  #set $wfdict['msbooster.run-msbooster'] = 'true'
-  #set $wfdict['msbooster.predict-rt'] = str($prfx.msbooster.predict_rt)
-  #set $wfdict['msbooster.predict-spectra'] = str($prfx.msbooster.predict_spectra)
-  @PERCOLATOR@
+##elif $prfx.run_psm_validation == 'msbooster_percolator'
+# MSBooster disabled until DIA-NN integrated.
 #end if
-#if $prfx.protein_prophet.run_protein_prophet == 'true'
-  #set $wfdict[protein-prophet.cmd-opts] = $prfx.protein_prophet_cmd_opts
-  #set $wfdict[protein-prophet.run-protein-prophet] = true
-#else
-  #set $wfdict[protein-prophet.run-protein-prophet] = false
-#end if
+@PROTEINPROPHET@
+@PHIREPORT@
     ]]></token>
 
-    <xml name="ptm_shepherd" token_expand="false" token_yes="true" token_no="false" token_a="false" token_b="true" token_c="false" token_x="false" token_y="true" token_z="false">
+    <!-- PTM-Sheperd options -->
+    <xml name="ptm_shepherd" token_expand="false" token_yes="true" token_no="false" token_a="false" token_b="true" token_c="false" token_x="false" token_y="true" token_z="false" token_unimod="true" token_common="false" token_glyco="false" token_custom="false">
         <section name="ptms" expanded="false" title="PTMs">
             <conditional name="ptm_shepherd">
                 <param name="run_ptm_shepherd" type="select" label="Run PTM Shepherd">
@@ -581,10 +504,8 @@ sed "s#^database.db-path.*#\database.db-path=\$DB#" $workflow_configfile > fp.wo
                     <option value="no" selected="@NO@">no</option>
                 </param>
                 <when value="yes">
-<!--
-ptmshepherd.output_extended
--->
-                    <section name="ptm_profiling" expanded="false" title="PTM Profiling"> 
+                    <param name="output_extended" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Extended output"/>
+                    <section name="ptm_profiling" expanded="false" title="PTM Profiling">
                         <param name="histo_smoothbins" type="integer" value="" min="0" optional="true" label="Smoothing factor" help="ptmshepherd.histo_smoothbins"/>
                         <param name="precursor_mass_units" type="select" label="Precursor Mass tolerance units" help="ptmshepherd.precursor_mass_units">
                             <option value="1" selected="true">ppm</option>
@@ -592,32 +513,30 @@ ptmshepherd.output_extended
                         </param>
                         <param name="precursor_tol" type="float" value="" min="0" optional="true" label="Precursor tolerance" help="ptmshepherd.precursor_tol"/>
                         <param name="peakpicking_promRatio" type="float" value="" min="0" optional="true" label="Prominece ratio" help="ptmshepherd.peakpicking_promRatio"/>
-
                         <param name="peakpicking_mass_units" type="select" label="Peakpicking Mass tolerance units" help="ptmshepherd.peakpicking_mass_units">
                             <option value="1" selected="true">ppm</option>
                             <option value="0" selected="false">Daltons</option>
                         </param>
                         <param name="peakpicking_width" type="float" value="" min="0" optional="true" label="Peak picking width" help="ptmshepherd.peakpicking_width"/>
-                        <param name="annotation_tol" type="float" value="" min="0" optional="true" label="Annotation tolerance (Da)" help="ptmshepherd.annotation_tol"/>
                         <param name="peakpicking_minPsm" type="integer" value="" min="0" optional="true" label="Peak minimum PSMs" help="ptmshepherd.peakpicking_minPsm"/>
                         <param name="spectra_ppmtol" type="float" value="" min="0" optional="true" label="Fragment Mass tolerance (PPM)" help="ptmshepherd.spectra_ppmtol"/>
                         <param name="normalization" type="select" optional="true" label="Normalize data to" help="ptmshepherd.normalization-psms ptmshepherd.normalization-scans">
                             <option value="psms" selected="true">PSMs</option>
                             <option value="scans" selected="false">MS2 scans</option>
                         </param>
-                        <param name="varmod_masses" type="text" value="" optional="true" label="Custom mass shifts" help="ptmshepherd.varmod_masses">
+                        <param name="varmod_masses" type="select" optional="true" label="Custom mass shifts" help="ptmshepherd.varmod_masses">
                             <option value="Failed_Carbamidomethylation\:-57.021464">Failed_Carbamidomethylation:-57.021464</option>
                         </param>
-                        <!--
+                    </section>
+                    <section name="ptm_annotation" expanded="true" title="PTM Annotation">
+                        <param name="annotation_tol" type="float" value="" min="0" optional="true" label="Annotation tolerance (Da)" help="ptmshepherd.annotation_tol"/>
                         <conditional name="annotation">
                             <param name="annotation_source" type="select" label="Annotation source" help="ptmshepherd.annotation">
-                                <option value="default">Default</option>
-                                <option value="unimod">Unimod</option>
-                                <option value="common">Common mass shifts</option>
-                                <option value="gyclo">Glyclo mass shifts</option>
-                                <option value="custom">Custom annotation file</option>
+                                <option value="unimod" selected="@UNIMOD@">Unimod</option>
+                                <option value="common" selected="@COMMON@">Common mass shifts</option>
+                                <option value="glyco" selected="@GLYCO@">Glyco mass shifts</option>
+                                <option value="custom" selected="@CUSTOM@">Custom annotation file</option>
                             </param>
-                            <when value="default"/>
                             <when value="unimod"/>
                             <when value="common"/>
                             <when value="glyco"/>
@@ -625,97 +544,68 @@ ptmshepherd.output_extended
                                 <param name="annotation_file" type="data" format="txt" label="Custom annotation file"/>
                             </when>
                         </conditional>
-                        -->
                     </section>
-                    <section name="ptm_localization" expanded="false" title="PTM Localization"> 
+                    <section name="ptm_localization" expanded="false" title="PTM Localization">
                         <param name="nions" type="select" multiple="true" optional="true" label="Use specified N-term ions" help="(default: a,b for CID, c for ETD)">
-                            <option value="a" selected="@A@">a</option>  
-                            <option value="b" selected="@B@">b</option>  
-                            <option value="c" selected="@C@">c</option>  
+                            <option value="a" selected="@A@">a</option>
+                            <option value="b" selected="@B@">b</option>
+                            <option value="c" selected="@C@">c</option>
                         </param>
                         <param name="cions" type="select" multiple="true" optional="true" label="use specified C-term ions" help="(default: y for CID, z for ETD)">
-                            <option value="x" selected="@X@">x</option>  
-                            <option value="y" selected="@Y@">y</option>  
-                            <option value="z" selected="@Z@">z</option>  
+                            <option value="x" selected="@X@">x</option>
+                            <option value="y" selected="@Y@">y</option>
+                            <option value="z" selected="@Z@">z</option>
                         </param>
-                        <param name="spectra_maxfragcharge" type="integer" value="1" min="0" optional="true" label="Max fragment charge" help="ptmshepherd.spectra_maxfragcharge"/>
+                        <param name="spectra_maxfragcharge" type="integer" value="" min="0" optional="true" label="Max fragment charge" help="ptmshepherd.spectra_maxfragcharge"/>
                         <param name="localization_background" type="integer" value="" min="0" optional="true" label="Localization background" help="ptmshepherd.localization_background"/>
-                        <param name="localization_allowed_res" type="text" value="" optional="true" label="Restrict localization to" help="ptmshepherd.localization_allowed_res">
-                            <option value="">none</option>
+                        <param name="localization_allowed_res" type="select" label="Restrict localization to" help="ptmshepherd.localization_allowed_res">
+                            <option value="" selected="true">none</option>
                             <option value="all">all</option>
                             <option value="N">N</option>
                             <option value="ST">ST</option>
                         </param>
                     </section>
-                    <section name="ion_discovery" expanded="false" title="Diagnostic Ion Discovery"> 
-<!--
-ptmshepherd.glyco_mode
-ptmshepherd.cap_y_ions
-ptmshepherd.diag_ions
-ptmshepherd.remainder_masses
--->
+                    <!-- Not yet implemented
+                    <section name="ion_discovery" expanded="false" title="Diagnostic Ion Discovery">
                     </section>
-                    <section name="glycan" expanded="false" title="Gyclan Assignment and FDR"> 
-<!--
-ptmshepherd.assign_glycans
-ptmshepherd.glyco_fdr
-ptmshepherd.glyco_ppm_tol
-ptmshepherd.glyco_isotope_min=-1
-ptmshepherd.glyco_isotope_max=3
-ptmshepherd.n_glyco
-?  Prep for IonQuant
-ptmshepherd.max_adducts
-ptmshepherd.glyco_adducts=
-ptmshepherd.glycodatabase
--->
-<!--
-ptmshepherd.adv_param
-ptmshepherd.prob_neuacOx=2,0.05,0.2
-ptmshepherd.prob_neugcOx=2,0.05,0.2
-ptmshepherd.prob_dhexOx=2,0.5,0.1
-ptmshepherd.prob_phosphoOx=2,0.05,0.2
-ptmshepherd.prob_sulfoOx=2,0.05,0.2
-ptmshepherd.prob_regY=5,0.5
-ptmshepherd.prob_dhexY=2,0.5
-ptmshepherd.decoy_type=1
-ptmshepherd.print_decoys=false
--->
+                    <section name="glycan" expanded="false" title="Gyclan Assignment and FDR">
                     </section>
+                    -->
                 </when>
                 <when value="no"/>
             </conditional>
         </section>
     </xml>
+
+    <!-- Set PTM-Sheperd workflow options -->
     <token name="@PTM_SHEPHERD@"><![CDATA[
 #set $prfx = $wf.ptms.ptm_shepherd
 #if $prfx.run_ptm_shepherd == 'yes'
   #set $wfdict['ptmshepherd.run-shepherd'] = 'true'
   #set $cxt = $prfx.ptm_profiling
-  #if $cxt.histo_smoothbins is not None
+  #set $wfdict['ptmshepherd.output_extended'] = $prfx.output_extended
+  #if $cxt.histo_smoothbins != ''
     #set $wfdict['ptmshepherd.histo_smoothbins'] = $cxt.histo_smoothbins
   #end if
-  #if $cxt.precursor_tol is not None
+  #if $cxt.precursor_tol != ''
     #set $wfdict['ptmshepherd.precursor_mass_units'] = $ctx.precursor_mass_units
     #set $wfdict['ptmshepherd.precursor_tol'] = $cxt.precursor_tol
   #end if
-  #if $cxt.peakpicking_promRatio is not None
+  #if $cxt.peakpicking_promRatio != ''
     #set $wfdict['ptmshepherd.peakpicking_promRatio'] = $cxt.peakpicking_promRatio
   #end if
-  #if $cxt.ppeakpicking_widthrecursor_tol is not None
+  #if $cxt.peakpicking_width != ''
     #set $wfdict['ptmshepherd.peakpicking_mass_units'] = $ctx.peakpicking_mass_units
     #set $wfdict['ptmshepherd.peakpicking_width'] = $cxt.peakpicking_width
   #end if
-  #if $cxt.annotation_tol is not None
-    #set $wfdict['ptmshepherd.annotation_tol'] = $cxt.annotation_tol
-  #end if
-  #if $cxt.peakpicking_minPsm is not None
+  #if $cxt.peakpicking_minPsm != ''
     #set $wfdict['ptmshepherd.peakpicking_minPsm'] = $cxt.peakpicking_minPsm
   #end if
-  #if $cxt.spectra_ppmtol is not None
+  #if $cxt.spectra_ppmtol != ''
     #set $wfdict['ptmshepherd.spectra_ppmtol'] = $cxt.spectra_ppmtol
   #end if
-  #if $cxt.normalization is not None
-    #if $cxt.normalization == "psms"  
+  #if $cxt.normalization != 'None'
+    #if $cxt.normalization == "psms"
       #set $wfdict['ptmshepherd.normalization-psms'] = 'true'
       #set $wfdict['ptmshepherd.normalization-scans'] = 'false'
     #else
@@ -723,10 +613,13 @@ ptmshepherd.print_decoys=false
       #set $wfdict['ptmshepherd.normalization-scans'] = 'true'
     #end if
   #end if
-  #if $cxt.varmod_masses is not None
+  #if $cxt.varmod_masses != 'None'
     #set $wfdict['ptmshepherd.varmod_masses'] = $cxt.varmod_masses
   #end if
-  #* 
+  #set $cxt = $prfx.ptm_annotation
+  #if $cxt.annotation_tol != ''
+    #set $wfdict['ptmshepherd.annotation_tol'] = $cxt.annotation_tol
+  #end if
   #if $cxt.annotation.annotation_source == 'unimod'
     #set $wfdict['ptmshepherd.annotation-unimod'] = 'true'
     #set $wfdict['ptmshepherd.annotation-common'] = 'false'
@@ -749,188 +642,35 @@ ptmshepherd.print_decoys=false
     #set $wfdict['ptmshepherd.annotation-custom'] = 'true'
     #set $wfdict['ptmshepherd.annotation_file'] = $cxt.annotation.annotation_file
   #end if
-  *#
   #set $cxt = $prfx.ptm_localization
   #if $cxt.nions is not None
-    #set $wfdict['ptmshepherd.iontype_a'] = str('a' in $cxt.nions)
-    #set $wfdict['ptmshepherd.iontype_b'] = str('b' in $cxt.nions)
-    #set $wfdict['ptmshepherd.iontype_c'] = str('c' in $cxt.nions)
+    #set $wfdict['ptmshepherd.iontype_a'] = str('a' in $cxt.nions).lower()
+    #set $wfdict['ptmshepherd.iontype_b'] = str('b' in $cxt.nions).lower()
+    #set $wfdict['ptmshepherd.iontype_c'] = str('c' in $cxt.nions).lower()
   #end if
   #if $cxt.cions is not None
-    #set $wfdict['ptmshepherd.iontype_x'] = str('x' in $cxt.cions)
-    #set $wfdict['ptmshepherd.iontype_y'] = str('y' in $cxt.cions)
-    #set $wfdict['ptmshepherd.iontype_z'] = str('z' in $cxt.cions)
+    #set $wfdict['ptmshepherd.iontype_x'] = str('x' in $cxt.cions).lower()
+    #set $wfdict['ptmshepherd.iontype_y'] = str('y' in $cxt.cions).lower()
+    #set $wfdict['ptmshepherd.iontype_z'] = str('z' in $cxt.cions).lower()
   #end if
-  #if $cxt.spectra_maxfragcharge is not None
+  #if $cxt.spectra_maxfragcharge != ''
     #set $wfdict['ptmshepherd.spectra_maxfragcharge'] = $cxt.spectra_maxfragcharge
   #end if
-  #if $cxt.localization_background is not None
+  #if $cxt.localization_background != ''
     #set $wfdict['ptmshepherd.localization_background'] = $cxt.localization_background
   #end if
-  #if $cxt.localization_background is not None
-    #set $wfdict['ptmshepherd.localization_background'] = $cxt.localization_background
-  #end if
+  #set $wfdict['ptmshepherd.localization_allowed_res'] = $cxt.localization_allowed_res
 #else
   #set $wfdict['ptmshepherd.run-shepherd'] = 'false'
 #end if
     ]]></token>
 
-    <xml name="ptm_localization" token_yes="true" token_no="false" token_a="false" token_b="true" token_c="false" token_x="false" token_y="true" token_z="false">
-        <conditional name="ptm_localization">
-            <param name="ptm_localization_step" type="select" label="PTM Site Localization">
-                <option value="yes" selected="@YES@">yes</option>
-                <option value="no" selected="@NO@">no</option>
-            </param>
-            <when value="yes">
-                <section name="options" expanded="false" title="PTM Localization"> 
-                    <param name="nions" type="select" multiple="true" label="use specified N-term ions" help="(default: a,b for CID, c for ETD)">
-                        <option value="a" selected="@A@">a</option>  
-                        <option value="b" selected="@B@">b</option>  
-                        <option value="c" selected="@C@">c</option>  
-                    </param>
-                    <param name="cions" type="select" multiple="true" label="use specified C-term ions" help="(default: y for CID, z for ETD)">
-                        <option value="x" selected="@X@">x</option>  
-                        <option value="y" selected="@Y@">y</option>  
-                        <option value="z" selected="@Z@">z</option>  
-                    </param>
+    <token name="@RE_EXCLUDEMOD@">@RE_AA@,@RE_FLOAT@</token>
+    <token name="@RE_EXCLUDEMODS@">@RE_EXCLUDEMOD@(;\s*@RE_EXCLUDEMOD@)*</token>
 
-                    <param name="em" type="integer" value="2" label="set EM models to 0 (no EM), 1 (Intensity EM Model Applied) or 2 (Intensity and Matched Peaks EM Models Applied)"/>
-                    <param name="fragppmtol" type="integer" value="15" label="when computing PSM-specific mass_offset and mass_tolerance, use specified default +/- MS2 mz tolerance on fragment ions"/>
-                    <param name="massoffset" type="integer" value="0" label="adjust the massdiff by offset (0 = use default)"/>
-                    <param name="maxfragz" type="integer" value="0" label="limit maximum fragment charge (default: 0=precursor charge, negative values subtract from precursor charge)"/>
-                    <param name="maxthreads" type="integer" value="4" label="use specified number of threads for processing"/>
-                    <param name="mino" type="integer" value="0" label="use specified number of pseudo-counts when computing Oscore (0 = use default)"/>
-                    <param name="excludemassdiffmin" type="float" value="0" label="Minimum mass difference excluded for MASSDIFFFMODE analysis (default=0)"/>
-                    <param name="excludemassdiffmax" type="float" value="0" label="Maximun mass difference excluded for MASSDIFFFMODE analysis (default=0)"/>
-                    <param name="minprob" type="float" value="0" label="use specified minimum probability to evaluate peptides"/>
-                    <param name="ppmtol" type="float" value="1" label="use specified +/- MS1 ppm tolerance on peptides which may have a slight offset depending on search parameters"/>
-                    <param name="autodirect" type="boolean" truevalue="true" falsevalue="false" checked="false" label="use direct evidence when the lability is high, use in combination with LABILITY"/>
-                    <param name="direct" type="boolean" truevalue="true" falsevalue="false" checked="false" label="use only direct evidence for evaluating PTM site probabilities"/>
-                    <param name="static" type="boolean" truevalue="true" falsevalue="false" checked="false" label="use static fragppmtol for all PSMs instead of dynamically estimates offsets and tolerances"/>
-                    <param name="ifrags" type="boolean" truevalue="true" falsevalue="false" checked="false" label="use internal fragments for localization"/>
-                    <param name="keepold" type="boolean" truevalue="true" falsevalue="false" checked="false" label="retain old PTMProphet results in the pepXML file"/>
-                    <param name="lability" type="boolean" truevalue="true" falsevalue="false" checked="false" label="compute Lability of PTMs"/>
-                    <param name="massdiffmode" type="boolean" truevalue="true" falsevalue="false" checked="false" label="use the Mass Difference and localize"/>
-                    <param name="nominofactor" type="boolean" truevalue="true" falsevalue="false" checked="false" label="disable MINO factor correction when MINO= is set greater than 0 (default: apply MINO factor correction)"/>
-                    <param name="verbose" type="boolean" truevalue="true" falsevalue="false" checked="false" label="produce Warnings to help troubleshoot potential PTM shuffling or mass difference issues"/>
-        <!--
-          mods:                    # specify modifications
-        -->
-                </section>
-            </when>
-            <when value="no"/>
-        </conditional>
-    </xml>
-
-    <token name="@PTM_LOCALIZATION@"><![CDATA[
-#if $workflow.ptm_localization.ptm_localization_step == 'yes'
-PTM Localization:          # PTMProphet v6.0
-#if $workflow.ptm_localization.optionsnions
-  nions: $workflow.ptm_localization.optionsnions  # use specified N-term ions, separate multiple ions by commas (default: a,b for CID, c for ETD)
-#end if
-#if $workflow.ptm_localization.optionscions
-  cions: $workflow.ptm_localization.optionscions  # use specified C-term ions, separate multiple ions by commas (default: y for CID, z for ETD)
-#end if
-## #if $workflow.ptm_localization.optionsmods
-##   mods:                    # specify modifications
-## #end if
-  autodirect: $workflow.ptm_localization.optionsautodirect    # use direct evidence when the lability is high, use in combination with LABILITY
-  direct: $workflow.ptm_localization.optionsdirect    # use only direct evidence for evaluating PTM site probabilities
-  em: $workflow.ptm_localization.optionsem    # set EM models to 0 (no EM), 1 (Intensity EM Model Applied) or 2 (Intensity and Matched Peaks EM Models Applied)
-  static: $workflow.ptm_localization.optionsstatic    # use static fragppmtol for all PSMs instead of dynamically estimates offsets and tolerances
-  fragppmtol: $workflow.ptm_localization.optionsfragppmtol    # when computing PSM-specific mass_offset and mass_tolerance, use specified default +/- MS2 mz tolerance on fragment ions
-  ifrags: $workflow.ptm_localization.optionsifrags    # use internal fragments for localization
-  keepold: $workflow.ptm_localization.optionskeepold    # retain old PTMProphet results in the pepXML file
-  lability: $workflow.ptm_localization.optionslability    # compute Lability of PTMs
-  massdiffmode: $workflow.ptm_localization.optionsmassdiffmode    # use the Mass Difference and localize
-  excludemassdiffmin: $workflow.ptm_localization.optionsexcludemassdiffmin    # Minimum mass difference excluded for MASSDIFFFMODE analysis (default=0)
-  excludemassdiffmax: $workflow.ptm_localization.optionsexcludemassdiffmax    # Maximun mass difference excluded for MASSDIFFFMODE analysis (default=0)
-  massoffset: $workflow.ptm_localization.optionsmassoffset    # adjust the massdiff by offset (0 = use default)
-  maxfragz: $workflow.ptm_localization.optionsmaxfragz    # limit maximum fragment charge (default: 0=precursor charge, negative values subtract from precursor charge)
-  maxthreads: $workflow.ptm_localization.optionsmaxthreads    # use specified number of threads for processing
-  mino: $workflow.ptm_localization.optionsmino    # use specified number of pseudo-counts when computing Oscore (0 = use default)
-  minprob: $workflow.ptm_localization.optionsminprob    # use specified minimum probability to evaluate peptides
-  nominofactor: $workflow.ptm_localization.optionsnominofactor    # disable MINO factor correction when MINO= is set greater than 0 (default: apply MINO factor correction)
-  ppmtol: $workflow.ptm_localization.optionsppmtol    # use specified +/- MS1 ppm tolerance on peptides which may have a slight offset depending on search parameters
-  verbose: $workflow.ptm_localization.optionsverbose    # produce Warnings to help troubleshoot potential PTM shuffling or mass difference issues
-#end if
-    ]]></token>
-
-    <xml name="protein_inference" token_yes="true" token_no="false" token_maxppmdiff="20">
-        <conditional name="protein_inference">
-            <param name="protein_inference_step" type="select" label="Perform Protein Inference">
-                <option value="yes" selected="@YES@">yes</option>
-                <option value="no" selected="@NO@">no</option>
-            </param>
-            <when value="yes">
-                <section name="options" expanded="false" title="Protein Inference"> 
-                    <param name="maxppmdiff" type="integer" value="@MAXPPMDIFF@" label="maximum peptide mass difference in PPM (default 20)"/>
-                    <param name="minprob" type="float" value="0.05" label="peptideProphet probabilty threshold (default 0.05)"/>
-                    <param name="mufactor" type="integer" value="1" label="fudge factor to scale MU calculation (default 1)"/>
-                    <param name="accuracy" type="boolean" truevalue="true" falsevalue="false" checked="false" label="equivalent to --minprob 0"/>
-                    <param name="allpeps" type="boolean" truevalue="true" falsevalue="false" checked="false" label="consider all possible peptides in the database in the confidence model"/>
-                    <param name="confem" type="boolean" truevalue="true" falsevalue="false" checked="false" label="use the EM to compute probability given the confidence"/>
-                    <param name="delude" type="boolean" truevalue="true" falsevalue="false" checked="false" label="do NOT use peptide degeneracy information when assessing proteins"/>
-                    <param name="excludezeros" type="boolean" truevalue="true" falsevalue="false" checked="false" label="exclude zero prob entries"/>
-                    <param name="fpkm" type="boolean" truevalue="true" falsevalue="false" checked="false" label="model protein FPKM values"/>
-                    <param name="glyc" type="boolean" truevalue="true" falsevalue="false" checked="false" label="highlight peptide N-glycosylation motif"/>
-                    <param name="icat" type="boolean" truevalue="true" falsevalue="false" checked="false" label="highlight peptide cysteines"/>
-                    <param name="instances" type="boolean" truevalue="true" falsevalue="false" checked="false" label="use Expected Number of Ion Instances to adjust the peptide probabilities prior to NSP adjustment"/>
-                    <param name="iprophet" type="boolean" truevalue="true" falsevalue="false" checked="false" label="input is from iProphet"/>
-                    <param name="logprobs" type="boolean" truevalue="true" falsevalue="false" checked="false" label="use the log of the probabilities in the Confidence calculations"/>
-                    <param name="nogroupwts" type="boolean" truevalue="true" falsevalue="false" checked="false" label="check peptide's Protein weight against the threshold (default: check peptide's Protein Group weight against threshold)"/>
-                    <param name="nonsp" type="boolean" truevalue="true" falsevalue="false" checked="false" label="do not use NSP model"/>
-                    <param name="nooccam" type="boolean" truevalue="true" falsevalue="false" checked="false" label="non-conservative maximum protein list"/>
-                    <param name="noprotlen" type="boolean" truevalue="true" falsevalue="false" checked="false" label="do not report protein length"/>
-                    <param name="normprotlen" type="boolean" truevalue="true" falsevalue="false" checked="false" label="normalize NSP using Protein Length"/>
-                    <param name="protmw" type="boolean" truevalue="true" falsevalue="false" checked="false" label="get protein mol weights"/>
-                    <param name="softoccam" type="boolean" truevalue="true" falsevalue="false" checked="false" label="peptide weights are apportioned equally among proteins within each Protein Group (less conservative protein count estimate)"/>
-                </section>
-            </when>
-            <when value="no"/>
-        </conditional>
-    </xml>
-    <xml name="protein_prophet" token_cmd_opts="--maxppmdiff 2000000">
-        <conditional name="protein_prophet">
-            <param name="run_protein_prophet" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Run Protein Prophet"/>
-            <when value="true">
-                <section name="options" expanded="true" title="Protein Prophet">
-                    <param name="protein_prophet_cmd_opts" type="text" value="@CMD_OPTS@" label="Protein Prophet Cmd line opts"/>
-                </section>
-            </when>
-            <when value="false"/>
-        </conditional>
-    </xml>
-    <token name="@PROTEIN_INFERENCE@"><![CDATA[
-#if $workflow.protein_inference.protein_inference_step == 'yes'
-Protein Inference:                               # ProteinProphet v5.2
-  accuracy: $workflow.protein_inference.options.accuracy    # equivalent to --minprob 0
-  allpeps: $workflow.protein_inference.options.allpeps    # consider all possible peptides in the database in the confidence model
-  confem: $workflow.protein_inference.options.confem    # use the EM to compute probability given the confidence
-  delude: $workflow.protein_inference.options.delude    # do NOT use peptide degeneracy information when assessing proteins
-  excludezeros: $workflow.protein_inference.options.excludezeros    # exclude zero prob entries
-  fpkm: $workflow.protein_inference.options.fpkm    # model protein FPKM values
-  glyc: $workflow.protein_inference.options.glyc    # highlight peptide N-glycosylation motif
-  icat: $workflow.protein_inference.options.icat    # highlight peptide cysteines
-  instances: $workflow.protein_inference.options.instances    # use Expected Number of Ion Instances to adjust the peptide probabilities prior to NSP adjustment
-  iprophet: $workflow.protein_inference.options.iprophet    # input is from iProphet
-  logprobs: $workflow.protein_inference.options.logprobs    # use the log of the probabilities in the Confidence calculations
-  maxppmdiff: $workflow.protein_inference.options.maxppmdiff    # maximum peptide mass difference in PPM (default 20)
-  minprob: $workflow.protein_inference.options.minprob    # peptideProphet probabilty threshold (default 0.05)
-  mufactor: $workflow.protein_inference.options.mufactor    # fudge factor to scale MU calculation (default 1)
-  nogroupwts: $workflow.protein_inference.options.nogroupwts    # check peptide's Protein weight against the threshold (default: check peptide's Protein Group weight against threshold)
-  nonsp: $workflow.protein_inference.options.nonsp    # do not use NSP model
-  nooccam: $workflow.protein_inference.options.nooccam    # non-conservative maximum protein list
-  noprotlen: $workflow.protein_inference.options.noprotlen    # do not report protein length
-  normprotlen: $workflow.protein_inference.options.normprotlen    # normalize NSP using Protein Length
-  protmw: $workflow.protein_inference.options.protmw    # get protein mol weights
-  softoccam: $workflow.protein_inference.options.softoccam    # peptide weights are apportioned equally among proteins within each Protein Group (less conservative protein count estimate)
-  unmapped: false
-#end if
-    ]]></token>
-
+    <!-- Label-free quantification options -->
     <xml name="label_free_quantification" token_expand="false">
-       <section name="quant_ms1" expanded="@EXPAND@" title="Quant (MS1)"> 
+       <section name="quant_ms1" expanded="@EXPAND@" title="Quant (MS1)">
             <conditional name="label_free_quantification">
                 <param name="label_free_quantification_run" type="select" label="Perform Label-Free Quantification">
                     <option value="default" selected="true">Use workflow default</option>
@@ -941,26 +681,21 @@ Protein Inference:                               # ProteinProphet v5.2
                 <when value="default"/>
                 <when value="no"/>
                 <when value="ionquant">
-                    <section name="ionquant" expanded="false" title="IonQuant Label-Free Quantification"> 
+                    <section name="ionquant" expanded="false" title="IonQuant Label-Free Quantification">
                         <param name="mbr" type="select" optional="true" label="Match between runs (MBR)" help="ionquant.mbr">
-                            <option value="0">No</option> 
-                            <option value="1">Yes</option> 
+                            <option value="0">No</option>
+                            <option value="1">Yes</option>
                         </param>
-                        <param name="maxlfq" type="select" optional="true" label="MaxLFQ" help="ionquant.maxlfq">
-                            <option value="0">No</option> 
-                            <option value="1">Yes</option> 
-                        </param>
-                        <param name="minions" type="integer" value="" optional="true" label="Min ions" help="ionquant.minions"/>
                         <param name="normalization" type="select" optional="true" label="Normalize" help="ionquant.normalization">
-                            <option value="0">No</option> 
-                            <option value="1">Yes</option> 
+                            <option value="0">No</option>
+                            <option value="1">Yes</option>
                         </param>
-                        <section name="feature_detection" expanded="false" title="Feature detection"> 
+                        <section name="feature_detection" expanded="false" title="Feature detection">
                             <param name="mztol" type="integer" value="" optional="true" label="m/z tolerance in ppm" help="ionquant.mztol (default 10)"/>
                             <param name="rttol" type="float" value="" optional="true" label="RT tolerance (minutes)" help="ionquant.rttol (default 0.4)"/>
                             <param name="imtol" type="float" value="" optional="true" label="IM tolerance (1/k0)" help="ionquant.imtol (default 0.05)"/>
                         </section>
-                        <section name="mbr" expanded="false" title="Match between runs (MBR)"> 
+                        <section name="mbr" expanded="false" title="Match between runs (MBR)">
                             <param name="mbrrttol" type="float" value="" optional="true" label="MBR RT tolerance (minutes)" help="ionquant.mbrrttol"/>
                             <param name="mbrimtol" type="float" value="" optional="true" label="MBR IM tolerance (1/k0)" help="ionquant.mbrimtol"/>
                             <param name="mbrmincorr" type="float" value="" optional="true" label="MBR min correlation" help="ionquant.mbrmincorr"/>
@@ -969,51 +704,68 @@ Protein Inference:                               # ProteinProphet v5.2
                             <param name="peptidefdr" type="float" value="" min="0.00001" max="1.0" optional="true" label="MBR peptide FDR" help="ionquant.peptidefdr"/>
                             <param name="proteinfdr" type="float" value="" min="0.00001" max="1.0" optional="true" label="MBR protein FDR" help="ionquant.proteinfdr"/>
                         </section>
-                        <section name="topn" expanded="false" title="Top-N options"> 
+                        <section name="topn" expanded="false" title="Top-N options">
                             <param name="tp" type="integer" value="" min="0" optional="true" label="Top N ions" help="ionquant.tp"/>
                             <param name="minfreq" type="float" value="" min="0.0" max="1.0" optional="true" label="Min freq" help="ionquant.minfreq"/>
                             <param name="minexps" type="integer" value="" optional="true" label="Min exps" help="ionquant.minexps"/>
                         </section>
-                        <section name="labeling" expanded="false" title="Labeling-based quant"> 
-                            <param name="light" type="text" value="" optional="true" label="Light" help="ionquant.light">
-                                <option value="">none</option>
-                                <option value="C463.2366">C463.2366</option>
-                                <option value="C464.28596">C464.28596</option>
-                                <option value="C561.3387">C561.3387</option>
-                                <option value="K0;R0">K0;R0</option>
+                        <conditional name="labeling_conditional">
+                            <param name="labeling_option" type="select" label="Labeling option">
+                              <option value="lfq" selected="true">LFQ</option>
+                              <option value="labeling">Labeling</option>
                             </param>
-                            <param name="medium" type="text" value="" optional="true" label="Medium" help="ionquant.medium">
-                                <option value="">none</option>
-                                <option value="K4.025107;R6.020129">K4.025107;R6.020129</option>
-                            </param>
-                            <param name="heavy" type="text" value="" optional="true" label="Heavy" help="ionquant.heavy">
-                                <option value="">none</option>
-                                <option value="C467.2529">C467.2529</option>
-                                <option value="C470.29977">C470.29977</option>
-                                <option value="C567.3462">C567.3462</option>
-                                <option value="K8.014199;R10.008269">K8.014199;R10.008269</option>
-                            </param>
-                            <param name="requantify" type="select" optional="true" label="Re-quantify" help="ionquant.requantify">
-                                <option value="0">No</option> 
-                                <option value="1">Yes</option> 
-                            </param>
-                        </section>
-                        <section name="advanced" expanded="false" title="Advanced options"> 
-                            <param name="excludemods" type="text" value="" optional="true" label="excludemods" help="ionquant.excludemods">
-                                <!-- validator -->
+                            <when value="lfq">
+                              <section name="lfq" expanded="false" title="LFQ">
+                                <param name="maxlfq" type="select" optional="true" label="MaxLFQ" help="ionquant.maxlfq">
+                                    <option value="0">No</option>
+                                    <option value="1">Yes</option>
+                                </param>
+                                <param name="minions" type="integer" value="" optional="true" label="Min ions" help="ionquant.minions"/>
+                              </section>
+                            </when>
+                            <when value="labeling">
+                              <section name="labeling" expanded="false" title="Labeling-based quant">
+                                  <param name="light" type="select" label="Light" help="ionquant.light">
+                                      <option value="" selected="true">none</option>
+                                      <option value="C463.2366">C463.2366</option>
+                                      <option value="C464.28596">C464.28596</option>
+                                      <option value="C561.3387">C561.3387</option>
+                                      <option value="K0;R0">K0;R0</option>
+                                  </param>
+                                  <param name="medium" type="select" label="Medium" help="ionquant.medium">
+                                      <option value="" selected="true">none</option>
+                                      <option value="K4.025107;R6.020129">K4.025107;R6.020129</option>
+                                  </param>
+                                  <param name="heavy" type="select" label="Heavy" help="ionquant.heavy">
+                                      <option value="" selected="true">none</option>
+                                      <option value="C467.2529">C467.2529</option>
+                                      <option value="C470.29977">C470.29977</option>
+                                      <option value="C567.3462">C567.3462</option>
+                                      <option value="K8.014199;R10.008269">K8.014199;R10.008269</option>
+                                  </param>
+                                  <param name="requantify" type="select" label="Re-quantify" help="ionquant.requantify">
+                                      <option value="0">No</option>
+                                      <option value="1" selected="true">Yes</option>
+                                  </param>
+                              </section>
+                            </when>
+                        </conditional>
+                        <section name="advanced" expanded="false" title="Advanced options">
+                            <param name="excludemods" type="text" optional="true" label="excludemods" help="ionquant.excludemods">
+                                <validator type="regex">^\s*@RE_EXCLUDEMODS@\s*$</validator>
                             </param>
                             <param name="minscans" type="integer" value="" min="0" optional="true" label="Min scans" help="ionquant.minscans"/>
                             <param name="minisotopes" type="integer" value="" min="1" max="3" optional="true" label="Min isotopes" help="ionquant.minisotopes"/>
                             <param name="locprob" type="float" value="" min="0.0" max="1.0" optional="true" label="Min site probability" help="ionquant.locprob"/>
                             <param name="writeindex" type="select" optional="true" label="Write index" help="ionquant.writeindex">
-                                <option value="0">No</option> 
-                                <option value="1">Yes</option> 
+                                <option value="0">No</option>
+                                <option value="1">Yes</option>
                             </param>
                         </section>
                     </section>
                 </when>
                 <when value="freequant">
-                    <section name="freequant" expanded="false" title="IonQuant Label-Free Quantification"> 
+                    <section name="freequant" expanded="false" title="IonQuant Label-Free Quantification">
                         <param name="rt_tol" type="float" value="" min="0" optional="true" label="RT Window (minutes)"/>
                         <param name="mz_tol" type="integer" value="" min="1" optional="true" label="m/z Window (ppm)"/>
                     </section>
@@ -1021,6 +773,8 @@ Protein Inference:                               # ProteinProphet v5.2
             </conditional>
         </section>
     </xml>
+
+    <!-- Set label-free quantification workflow options -->
     <token name="@LABEL_FREE_QUANTIFICATION@"><![CDATA[
 #set $prfx = $wf.quant_ms1.label_free_quantification
 #if $prfx.label_free_quantification_run == 'no'
@@ -1030,110 +784,117 @@ Protein Inference:                               # ProteinProphet v5.2
   #set $wfdict['ionquant.run-ionquant'] = 'true'
   #set $wfdict['freequant.run-freequant'] = 'false'
   #set $cxt = $prfx.ionquant
-  #if $cxt.mbr is not None
+  #if $cxt.mbr != 'None'
     #set $wfdict['ionquant.mbr'] = $cxt.mbr
-  #end if  
+  #end if
   #if $cxt.maxlfqbr is not None
     #set $wfdict['ionquant.maxlfqbr'] = $cxt.maxlfqbr
-  #end if  
-  #if $cxt.minions is not None
-    #set $wfdict['ionquant.minions'] = $cxt.minions
-  #end if  
-  #if $cxt.normalization is not None
+  #end if
+  #if $cxt.normalization != 'None'
     #set $wfdict['ionquant.normalization'] = $cxt.normalization
-  #end if  
+  #end if
   #set $cxt = $prfx.ionquant.feature_detection
-  #if $cxt.mztol is not None
+  #if $cxt.mztol != ''
     #set $wfdict['ionquant.mztol'] = $cxt.mztol
-  #end if  
-  #if $cxt.rttol is not None
+  #end if
+  #if $cxt.rttol != ''
     #set $wfdict['ionquant.rttol'] = $cxt.rttol
-  #end if  
-  #if $cxt.imtol is not None
+  #end if
+  #if $cxt.imtol != ''
     #set $wfdict['ionquant.imtol'] = $cxt.imtol
-  #end if  
+  #end if
   #set $cxt = $prfx.ionquant.mbr
-  #if $cxt.mbrrttol is not None
+  #if $cxt.mbrrttol != ''
     #set $wfdict['ionquant.mbrrttol'] = $cxt.mbrrttol
-  #end if  
-  #if $cxt.mbrimtol is not None
+  #end if
+  #if $cxt.mbrimtol != ''
     #set $wfdict['ionquant.mbrimtol'] = $cxt.mbrimtol
-  #end if  
-  #if $cxt.mbrmincorr is not None
+  #end if
+  #if $cxt.mbrmincorr != ''
     #set $wfdict['ionquant.mbrmincorr'] = $cxt.mbrmincorr
-  #end if  
-  #if $cxt.mbrtoprun is not None
+  #end if
+  #if $cxt.mbrtoprun != ''
     #set $wfdict['ionquant.mbrtoprun'] = $cxt.mbrtoprun
-  #end if  
-  #if $cxt.ionfdr is not None
+  #end if
+  #if $cxt.ionfdr != ''
     #set $wfdict['ionquant.ionfdr'] = $cxt.ionfdr
-  #end if  
-  #if $cxt.peptidefdr is not None
+  #end if
+  #if $cxt.peptidefdr != ''
     #set $wfdict['ionquant.peptidefdr'] = $cxt.peptidefdr
-  #end if  
-  #if $cxt.proteinfdr is not None
+  #end if
+  #if $cxt.proteinfdr != ''
     #set $wfdict['ionquant.proteinfdr'] = $cxt.proteinfdr
-  #end if  
+  #end if
   #set $cxt = $prfx.ionquant.topn
-  #if $cxt.tp is not None
+  #if $cxt.tp != ''
     #set $wfdict['ionquant.tp'] = $cxt.tp
-  #end if  
-  #if $cxt.minfreq is not None
+  #end if
+  #if $cxt.minfreq != ''
     #set $wfdict['ionquant.minfreq'] = $cxt.minfreq
-  #end if  
-  #if $cxt.minexps is not None
+  #end if
+  #if $cxt.minexps != ''
     #set $wfdict['ionquant.minexps'] = $cxt.minexps
-  #end if  
-  #set $cxt = $prfx.ionquant.labeling
-  #if $cxt.light is not None
-    #set $wfdict['ionquant.light'] = $cxt.light
-  #end if  
-  #if $cxt.medium is not None
-    #set $wfdict['ionquant.medium'] = $cxt.medium
-  #end if  
-  #if $cxt.heavy is not None
-    #set $wfdict['ionquant.heavy'] = $cxt.heavy
-  #end if  
-  #if $cxt.requantify is not None
-    #set $wfdict['ionquant.requantify'] = $cxt.requantify
-  #end if  
+  #end if
+  #set $cxt = $prfx.ionquant.labeling_conditional
+  #if $cxt.labeling_option == 'labeling'
+    #set $cxt = $prfx.ionquant.labeling_conditional.labeling
+    #set $wfdict['ionquant.use-labeling'] = 'true'
+    #set $wfdict['ionquant.use-lfq'] = 'false'
+    #set $wfdict['ionquant.light'] = $cxt.labeling.light
+    #set $wfdict['ionquant.medium'] = $cxt.labeling.medium
+    #set $wfdict['ionquant.heavy'] = $cxt.labeling.heavy
+    #set $wfdict['ionquant.requantify'] = $cxt.labeling.requantify
+  #else
+    #set $cxt = $prfx.ionquant.labeling_conditional.lfq
+    #set $wfdict['ionquant.use-labeling'] = 'false'
+    #set $wfdict['ionquant.use-lfq'] = 'true'
+    #if $cxt.maxlfq != 'None'
+      #set $wfdict['ionquant.maxlfq'] = $cxt.maxlfq
+    #end if
+    #if $cxt.minions != ''
+      #set $wfdict['ionquant.minions'] = $cxt.minions
+    #end if
+  #end if
   #set $cxt = $prfx.ionquant.advanced
-  #if $cxt.excludemods is not None
+  #if $cxt.excludemods != ''
     #set $wfdict['ionquant.excludemods'] = $cxt.excludemods
-  #end if  
-  #if $cxt.minscans is not None
+  #end if
+  #if $cxt.minscans != ''
     #set $wfdict['ionquant.minscans'] = $cxt.minscans
-  #end if  
-  #if $cxt.minisotopes is not None
+  #end if
+  #if $cxt.minisotopes != ''
     #set $wfdict['ionquant.minisotopes'] = $cxt.minisotopes
-  #end if  
-  #if $cxt.locprob is not None
+  #end if
+  #if $cxt.locprob != ''
     #set $wfdict['ionquant.locprob'] = $cxt.locprob
-  #end if  
-  #if $cxt.writeindex is not None
+  #end if
+  #if $cxt.writeindex != 'None'
     #set $wfdict['ionquant.writeindex'] = $cxt.writeindex
-  #end if  
+  #end if
 #elif $prfx.label_free_quantification_run == 'freequant'
   #set $wfdict['quantitation.run-label-free-quant'] = 'false'
   #set $wfdict['ionquant.run-ionquant'] = 'false'
   #set $wfdict['freequant.run-freequant'] = 'true'
   #set $cxt = $prfx.freequant
-  #if $cxt.rt_tol is not None 
+  #if $cxt.rt_tol != ''
     #set $wfdict['freequant.rt-tol'] = $cxt.rt_tol
   #end if
-  #if $cxt.mz_tol is not None 
+  #if $cxt.mz_tol != ''
     #set $wfdict['freequant.mz-tol'] = $cxt.mz_tol
   #end if
 #end if
     ]]></token>
 
-    <!-- TMT-n uses the following n first labels from TMT-18 -->
-    <!-- TMT-18 "126, 127N, 127C, 128N, 128C, 129N, 129C, 130N, 130C, 131N, 131C, 132N, 132C, 133N, 133C, 134N, 134C, 135N" -->
-    <!-- iTRAQ-4 "114, 115, 116, 117" -->
-    <!-- iTRAQ-8 "113, 114, 115, 116, 117, 118, 119, 121" -->
+    <!--
+      Isobaric quantification options
 
-    <xml name="isobaric_quantification" token_expand="false" token_yes="true" token_no="false" token_plex="" token_level="2" token_ref_tag="" token_mod_tag="">
-        <section name="quant_iso" expanded="@EXPAND@" title="Quant (Isobaric)"> 
+      TMT-n uses the following n first labels from TMT-18
+      TMT-18 "126, 127N, 127C, 128N, 128C, 129N, 129C, 130N, 130C, 131N, 131C, 132N, 132C, 133N, 133C, 134N, 134C, 135N"
+      iTRAQ-4 "114, 115, 116, 117"
+      iTRAQ-8 "113, 114, 115, 116, 117, 118, 119, 121"
+    -->
+    <xml name="isobaric_quantification" token_expand="false" token_yes="true" token_no="false" token_plex="" token_level="2" token_virtual="false" token_pool="false" token_bridge="true">
+        <section name="quant_iso" expanded="@EXPAND@" title="Quant (Isobaric)">
             <conditional name="isobaric_quantification">
                 <param name="isobaric_quantification_step" type="select" label="Perform Isobaric Quantification">
                     <option value="default">Use workflow defaults</option>
@@ -1143,24 +904,16 @@ Protein Inference:                               # ProteinProphet v5.2
                 <when value="default"/>
                 <when value="no"/>
                 <when value="yes">
-                    <section name="options" expanded="true" title="Isobaric Quantification"> 
+                    <section name="options" expanded="true" title="Isobaric Quantification">
                         <param name="quant_level" type="integer" value="@LEVEL@" min="1" max="3" label="MS level for the quantification"/>
                         <param name="channel_num" type="text" value="@PLEX@" optional="true" label="Number of channels">
-                            <option value="4">4</option>
-                            <option value="6">6</option>
-                            <option value="8">8</option>
-                            <option value="10">10</option>
-                            <option value="11">11</option>
-                            <option value="16">16</option>
-                            <option value="18">18</option>
-                            <validator type="regex" message="">^\d?</validator>
+                            <validator type="regex" message="">^TMT-\d?</validator>
                         </param>
-                        <param name="glyco_qval" type="integer" value="-1" optional="true"/>
-                        <param name="ref_tag" type="text" value="@REF_TAG@" label="Set Unique tag to identify reference channels">
+                        <param name="ref_tag" type="select" label="Set Unique tag to identify reference channels">
                             <help>Virtual or specify a Reference sample tag: pool or Bridge</help>
-                            <option value="Virtual">Virtual - Add an artificial reference channel</option>
-                            <option value="pool">pool</option>
-                            <option value="Bridge">Bridge</option>
+                            <option value="Virtual" selected="@VIRTUAL@">Virtual - Add an artificial reference channel</option>
+                            <option value="pool" selected="@POOL@">pool</option>
+                            <option value="Bridge" selected="@BRIDGE@">Bridge</option>
                         </param>
                         <param name="groupby" type="select" optional="true" label="Group by level of summarization">
                             <option value="0">Gene level</option>
@@ -1170,25 +923,35 @@ Protein Inference:                               # ProteinProphet v5.2
                             <option value="4">Single PTM site</option>
                             <option value="-1">All</option>
                         </param>
+                        <param name="log2transformed" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Log2 transform the intensity"/>
                         <param name="prot_norm" type="select" optional="true" label="normalization">
                             <option value="0">None</option>
                             <option value="1">MC (median centering)</option>
                             <option value="2">GN (median centering + variance scaling)</option>
                             <option value="-1">generate reports with all normalization options</option>
                         </param>
-                        <param name="mod_tag" type="text" value="@MOD_TAG@" optional="true" label="PTM Mod tag">
-                            <option value="none">none</option>
-                            <option value="N-glyco">N-glyco</option>
-                            <option value="C(239.1629)">C(239.1629)</option>
-                            <option value="K(-187.1524)">K(-187.1524)</option>
-                            <option value="K(-262.1966)">K(-262.1966)</option>
-                            <option value="K(114.0429),K(-115.12)">K(114.0429),K(-115.12)</option>
-                            <option value="S(79.9663),T(79.9663),Y(79.9663)">S(79.9663),T(79.9663),Y(79.9663)</option>
-                        </param>
-                        <param name="min_site_prob" type="float" value="" min="-1.0" max="1.0" optional="true" label="Minimum site probability">
-                            <help>site localization confidence thresholdr: -1 for global, 0 for search engine determined, above 0 for probability</help>
-                        </param>
-
+                        <conditional name="glycan_conditional">
+                            <param name="use_glycan_composition" type="select" label="Perform Isobaric Quantification">
+                                <option value="default">Use workflow defaults</option>
+                                <option value="yes">yes</option>
+                            </param>
+                            <when value="default"/>
+                            <when value="yes">
+                              <param name="mod_tag" type="select" optional="true" label="PTM Mod tag">
+                                  <option value="none">none</option>
+                                  <option value="N-glyco">N-glyco</option>
+                                  <option value="C(239.1629)">C(239.1629)</option>
+                                  <option value="K(-187.1524)">K(-187.1524)</option>
+                                  <option value="K(-262.1966)">K(-262.1966)</option>
+                                  <option value="K(114.0429),K(-115.12)">K(114.0429),K(-115.12)</option>
+                                  <option value="S(79.9663),T(79.9663),Y(79.9663)">S(79.9663),T(79.9663),Y(79.9663)</option>
+                              </param>
+                              <param name="min_site_prob" type="float" min="-1.0" max="1.0" optional="true" label="Minimum site probability">
+                                  <help>site localization confidence thresholdr: -1 for global, 0 for search engine determined, above 0 for probability</help>
+                              </param>
+                              <param name="glyco_qval" type="integer" value="-1" optional="true" label="Glycan FDR filter"/>
+                            </when>
+                        </conditional>
                         <param name="unique_gene" type="select" optional="true" label="Peptide-Gene uniqueness">
                             <option value="0">0: allow all PSMs</option>
                             <option value="1">1: remove PSMs mapping to more than one GENE with evidence of expression in the dataset</option>
@@ -1198,18 +961,21 @@ Protein Inference:                               # ProteinProphet v5.2
                             <option value="false">unique plus razor peptides</option>
                             <option value="true">allow PSMs with unique peptides only</option>
                         </param>
-                        <param name="min_pep_prob" type="float" value="" min="0" max="1.0" optional="true" label="only use PSMs with a minimum probability score"
+                        <param name="min_pep_prob" type="float" min="0" max="1.0" optional="true" label="only use PSMs with a minimum probability score"
                             help="minimum PSM probability threshold (in addition to FDR-based filtering by Philosopher)"/>
-                        <param name="min_purity" type="float" value="" min="0" max="1.0" optional="true" label="ion purity threshold (default 0.5)"/>
-                        <param name="min_percent" type="float" value="" min="0" max="1.0" optional="true" label="ignore the lower % PSMs based on their summed abundances"
+                        <param name="min_purity" type="float" min="0" max="1.0" optional="true" label="ion purity threshold (default 0.5)"/>
+                        <param name="min_percent" type="float" min="0" max="1.0" optional="true" label="ignore the lower % PSMs based on their summed abundances"
                             help="e.g. value of 0.05 indicates removal of PSMs with the summed TMT reporter ions intensity in the lowest 5% of all PSMs"/>
-                        <param name="max_pep_prob_thres" type="float" value="" min="0" max="1.0" optional="true" label="threshold for maximum peptide probability"/>
-                        <param name="min_ntt" type="integer" value="" min="0" max="2" optional="true" label="minimum allowed number of enzymatic termini"/>
+                        <param name="max_pep_prob_thres" type="float" min="0" max="1.0" optional="true" label="threshold for maximum peptide probability"/>
+                        <param name="min_ntt" type="integer" min="0" max="2" optional="true" label="minimum allowed number of enzymatic termini"/>
                         <param name="aggregation_method" type="select" optional="true" label="the aggregation method from the PSM level to the specified level">
                             <option value="0">0: median</option>
                             <option value="1">1: weighted-ratio</option>
                         </param>
-
+                        <param name="prot_exclude" type="text" optional="true" label="Exclude proteins with specified tags at the beginning of the accession number"
+                            help="e.g. none: no exclusion; sp|,tr| : exclude protein with sp| or tr|">
+                            <validator type="regex">^(none|[a-zA-Z]+\|)$</validator>
+                        </param>
                         <param name="best_psm" type="select" optional="true" label="keep the best PSM only (highest summed TMT intensity) among all redundant PSMs within the same LC-MS run">
                             <option value="true">Yes</option>
                             <option value="false">No</option>
@@ -1230,14 +996,11 @@ Protein Inference:                               # ProteinProphet v5.2
                             <option value="true">Yes</option>
                             <option value="false">No</option>
                         </param>
-
-                        <param name="prot_exclude" type="text" value="" optional="true" label="Exclude proteins with specified tags at the beginning of the accession number"
-                            help="e.g. none: no exclusion; sp|,tr| : exclude protein with sp| or tr|"/>
-
                         <param name="ms1_int" type="select" optional="true" label="MS1 precursor ion intensity for reference sample abundance estimation">
                             <option value="true">Yes - use MS1 precursor ion intensity</option>
                             <option value="false">No - use MS2 reference intensity</option>
                         </param>
+                        <param name="tolerance" type="integer" optional="true" label="Tolerance"/>
                         <param name="top3_pep" type="select" optional="true" label="use top 3 most intense peptide ions as part of the reference sample abundance estimation">
                             <option value="true">Yes</option>
                             <option value="false">No</option>
@@ -1251,141 +1014,148 @@ Protein Inference:                               # ProteinProphet v5.2
             </conditional>
         </section>
     </xml>
+
+    <!-- Set isobaric quantification workflow options -->
     <token name="@ISOBARIC_QUANTIFICATION@"><![CDATA[
 #set $prfx = $wf.quant_iso.isobaric_quantification
 #if $prfx.isobaric_quantification_step == 'no'
   #set $wfdict['tmtintegrator.run-tmtintegrator'] = 'false'
 #elif $prfx.isobaric_quantification_step == 'yes'
- #*
- *#
   #set $wfdict['tmtintegrator.run-tmtintegrator'] = 'true'
   #set $wfdict['tmtintegrator.dont-run-fq-lq'] = 'false'
   #set $cxt = $prfx.options
-  #if $cxt.channel_num
-    #set $wfdict['tmtintegrator.channel_num'] = $cxt.channel_num
-  #end if
-  #if $cxt.glyco_qval
-    #set $wfdict['tmtintegrator.glyco_qval'] = $cxt.glyco_qval
-  #end if
-  #if str($cxt.quant_level) != ''
-    #set $wfdict['tmtintegrator.quant_level'] = $cxt.quant_level
-  #end if
+  #set $wfdict['tmtintegrator.quant_level'] = $cxt.quant_level
+  #set $wfdict['tmtintegrator.channel_num'] = $cxt.channel_num
   #if $cxt.ref_tag == 'Virtual'
     #set $wfdict['tmtintegrator.add_Ref'] = -1
   #else
     #set $wfdict['tmtintegrator.add_Ref'] = 1
     #set $wfdict['tmtintegrator.ref_tag'] = $cxt.ref_tag
   #end if
-  #if str($cxt.groupby) != ''
+  #if $cxt.groupby != ''
     #set $wfdict['tmtintegrator.groupby'] = $cxt.groupby
   #end if
-  #if $cxt.prot_norm
+  #set $wfdict['tmtintegrator.log2transformed'] = $cxt.log2transformed
+  #if $cxt.prot_norm != 'None'
     #set $wfdict['tmtintegrator.prot_norm'] = $cxt.prot_norm
   #end if
-  #if $cxt.mod_tag
-    #set $wfdict['tmtintegrator.mod_tag'] = $cxt.mod_tag
+  #if cxt.glycan_conditional.use_glycan_composition == 'yes'
+    #if $cxt.glycan_conditional.mod_tag != 'None'
+      #set $wfdict['tmtintegrator.mod_tag'] = $cxt.glycan_conditional.mod_tag
+    #end if
+    #if $cxt.glycan_conditional.min_site_prob != ''
+      #set $wfdict['tmtintegrator.min_site_prob'] = $cxt.glycan_conditional.min_site_prob
+    #end if
+    #if $cxt.glycan_conditional.glyco_qval != ''
+      #set $wfdict['tmtintegrator.glyco_qval'] = $cxt.glycan_conditional.glyco_qval
+    #end if
   #end if
-  #if str($cxt.min_site_prob) != ''
-    #set $wfdict['tmtintegrator.min_site_prob'] = $cxt.min_site_prob
-  #end if
-  #if $cxt.unique_gene
+  #if $cxt.unique_gene != 'None'
     #set $wfdict['tmtintegrator.unique_gene'] = $cxt.unique_gene
   #end if
-  #if $cxt.unique_pep
+  #if $cxt.unique_pep != 'None'
     #set $wfdict['tmtintegrator.unique_pep'] = $cxt.unique_pep
   #end if
-  #if str($cxt.min_pep_prob) != ''
+  #if $cxt.min_pep_prob != ''
     #set $wfdict['tmtintegrator.min_pep_prob'] = $cxt.min_pep_prob
   #end if
-  #if str($cxt.min_purity) != ''
+  #if $cxt.min_purity != ''
     #set $wfdict['tmtintegrator.min_purity'] = $cxt.min_purity
   #end if
-  #if str($cxt.min_percent) != ''
+  #if $cxt.min_percent != ''
     #set $wfdict['tmtintegrator.min_percent'] = $cxt.min_percent
   #end if
-  #if str($cxt.max_pep_prob_thres) != ''
+  #if $cxt.max_pep_prob_thres != ''
     #set $wfdict['tmtintegrator.max_pep_prob_thres'] = $cxt.max_pep_prob_thres
   #end if
-  #if str($cxt.min_ntt) != ''
+  #if $cxt.min_ntt != ''
     #set $wfdict['tmtintegrator.min_ntt'] = $cxt.min_ntt
   #end if
-  #if str($cxt.aggregation_method) != ''
+  #if $cxt.aggregation_method != 'None'
     #set $wfdict['tmtintegrator.aggregation_method'] = $cxt.aggregation_method
   #end if
-  #if str($cxt.prot_exclude) != ''
+  #if $cxt.prot_exclude != ''
     #set $wfdict['tmtintegrator.prot_exclude'] = $cxt.prot_exclude
   #end if
-  #if $cxt.best_psm
+  #if $cxt.best_psm != 'None'
     #set $wfdict['tmtintegrator.best_psm'] = $cxt.best_psm
   #end if
-  #if $cxt.psm_norm
+  #if $cxt.psm_norm != 'None'
     #set $wfdict['tmtintegrator.psm_norm'] = $cxt.psm_norm
   #end if
-  #if $cxt.allow_overlabel
+  #if $cxt.allow_overlabel != 'None'
     #set $wfdict['tmtintegrator.allow_overlabel'] = $cxt.allow_overlabel
   #end if
-  #if $cxt.allow_unlabeled
+  #if $cxt.allow_unlabeled != 'None'
     #set $wfdict['tmtintegrator.allow_unlabeled'] = $cxt.allow_unlabeled
   #end if
-  #if $cxt.outlier_removal
+  #if $cxt.outlier_removal != 'None'
     #set $wfdict['tmtintegrator.outlier_removal'] = $cxt.outlier_removal
   #end if
-  #if $cxt.ms1_int
+  #if $cxt.ms1_int != 'None'
     #set $wfdict['tmtintegrator.ms1_int'] = $cxt.ms1_int
   #end if
-  #if $cxt.top3_pep
+  #if $cxt.tolerance != ''
+    #set $wfdict['tmtintegrator.tolerance'] = $cxt.tolerance
+  #end if
+  #if $cxt.top3_pep != 'None'
     #set $wfdict['tmtintegrator.top3_pep'] = $cxt.top3_pep
   #end if
-  #if $cxt.print_RefInt
+  #if $cxt.print_RefInt != 'None'
     #set $wfdict['tmtintegrator.print_RefInt'] = $cxt.print_RefInt
   #end if
 #end if
     ]]></token>
 
-    <xml name="diann_quantification" token_expand="false" token_yes="true" token_no="false">
-        <section name="quant_dia" expanded="@EXPAND@" title="Quant (DIA)">
-            <conditional name="diann_quantification">
-                <param name="diann_quantification_step" type="select" label="Perform DIA Quantification with DIA-NN">
-                    <option value="default">Use workflow defaults</option>
-                    <option value="yes" selected="@YES@">yes</option>
-                    <option value="no" selected="@NO@">no</option>
-                </param>
-                <when value="default"/>
-                <when value="no"/>
-                <when value="yes">
-                    <section name="options" expanded="true" title="Isobaric Quantification">
-                        <param name="qvalue" type="float" value="" min="0.0" max="1.0" optional="true" label="Precursor FDR" help="default 0.01"/>
-                        <param name="quantification_strategy" type="select" optional="true" label="Quantification strategy" help="default: Robust LC (high precision)">
-                            <option value="0">Any LC (high accuracy)</option>
-                            <option value="1">Any LC (high precision)</option>
-                            <option value="2">Robust LC (high accuracy)</option>
-                            <option value="3">Robust LC (high precision)</option>
-                        </param>
-                    </section>
-                </when>
-            </conditional>
-        </section>
-    </xml>
-    <token name="@ISOBARIC_QUANTIFICATION@"><![CDATA[
-#set $prfx = $wf.quant_dia.diann_quantification
-#if $prfx.diann_quantification_step == 'no'
-  #set $wfdict['diann.run-dia-nn'] = 'false'
-#elif $prfx.diann_quantification_step == 'yes'
-  #set $wfdict['diann.run-dia-nn'] = 'true'
-  #set $cxt = $prfx.options
-  #if $cxt.qvalue
-    #set $wfdict['diann.q-value'] = $cxt.qvalue
-  #end if
-  #if $cxt.quantification_strategy
-    #set $wfdict['diann.quantification-strategy'] = $cxt.quantification_strategy
-  #end if
-#*
-diann.library   {''}
-diann.run-specific-protein-q-value      {'0.01'}
-diann.unrelated-runs    {'false'}
-diann.use-predicted-spectra     {'false'}
-*#
-#end if
-    ]]></token>
+    <!-- License agreement texts. -->
+    <token name="@MSFRAGGER_LICENSE_AGREEMENT@">
+MSFragger is available freely for academic research and educational purposes only. I have read the ACADEMIC license for MSFragger software: http://msfragger-upgrader.nesvilab.org/upgrader/MSFragger-LICENSE.pdf. This license provides with non-exclusive, non-transferable right to use MSFragger solely for academic research, non-commercial or educational purposes. I agree to be subject to the terms and conditions of this license. I understand that to use MSFragger for other purposes requires a commercial license from the University of Michigan Office of Tech Transfer.
+    </token>
+    <token name="@IONQUANT_LICENSE_AGREEMENT@">
+IonQuant is available freely for academic research and educational purposes only. I have read the ACADEMIC license for MSFragger software: https://msfragger.arsci.com/ionquant/IonQuant%20Academic%20Use%20License%2005162022.pdf
+    </token>
+    <token name="@THERMO_RAW_READER_LICENSE_AGREEMENT@">
+I agree to the terms of Thermo (c) Raw File Reader License Agreement: http://msfragger-upgrader.nesvilab.org/upgrader/RawFileRdr_License_Agreement_RevA.pdf
+    </token>
+    <token name="@BRUKER_LICENSE_AGREEMENT@">
+I agree to the terms of Bruker SDK library distribution conditions: http://msfragger-upgrader.nesvilab.org/upgrader/redist.txt
+    </token>
+    <token name="@LICENSE_AGREEMENTS@">
+@MSFRAGGER_LICENSE_AGREEMENT@
+@IONQUANT_LICENSE_AGREEMENT@
+@THERMO_RAW_READER_LICENSE_AGREEMENT@
+@BRUKER_LICENSE_AGREEMENT@
+    </token>
 
+    <!-- User must check box agreeing to MSFragger license agreement. -->
+    <xml name="license_agreements">
+      <param name="license_agreements" type="boolean" truevalue="true" falsevalue="false" checked="false" label="I understand that these tools, including MSFragger, IonQuant, Bruker, and Thermo Raw File Reader, are available freely for academic research and educational purposes only, and agree to the following terms.">
+        <validator type="expression" message="You must agree to the MSFragger license!">value == True</validator>
+        <help><![CDATA[
+@MSFRAGGER_LICENSE_AGREEMENT@
+<br/><br/>
+@IONQUANT_LICENSE_AGREEMENT@
+<br/><br/>
+@THERMO_RAW_READER_LICENSE_AGREEMENT@
+<br/><br/>
+@BRUKER_LICENSE_AGREEMENT@
+        ]]></help>
+      </param>
+    </xml>
+
+    <xml name="citations">
+        <citations>
+            <citation type="doi">10.1038/s41592-020-0912-y</citation>
+            <citation type="doi">10.1038/nmeth.4256</citation>
+            <citation type="doi">10.1038/s41467-020-17921-y</citation>
+            <citation type="doi">10.1038/s41592-020-0967-9</citation>
+            <citation type="doi">10.1021/acs.jproteome.0c00119</citation>
+            <citation type="doi">10.1074/mcp.TIR120.002216</citation>
+            <citation type="doi">10.1074/mcp.TIR120.002048</citation>
+            <citation type="doi">10.1016/j.mcpro.2021.100077</citation>
+            <citation type="doi">10.1021/acs.jproteome.0c00544</citation>
+            <citation type="doi">10.1038/nmeth.3255</citation>
+            <yield />
+        </citations>
+    </xml>
 </macros>
