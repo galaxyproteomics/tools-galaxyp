@@ -51,7 +51,7 @@ if [[ ! -d $OPENMSGIT ]]; then
         GIT_DIR=$(mktemp -d --dry-run)
         GIT_EXTRA_OPTS="--separate-git-dir=$GIT_DIR"
     fi
-    git clone -b release/$VERSION.0 --depth 1 --recurse-submodules=THIRDPARTY --shallow-submodules $GIT_EXTRA_OPTS https://github.com/OpenMS/OpenMS.git $OPENMSGIT
+    git clone -b release/$VERSION.0 --depth 1 --recurse-submodules=THIRDPARTY --shallow-submodules $GIT_EXTRA_OPTS git@github.com:OpenMS/OpenMS.git $OPENMSGIT
     ## save some space by just keeping the needed binaries
     find $OPENMSGIT/THIRDPARTY/ -type f -not \( -name maracluster -o -name spectrast \) -delete
     find $OPENMSGIT/THIRDPARTY/ -empty -type d -delete
@@ -112,7 +112,7 @@ conda deactivate
 # # ## prepare_test_data
 # # ###############################################################################
 echo "Get test data"
-find test-data -type f,l,d ! -name "*fa" ! -name "*loc" ! -name "test-data" -delete
+find test-data -type f,l,d ! -name "*fa" ! -name "*loc" ! -name "test-data" ! -name MetaboliteSpectralDB.mzML -delete
 
 cp $(find $OPENMSGIT/src/tests/topp/ -type f | grep -Ev "third_party_tests.cmake|CMakeLists.txt|check_ini") test-data/
 cp -r $OPENMSGIT/share/OpenMS/MAPPING/ test-data/
