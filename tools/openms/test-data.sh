@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# set -x
+set -x
 
 VERSION=3.1
 FILETYPES="aux/filetypes.txt"
