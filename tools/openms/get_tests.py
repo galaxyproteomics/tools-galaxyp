@@ -37,8 +37,8 @@ SKIP_LIST = [
     r"MaRaClusterAdapter.*-consensus_out",  # - MaRaCluster with -consensus_out (parameter blacklister: https://github.com/OpenMS/OpenMS/issues/4456)
     r"FileMerger_1_input1.dta2d.*FileMerger_1_input2.dta ",  # - FileMerger with mixed dta dta2d input (ftype can not be specified in the test, dta can not be sniffed)
     r'TOPP_OpenSwathAnalyzer_test_3"|TOPP_OpenSwathAnalyzer_test_4"',
-    # TODO r's/\("TOPP_SiriusAdapter_4".*\)-sirius:database all\(.*\)/\1-sirius:database pubchem\2/',  # - SiriusAdapter_4 depends on online service which may timeout .. so keep disabled https://github.com/OpenMS/OpenMS/pull/5010
-    r'"TOPP_SiriusAdapter_10"',  # - SiriusAdapter_10 should work in >2.8 https://github.com/OpenMS/OpenMS/issues/5869)
+    r'TOPP_SiriusAdapter_[0-9]+$',  # Do not test SiriusAdapter https://github.com/OpenMS/OpenMS/issues/7000 .. will be removed anyway
+    r'TOPP_AssayGeneratorMetabo_(7|8|9|10|11|12|13|14|15|16|17|18)$' # Skip AssayGeneratorMetabo tests using Sirius  https://github.com/OpenMS/OpenMS/issues/7150 (will be replaced by two tools)
 ]
 
 
@@ -203,8 +203,9 @@ def process_test_line(
     for skip in skip_list:
         if re.search(skip, line):
             return
+        if re.search(skip, test_id):
+            return
 
-    # print(f"pre {line=}")
     line = fix_tmp_files(line, diff_pairs)
     # print(f"fix {line=}")
     line = unique_files(line)
