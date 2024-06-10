@@ -47,16 +47,16 @@ class TimeoutHTTPAdapter(HTTPAdapter):
 def __main__():
     # Parse Command Line
     parser = optparse.OptionParser()
-    parser.add_option('-i', '--input', dest='input', default=None, help='Tabular file containing a column of NCBI Taxon IDs')
-    parser.add_option('-c', '--column', dest='column', type='int', default=0, help='The column (zero-based) in the tabular file that contains Taxon IDs')
-    parser.add_option('-t', '--taxon', dest='taxon', action='append', default=[], help='NCBI taxon ID to download')
+    parser.add_option('-i', '--input', dest='input', default=None, help='Tabular file containing a column of search search_ids')
+    parser.add_option('-c', '--column', dest='column', type='int', default=0, help='The column (zero-based) in the tabular file that contains search search_ids')
+    parser.add_option('-s', '--search-id', dest='search_id', action='append', default=[], help='ID to search in Uniprot')
     parser.add_option('-r', '--reviewed', dest='reviewed', help='Only uniprot reviewed entries')
     parser.add_option('-f', '--format', dest='format', choices=['xml', 'fasta'], default='xml', help='output format')
-    parser.add_option('-k', '--field', dest='field', choices=['taxonomy_name', 'taxonomy_id'], default='taxonomy_name', help='query field')
+    parser.add_option('-k', '--field', dest='field', choices=['taxonomy_name', 'taxonomy_id', 'accession'], default='taxonomy_name', help='query field')
     parser.add_option('-o', '--output', dest='output', help='file path for the downloaded uniprot xml')
     parser.add_option('-d', '--debug', dest='debug', action='store_true', default=False, help='Turn on wrapper debugging to stderr')
     (options, args) = parser.parse_args()
-    taxids = set(options.taxon)
+    search_ids = set(options.search_id)
     if options.input:
         with open(options.input, 'r') as inputFile:
             for linenum, line in enumerate(inputFile):
@@ -64,19 +64,19 @@ def __main__():
                     continue
                 fields = line.rstrip('\r\n').split('\t')
                 if len(fields) > abs(options.column):
-                    taxid = fields[options.column].strip()
-                    if taxid:
-                        taxids.add(taxid)
-    taxon_queries = [f'{options.field}:"{taxid}"' for taxid in taxids]
-    taxon_query = ' OR '.join(taxon_queries)
+                    search_id = fields[options.column].strip()
+                    if search_id:
+                        search_ids.add(search_id)
+    search_queries = [f'{options.field}:"{search_id}"' for search_id in search_ids]
+    search_query = ' OR '.join(search_queries)
     if options.output:
         dest_path = options.output
     else:
-        dest_path = "uniprot_%s.xml" % '_'.join(taxids)
+        dest_path = "uniprot_%s.xml" % '_'.join(search_ids)
     reviewed = " reviewed:%s" % options.reviewed if options.reviewed else ''
     try:
         url = 'https://rest.uniprot.org/uniprotkb/stream'
-        query = "%s%s" % (taxon_query, reviewed)
+        query = "%s%s" % (search_query, reviewed)
         params = {'query': query, 'format': options.format}
         if options.debug:
             print("%s ? %s" % (url, params), file=sys.stderr)
@@ -112,7 +112,7 @@ def __main__():
                     else:
                         print("failed: Not a uniprot xml file", file=sys.stderr)
                         exit(1)
-        print("NCBI Taxon ID:%s" % taxids, file=sys.stdout)
+        print("Search IDs:%s" % search_ids, file=sys.stdout)
         if 'X-UniProt-Release' in response.headers:
             print("UniProt-Release:%s" % response.headers['X-UniProt-Release'], file=sys.stdout)
         if 'X-Total-Results' in response.headers:

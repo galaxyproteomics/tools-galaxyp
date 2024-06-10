@@ -1,0 +1,567 @@
+<tool id="diann" name="DIA-NN" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@">
+    <description>is a software for DIA/SWATH data processing</description>
+    <macros>
+        <token name="@TOOL_VERSION@">1.8.1</token>
+        <token name="@VERSION_SUFFIX@">3</token>
+    </macros>
+    <requirements>
+        <container type="docker">biocontainers/diann:@TOOL_VERSION@_cv2</container>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        mkdir ./input_data &&
+        mkdir ./tmp &&
+
+        ## generate string like "--f file1 --f file2 ..." for each input in $input.f, which are comma separated
+        #set infiles_str = ''
+        #for $infile in $input.f
+            ## if brukertdf.d.tar, extract to ./input_data and append "./input_data/" to infiles_str
+            #if $infile.is_of_type("brukertdf.d.tar"):
+                tar -xf '$infile' -C ./input_data &&
+                #set $infiles_str += '--f ./input_data/' + str($infile.element_identifier[:-4]) + ' '
+            #else
+                ln -s '$infile' './input_data/$infile.element_identifier' &&
+                #set $infiles_str += '--f ./input_data/' + str($infile.element_identifier)
+            #end if
+        #end for
+
+        #set $fasta_file_str = ''
+        #for $fasta_file in $input.fasta_db_options.fasta
+            #set $fasta_file_str += '--fasta ' + str($fasta_file) + ' '
+        #end for
+
+        #if $input.spectral_lib_options.lib
+            ln -s '$input.spectral_lib_options.lib' './input_data/report-lib.predicted.speclib' &&
+        #end if
+
+        diann
+            #if $input.f != 'None'
+            '$infiles_str'
+            #end if
+            --dir ./
+            #if $input.spectral_lib_options.lib
+            --lib './input_data/report-lib.predicted.speclib'
+            #else
+            --lib
+            #end if
+            #if $input.f != 'None'
+            --out ./report.tsv
+            #end if
+            #if $input.spectral_lib_options.gen_spec_lib
+            --out-lib ./report-lib.tsv
+            #end if
+            --threads \${GALAXY_SLOTS:-1}
+            --temp ./tmp
+
+            ## Spectral library options
+            $input.spectral_lib_options.gen_spec_lib
+            #if $input.spectral_lib_options.library_headers
+            --library-headers '$input.spectral_lib_options.library_headers'
+            #end if
+            $input.spectral_lib_options.no_lib_filter
+            #if $input.spectral_lib_options.learn_lib
+            --learn-lib '$input.spectral_lib_options.learn_lib'
+            #end if
+            $input.spectral_lib_options.out_measured_rt
+            $input.spectral_lib_options.predictor
+            $input.spectral_lib_options.reannotate
+            ##if $input.spectral_lib_options.ref
+            ##--ref '$input.spectral_lib_options.ref'
+            ###end if
+
+            ## FASTA database options
+            #if $fasta_file_str != '--fasta None '
+            '$fasta_file_str'
+            #end if
+            #if $input.fasta_db_options.fasta_filter
+            --fasta-filter '$input.fasta_db_options.fasta_filter'
+            #end if
+            $input.fasta_db_options.fasta_search
+
+            ## Algorithm options
+            $algo_options.no_calibration
+            #if $algo_options.mass_acc
+            --mass-acc '$algo_options.mass_acc'
+            #end if
+            #if $algo_options.mass_acc_cal
+            --mass-acc-cal '$algo_options.mass_acc_cal'
+            #end if
+            #if $algo_options.mass_acc_ms1
+            --mass-acc-ms1 '$algo_options.mass_acc_ms1'
+            #end if
+            ##$algo_options.quick_mass_acc
+            $algo_options.reanalyse
+            $algo_options.mbr_fix_settings
+            $algo_options.relaxed_prot_inf
+            $algo_options.prot_inf
+            $algo_options.nn_classifier
+            $algo_options.quant_strategy
+            $algo_options.cross_run_norm
+            $algo_options.lib_gen_strategy
+
+            ## Ion mobility options
+            ## ToDo: no_im_window as condition?
+            $im_window_options.no_im_window
+            #if $im_window_options.window
+            --window '$im_window_options.window'
+            --im-window '$im_window_options.im_window'
+            --im-window-factor '$im_window_options.im_window_factor'
+            #end if
+
+            ## Precursor options
+            --cut '$precursor_options.cleavage_spec.cut'
+            --missed-cleavages '$precursor_options.missed_cleavages'
+            $precursor_options.met_excision
+            --min-pep-len '$precursor_options.min_pep_len'
+            --max-pep-len '$precursor_options.max_pep_len'
+            --min-pr-mz '$precursor_options.min_pr_mz'
+            --max-pr-mz '$precursor_options.max_pr_mz'
+            --min-pr-charge '$precursor_options.min_pr_charge'
+            --max-pr-charge '$precursor_options.max_pr_charge'
+            --min-fr-mz '$precursor_options.min_fr_mz'
+            --max-fr-mz '$precursor_options.max_fr_mz'
+            $precursor_options.nn_single_seq
+            #if $precursor_options.int_removal
+            --int-removal '$precursor_options.int_removal'
+            #end if
+
+            ## Fragment options
+            $mass_frag_options.no_fr_selection
+            #if $mass_frag_options.quant_fr
+            --quant-fr '$mass_frag_options.quant_fr'
+            #end if
+            $mass_frag_options.restrict_fr
+            #if $mass_frag_options.sptxt_acc
+            --sptxt-acc '$mass_frag_options.sptxt_acc'
+            #end if
+            #if $mass_frag_options.target_fr
+            --target-fr '$mass_frag_options.target_fr'
+            #end if
+
+            ## Channel options
+            ## ToDo: no_decoy_channel as condition?
+            ##if $channel_options.channels
+            ##--channels '$channel_options.channels'
+            ###end if
+            #if $channel_options.decoy_channel
+            --decoy-channel '$channel_options.decoy_channel'
+            #end if
+            $channel_options.no_decoy_channel
+
+            ## Modification options
+            #if $mod_options.fixed_mod
+            --fixed-mod '$mod_options.fixed_mod'
+            #end if
+            #if $mod_options.var_mod
+            --var-mod '$mod_options.var_mod'
+            #end if
+            #if $mod_options.var_mods
+            --var-mods '$mod_options.var_mods'
+            #end if
+            #if $mod_options.mod
+            --mod '$mod_options.mod'
+            #end if
+            #if $mod_options.monitor_mod
+            --monitor-mod '$mod_options.monitor_mod'
+            #end if
+            #if $mod_options.no_cut_after_mod
+            --no-cut-after-mod '$mod_options.no_cut_after_mod'
+            #end if
+            $mod_options.original_mods
+            $mod_options.clear_mods
+            #if $mod_options.lib_fixed_mod
+            --lib-fixed-mod '$mod_options.lib_fixed_mod'
+            #end if
+            $mod_options.mod_only
+            $mod_options.strip_unknown_mods
+            $mod_options.unimod4
+            $mod_options.unimod35
+
+            ## Quantification options
+            $quantification_options.peak_translation
+            $quantification_options.no_maxlfq
+
+            ## Other options
+            #if $other_options.min_peak
+            --min-peak '$other_options.min_peak'
+            #end if
+            $other_options.no_rt_window
+            $other_options.no_stratification
+            $other_options.no_swissprot
+            $other_options.dl_no_im
+            $other_options.dl_no_rt
+            $other_options.duplicate_proteins
+            $other_options.exact_fdr
+            $other_options.force_swissprot
+            $other_options.full_unimod
+            $other_options.gen_fr_restriction
+            $other_options.global_mass_cal
+            ##$other_options.il_eq
+            $other_options.individual_mass_acc
+            $other_options.individual_reports
+            $other_options.individual_windows
+            $other_options.no_isotopes
+            $other_options.regular_swath
+            $other_options.scanning_swath
+            ##$other_options.semi
+            $other_options.species_genes
+            $other_options.tims_skip_errors
+
+            ## Output options
+            $output_options.no_main_report
+            $output_options.no_stats
+            $output_options.compact_report
+            $output_options.matrices
+            #if $output_options.matrix_ch_qvalue
+            --matrix-ch-qvalue '$output_options.matrix_ch_qvalue'
+            #end if
+            --qvalue $output_options.qvalue
+            #if $output_options.matrix_tr_qvalue
+            --matrix-tr-qvalue '$output_options.matrix_tr_qvalue'
+            #end if
+            $output_options.matrix_spec_q
+            $output_options.report_lib_info
+            #if $output_options.vis
+            --vis '$output_options.vis'
+            #end if
+            --verbose '$output_options.verbose'
+
+            #if len($input.f) > 0
+            && cp ./report.tsv '$output_report'
+            #end if
+
+            #if $input.spectral_lib_options.gen_spec_lib
+            && cp ./report-lib.tsv '$output_report_lib'
+            && cp ./report-lib.tsv.speclib '$output_report_speclib'
+            && cp ./report-lib.predicted.speclib '$output_report_pred_speclib'
+            #end if
+    ]]></command>
+    <inputs>
+        <!-- not used: cfg, convert, dir, ext, no_quant_files, out, out_lib, out_lib_copy, prefix, temp, threads, use-quant -->
+        <section name="input" expanded="true" title="Input files">
+            <param name="f" type="data" format="mzml,dia,wiff,thermo.raw,brukertdf.d.tar" multiple="true" optional="true" label="Input file" help="Specify a run to be analysed"/>
+            <!-- ToDo lib: The use of multiple lib commands (experimental) allows to load multiple libraries in .tsv format -->
+            <section name="spectral_lib_options" title="Spectral library">
+                <param name="gen_spec_lib" type="boolean" truevalue="--gen-spec-lib" falsevalue="" checked="false" label="Generate a spectral library" help="Instructs DIA-NN to generate a spectral library"/>
+                <param name="predictor" type="boolean" truevalue="--predictor" falsevalue="" checked="false" label="Perform deep learning-based prediction of spectra, retention times and ion mobility values" help="Instructs DIA-NN to perform deep learning-based prediction of spectra, retention times and ion mobility values"/>
+<!--                Removed sptxt,msp as input format > experimental feature-->
+                <param name="lib" type="data" format="csv,tsv,xls,txt,binary,speclib" optional="true" label="Spectral library" help="Specify a spectral library"/>
+                <param name="library_headers" type="text" optional="true" label="Library headers" help="Specifies column names in the spectral library to be used, in the order described in Spectral library formats [name 1],[name 2],.... Use '*' instead of the column name if DIA-NN already recognizes its name"/>
+                <param name="no_lib_filter" type="boolean" truevalue="--no-lib-filter" falsevalue="" checked="false" label="Use the input library 'as is'" help="The input library will be used 'as is' without discarding fragments that might be harmful for the analysis; use with caution"/>
+                <param name="learn_lib" type="data" format="tsv" optional="true" label="Training library" help="Specifies a 'training library' for the legacy predictor"/>
+                <param name="out_measured_rt" type="boolean" truevalue="--out-measured-rt" falsevalue="" checked="false" label="Save raw empirical retention times in the spectral library" help="Instructs DIA-NN to save raw empirical retention times in the spectral library being generated, instead of saving RTs aligned to a particular scale"/>
+                <param name="reannotate" type="boolean" truevalue="--reannotate" falsevalue="" checked="false" label="Reannotate the spectral library with protein information from the FASTA database" help="Reannotate the spectral library with protein information from the FASTA database, using the specified digest specificity"/>
+<!--                <param name="ref" type="text" optional="true" label="Reference run" help="(Experimental) Specify a special (small) spectral library which will be used exclusively for calibration - this function can speed up calibration in library-free searches"/>-->
+            </section>
+            <section name="fasta_db_options" title="FASTA database">
+                <param name="fasta" type="data" format="fasta" optional="true" multiple="true" label="Sequence database" help="Specify a sequence database in FASTA format"/>
+                <param name="fasta_filter" type="data" format="txt" optional="true" label="Fasta filter" help="Only consider peptides matching the stripped sequences specified in the text file provided, when processing a sequence database"/>
+                <param name="fasta_search" type="boolean" truevalue="--fasta-search" falsevalue="" checked="false" label="Perform in silico digest of the sequence database" help="Instructs DIA-NN to perform an in silico digest of the sequence database"/>
+            </section>
+        </section>
+        <section name="algo_options" title="Algorithm">
+            <param name="no_calibration" type="boolean" truevalue="--no-calibration" falsevalue="" checked="false" label="Disable mass calibration" help="Disables mass calibration"/>
+            <param name="mass_acc" type="float" min="0" optional="true" label="MS2 mass accuracy" help="Sets the MS2 mass accuracy to N ppm"/>
+            <param name="mass_acc_cal" type="float" min="0" optional="true" label="Mass accuracy during calibration phase" help="Sets the mass accuracy used during the calibration phase of the search to N ppm"/>
+            <param name="mass_acc_ms1" type="float" min="0" optional="true" label="MS1 mass accuracy" help="Sets the MS1 mass accuracy to N ppm"/>
+<!--            <param name="quick_mass_acc" type="boolean" truevalue="&#45;&#45;quick-mass-acc" falsevalue="" checked="false" label="(Experimental) Use a fast heuristical algorithm for MS2 mass accuracy" help="When choosing the MS2 mass accuracy setting automatically, DIA-NN will use a fast heuristical algorithm instead of IDs number optimisation"/>-->
+            <!-- ToDo mbr_fix_settings: what does 'Unrelated runs' mean? -->
+            <param name="reanalyse" type="boolean" truevalue="--reanalyse" falsevalue="" checked="false" label="Enable MBR" help="Enables MBR"/>
+            <param name="mbr_fix_settings" type="boolean" truevalue="--mbr-fix-settings" falsevalue="" checked="false" label="Use the same settings for all runs during the second MBR pass" help="When using the 'Unrelated runs' option in combination with MBR, the same settings will be used to process all runs during the second MBR pass"/>
+            <param name="relaxed_prot_inf" type="boolean" truevalue="--relaxed-prot-inf" falsevalue="" checked="true" label="Use a very heuristical protein inference algorithm" help="Instructs DIA-NN to use a very heuristical protein inference algorithm (similar to the one used by FragPipe and many other software tools), wherein DIA-NN aims to make sure that no protein is present simultaneously in multiple protein groups. This mode (i) is recommended for method optimisation and benchmarks, (ii) might be convenient for gene set enrichment analysis and related kinds of downstream processing. However the alternative protein inference strategy of DIA-NN is more reliable for differential expression analyses (this is one of the advantages of DIA-NN). Equivalent to the 'Heuristic protein inference' GUI setting."/>
+            <param name="prot_inf" type="select" label="Protein inference" help="Controls the protein inference mode. If protein inference (that is protein grouping) is disabled, protein groups from the spectral library will be used instead">
+                <option value="--pg-level 0">Isoform IDs</option>
+                <option value="--pg-level 1">Protein names (from FASTA)</option>
+                <option value="--pg-level 2">Genes (species-specific)</option>
+                <option value="" selected="True">Genes</option>
+                <option value="--no-prot-inf">Off</option>
+            </param>
+            <param name="nn_classifier" type="select" label="Neural network classifier" help="Activates the neural network classifier. Default is single-pass mode. Double-pass mode is the best in most cases but is about twice slower than single-pass">
+                <option value="" selected="True">Single-pass mode</option>
+                <option value="--double-search">Double-pass mode</option>
+                <option value="--no-nn">off</option>
+            </param>
+            <param name="quant_strategy" type="select" label="Quantification strategy" help="Quantification algorithms. --no-ifs-removal/Any LC (high precision): Turns off interference subtraction from fragment ion chromatograms. --peak-center/Robust LC (high accuracy): Instructs DIA-NN to integrate chromatographic peaks only in the vicinity of the apex. Robust LC (high precision): combination of --peak-center and --no-ifs-removal. --peak-height/Peak-height Instructs DIA-NN to use the apex height of the peak for quantification - equivalent to the 'Peak height' quantification mode.">
+                <option value="">Any LC (high accuracy)</option>
+                <option value="--no-ifs-removal">Any LC (high precision)</option>
+                <option value="--peak-center">Robust LC (high accuracy)</option>
+                <option value="--peak-center --no-ifs-removal" selected="True">Robust LC (high precision)</option>
+                <option value="--peak-height">Peak-height</option>
+            </param>
+            <param name="cross_run_norm" type="select" label="Cross-run normalisation" help="Normalisation strategy. --global-norm/Global: Instructs DIA-NN to use simple global normalisation instead of RT-dependent normalisation. RT-dependent: Instructs DIA-NN to use RT-dependent normalisation. --sig-norm/RT and signal-dep. (experimental): Instructs DIA-NN to use RT and signal dependent normalisation (experimental). --no-norm/Off: disables cross-run normalisation. Normalised quantities reported along with the raw quantities. Default:  RT-dependent">
+                <option value="--global-norm">Global</option>
+                <option value="" selected="True">RT-dependent</option>
+<!--                <option value="&#45;&#45;sig-norm">RT and signal-dep. (experimental)</option>-->
+                <option value="--no-norm">Off</option>
+            </param>
+            <param name="lib_gen_strategy" type="select" label="Library generationm strategy" help="Enables an intelligent algorithm which determines how to extract spectra, when creating a spectral library from DIA data. This is highly recommended and should almost always be enabled">
+                <option value="--id-profiling">IDs profiling</option>
+                <option value="--rt-profiling">IDs, RT and IM profiling</option>
+                <option value="--smart-profiling" selected="true">Smart profiling</option>
+                <option value="">Full profiling</option>
+            </param>
+        </section>
+        <section name="im_window_options" title="Ion mobility window">
+            <param name="no_im_window" type="boolean" truevalue="--no-im-window" falsevalue="" checked="false" label="Disable IM-windowed search" help="Disables IM-windowed search"/>
+            <param name="window" type="integer" min="0" optional="true" label="Scan window radius" help="Sets the scan window radius to a specific value. Ideally, should be approximately equal to the average number of data points per peak"/>
+            <param name="im_window" type="integer" min="0" optional="true" label="IM extraction window" help="Fixes IM extraction window to the specific value"/>
+            <param name="im_window_factor" type="float" min="0" value="2.0" label="IM extraction window factor" help="Controls the minimum size of the IM extraction window. Default is 2.0"/>
+        </section>
+        <section name="precursor_options" title="Precursor ion generation">
+            <conditional name="cleavage_spec">
+                <param name="cut_type" type="select" label="Cleavage specificity">
+                    <option value="predefined">Predefined cleavage pattern</option>
+                    <option value="own">Define your own cleavage pattern</option>
+                </param>
+                <when value="predefined">
+                    <param name="cut" type="select" label="Protease" help="Specifies cleavage specificity for the in silico digest. Cleavage sites (pairs of amino acids) are listed separated by commas, '*' indicates any amino acid, and '!' indicates that the respective site will not be cleaved. Examples: K*,R*,!*P - canonical tryptic specificity, leave blank to disable digest">
+                        <option value="K*,R*" selected="true">Trypsin/P</option>
+                        <option value="K*,R*,!*P">Trypsin (excluding cuts at *P)</option>
+                        <option value="K*">Lys-C</option>
+                        <option value="F*,Y*,W*,M*,L*,!*P">Chymotrypsin</option>
+                        <option value="*D">AspN</option>
+                        <option value="E*">GluC</option>
+                    </param>
+                </when>
+                <when value="own">
+                    <param name="cut" type="text" label="Cleavage pattern" help="Cleavage sites (pairs of amino acids) are listed separated by commas, '*' indicates any amino acid, and '!' indicates that the respective site will not be cleaved. For example: K*,R*,!*P for canonical tryptic specificity.">
+                    </param>
+                </when>
+            </conditional>
+            <param name="missed_cleavages" type="integer" min="0" max="5" value="1" label="Maximum number of missed cleavages" help="Sets the maximum number of missed cleavages"/>
+            <param name="met_excision" type="boolean" truevalue="--met-excision" falsevalue="" checked="true" label="Enable protein N-term methionine excision" help="Enables protein N-term methionine excision as variable modification for the in silico digest"/>
+            <param name="min_pep_len" type="integer" min="5" max="100" value="7" label="Minimum precursor length" help="Sets the minimum precursor length for the in silico library generation or library-free search"/>
+            <param name="max_pep_len" type="integer" min="5" max="100" value="30" label="Maximum precursor length" help="Sets the maximum precursor length for the in silico library generation or library-free search"/>
+            <param name="min_pr_mz" type="integer" min="0" value="300" label="Minimum precursor m/z" help="Sets the minimum precursor m/z for the in silico library generation or library-free search"/>
+            <param name="max_pr_mz" type="integer" min="0" value="1800" label="Maximum precursor m/z" help="Sets the maximum precursor m/z for the in silico library generation or library-free search"/>
+            <param name="min_pr_charge" type="integer" min="1" max="10" value="1" optional="true" label="Minimum precursor charge" help="Sets the minimum precursor charge for the in silico library generation or library-free search"/>
+            <param name="max_pr_charge" type="integer" min="0" max="10" value="4" label="Maximum precursor charge" help="Sets the maximum precursor charge for the in silico library generation or library-free search"/>
+            <param name="min_fr_mz" type="integer" min="0" value="200" label="Minimum number of fragments per precursors" help="Specifies the minimum number of fragments per precursors in the spectral library being saved"/>
+            <param name="max_fr_mz" type="integer" min="0" value="1800" label="Maximum fragments per precursor" help="Specifies the maximum number of fragments per precursor in the spectral library being saved"/>
+            <param name="nn_single_seq" type="boolean" truevalue="--nn-single-seq" falsevalue="" checked="false" label="Use one precursor per stripped sequence for training" help="Only use one (best) precursor per stripped sequence for the training of the neural network classifier"/>
+            <param name="int_removal" type="integer" min="0" optional="true" label="Interference removal" help="Specify 0 to disable the removal of interfering precursors"/>
+        </section>
+        <section name="mod_options" title="Modifications">
+            <param name="fixed_mod" type="text" optional="true" label="Fixed modification" help="Adds the modification name to the list of recognised names and specifies the modification as fixed [name],[mass],[sites],[optional: 'label']"/>
+            <param name="var_mod" type="text" optional="true" label="Variable modification" help="Adds the modification name to the list of recognised names and specifies the modification as variable [name],[mass],[sites],[optional: 'label']. [sites] can contain a list of amino acids and 'n' which codes for the N-terminus of the peptide. '*n' indicates protein N-terminus. Similar to --mod can be followed by 'label' Examples: UniMod:21,79.966331,STY - phosphorylation, UniMod:1,42.010565,*n - N-terminal protein acetylation." />
+            <param name="var_mods" type="integer" min="0" optional="true" label="Maximum number of variable modifications" help="Sets the maximum number of variable modifications"/>
+            <param name="mod" type="text" optional="true" label="Modification name" help="Declares a modification name [name],[mass],[optional: 'label']. Examples: UniMod:5,43.005814, SILAC-Lys8,8.014199,label"/>
+            <!-- ToDo monitor_mod: This modification must have been declared as variable using var-mod -->
+            <param name="monitor_mod" type="text" optional="true" label="Modification for PTM scoring and site localisation" help="Apply PTM scoring and site localisation for a particular modification"/>
+            <param name="no_cut_after_mod" type="text" optional="true" label="No cut after modification" help="Discard peptides generated via in silico cuts after residues bearing a particular modification. Example: SILAC-Lys8"/>
+            <param name="original_mods" type="boolean" truevalue="--original-mods" falsevalue="" checked="false" label="Disable automatic conversion of known modifications" help="Disables the automatic conversion of known modifications to the UniMod format names"/>
+            <param name="clear_mods" type="boolean" truevalue="--clear-mods" falsevalue="" checked="false" label="Clear modifications" help="Makes DIA-NN 'forget' all built-in modification (PTM) names"/>
+            <param name="lib_fixed_mod" type="text" label="In silico modification" help="Applies a modification, previously declared using --fixed-mod, to a spectral library"/>
+            <param name="mod_only" type="boolean" truevalue="--mod-only" falsevalue="" checked="false" label="Only consider peptides bearing the modifications listed" help="Only consider peptides bearing the modifications listed with --monitor-mod"/>
+            <param name="strip_unknown_mods" type="boolean" truevalue="--strip-unknown-mods" falsevalue="" checked="false" label="Ignore modifications not supported by the deep learning predictor" help="Instructs DIA-NN to ignore modifications that are not supported by the deep learning predictor, when performing the prediction"/>
+            <param name="unimod4" type="boolean" truevalue="--unimod4" falsevalue="" checked="true" label="Considers C carbamidomethylation" help=""/>
+            <param name="unimod35" type="boolean" truevalue="--unimod35" falsevalue="" checked="false" label="Considers Ox(M) methionine oxidation" help=""/>
+        </section>
+        <section name="mass_frag_options" title="Mass calibration and Fragmentation">
+            <param name="no_fr_selection" type="boolean" truevalue="--no-fr-selection" falsevalue="" checked="false" label="Disable selection of fragments for quantification" help="The selection of fragments for quantification based on the quality assessment of the respective extracted chromatograms will be disabled"/>
+            <param name="quant_fr" type="integer" min="0" optional="true" label="Number of top fragment ions for quantification" help="Sets the number of top fragment ions among which the fragments that will be used for quantification are chosen. Default value is 6"/>
+            <param name="restrict_fr" type="boolean" truevalue="--restrict-fr" falsevalue="" checked="false" label="Restrict fragments for quantification" help="Some fragments will not be used for quantification, based on the value in the ExcludeFromAssay spectral library column"/>
+            <param name="sptxt_acc" type="integer" min="0" optional="true" label="Fragment filtering mass accuracy" help="Sets the fragment filtering mass accuracy (in ppm) when reading .sptxt/.msp libraries"/>
+            <param name="target_fr" type="integer" min="0" optional="true" label="Number of fragment ions for spectral library" help="Fragment ions beyond this number will only be included in the spectral library being created (from DIA data) if they have high-quality chromatograms. Default value is 6"/>
+        </section>
+        <section name="channel_options" title="Channel">
+<!--            <param name="channels" type="text" optional="true" label="(Experimental) List multiplexing channels" help="Lists multiplexing channels, wherein each channel declaration has the form [channel] = [label group],[channel name],[sites],[mass1:mass2:...], wherein [sites] has the same syntax as for &#45;&#45;var-mod and if N sites are listed, N masses are listed at the end of the channel declaration. Examples: '&#45;&#45;channels SILAC,L,KR,0:0; SILAC,H,KR,8.014199:10.008269' - declares standard light/heavy SILAC labels, '&#45;&#45;channels mTRAQ,0,nK,0:0; mTRAQ,4,nK,4.0070994:4.0070994;mTRAQ,8,nK,8.0141988132:8.0141988132' - declares mTRAQ. The spectral library will be automatically split into multiple channels, for precursors bearing the [label group] modification. To add the latter to a label-free spectral library, can use &#45;&#45;lib-fixed-mod, e.g. &#45;&#45;fixed-mod SILAC,0.0,KR,label &#45;&#45;lib-fixed-mod SILAC. The &#45;&#45;channels command must be used in conjunction with &#45;&#45;peak-translation."/>-->
+            <param name="decoy_channel" type="text" optional="true" label="Decoy channel" help="Specifies the decoy channel masses (same syntax as for --channels)"/>
+            <param name="no_decoy_channel" type="boolean" truevalue="--no-decoy-channel" falsevalue="" checked="false" label="Disable the use of a decoy channel" help="Disables the use of a decoy channel for channel q-value calculation"/>
+        </section>
+        <section name="quantification_options" title="Quantification">
+            <param name="peak_translation" type="boolean" truevalue="--peak-translation" falsevalue="" checked="false" label="Take advantage of the co-elution of isotopologues" help="Instructs DIA-NN to take advantage of the co-elution of isotopologues, when identifying and quantifying precursors"/>
+            <param name="no_maxlfq" type="boolean" truevalue="--no-maxlfq" falsevalue="" checked="false" label="Disable MaxLFQ for protein quantification" help="Disables MaxLFQ for protein quantification"/>
+        </section>
+        <section name="other_options" title="Other">
+            <param name="min_peak" type="float" min="0.01" optional="true" label="Minimum peak height" help="Sets the minimum peak height to consider"/>
+            <param name="no_rt_window" type="boolean" truevalue="--no-rt-window" falsevalue="" checked="false" label="Disable RT-windowed search" help="Disables RT-windowed search"/>
+            <param name="no_stratification" type="boolean" truevalue="--no-stratification" falsevalue="" checked="false" label="Disable precursor stratification" help="Disables precursor stratification based on the modification status. Stratification works in combination with monitor-mod to ensure that no matter how few modified peptides are reported, the FDR specifically across modified peptides is well controlled."/>
+            <param name="no_swissprot" type="boolean" truevalue="--no-swissprot" falsevalue="" checked="false" label="Do not give preference for SwissProt proteins" help="Instruct DIA-NN not to give preference for SwissProt proteins when inferring protein groups"/>
+            <param name="dl_no_im" type="boolean" truevalue="--dl-no-im" falsevalue="" checked="false" label="Disable ion mobility prediction" help="When using the deep learning predictor, prediction of ion mobilities will not be performed"/>
+            <param name="dl_no_rt" type="boolean" truevalue="--dl-no-rt" falsevalue="" checked="false" label="Disable retention time prediction" help="When using the deep learning predictor, prediction of retention times will not be performed"/>
+            <param name="duplicate_proteins" type="boolean" truevalue="--duplicate-proteins" falsevalue="" checked="false" label="Duplicate proteins" help="Instructs DIA-NN not to skip entries in the sequence database with duplicate IDs (while by default if several entries have the same protein ID, all but the first entry will be skipped)"/>
+            <param name="exact_fdr" type="boolean" truevalue="--exact-fdr" falsevalue="" checked="false" label="Disable approximate FDR estimation" help="Approximate FDR estimation for confident peptides based on parametric modelling will be disabled"/>
+            <param name="force_swissprot" type="boolean" truevalue="--force-swissprot" falsevalue="" checked="false" label="Force SwissProt sequences" help="Only consider SwissProt sequences when processing a sequence database"/>
+            <param name="full_unimod" type="boolean" truevalue="--full-unimod" falsevalue="" checked="false" label="Full UniMod modification database" help="Loads the complete UniMod modification database and disables the automatic conversion of modification names to the UniMod format"/>
+            <param name="gen_fr_restriction" type="boolean" truevalue="--gen-fr-restriction" falsevalue="" checked="false" label="Generate fragment exclusion information" help="Annotates the library with fragment exclusion information, based on the runs being analysed (fragments least affected by interferences are selected for quantification, why the rest are excluded)"/>
+            <param name="global_mass_cal" type="boolean" truevalue="--global-mass-cal" falsevalue="" checked="false" label="Disable RT-dependent mass calibration" help="Disables RT-dependent mass calibration"/>
+<!--            <param name="il_eq" type="boolean" truevalue="&#45;&#45;il-eq" falsevalue="" checked="false" label="(Experimental) Isoleucine and leucine equivalent" help="When using the 'Reannotate' function, peptides will be matched to proteins while considering isoleucine and leucine equivalent"/>-->
+            <!-- ToDo individual_mass_acc: what does automatic mean? -->
+            <param name="individual_mass_acc" type="boolean" truevalue="--individual-mass-acc" falsevalue="" checked="false" label="Independent mass accuracies" help="Mass accuracies, if set to automatic, will be determined independently for different runs"/>
+            <param name="individual_reports" type="boolean" truevalue="--individual-reports" falsevalue="" checked="false" label="Individual output reports" help="A separate output report will be created for each run"/>
+            <!-- ToDo individual_windows: what does automatic mean? -->
+            <param name="individual_windows" type="boolean" truevalue="--individual-windows" falsevalue="" checked="false" label="Independent scan windows" help="Scan window, if set to automatic, will be determined independently for different runs"/>
+            <param name="no_isotopes" type="boolean" truevalue="--no-isotopes" falsevalue="" checked="false" label="Do not extract chromatograms for heavy isotopologues" help="Do not extract chromatograms for heavy isotopologues"/>
+            <param name="regular_swath" type="boolean" truevalue="--regular-swath" falsevalue="" checked="false" label="Analyse all runs as regular runs" help="All runs will be analysed as if they were not Scanning SWATH runs"/>
+            <param name="scanning_swath" type="boolean" truevalue="--scanning-swath" falsevalue="" checked="false" label="Analyse all runs as Scanning SWATH runs" help="All runs will be analysed as if they were Scanning SWATH runs"/>
+<!--            <param name="semi" type="boolean" truevalue="&#45;&#45;semi" falsevalue="" checked="false" label="(Experimental) Match a peptide to a protein with one specific and one non-specific cut" help="When using the 'Reannotate' function, a peptide will be matched to a protein also if it could be obtained with one specific and one non-specific cut (at either of the termini)"/>-->
+            <param name="species_genes" type="boolean" truevalue="--species-genes" falsevalue="" checked="false" label="Add the organism identifier to the gene names" help="Instructs DIA-NN to add the organism identifier to the gene names - useful for distinguishing genes from different species, when analysing mixed samples. Works with UniProt sequence databases."/>
+            <param name="tims_skip_errors" type="boolean" truevalue="--tims-skip-errors" falsevalue="" checked="false" label="Ignore errors when loading dia-PASEF data" help="DIA-NN will ignore errors when loading dia-PASEF data"/>
+        </section>
+        <section name="output_options" expanded="true" title="Output">
+            <param name="no_main_report" type="boolean" truevalue="--no-main-report" falsevalue="" checked="false" label="Do not produce the main report" help="Do not produce the main report"/>
+            <param name="no_stats" type="boolean" truevalue="--no-stats" falsevalue="" checked="false" label="Disable generation of the stats file" help="Disables the generation of the stats file"/>
+            <param name="compact_report" type="boolean" truevalue="--compact-report" falsevalue="" checked="false" label="Compact report" help="Instructs DIA-NN to provide less information in the main report"/>
+            <param name="matrices" type="boolean" truevalue="--matrices" falsevalue="" checked="true" label="Output quantities matrices" help="Outputs quantities matrices"/>
+            <param name="matrix_ch_qvalue" type="float" min="0" optional="true" label="Channel q-value" help="Sets the 'channel q-value' used to filter the output matrices"/>
+            <param name="qvalue" type="float" min="0" value="0.01" label="q-value" help="Sets the q-value used to filter the output matrices"/>
+            <param name="matrix_tr_qvalue" type="float" min="0" optional="true" label="Translated q-value" help="Sets the 'translated q-value' used to filter the output matrices"/>
+            <param name="matrix_spec_q" type="boolean" truevalue="--matrix-spec-q" falsevalue="" checked="false" label="Run-specific protein q-value filtering" help="Run-specific protein q-value filtering will be used when saving protein matrices. The ability to filter based on run-specific protein q-values, which allows to generate highly reliable data, is one of the advantages of DIA-NN."/>
+            <param name="report_lib_info" type="boolean" truevalue="--report-lib-info" falsevalue="" checked="false" label="Add extra library information to the main output report" help="Adds extra library information on the precursor and its fragments to the main output report"/>
+            <param name="vis" type="text" optional="true" label="Extract and save chromatograms" help="Instructs DIA-NN to extract and save chromatograms in the vicinity of the detected elution apex, for all PSMs matching the stripped sequences provided, for all runs in the experiment; at least N scans in the vicinity of the apex will be extracted"/>
+            <param name="verbose" type="integer" min="0" max="4" value="1" label="Verbose level" help="Sets the level of detail of the log"/>
+        </section>
+    </inputs>
+    <outputs>
+        <data format="tabular" name="output_report" label="${tool.name} on ${on_string}: report.tsv">
+            <filter>input['f'] != None</filter>
+        </data>
+        <data format="tabular" name="output_report_lib" label="${tool.name} on ${on_string}: report-lib.tsv">
+            <filter>input['spectral_lib_options']['gen_spec_lib'] == True</filter>
+        </data>
+        <data format="data" name="output_report_speclib" label="${tool.name} on ${on_string}: report-lib.tsv.speclib">
+            <filter>input['spectral_lib_options']['gen_spec_lib'] == True</filter>
+        </data>
+        <data format="data" name="output_report_pred_speclib" label="${tool.name} on ${on_string}: report-lib.predicted.speclib">
+            <filter>input['spectral_lib_options']['gen_spec_lib'] == True</filter>
+        </data>
+    </outputs>
+    <tests>
+        <!-- test for default run -->
+        <test expect_num_outputs="4">
+            <section name="input">
+                <param name="f" value="small-peakpicking-cwt-allMS.mzML" />
+                <section name="spectral_lib_options">
+                    <param name="gen_spec_lib" value="True"/>
+                    <param name="predictor" value="True"/>
+                </section>
+                <section name="fasta_db_options">
+                    <param name="fasta" value="bsa.fasta"/>
+                    <param name="fasta_search" value="True"/>
+                </section>
+            </section>
+            <output name="output_report" file="report.tsv">
+                <assert_contents>
+                    <has_text text="PG.Normalised"/>
+                </assert_contents>
+            </output>
+            <output name="output_report_lib" file="report-lib.tsv">
+                <assert_contents>
+                    <has_text text="PrecursorMz"/>
+                </assert_contents>
+            </output>
+            <output name="output_report_speclib" file="report-lib.tsv.speclib" compare="sim_size" delta="100"/>
+            <output name="output_report_pred_speclib" file="report-lib.predicted.speclib" compare="sim_size" delta="100"/>
+        </test>
+        <!-- test for multiple fastas -->
+        <test expect_num_outputs="1">
+            <section name="input">
+                <param name="f" value="small-peakpicking-cwt-allMS.mzML" />
+                <section name="fasta_db_options">
+                    <param name="fasta" value="bsa.fasta,bsa2.fasta"/>
+                    <param name="fasta_search" value="True"/>
+                </section>
+            </section>
+            <output name="output_report" file="report.tsv">
+                <assert_contents>
+                    <has_text text="PG.Normalised"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- test for spec library -->
+        <test expect_num_outputs="1">
+            <section name="input">
+                <param name="f" value="small-peakpicking-cwt-allMS.mzML" />
+                <section name="spectral_lib_options">
+                    <param name="lib" value="report-lib.predicted.speclib"/>
+                </section>
+                <section name="fasta_db_options">
+                    <param name="fasta" value="bsa.fasta,bsa2.fasta"/>
+                    <param name="fasta_search" value="True"/>
+                </section>
+            </section>
+            <output name="output_report" file="report.tsv">
+                <assert_contents>
+                    <has_text text="PG.Normalised"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- test for Bruker data -->
+<!--        <test expect_num_outputs="2">-->
+<!--            <section name="input">-->
+<!--                <param name="f" value="ThyroglobMRM000003.d.tar" />-->
+<!--                <section name="spectral_lib_options">-->
+<!--                    <param name="gen_spec_lib" value="True"/>-->
+<!--                    <param name="predictor" value="True"/>-->
+<!--                </section>-->
+<!--                <section name="fasta_db_options">-->
+<!--                    <param name="fasta" value="bsa.fasta"/>-->
+<!--                    <param name="fasta_search" value="True"/>-->
+<!--                </section>-->
+<!--            </section>-->
+<!--            <output name="output_report" file="bruker-report.tsv">-->
+<!--                <assert_contents>-->
+<!--                    <has_text text="PG.Normalised"/>-->
+<!--                </assert_contents>-->
+<!--            </output>-->
+<!--            <output name="output_report_lib" file="bruker-report-lib.tsv">-->
+<!--                <assert_contents>-->
+<!--                    <has_text text="PrecursorMz"/>-->
+<!--                </assert_contents>-->
+<!--            </output>-->
+<!--        </test>-->
+    </tests>
+    <help>
+        <![CDATA[
+            **DIA-NN - a universal software for data-independent acquisition (DIA) proteomics data processing by Demichev, Ralser and Lilley labs.**
+
+            In 2018, DIA-NN opened a new chapter in proteomics, introducing a number of algorithms which enabled reliable, robust and quantitatively accurate large-scale experiments using high-throughput methods.
+
+
+            *DIA-NN is built on the following principles:*
+
+                - Reliability achieved via stringent statistical control
+                - Robustness achieved via flexible modelling of the data and automatic parameter selection
+                - Reproducibility promoted by thorough recording of all analysis steps
+                - Ease of use: high degree of automation, an analysis can be set up in several mouse clicks, no bioinformatics expertise required
+                - Powerful tuning options to enable unconventional experiments
+                - Scalability and speed: up to 1000 mass spec runs processed per hour
+
+            *Raw data formats*
+
+            Formats supported: Sciex .wiff, Bruker .d, Thermo .raw, .mzML and .dia (format used by DIA-NN to store spectra). Conversion from any supported format to .dia is possible. When running on Linux (native builds, not Wine), only .d, .mzML, and .dia data are supported.
+
+            For .wiff support, download and install ProteoWizard - choose the version (64-bit) that supports "vendor files"). Then copy all files with 'Clearcore' or 'Sciex' in their name (these will be .dll files) from the ProteoWizard folder to the DIA-NN installation folder (the one which contains diann.exe, DIA-NN.exe and a bunch of other files).
+
+            Reading Thermo .raw files requires Thermo MS File Reader to be installed. It is essential to use specifically the version by the link above (3.0 SP3).
+
+            .mzML files should be centroided and contain data as spectra (e.g. SWATH) and not chromatograms.
+
+            *Spectral library formats*
+
+            DIA-NN supports comma-separated (.csv) or tab-separated (.tsv, .xls or .txt), .speclib (compact format used by DIA-NN), .sptxt (SpectraST, experimental [not in Galaxy]) and .msp (NIST, experimental [not in Galaxy]) library files. Important: the library must not contain non-fragmented precursor ions as 'fragments': each fragment ion must actually be produced by the peptide backbone fragmentation.
+
+            *Library-free search*
+
+            DIA-NN has a very advanced library-free module, which is, for certain types of experiments, better than using a high quality project-specific spectral library. In general, the following makes library-free search perform better in comparison to spectral libraries (while the opposite favours spectral libraries):
+
+                - high peptide numbers detectable per run
+                - heterogeneous data (e.g. cancer tissue samples are quite heterogeneous, while replicate injections of the same sample are not)
+                - long chromatographic gradients as well as good separation of peptides in the ion mobility dimension
+                - large dataset (although processing a large dataset in library-free mode might take time)
+
+            Please note that in 99% of cases it is essential that MBR is enabled for a quantitative library-free analysis. It gets activated by default when using the DIA-NN GUI.
+
+            For most experiments it does indeed make sense to try library-free search. For medium and large-scale experiments it might make sense to first try library-free analysis of a subset of the data, to see whether the performance is OK (on the whole dataset it will typically be a lot better, so no need to be too stringent here). Ourselves we also often perform a quick preliminary QC assessment of the experiment using some public library.
+
+            It is often convenient to perform library-free analysis in two steps: by first creating an in silico-predicted spectral library from the sequence database, and then analysing with this library.
+
+            For more information, visit https://github.com/vdemichev/DiaNN
+        ]]>
+    </help>
+    <citations>
+        <citation type="doi">10.1038/s41592-019-0638-x</citation>
+        <citation type="doi">10.1038/s41467-021-25454-1</citation>
+        <citation type="doi">10.1038/s41467-022-31492-0</citation>
+    </citations>
+</tool>
