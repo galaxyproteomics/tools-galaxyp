@@ -11,7 +11,7 @@ More informations are available at:
  * https://www.openms.de/
 
 The wrappers for these tools and most of their tests are automatically
-generated using the `generate.sh` script. The generation of the tools is
+generated using the `./aux/generate.sh` script. The generation of the tools is
 based on the CTDConverter (https://github.com/WorkflowConversion/CTDConverter)
 which can be fine tuned via the `hardcoded_params.json` file. This file allows
 to blacklist and hardcode parameters and to modify or set arbitrary
