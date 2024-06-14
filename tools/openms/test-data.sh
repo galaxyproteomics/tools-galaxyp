@@ -6,9 +6,6 @@ VERSION=3.1
 FILETYPES="aux/filetypes.txt"
 CONDAPKG="https://anaconda.org/bioconda/openms/3.1.0/download/linux-64/openms-3.1.0-h8964181_1.tar.bz2"
 
-# import the magic
-. ./generate-foo.sh
-
 # install conda
 if [ -z "$tmp" ]; then
     tmp=$(mktemp -d)
@@ -176,6 +173,47 @@ done
 ###############################################################################
 ## create script to create results for the tests and run it
 ###############################################################################
+# parse data preparation calls from OpenMS sources for a tool with a given id
+function prepare_test_data {
+#     id=$1
+# | egrep -i "$id\_.*[0-9]+(_prepare\"|_convert)?"
+
+    OLD_OSW_PARAM=$(cat $OPENMSGIT/src/tests/topp/CMakeLists.txt |sed 's/#.*$//'| sed 's/^\s*//; s/\s*$//' |awk '{printf("%s@NEWLINE@", $0)}' |  sed 's/)@NEWLINE@/)\n/g' | sed 's/@NEWLINE@/ /g' | grep OLD_OSW_PARAM | head -n 1 | sed 's/^[^"]\+//; s/)$//; s/"//g')
+    # TODO SiriusAdapter depends on online service which may timeout .. so keep disabled https://github.com/OpenMS/OpenMS/pull/5010
+    cat $OPENMSGIT/src/tests/topp/CMakeLists.txt  $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake |
+        sed "s/\${OLD_OSW_PARAM}/$OLD_OSW_PARAM/" |
+        grep -v "\.ini\.json" |
+        sed 's/.ini.json /ini /' | 
+        sed 's/#.*$//'| 
+        sed 's/^\s*//; s/\s*$//' | 
+        grep -v "^$"  | 
+        awk '{printf("%s@NEWLINE@", $0)}' | 
+        sed 's/)@NEWLINE@/)\n/g' | sed 's/@NEWLINE@/ /g' | 
+        sed 's/degenerate_cases\///' | 
+        egrep -v "WRITEINI|WRITECTD|INVALIDVALUE|DIFF" | 
+        grep add_test | 
+        egrep "TOPP|UTILS" |
+        sed 's@${DATA_DIR_SHARE}/@@g;'|
+        sed 's@${TMP_RIP_PATH}@./@g'|
+        sed 's@TOFCalibration_ref_masses @TOFCalibration_ref_masses.txt @g; s@TOFCalibration_const @TOFCalibration_const.csv @'| 
+	sed 's/\("TOPP_SiriusAdapter_4".*\)-sirius:database all\(.*\)/\1-sirius:database pubchem\2/' |
+    while read line
+    do
+        test_id=$(echo "$line" | sed 's/add_test(//; s/"//g;  s/)[^)]*$//; s/\${TOPP_BIN_PATH}\///g;s/\${DATA_DIR_TOPP}\///g; s#THIRDPARTY/##g' | cut -d" " -f1)
+
+        if grep -lq "$test_id"'\".* PROPERTIES WILL_FAIL 1' $OPENMSGIT/src/tests/topp/CMakeLists.txt $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake; then
+            >&2 echo "    skip failing "$test_id
+            continue
+        fi
+
+        line=$(echo "$line" | sed 's/add_test("//; s/)[^)]*$//; s/\${TOPP_BIN_PATH}\///g;s/\${DATA_DIR_TOPP}\///g; s#THIRDPARTY/##g' | cut -d" " -f2-)
+        # line="$(fix_tmp_files $line)"
+        echo 'echo executing "'$test_id'"'
+        echo "$line > $test_id.stdout 2> $test_id.stderr"
+        echo "if [[ \"\$?\" -ne \"0\" ]]; then >&2 echo '$test_id failed'; >&2 echo -e \"stderr:\n\$(cat $test_id.stderr | sed 's/^/    /')\"; echo -e \"stdout:\n\$(cat $test_id.stdout)\";fi"    
+    done
+}
+
 echo "Create test shell script"
 
 echo -n "" > prepare_test_data.sh
@@ -198,18 +236,6 @@ echo 'export THERMORAWFILEPARSER_BINARY="ThermoRawFileParser.exe"' >> prepare_te
 echo 'export SAGE_BINARY=sage' >> prepare_test_data.sh
 
 prepare_test_data >> prepare_test_data.sh #tmp_test_data.sh
-
-## prepare_test_data > tmp_test_data.sh
-## # remove calls not needed for the tools listed in any .list file
-## echo LIST $LIST
-## if [ ! -z "$LIST" ]; then
-##     REX=$(echo $LIST | sed 's/ /\n/g' | sed 's@.*/\([^/]\+\).xml$@\1@' | tr '\n' '|' | sed 's/|$//')
-## else
-##     REX=".*"
-## fi
-## echo REX $REX
-## cat tmp_test_data.sh | egrep "($REX)" >> prepare_test_data.sh
-## rm tmp_test_data.sh
 
 echo "Execute test shell script"
 chmod u+x prepare_test_data.sh
@@ -240,15 +266,10 @@ echo "<macros>" > "$autotests"
 for i in $(ls ctd/*ctd)
 do
     b=$(basename "$i" .ctd)
-    ./get_tests.py --id "$b" --cmake "$OPENMSGIT"/src/tests/topp/CMakeLists.txt "$OPENMSGIT"/src/tests/topp/THIRDPARTY/third_party_tests.cmake >> "$autotests"
-    # get_tests2 "$b" >> "$autotests"
+    ./aux/get_tests.py --id "$b" --cmake "$OPENMSGIT"/src/tests/topp/CMakeLists.txt "$OPENMSGIT"/src/tests/topp/THIRDPARTY/third_party_tests.cmake >> "$autotests"
     wc -l "$autotests"
 done
 echo "</macros>" >> "$autotests"
-
-# echo "Create test data links"
-# Breaks DecoyDatabase
-# link_tmp_files
 
 # tests for tools using output_prefix parameters can not be auto generated
 # hence we output the tests for manual curation in macros_test.xml
