@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 
-VERSION=2.8
-FILETYPES="aux/filetypes.txt"
-CONDAPKG="https://anaconda.org/bioconda/openms/2.8.0/download/linux-64/openms-2.8.0-h7ca0330_0.tar.bz2"
+# set -x
 
-# import the magic
-. ./generate-foo.sh
+VERSION=3.1
+FILETYPES="aux/filetypes.txt"
+CONDAPKG="https://anaconda.org/bioconda/openms/3.1.0/download/linux-64/openms-3.1.0-h8964181_1.tar.bz2"
 
 # install conda
 if [ -z "$tmp" ]; then
@@ -45,17 +44,20 @@ eval "$(conda shell.bash hook)"
 
 echo "Clone OpenMS $VERSION sources"
 if [[ ! -d $OPENMSGIT ]]; then
-    # TODO >2.8 reenable original release branch .. also in else branch
-    # the plus branch contains commits from https://github.com/OpenMS/OpenMS/pull/5920 and https://github.com/OpenMS/OpenMS/pull/5917
-    # git clone -b release/$VERSION.0 https://github.com/OpenMS/OpenMS.git $OPENMSGIT
-    git clone -b release/$VERSION.0-plus https://github.com/bernt-matthias/OpenMS.git $OPENMSGIT
-    cd $OPENMSGIT
-    git submodule init
-    git submodule update
-    cd -
+    if [[ "$created" == "yes" ]]; then
+        GIT_DIR=$(mktemp -d --dry-run)
+        GIT_EXTRA_OPTS="--separate-git-dir=$GIT_DIR"
+    fi
+    git clone -b release/$VERSION.0 --depth 1 --recurse-submodules=THIRDPARTY --shallow-submodules $GIT_EXTRA_OPTS https://github.com/OpenMS/OpenMS.git $OPENMSGIT
+    ## save some space by just keeping the needed binaries
+    find $OPENMSGIT/THIRDPARTY/ -type f -not \( -name maracluster -o -name spectrast \) -delete
+    find $OPENMSGIT/THIRDPARTY/ -empty -type d -delete
+    if [[ "$created" == "yes" ]]; then
+        rm -rf $GIT_DIR
+    fi
 else
     cd $OPENMSGIT
-    git pull origin release/$VERSION.0-plus
+    git pull origin release/$VERSION.0
     cd -
 fi
 
@@ -65,7 +67,7 @@ echo "Create OpenMS $VERSION conda env"
 if conda env list | grep "$OPENMSENV"; then
     true
 else
-    conda create -y --quiet --override-channels --channel iuc --channel conda-forge --channel bioconda --channel defaults -n $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION omssa=2.1.9 ctdopts=1.5 lxml
+    conda create -y --quiet --solver libmamba --override-channels --strict-channel-priority --channel conda-forge --channel bioconda -n $OPENMSENV openms=$VERSION openms-thirdparty=$VERSION ctdopts=1.5 lxml
 # chmod -R u-w $OPENMSENV 
 fi
 ###############################################################################
@@ -101,33 +103,34 @@ cd -
 conda deactivate
 
 
-# ###############################################################################
-# ## copy all the test data files to test-data
-# ## most of it (outputs) will be overwritten later, but its needed for
-# ## prepare_test_data
-# ###############################################################################
+# # ###############################################################################
+# # ## copy all the test data files to test-data
+# # ## most of it (outputs) will be overwritten later, but its needed for
+# # ## prepare_test_data
+# # ###############################################################################
 echo "Get test data"
-find test-data -type f,l,d ! -name "*fa" ! -name "*loc" ! -name "test-data" -delete
+find test-data -type f,l,d ! -name "*fa" ! -name "*loc" ! -name "test-data" ! -name MetaboliteSpectralDB.mzML -delete
 
 cp $(find $OPENMSGIT/src/tests/topp/ -type f | grep -Ev "third_party_tests.cmake|CMakeLists.txt|check_ini") test-data/
 cp -r $OPENMSGIT/share/OpenMS/MAPPING/ test-data/
 cp -r $OPENMSGIT/share/OpenMS/CHEMISTRY test-data/
 cp -r $OPENMSGIT/share/OpenMS/examples/ test-data/
 if [ ! -f test-data/MetaboliteSpectralDB.mzML ]; then 
-    wget -nc https://abibuilder.cs.uni-tuebingen.de/archive/openms/Tutorials/Data/latest/Example_Data/Metabolomics/databases/MetaboliteSpectralDB.mzML
+    wget -nc https://raw.githubusercontent.com/sneumann/OpenMS/master/share/OpenMS/CHEMISTRY/MetaboliteSpectralDB.mzML
+    # wget -nc https://abibuilder.cs.uni-tuebingen.de/archive/openms/Tutorials/Data/latest/Example_Data/Metabolomics/databases/MetaboliteSpectralDB.mzML
     mv MetaboliteSpectralDB.mzML test-data/
 fi
 ln -fs TOFCalibration_ref_masses test-data/TOFCalibration_ref_masses.txt
 ln -fs TOFCalibration_const test-data/TOFCalibration_const.csv
 
-if [ ! -d test-data/pepnovo_models/ ]; then
-    mkdir -p /tmp/pepnovo
-    wget -nc http://proteomics.ucsd.edu/Software/PepNovo/PepNovo.20120423.zip
-    unzip PepNovo.20120423.zip -d /tmp/pepnovo/
-    mv /tmp/pepnovo/Models test-data/pepnovo_models/
-    rm PepNovo.20120423.zip
-    rm -rf /tmp/pepnovo
-fi
+# if [ ! -d test-data/pepnovo_models/ ]; then
+#     mkdir -p /tmp/pepnovo
+#     wget -nc http://proteomics.ucsd.edu/Software/PepNovo/PepNovo.20120423.zip
+#     unzip PepNovo.20120423.zip -d /tmp/pepnovo/
+#     mv /tmp/pepnovo/Models test-data/pepnovo_models/
+#     rm PepNovo.20120423.zip
+#     rm -rf /tmp/pepnovo
+# fi
 ###############################################################################
 ## generate ctd files using the binaries in the conda package 
 ###############################################################################
@@ -170,6 +173,47 @@ done
 ###############################################################################
 ## create script to create results for the tests and run it
 ###############################################################################
+# parse data preparation calls from OpenMS sources for a tool with a given id
+function prepare_test_data {
+#     id=$1
+# | egrep -i "$id\_.*[0-9]+(_prepare\"|_convert)?"
+
+    OLD_OSW_PARAM=$(cat $OPENMSGIT/src/tests/topp/CMakeLists.txt |sed 's/#.*$//'| sed 's/^\s*//; s/\s*$//' |awk '{printf("%s@NEWLINE@", $0)}' |  sed 's/)@NEWLINE@/)\n/g' | sed 's/@NEWLINE@/ /g' | grep OLD_OSW_PARAM | head -n 1 | sed 's/^[^"]\+//; s/)$//; s/"//g')
+    # TODO SiriusAdapter depends on online service which may timeout .. so keep disabled https://github.com/OpenMS/OpenMS/pull/5010
+    cat $OPENMSGIT/src/tests/topp/CMakeLists.txt  $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake |
+        sed "s/\${OLD_OSW_PARAM}/$OLD_OSW_PARAM/" |
+        grep -v "\.ini\.json" |
+        sed 's/.ini.json /ini /' | 
+        sed 's/#.*$//'| 
+        sed 's/^\s*//; s/\s*$//' | 
+        grep -v "^$"  | 
+        awk '{printf("%s@NEWLINE@", $0)}' | 
+        sed 's/)@NEWLINE@/)\n/g' | sed 's/@NEWLINE@/ /g' | 
+        sed 's/degenerate_cases\///' | 
+        egrep -v "WRITEINI|WRITECTD|INVALIDVALUE|DIFF" | 
+        grep add_test | 
+        egrep "TOPP|UTILS" |
+        sed 's@${DATA_DIR_SHARE}/@@g;'|
+        sed 's@${TMP_RIP_PATH}@./@g'|
+        sed 's@TOFCalibration_ref_masses @TOFCalibration_ref_masses.txt @g; s@TOFCalibration_const @TOFCalibration_const.csv @'| 
+	sed 's/\("TOPP_SiriusAdapter_4".*\)-sirius:database all\(.*\)/\1-sirius:database pubchem\2/' |
+    while read line
+    do
+        test_id=$(echo "$line" | sed 's/add_test(//; s/"//g;  s/)[^)]*$//; s/\${TOPP_BIN_PATH}\///g;s/\${DATA_DIR_TOPP}\///g; s#THIRDPARTY/##g' | cut -d" " -f1)
+
+        if grep -lq "$test_id"'\".* PROPERTIES WILL_FAIL 1' $OPENMSGIT/src/tests/topp/CMakeLists.txt $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake; then
+            >&2 echo "    skip failing "$test_id
+            continue
+        fi
+
+        line=$(echo "$line" | sed 's/add_test("//; s/)[^)]*$//; s/\${TOPP_BIN_PATH}\///g;s/\${DATA_DIR_TOPP}\///g; s#THIRDPARTY/##g' | cut -d" " -f2-)
+        # line="$(fix_tmp_files $line)"
+        echo 'echo executing "'$test_id'"'
+        echo "$line > $test_id.stdout 2> $test_id.stderr"
+        echo "if [[ \"\$?\" -ne \"0\" ]]; then >&2 echo '$test_id failed'; >&2 echo -e \"stderr:\n\$(cat $test_id.stderr | sed 's/^/    /')\"; echo -e \"stdout:\n\$(cat $test_id.stdout)\";fi"    
+    done
+}
+
 echo "Create test shell script"
 
 echo -n "" > prepare_test_data.sh
@@ -180,30 +224,18 @@ echo 'export FIDO_BINARY="Fido"' >> prepare_test_data.sh
 echo 'export LUCIPHOR_BINARY="$(dirname $(realpath $(which luciphor2)))/luciphor2.jar"' >> prepare_test_data.sh
 
 echo 'export MARACLUSTER_BINARY="'"$OPENMSGIT"'/THIRDPARTY/Linux/64bit/MaRaCluster/maracluster"'>> prepare_test_data.sh
-echo 'export MSFRAGGER_BINARY="/home/berntm/Downloads/MSFragger-20171106/MSFragger-20171106.jar"'>> prepare_test_data.sh
+echo 'export MSFRAGGER_BINARY="/home/berntm/Downloads/MSFragger-3.5/MSFragger-3.5.jar"'>> prepare_test_data.sh
 echo 'export MSGFPLUS_BINARY="$(msgf_plus -get_jar_path)"' >> prepare_test_data.sh
 echo 'export MYRIMATCH_BINARY="myrimatch"'>> prepare_test_data.sh
 echo 'export NOVOR_BINARY="/home/berntm/Downloads/novor/lib/novor.jar"' >> prepare_test_data.sh
-echo 'export OMSSA_BINARY="$(dirname $(realpath $(which omssacl)))/omssacl"'>> prepare_test_data.sh
 echo 'export PERCOLATOR_BINARY="percolator"'>> prepare_test_data.sh
 echo 'export SIRIUS_BINARY="$(which sirius)"' >> prepare_test_data.sh
 echo 'export SPECTRAST_BINARY="'"$OPENMSGIT"'/THIRDPARTY/Linux/64bit/SpectraST/spectrast"' >> prepare_test_data.sh
 echo 'export XTANDEM_BINARY="xtandem"' >> prepare_test_data.sh
 echo 'export THERMORAWFILEPARSER_BINARY="ThermoRawFileParser.exe"' >> prepare_test_data.sh
+echo 'export SAGE_BINARY=sage' >> prepare_test_data.sh
 
 prepare_test_data >> prepare_test_data.sh #tmp_test_data.sh
-
-## prepare_test_data > tmp_test_data.sh
-## # remove calls not needed for the tools listed in any .list file
-## echo LIST $LIST
-## if [ ! -z "$LIST" ]; then
-##     REX=$(echo $LIST | sed 's/ /\n/g' | sed 's@.*/\([^/]\+\).xml$@\1@' | tr '\n' '|' | sed 's/|$//')
-## else
-##     REX=".*"
-## fi
-## echo REX $REX
-## cat tmp_test_data.sh | egrep "($REX)" >> prepare_test_data.sh
-## rm tmp_test_data.sh
 
 echo "Execute test shell script"
 chmod u+x prepare_test_data.sh
@@ -234,13 +266,10 @@ echo "<macros>" > "$autotests"
 for i in $(ls ctd/*ctd)
 do
     b=$(basename "$i" .ctd)
-    get_tests2 "$b" >> "$autotests"
+    ./get_tests.py --id "$b" --cmake "$OPENMSGIT"/src/tests/topp/CMakeLists.txt "$OPENMSGIT"/src/tests/topp/THIRDPARTY/third_party_tests.cmake >> "$autotests"
+    wc -l "$autotests"
 done
 echo "</macros>" >> "$autotests"
-
-# echo "Create test data links"
-# Breaks DecoyDatabase
-# link_tmp_files
 
 # tests for tools using output_prefix parameters can not be auto generated
 # hence we output the tests for manual curation in macros_test.xml
@@ -255,6 +284,7 @@ echo "</macros>" >> "$autotests"
 #
 # not able to specify composite test data  
 # -> SpectraSTSearchAdapter 
+echo "Discard some tests"
 if [[ ! -z "$1" ]]; then
     echo "" > macros_discarded_auto.xml
     for i in OpenSwathFileSplitter IDRipper MzMLSplitter SeedListGenerator MSFraggerAdapter MaRaClusterAdapter NovorAdapter SpectraSTSearchAdapter
@@ -272,7 +302,7 @@ conda deactivate
 ## remove broken symlinks in test-data
 find test-data/ -xtype l -delete
 
-if [ ! -z "$created" ]; then
+if [[ "$created" == "yes" ]]; then
     echo "Removing temporary directory"
     rm -rf "$tmp"
 fi
