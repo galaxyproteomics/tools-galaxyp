@@ -9,10 +9,11 @@ import sys
 input_db_file = sys.argv[1]
 output_db_file = sys.argv[2]
 
-with open(input_db_file) as f:
-    input_db = f.readlines()
 
-subbed_lines = [re.sub(r'^>(?!sp\||tr\||db\||AP_|NP_|YP_|XP_|WP_|ENSP|UniRef|nxp|generic)', '>generic|', l) for l in input_db]
+def sub_header(line):
+    return re.sub(r'^>(?!sp\||tr\||db\||AP_|NP_|YP_|XP_|WP_|ENSP|UniRef|nxp|generic)', '>generic|', line)
 
-with open(output_db_file, 'w') as f:
-    f.writelines(subbed_lines)
+
+with open(input_db_file) as in_file, open(output_db_file, 'w') as out_file:
+    for line in in_file:
+        out_file.write(sub_header(line))
