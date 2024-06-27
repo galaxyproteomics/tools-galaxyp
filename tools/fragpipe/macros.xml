@@ -28,7 +28,18 @@
     </xml>
 
     <!--
-      Prepares input files.
+      Prepares enviroment variables for FragPipe.
+    -->
+    <token name="@PREPARE_ENVIRONMENT@"><![CDATA[
+        mkdir .cache .config tmp &&
+        export XDG_CONFIG_HOME=\$(pwd)/.config &&
+        export XDG_CACHE_HOME=\$(pwd)/.cache &&
+        export JAVA_OPTS="\$JAVA_OPTS -Djava.io.tmpdir=\$(pwd)/tmp" &&
+        export LD_LIBRARY_PATH="\$LD_LIBRARY_PATH:/usr/local/lib" &&
+    ]]></token>
+
+    <!--
+      Prepares input scan files.
 
       Scans and moved to a scan directory and linked.
 
@@ -50,7 +61,66 @@
       #set $i_name = $ln_name($sf)
       ln -s '$sf' 'scans/${i_name}' &&
     #end for
+    ]]></token>
 
+    <!--
+      Prepares input files, excluding database.
+    -->
+    <token name="@PREPARE_INPUTS@"><![CDATA[
+        mkdir -p outputs &&
+        @CMD_IMPORTS@
+        @LINK_SAMPLES@
+    ]]></token>
+
+    <!--
+      Prepares database.
+
+      First genericizes unknown sequence headers in the database.
+      Then adds decoys, or decoys and contaminants depending on user selection.
+    -->
+    <token name="@PREPARE_DATABASE@"><![CDATA[
+      '$__tool_directory__/genericize_db.py' $database_name genericized_db.fas &&
+
+      #if str($database_options) != 'none'
+          philosopher workspace --init &&
+          philosopher database --custom genericized_db.fas --prefix rev_
+          #if str($database_options) != 'decoy_and_contam'
+              --contam
+          #end if
+          --contamprefix &&
+          ln -s *-decoys-*.fas final_db.fas &&
+      #else
+          ln -s genericized_db.fas final_db.fas &&
+      #end if
+    ]]></token>
+
+    <!--
+      Prepares outputs.
+
+      Creates log file symlink, makes a new directory for "combined" outputs and creates "concatenated" results.
+    -->
+    <token name="@PREPARE_OUTPUTS@"><![CDATA[
+        cd outputs &&
+        ln -s log_*.txt log.txt &&
+
+        #if $output_options and 'combined_outputs' in $output_options
+            mkdir combined_outputs &&
+            for f in combined*tsv; do [[ -e $\{f} || continue ]]; mv \${f} combined_outputs; done &&
+        #end if
+
+        ## For each category of results - psm, ion, peptide, protein - this loop concatenates results from each sample into a single result.
+        ## For example, the entries sample1/psm.tsv and sample2/psm.tsv would be combined to concat_psm.tsv, a single psm.tsv header as its first line.
+        for f in psm.tsv ion.tsv peptide.tsv protein.tsv; do
+            n=0;
+            for i in `find * -name \${f}`; do
+                d=\${i%/*};
+                if [[ \$n == 0 ]]; then
+                    awk 'NR==1{printf("Experiment\t%s\n",\$0);}' \$i > concat_\${f};
+                fi;
+                awk 'NR>1{printf("'"\${d}"'\t%s\n",\$0);}' \$i >> concat_\${f}; t=`echo \${i} | tr '/' '.'`;
+                mv \${i} \${t}; n=\$((n+1));
+            done;
+        done
     ]]></token>
 
     <!-- Input database for MSFragger -->
