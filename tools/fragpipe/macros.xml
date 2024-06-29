@@ -46,21 +46,21 @@
       Annotation files are copied into the scan directory for TMT workflows.
     -->
     <token name="@LINK_SAMPLES@"><![CDATA[
-    #import os
-    #set CWD = os.getcwd()
-    CWD=`pwd | sed 's/\//\\\\\//g'` &&
+        #import os
+        #set CWD = os.getcwd()
+        CWD=`pwd | sed 's/\//\\\\\//g'` &&
 
-    mkdir -p scans &&
-    #if $wf.workflow_name == "TMT10" or $wf.workflow_name == "TMT11"
-        cp -p '$wf.annotation' 'scans/annotation.txt' &&
-    #end if
+        mkdir -p scans &&
+        #if $wf.workflow_name == "TMT10" or $wf.workflow_name == "TMT11"
+            cp -p '$wf.annotation' 'scans/annotation.txt' &&
+        #end if
 
-    sed "s/^/\$CWD\/scans\//" $manifest > fp.manifest &&
+        sed "s/^/\$CWD\/scans\//" $manifest > fp.manifest &&
 
-    #for $sf in $inputs
-      #set $i_name = $ln_name($sf)
-      ln -s '$sf' 'scans/${i_name}' &&
-    #end for
+        #for $sf in $inputs
+            #set $i_name = $ln_name($sf)
+            ln -s '$sf' 'scans/${i_name}' &&
+        #end for
     ]]></token>
 
     <!--
@@ -79,19 +79,19 @@
       Then adds decoys, or decoys and contaminants depending on user selection.
     -->
     <token name="@PREPARE_DATABASE@"><![CDATA[
-      '$__tool_directory__/genericize_db.py' $database_name genericized_db.fas &&
+        '$__tool_directory__/genericize_db.py' $database_name genericized_db.fas &&
 
-      #if str($database_options) != 'none'
-          philosopher workspace --init &&
-          philosopher database --custom genericized_db.fas --prefix rev_
-          #if str($database_options) != 'decoy_and_contam'
-              --contam
-          #end if
-          --contamprefix &&
-          ln -s *-decoys-*.fas final_db.fas &&
-      #else
-          ln -s genericized_db.fas final_db.fas &&
-      #end if
+        #if str($database_options) != 'none'
+            philosopher workspace --init &&
+            philosopher database --custom genericized_db.fas --prefix rev_
+            #if str($database_options) != 'decoy_and_contam'
+                --contam
+            #end if
+            --contamprefix &&
+            ln -s *-decoys-*.fas final_db.fas &&
+        #else
+            ln -s genericized_db.fas final_db.fas &&
+        #end if
     ]]></token>
 
     <!--
@@ -291,52 +291,51 @@
     <!-- Generates the FragPipe workflow-->
     <xml name="workflow_configfile">
         <configfile name="workflow_configfile"><![CDATA[#slurp
+            ## Create a fragpipe params dictionary from a file
+            #set $comments = []
+            #set $wfdict = {}
+            #set $wfpath = $__tool_directory__ + '/workflows/' + str($wf.workflow_name) + '.workflow'
+            #set $fh = open($wfpath, 'r')
+            #for $line in $fh:
+                #if $line.startswith('#')
+                    #silent $comments.append($line)
+                #elif $line.strip() != ''
+                    #set $kv = $line.strip().split('=')
+                    #if len($kv) < 2
+                        #silent $kv.append('')
+                    #end if
+                    #set $wfdict[$kv[0]] = '='.join($kv[1:])
+                #end if
+            #end for
 
-## Create a fragpipe params dictionary from a file
-#set $comments = []
-#set $wfdict = {}
-#set $wfpath = $__tool_directory__ + '/workflows/' + str($wf.workflow_name) + '.workflow'
-#set $fh = open($wfpath, 'r')
-#for $line in $fh:
-    #if $line.startswith('#')
-        #silent $comments.append($line)
-    #elif $line.strip() != ''
-        #set $kv = $line.strip().split('=')
-        #if len($kv) < 2
-            #silent $kv.append('')
-        #end if
-        #set $wfdict[$kv[0]] = '='.join($kv[1:])
-    #end if
-#end for
+            #set $wfdict['database.db-path'] = 'final_db.fas'
+            #set $wfdict['msfragger.misc.slice-db'] = $num_slices
 
-#set $wfdict['database.db-path'] = 'final_db.fas'
-#set $wfdict['msfragger.misc.slice-db'] = $num_slices
+            ## Get the MSFragger Params (shared with the MSFragger tool)
+            #set $prefix = $wf.msfragger
+            @MSFRAGGER_PARAM_DICT@
+            #if len($vmods) > 0
+              #set $msfragger_dict['table.var-mods'] = '; '.join([$re.sub('^(.*,)(\d)$','\\1True,\\2',m) for m in $vmods])
+            #end if
+            #for $k in $msfragger_dict.keys()
+                #set $kv = $k + '=' + str($msfragger_dict[$k])
+                #set $wfk = 'msfragger.' + $k
+                #set $wfdict[$wfk] = str($msfragger_dict[$k])
+            #end for
 
-## Get the MSFragger Params (shared with the MSFragger tool)
-#set $prefix = $wf.msfragger
-@MSFRAGGER_PARAM_DICT@
-#if len($vmods) > 0
-#set $msfragger_dict['table.var-mods'] = '; '.join([$re.sub('^(.*,)(\d)$','\\1True,\\2',m) for m in $vmods])
-#end if
-#for $k in $msfragger_dict.keys()
-    #set $kv = $k + '=' + str($msfragger_dict[$k])
-    #set $wfk = 'msfragger.' + $k
-    #set $wfdict[$wfk] = str($msfragger_dict[$k])
-#end for
+            @VALIDATION@
+            @PTM_SHEPHERD@
+            @LABEL_FREE_QUANTIFICATION@
 
-@VALIDATION@
-@PTM_SHEPHERD@
-@LABEL_FREE_QUANTIFICATION@
-
-#for $comment in $comments
+            ## Populate the workflow with configuration and comment dictionary entries populated by tool params.
+            #for $comment in $comments
 $comment
-#end for
+            #end for
 
-## Populate the workflow with configuration dictionary entries populated by tool params.
-#for $k in sorted($wfdict.keys())
-#set $kv = $k + '=' + str($wfdict[$k])
+            #for $k in sorted($wfdict.keys())
+              #set $kv = $k + '=' + str($wfdict[$k])
 $kv
-#end for
+            #end for
 #slurp]]></configfile>
     </xml>
 
@@ -350,12 +349,12 @@ $kv
 
     <!-- Set Percolator workflow options -->
     <token name="@PERCOLATOR@"><![CDATA[
-  #set $prc = $wf.validation.validation_tab.psm_validation.percolator
-  #set $wfdict['run-validation-tab'] = $wf.validation.validation_tab.run_validation
-  #set $wfdict['peptide-prophet.run-peptide-prophet'] = 'false'
-  #set $wfdict['percolator.run-percolator'] = 'true'
-  #set $wfdict['percolator.keep-tsv-files'] = str($prc.keep_tsv_files)
-  #set $wfdict['percolator.min-prob'] = str($prc.min_prob)
+        #set $prc = $wf.validation.validation_tab.psm_validation.percolator
+        #set $wfdict['run-validation-tab'] = $wf.validation.validation_tab.run_validation
+        #set $wfdict['peptide-prophet.run-peptide-prophet'] = 'false'
+        #set $wfdict['percolator.run-percolator'] = 'true'
+        #set $wfdict['percolator.keep-tsv-files'] = str($prc.keep_tsv_files)
+        #set $wfdict['percolator.min-prob'] = str($prc.min_prob)
     ]]></token>
 
     <!-- Philosopher Report (phi-report) options -->
@@ -377,14 +376,14 @@ $kv
 
     <!-- Set Philosopher Report (phi-report) workflow options -->
     <token name="@PHIREPORT@"><![CDATA[
-#set $prfx = $wf.validation.validation_tab.phi_report
-#if $prfx.run_phi_report == 'true'
-  #set $wfdict['phi-report.run-report'] = 'true'
-  #set $prfx = $wf.validation.validation_tab.phi_report.phi_report_opts
-  #set $wfdict['phi-report.print-decoys'] = $prfx.print_decoys
-#else
-  #set $wfdict['phi-report.run-report'] = 'false'
-#end if
+        #set $prfx = $wf.validation.validation_tab.phi_report
+        #if $prfx.run_phi_report == 'true'
+          #set $wfdict['phi-report.run-report'] = 'true'
+          #set $prfx = $wf.validation.validation_tab.phi_report.phi_report_opts
+          #set $wfdict['phi-report.print-decoys'] = $prfx.print_decoys
+        #else
+          #set $wfdict['phi-report.run-report'] = 'false'
+        #end if
     ]]></token>
 
     <!-- PeptideProphet options -->
@@ -409,15 +408,15 @@ $kv
         </section>
     </xml>
     <token name="@PEPTIDEPROPHET@"><![CDATA[
-      #set $prfx = $wf.validation.validation_tab.psm_validation.peptide_prophet
-      #set $wfdict['peptide-prophet.run-peptide-prophet'] = 'true'
-      #set $wfdict['peptide-prophet.combine-pepxml'] = str($prfx.combined_pepxml)
-      #set $cmd_opts = [str($prfx.accmass),str($prfx.combine),str($prfx.decoyprobs),str($prfx.expectscore),str($prfx.glyc),str($prfx.nomass),str($prfx.nonmc),str($prfx.nonparam),str($prfx.nontt),str($prfx.phospho),str($prfx.ppm)]
-      #silent $cmd_opts.append('--clevel ' + str($prfx.clevel))
-      #silent $cmd_opts.append('--masswidth ' + str($prfx.masswidth))
-      #silent $cmd_opts.append('--minpeplen ' + str($prfx.minpeplen))
-      #silent $cmd_opts.append('--minprob ' + str($prfx.minprob))
-      #set $wfdict['peptide-prophet.cmd-opts'] = ' '.join($cmd_opts).strip()
+        #set $prfx = $wf.validation.validation_tab.psm_validation.peptide_prophet
+        #set $wfdict['peptide-prophet.run-peptide-prophet'] = 'true'
+        #set $wfdict['peptide-prophet.combine-pepxml'] = str($prfx.combined_pepxml)
+        #set $cmd_opts = [str($prfx.accmass),str($prfx.combine),str($prfx.decoyprobs),str($prfx.expectscore),str($prfx.glyc),str($prfx.nomass),str($prfx.nonmc),str($prfx.nonparam),str($prfx.nontt),str($prfx.phospho),str($prfx.ppm)]
+        #silent $cmd_opts.append('--clevel ' + str($prfx.clevel))
+        #silent $cmd_opts.append('--masswidth ' + str($prfx.masswidth))
+        #silent $cmd_opts.append('--minpeplen ' + str($prfx.minpeplen))
+        #silent $cmd_opts.append('--minprob ' + str($prfx.minprob))
+        #set $wfdict['peptide-prophet.cmd-opts'] = ' '.join($cmd_opts).strip()
     ]]></token>
 
     <!-- CrystalC options -->
@@ -458,17 +457,17 @@ $kv
 
     <!-- Set ProteinProphet workflow options -->
     <token name="@PROTEINPROPHET@"><![CDATA[
-     #set $prfx = $wf.validation.validation_tab.protein_prophet
-      #if $prfx.run_protein_prophet == 'true'
-      #set $prfx = $wf.validation.validation_tab.protein_prophet.protein_prophet_opts
-        #set $wfdict['protein-prophet.run-protein-prophet'] = 'true'
-        #set $cmd_opts = [str($prfx.iprophet),str($prfx.nonsp),str($prfx.subgroups),str($prfx.unmapped)]
-        #silent $cmd_opts.append('--maxppmdiff ' + str($prfx.maxppmdiff))
-        #silent $cmd_opts.append('--minprob ' + str($prfx.minprob))
-        #set $wfdict['protein-prophet.cmd-opts'] = ' '.join($cmd_opts).strip()
-      #else
-        #set $wfdict[protein-prophet.run-protein-prophet] = 'false'
-      #end if
+        #set $prfx = $wf.validation.validation_tab.protein_prophet
+        #if $prfx.run_protein_prophet == 'true'
+        #set $prfx = $wf.validation.validation_tab.protein_prophet.protein_prophet_opts
+            #set $wfdict['protein-prophet.run-protein-prophet'] = 'true'
+            #set $cmd_opts = [str($prfx.iprophet),str($prfx.nonsp),str($prfx.subgroups),str($prfx.unmapped)]
+            #silent $cmd_opts.append('--maxppmdiff ' + str($prfx.maxppmdiff))
+            #silent $cmd_opts.append('--minprob ' + str($prfx.minprob))
+            #set $wfdict['protein-prophet.cmd-opts'] = ' '.join($cmd_opts).strip()
+        #else
+            #set $wfdict[protein-prophet.run-protein-prophet] = 'false'
+        #end if
     ]]></token>
 
     <!-- Validation options. Includes PeptideProphet, Percolator, MSBooster, ProteinProphet, and CrystalC -->
@@ -516,21 +515,21 @@ $kv
 
     <!-- Set validation workflow options -->
     <token name="@VALIDATION@"><![CDATA[
-#set $prfx = $wf.validation.validation_tab.psm_validation
-#if $prfx.run_psm_validation == 'peptide_prophet'
-  #set $wfdict['run-psm-validation'] = 'true'
-  #set $wfdict['msbooster.run-msbooster'] = 'false'
-  #set $wfdict['percolator.run-percolator'] = 'false'
-  @PEPTIDEPROPHET@
-#elif $prfx.run_psm_validation == 'percolator'
-  #set $wfdict['run-psm-validation'] = 'true'
-  #set $wfdict['msbooster.run-msbooster'] = 'false'
-  @PERCOLATOR@
-##elif $prfx.run_psm_validation == 'msbooster_percolator'
-# MSBooster disabled until DIA-NN integrated.
-#end if
-@PROTEINPROPHET@
-@PHIREPORT@
+        #set $prfx = $wf.validation.validation_tab.psm_validation
+        #if $prfx.run_psm_validation == 'peptide_prophet'
+            #set $wfdict['run-psm-validation'] = 'true'
+            #set $wfdict['msbooster.run-msbooster'] = 'false'
+            #set $wfdict['percolator.run-percolator'] = 'false'
+            @PEPTIDEPROPHET@
+        #elif $prfx.run_psm_validation == 'percolator'
+            #set $wfdict['run-psm-validation'] = 'true'
+            #set $wfdict['msbooster.run-msbooster'] = 'false'
+            @PERCOLATOR@
+        ##elif $prfx.run_psm_validation == 'msbooster_percolator'
+        # MSBooster disabled until DIA-NN integrated.
+        #end if
+        @PROTEINPROPHET@
+        @PHIREPORT@
     ]]></token>
 
     <!-- PTM-Sheperd options -->
@@ -617,90 +616,90 @@ $kv
 
     <!-- Set PTM-Sheperd workflow options -->
     <token name="@PTM_SHEPHERD@"><![CDATA[
-#set $prfx = $wf.ptms.ptm_shepherd
-#if $prfx.run_ptm_shepherd == 'yes'
-  #set $wfdict['ptmshepherd.run-shepherd'] = 'true'
-  #set $cxt = $prfx.ptm_profiling
-  #set $wfdict['ptmshepherd.output_extended'] = $prfx.output_extended
-  #if $cxt.histo_smoothbins != ''
-    #set $wfdict['ptmshepherd.histo_smoothbins'] = $cxt.histo_smoothbins
-  #end if
-  #if $cxt.precursor_tol != ''
-    #set $wfdict['ptmshepherd.precursor_mass_units'] = $ctx.precursor_mass_units
-    #set $wfdict['ptmshepherd.precursor_tol'] = $cxt.precursor_tol
-  #end if
-  #if $cxt.peakpicking_promRatio != ''
-    #set $wfdict['ptmshepherd.peakpicking_promRatio'] = $cxt.peakpicking_promRatio
-  #end if
-  #if $cxt.peakpicking_width != ''
-    #set $wfdict['ptmshepherd.peakpicking_mass_units'] = $ctx.peakpicking_mass_units
-    #set $wfdict['ptmshepherd.peakpicking_width'] = $cxt.peakpicking_width
-  #end if
-  #if $cxt.peakpicking_minPsm != ''
-    #set $wfdict['ptmshepherd.peakpicking_minPsm'] = $cxt.peakpicking_minPsm
-  #end if
-  #if $cxt.spectra_ppmtol != ''
-    #set $wfdict['ptmshepherd.spectra_ppmtol'] = $cxt.spectra_ppmtol
-  #end if
-  #if $cxt.normalization != 'None'
-    #if $cxt.normalization == "psms"
-      #set $wfdict['ptmshepherd.normalization-psms'] = 'true'
-      #set $wfdict['ptmshepherd.normalization-scans'] = 'false'
-    #else
-      #set $wfdict['ptmshepherd.normalization-psms'] = 'false'
-      #set $wfdict['ptmshepherd.normalization-scans'] = 'true'
-    #end if
-  #end if
-  #if $cxt.varmod_masses != 'None'
-    #set $wfdict['ptmshepherd.varmod_masses'] = $cxt.varmod_masses
-  #end if
-  #set $cxt = $prfx.ptm_annotation
-  #if $cxt.annotation_tol != ''
-    #set $wfdict['ptmshepherd.annotation_tol'] = $cxt.annotation_tol
-  #end if
-  #if $cxt.annotation.annotation_source == 'unimod'
-    #set $wfdict['ptmshepherd.annotation-unimod'] = 'true'
-    #set $wfdict['ptmshepherd.annotation-common'] = 'false'
-    #set $wfdict['ptmshepherd.annotation-glyco'] = 'false'
-    #set $wfdict['ptmshepherd.annotation-custom'] = 'false'
-  #elif $cxt.annotation.annotation_source == 'common'
-    #set $wfdict['ptmshepherd.annotation-unimod'] = 'false'
-    #set $wfdict['ptmshepherd.annotation-common'] = 'true'
-    #set $wfdict['ptmshepherd.annotation-glyco'] = 'false'
-    #set $wfdict['ptmshepherd.annotation-custom'] = 'false'
-  #elif $cxt.annotation.annotation_source == 'glyco'
-    #set $wfdict['ptmshepherd.annotation-unimod'] = 'false'
-    #set $wfdict['ptmshepherd.annotation-common'] = 'false'
-    #set $wfdict['ptmshepherd.annotation-glyco'] = 'true'
-    #set $wfdict['ptmshepherd.annotation-custom'] = 'false'
-  #elif $cxt.annotation.annotation_source == 'custom'
-    #set $wfdict['ptmshepherd.annotation-unimod'] = 'false'
-    #set $wfdict['ptmshepherd.annotation-common'] = 'false'
-    #set $wfdict['ptmshepherd.annotation-glyco'] = 'false'
-    #set $wfdict['ptmshepherd.annotation-custom'] = 'true'
-    #set $wfdict['ptmshepherd.annotation_file'] = $cxt.annotation.annotation_file
-  #end if
-  #set $cxt = $prfx.ptm_localization
-  #if $cxt.nions is not None
-    #set $wfdict['ptmshepherd.iontype_a'] = str('a' in $cxt.nions).lower()
-    #set $wfdict['ptmshepherd.iontype_b'] = str('b' in $cxt.nions).lower()
-    #set $wfdict['ptmshepherd.iontype_c'] = str('c' in $cxt.nions).lower()
-  #end if
-  #if $cxt.cions is not None
-    #set $wfdict['ptmshepherd.iontype_x'] = str('x' in $cxt.cions).lower()
-    #set $wfdict['ptmshepherd.iontype_y'] = str('y' in $cxt.cions).lower()
-    #set $wfdict['ptmshepherd.iontype_z'] = str('z' in $cxt.cions).lower()
-  #end if
-  #if $cxt.spectra_maxfragcharge != ''
-    #set $wfdict['ptmshepherd.spectra_maxfragcharge'] = $cxt.spectra_maxfragcharge
-  #end if
-  #if $cxt.localization_background != ''
-    #set $wfdict['ptmshepherd.localization_background'] = $cxt.localization_background
-  #end if
-  #set $wfdict['ptmshepherd.localization_allowed_res'] = $cxt.localization_allowed_res
-#else
-  #set $wfdict['ptmshepherd.run-shepherd'] = 'false'
-#end if
+        #set $prfx = $wf.ptms.ptm_shepherd
+        #if $prfx.run_ptm_shepherd == 'yes'
+            #set $wfdict['ptmshepherd.run-shepherd'] = 'true'
+            #set $cxt = $prfx.ptm_profiling
+            #set $wfdict['ptmshepherd.output_extended'] = $prfx.output_extended
+            #if $cxt.histo_smoothbins != ''
+                #set $wfdict['ptmshepherd.histo_smoothbins'] = $cxt.histo_smoothbins
+            #end if
+            #if $cxt.precursor_tol != ''
+                #set $wfdict['ptmshepherd.precursor_mass_units'] = $ctx.precursor_mass_units
+                #set $wfdict['ptmshepherd.precursor_tol'] = $cxt.precursor_tol
+            #end if
+            #if $cxt.peakpicking_promRatio != ''
+                #set $wfdict['ptmshepherd.peakpicking_promRatio'] = $cxt.peakpicking_promRatio
+            #end if
+            #if $cxt.peakpicking_width != ''
+                #set $wfdict['ptmshepherd.peakpicking_mass_units'] = $ctx.peakpicking_mass_units
+                #set $wfdict['ptmshepherd.peakpicking_width'] = $cxt.peakpicking_width
+            #end if
+            #if $cxt.peakpicking_minPsm != ''
+                #set $wfdict['ptmshepherd.peakpicking_minPsm'] = $cxt.peakpicking_minPsm
+            #end if
+            #if $cxt.spectra_ppmtol != ''
+                #set $wfdict['ptmshepherd.spectra_ppmtol'] = $cxt.spectra_ppmtol
+            #end if
+            #if $cxt.normalization != 'None'
+                #if $cxt.normalization == "psms"
+                    #set $wfdict['ptmshepherd.normalization-psms'] = 'true'
+                    #set $wfdict['ptmshepherd.normalization-scans'] = 'false'
+                #else
+                    #set $wfdict['ptmshepherd.normalization-psms'] = 'false'
+                    #set $wfdict['ptmshepherd.normalization-scans'] = 'true'
+                #end if
+            #end if
+            #if $cxt.varmod_masses != 'None'
+                #set $wfdict['ptmshepherd.varmod_masses'] = $cxt.varmod_masses
+            #end if
+            #set $cxt = $prfx.ptm_annotation
+            #if $cxt.annotation_tol != ''
+                #set $wfdict['ptmshepherd.annotation_tol'] = $cxt.annotation_tol
+            #end if
+            #if $cxt.annotation.annotation_source == 'unimod'
+                #set $wfdict['ptmshepherd.annotation-unimod'] = 'true'
+                #set $wfdict['ptmshepherd.annotation-common'] = 'false'
+                #set $wfdict['ptmshepherd.annotation-glyco'] = 'false'
+                #set $wfdict['ptmshepherd.annotation-custom'] = 'false'
+            #elif $cxt.annotation.annotation_source == 'common'
+                #set $wfdict['ptmshepherd.annotation-unimod'] = 'false'
+                #set $wfdict['ptmshepherd.annotation-common'] = 'true'
+                #set $wfdict['ptmshepherd.annotation-glyco'] = 'false'
+                #set $wfdict['ptmshepherd.annotation-custom'] = 'false'
+            #elif $cxt.annotation.annotation_source == 'glyco'
+                #set $wfdict['ptmshepherd.annotation-unimod'] = 'false'
+                #set $wfdict['ptmshepherd.annotation-common'] = 'false'
+                #set $wfdict['ptmshepherd.annotation-glyco'] = 'true'
+                #set $wfdict['ptmshepherd.annotation-custom'] = 'false'
+            #elif $cxt.annotation.annotation_source == 'custom'
+                #set $wfdict['ptmshepherd.annotation-unimod'] = 'false'
+                #set $wfdict['ptmshepherd.annotation-common'] = 'false'
+                #set $wfdict['ptmshepherd.annotation-glyco'] = 'false'
+                #set $wfdict['ptmshepherd.annotation-custom'] = 'true'
+                #set $wfdict['ptmshepherd.annotation_file'] = $cxt.annotation.annotation_file
+            #end if
+            #set $cxt = $prfx.ptm_localization
+            #if $cxt.nions is not None
+                #set $wfdict['ptmshepherd.iontype_a'] = str('a' in $cxt.nions).lower()
+                #set $wfdict['ptmshepherd.iontype_b'] = str('b' in $cxt.nions).lower()
+                #set $wfdict['ptmshepherd.iontype_c'] = str('c' in $cxt.nions).lower()
+            #end if
+            #if $cxt.cions is not None
+                #set $wfdict['ptmshepherd.iontype_x'] = str('x' in $cxt.cions).lower()
+                #set $wfdict['ptmshepherd.iontype_y'] = str('y' in $cxt.cions).lower()
+                #set $wfdict['ptmshepherd.iontype_z'] = str('z' in $cxt.cions).lower()
+            #end if
+            #if $cxt.spectra_maxfragcharge != ''
+                #set $wfdict['ptmshepherd.spectra_maxfragcharge'] = $cxt.spectra_maxfragcharge
+            #end if
+            #if $cxt.localization_background != ''
+                #set $wfdict['ptmshepherd.localization_background'] = $cxt.localization_background
+            #end if
+            #set $wfdict['ptmshepherd.localization_allowed_res'] = $cxt.localization_allowed_res
+        #else
+            #set $wfdict['ptmshepherd.run-shepherd'] = 'false'
+        #end if
     ]]></token>
 
     <token name="@RE_EXCLUDEMOD@">@RE_AA@,@RE_FLOAT@</token>
@@ -814,113 +813,113 @@ $kv
 
     <!-- Set label-free quantification workflow options -->
     <token name="@LABEL_FREE_QUANTIFICATION@"><![CDATA[
-#set $prfx = $wf.quant_ms1.label_free_quantification
-#if $prfx.label_free_quantification_run == 'no'
-  #set $wfdict['quantitation.run-label-free-quant'] = 'false'
-#elif $prfx.label_free_quantification_run == 'ionquant'
-  #set $wfdict['quantitation.run-label-free-quant'] = 'false'
-  #set $wfdict['ionquant.run-ionquant'] = 'true'
-  #set $wfdict['freequant.run-freequant'] = 'false'
-  #set $cxt = $prfx.ionquant
-  #if $cxt.mbr != 'None'
-    #set $wfdict['ionquant.mbr'] = $cxt.mbr
-  #end if
-  #if $cxt.maxlfqbr is not None
-    #set $wfdict['ionquant.maxlfqbr'] = $cxt.maxlfqbr
-  #end if
-  #if $cxt.normalization != 'None'
-    #set $wfdict['ionquant.normalization'] = $cxt.normalization
-  #end if
-  #set $cxt = $prfx.ionquant.feature_detection
-  #if $cxt.mztol != ''
-    #set $wfdict['ionquant.mztol'] = $cxt.mztol
-  #end if
-  #if $cxt.rttol != ''
-    #set $wfdict['ionquant.rttol'] = $cxt.rttol
-  #end if
-  #if $cxt.imtol != ''
-    #set $wfdict['ionquant.imtol'] = $cxt.imtol
-  #end if
-  #set $cxt = $prfx.ionquant.mbr
-  #if $cxt.mbrrttol != ''
-    #set $wfdict['ionquant.mbrrttol'] = $cxt.mbrrttol
-  #end if
-  #if $cxt.mbrimtol != ''
-    #set $wfdict['ionquant.mbrimtol'] = $cxt.mbrimtol
-  #end if
-  #if $cxt.mbrmincorr != ''
-    #set $wfdict['ionquant.mbrmincorr'] = $cxt.mbrmincorr
-  #end if
-  #if $cxt.mbrtoprun != ''
-    #set $wfdict['ionquant.mbrtoprun'] = $cxt.mbrtoprun
-  #end if
-  #if $cxt.ionfdr != ''
-    #set $wfdict['ionquant.ionfdr'] = $cxt.ionfdr
-  #end if
-  #if $cxt.peptidefdr != ''
-    #set $wfdict['ionquant.peptidefdr'] = $cxt.peptidefdr
-  #end if
-  #if $cxt.proteinfdr != ''
-    #set $wfdict['ionquant.proteinfdr'] = $cxt.proteinfdr
-  #end if
-  #set $cxt = $prfx.ionquant.topn
-  #if $cxt.tp != ''
-    #set $wfdict['ionquant.tp'] = $cxt.tp
-  #end if
-  #if $cxt.minfreq != ''
-    #set $wfdict['ionquant.minfreq'] = $cxt.minfreq
-  #end if
-  #if $cxt.minexps != ''
-    #set $wfdict['ionquant.minexps'] = $cxt.minexps
-  #end if
-  #set $cxt = $prfx.ionquant.labeling_conditional
-  #if $cxt.labeling_option == 'labeling'
-    #set $cxt = $prfx.ionquant.labeling_conditional.labeling
-    #set $wfdict['ionquant.use-labeling'] = 'true'
-    #set $wfdict['ionquant.use-lfq'] = 'false'
-    #set $wfdict['ionquant.light'] = $cxt.labeling.light
-    #set $wfdict['ionquant.medium'] = $cxt.labeling.medium
-    #set $wfdict['ionquant.heavy'] = $cxt.labeling.heavy
-    #set $wfdict['ionquant.requantify'] = $cxt.labeling.requantify
-  #else
-    #set $cxt = $prfx.ionquant.labeling_conditional.lfq
-    #set $wfdict['ionquant.use-labeling'] = 'false'
-    #set $wfdict['ionquant.use-lfq'] = 'true'
-    #if $cxt.maxlfq != 'None'
-      #set $wfdict['ionquant.maxlfq'] = $cxt.maxlfq
-    #end if
-    #if $cxt.minions != ''
-      #set $wfdict['ionquant.minions'] = $cxt.minions
-    #end if
-  #end if
-  #set $cxt = $prfx.ionquant.advanced
-  #if $cxt.excludemods != ''
-    #set $wfdict['ionquant.excludemods'] = $cxt.excludemods
-  #end if
-  #if $cxt.minscans != ''
-    #set $wfdict['ionquant.minscans'] = $cxt.minscans
-  #end if
-  #if $cxt.minisotopes != ''
-    #set $wfdict['ionquant.minisotopes'] = $cxt.minisotopes
-  #end if
-  #if $cxt.locprob != ''
-    #set $wfdict['ionquant.locprob'] = $cxt.locprob
-  #end if
-  #if $cxt.writeindex != 'None'
-    #set $wfdict['ionquant.writeindex'] = $cxt.writeindex
-  #end if
-#elif $prfx.label_free_quantification_run == 'freequant'
-  #set $wfdict['quantitation.run-label-free-quant'] = 'false'
-  #set $wfdict['ionquant.run-ionquant'] = 'false'
-  #set $wfdict['freequant.run-freequant'] = 'true'
-  #set $cxt = $prfx.freequant
-  #if $cxt.rt_tol != ''
-    #set $wfdict['freequant.rt-tol'] = $cxt.rt_tol
-  #end if
-  #if $cxt.mz_tol != ''
-    #set $wfdict['freequant.mz-tol'] = $cxt.mz_tol
-  #end if
-#end if
+        #set $prfx = $wf.quant_ms1.label_free_quantification
+        #if $prfx.label_free_quantification_run == 'no'
+            #set $wfdict['quantitation.run-label-free-quant'] = 'false'
+        #elif $prfx.label_free_quantification_run == 'ionquant'
+            #set $wfdict['quantitation.run-label-free-quant'] = 'false'
+            #set $wfdict['ionquant.run-ionquant'] = 'true'
+            #set $wfdict['freequant.run-freequant'] = 'false'
+            #set $cxt = $prfx.ionquant
+            #if $cxt.mbr != 'None'
+                #set $wfdict['ionquant.mbr'] = $cxt.mbr
+            #end if
+            #if $cxt.maxlfqbr is not None
+                #set $wfdict['ionquant.maxlfqbr'] = $cxt.maxlfqbr
+            #end if
+            #if $cxt.normalization != 'None'
+                #set $wfdict['ionquant.normalization'] = $cxt.normalization
+            #end if
+            #set $cxt = $prfx.ionquant.feature_detection
+            #if $cxt.mztol != ''
+                #set $wfdict['ionquant.mztol'] = $cxt.mztol
+            #end if
+            #if $cxt.rttol != ''
+                #set $wfdict['ionquant.rttol'] = $cxt.rttol
+            #end if
+            #if $cxt.imtol != ''
+                #set $wfdict['ionquant.imtol'] = $cxt.imtol
+            #end if
+            #set $cxt = $prfx.ionquant.mbr
+            #if $cxt.mbrrttol != ''
+                #set $wfdict['ionquant.mbrrttol'] = $cxt.mbrrttol
+            #end if
+            #if $cxt.mbrimtol != ''
+                #set $wfdict['ionquant.mbrimtol'] = $cxt.mbrimtol
+            #end if
+            #if $cxt.mbrmincorr != ''
+                #set $wfdict['ionquant.mbrmincorr'] = $cxt.mbrmincorr
+            #end if
+            #if $cxt.mbrtoprun != ''
+                #set $wfdict['ionquant.mbrtoprun'] = $cxt.mbrtoprun
+            #end if
+            #if $cxt.ionfdr != ''
+                #set $wfdict['ionquant.ionfdr'] = $cxt.ionfdr
+            #end if
+            #if $cxt.peptidefdr != ''
+                #set $wfdict['ionquant.peptidefdr'] = $cxt.peptidefdr
+            #end if
+            #if $cxt.proteinfdr != ''
+                #set $wfdict['ionquant.proteinfdr'] = $cxt.proteinfdr
+            #end if
+            #set $cxt = $prfx.ionquant.topn
+            #if $cxt.tp != ''
+                #set $wfdict['ionquant.tp'] = $cxt.tp
+            #end if
+            #if $cxt.minfreq != ''
+                #set $wfdict['ionquant.minfreq'] = $cxt.minfreq
+            #end if
+            #if $cxt.minexps != ''
+                #set $wfdict['ionquant.minexps'] = $cxt.minexps
+            #end if
+            #set $cxt = $prfx.ionquant.labeling_conditional
+            #if $cxt.labeling_option == 'labeling'
+                #set $cxt = $prfx.ionquant.labeling_conditional.labeling
+                #set $wfdict['ionquant.use-labeling'] = 'true'
+                #set $wfdict['ionquant.use-lfq'] = 'false'
+                #set $wfdict['ionquant.light'] = $cxt.labeling.light
+                #set $wfdict['ionquant.medium'] = $cxt.labeling.medium
+                #set $wfdict['ionquant.heavy'] = $cxt.labeling.heavy
+                #set $wfdict['ionquant.requantify'] = $cxt.labeling.requantify
+            #else
+                #set $cxt = $prfx.ionquant.labeling_conditional.lfq
+                #set $wfdict['ionquant.use-labeling'] = 'false'
+                #set $wfdict['ionquant.use-lfq'] = 'true'
+                #if $cxt.maxlfq != 'None'
+                    #set $wfdict['ionquant.maxlfq'] = $cxt.maxlfq
+                #end if
+                #if $cxt.minions != ''
+                    #set $wfdict['ionquant.minions'] = $cxt.minions
+                #end if
+            #end if
+            #set $cxt = $prfx.ionquant.advanced
+            #if $cxt.excludemods != ''
+                #set $wfdict['ionquant.excludemods'] = $cxt.excludemods
+            #end if
+            #if $cxt.minscans != ''
+                #set $wfdict['ionquant.minscans'] = $cxt.minscans
+            #end if
+            #if $cxt.minisotopes != ''
+                #set $wfdict['ionquant.minisotopes'] = $cxt.minisotopes
+            #end if
+            #if $cxt.locprob != ''
+                #set $wfdict['ionquant.locprob'] = $cxt.locprob
+            #end if
+            #if $cxt.writeindex != 'None'
+                #set $wfdict['ionquant.writeindex'] = $cxt.writeindex
+            #end if
+        #elif $prfx.label_free_quantification_run == 'freequant'
+            #set $wfdict['quantitation.run-label-free-quant'] = 'false'
+            #set $wfdict['ionquant.run-ionquant'] = 'false'
+            #set $wfdict['freequant.run-freequant'] = 'true'
+            #set $cxt = $prfx.freequant
+            #if $cxt.rt_tol != ''
+                #set $wfdict['freequant.rt-tol'] = $cxt.rt_tol
+            #end if
+            #if $cxt.mz_tol != ''
+                #set $wfdict['freequant.mz-tol'] = $cxt.mz_tol
+            #end if
+        #end if
     ]]></token>
 
     <!--
@@ -1055,94 +1054,94 @@ $kv
 
     <!-- Set isobaric quantification workflow options -->
     <token name="@ISOBARIC_QUANTIFICATION@"><![CDATA[
-#set $prfx = $wf.quant_iso.isobaric_quantification
-#if $prfx.isobaric_quantification_step == 'no'
-  #set $wfdict['tmtintegrator.run-tmtintegrator'] = 'false'
-#elif $prfx.isobaric_quantification_step == 'yes'
-  #set $wfdict['tmtintegrator.run-tmtintegrator'] = 'true'
-  #set $wfdict['tmtintegrator.dont-run-fq-lq'] = 'false'
-  #set $cxt = $prfx.options
-  #set $wfdict['tmtintegrator.quant_level'] = $cxt.quant_level
-  #set $wfdict['tmtintegrator.channel_num'] = $cxt.channel_num
-  #if $cxt.ref_tag == 'Virtual'
-    #set $wfdict['tmtintegrator.add_Ref'] = -1
-  #else
-    #set $wfdict['tmtintegrator.add_Ref'] = 1
-    #set $wfdict['tmtintegrator.ref_tag'] = $cxt.ref_tag
-  #end if
-  #if $cxt.groupby != ''
-    #set $wfdict['tmtintegrator.groupby'] = $cxt.groupby
-  #end if
-  #set $wfdict['tmtintegrator.log2transformed'] = $cxt.log2transformed
-  #if $cxt.prot_norm != 'None'
-    #set $wfdict['tmtintegrator.prot_norm'] = $cxt.prot_norm
-  #end if
-  #if cxt.glycan_conditional.use_glycan_composition == 'yes'
-    #if $cxt.glycan_conditional.mod_tag != 'None'
-      #set $wfdict['tmtintegrator.mod_tag'] = $cxt.glycan_conditional.mod_tag
-    #end if
-    #if $cxt.glycan_conditional.min_site_prob != ''
-      #set $wfdict['tmtintegrator.min_site_prob'] = $cxt.glycan_conditional.min_site_prob
-    #end if
-    #if $cxt.glycan_conditional.glyco_qval != ''
-      #set $wfdict['tmtintegrator.glyco_qval'] = $cxt.glycan_conditional.glyco_qval
-    #end if
-  #end if
-  #if $cxt.unique_gene != 'None'
-    #set $wfdict['tmtintegrator.unique_gene'] = $cxt.unique_gene
-  #end if
-  #if $cxt.unique_pep != 'None'
-    #set $wfdict['tmtintegrator.unique_pep'] = $cxt.unique_pep
-  #end if
-  #if $cxt.min_pep_prob != ''
-    #set $wfdict['tmtintegrator.min_pep_prob'] = $cxt.min_pep_prob
-  #end if
-  #if $cxt.min_purity != ''
-    #set $wfdict['tmtintegrator.min_purity'] = $cxt.min_purity
-  #end if
-  #if $cxt.min_percent != ''
-    #set $wfdict['tmtintegrator.min_percent'] = $cxt.min_percent
-  #end if
-  #if $cxt.max_pep_prob_thres != ''
-    #set $wfdict['tmtintegrator.max_pep_prob_thres'] = $cxt.max_pep_prob_thres
-  #end if
-  #if $cxt.min_ntt != ''
-    #set $wfdict['tmtintegrator.min_ntt'] = $cxt.min_ntt
-  #end if
-  #if $cxt.aggregation_method != 'None'
-    #set $wfdict['tmtintegrator.aggregation_method'] = $cxt.aggregation_method
-  #end if
-  #if $cxt.prot_exclude != ''
-    #set $wfdict['tmtintegrator.prot_exclude'] = $cxt.prot_exclude
-  #end if
-  #if $cxt.best_psm != 'None'
-    #set $wfdict['tmtintegrator.best_psm'] = $cxt.best_psm
-  #end if
-  #if $cxt.psm_norm != 'None'
-    #set $wfdict['tmtintegrator.psm_norm'] = $cxt.psm_norm
-  #end if
-  #if $cxt.allow_overlabel != 'None'
-    #set $wfdict['tmtintegrator.allow_overlabel'] = $cxt.allow_overlabel
-  #end if
-  #if $cxt.allow_unlabeled != 'None'
-    #set $wfdict['tmtintegrator.allow_unlabeled'] = $cxt.allow_unlabeled
-  #end if
-  #if $cxt.outlier_removal != 'None'
-    #set $wfdict['tmtintegrator.outlier_removal'] = $cxt.outlier_removal
-  #end if
-  #if $cxt.ms1_int != 'None'
-    #set $wfdict['tmtintegrator.ms1_int'] = $cxt.ms1_int
-  #end if
-  #if $cxt.tolerance != ''
-    #set $wfdict['tmtintegrator.tolerance'] = $cxt.tolerance
-  #end if
-  #if $cxt.top3_pep != 'None'
-    #set $wfdict['tmtintegrator.top3_pep'] = $cxt.top3_pep
-  #end if
-  #if $cxt.print_RefInt != 'None'
-    #set $wfdict['tmtintegrator.print_RefInt'] = $cxt.print_RefInt
-  #end if
-#end if
+        #set $prfx = $wf.quant_iso.isobaric_quantification
+        #if $prfx.isobaric_quantification_step == 'no'
+            #set $wfdict['tmtintegrator.run-tmtintegrator'] = 'false'
+        #elif $prfx.isobaric_quantification_step == 'yes'
+            #set $wfdict['tmtintegrator.run-tmtintegrator'] = 'true'
+            #set $wfdict['tmtintegrator.dont-run-fq-lq'] = 'false'
+            #set $cxt = $prfx.options
+            #set $wfdict['tmtintegrator.quant_level'] = $cxt.quant_level
+            #set $wfdict['tmtintegrator.channel_num'] = $cxt.channel_num
+            #if $cxt.ref_tag == 'Virtual'
+                #set $wfdict['tmtintegrator.add_Ref'] = -1
+            #else
+                #set $wfdict['tmtintegrator.add_Ref'] = 1
+                #set $wfdict['tmtintegrator.ref_tag'] = $cxt.ref_tag
+            #end if
+            #if $cxt.groupby != ''
+                #set $wfdict['tmtintegrator.groupby'] = $cxt.groupby
+            #end if
+            #set $wfdict['tmtintegrator.log2transformed'] = $cxt.log2transformed
+            #if $cxt.prot_norm != 'None'
+                #set $wfdict['tmtintegrator.prot_norm'] = $cxt.prot_norm
+            #end if
+            #if cxt.glycan_conditional.use_glycan_composition == 'yes'
+                #if $cxt.glycan_conditional.mod_tag != 'None'
+                    #set $wfdict['tmtintegrator.mod_tag'] = $cxt.glycan_conditional.mod_tag
+                #end if
+                #if $cxt.glycan_conditional.min_site_prob != ''
+                    #set $wfdict['tmtintegrator.min_site_prob'] = $cxt.glycan_conditional.min_site_prob
+                #end if
+                #if $cxt.glycan_conditional.glyco_qval != ''
+                    #set $wfdict['tmtintegrator.glyco_qval'] = $cxt.glycan_conditional.glyco_qval
+                #end if
+            #end if
+            #if $cxt.unique_gene != 'None'
+                #set $wfdict['tmtintegrator.unique_gene'] = $cxt.unique_gene
+            #end if
+            #if $cxt.unique_pep != 'None'
+                #set $wfdict['tmtintegrator.unique_pep'] = $cxt.unique_pep
+            #end if
+            #if $cxt.min_pep_prob != ''
+                #set $wfdict['tmtintegrator.min_pep_prob'] = $cxt.min_pep_prob
+            #end if
+            #if $cxt.min_purity != ''
+                #set $wfdict['tmtintegrator.min_purity'] = $cxt.min_purity
+            #end if
+            #if $cxt.min_percent != ''
+                #set $wfdict['tmtintegrator.min_percent'] = $cxt.min_percent
+            #end if
+            #if $cxt.max_pep_prob_thres != ''
+                #set $wfdict['tmtintegrator.max_pep_prob_thres'] = $cxt.max_pep_prob_thres
+            #end if
+            #if $cxt.min_ntt != ''
+                #set $wfdict['tmtintegrator.min_ntt'] = $cxt.min_ntt
+            #end if
+            #if $cxt.aggregation_method != 'None'
+                #set $wfdict['tmtintegrator.aggregation_method'] = $cxt.aggregation_method
+            #end if
+            #if $cxt.prot_exclude != ''
+                #set $wfdict['tmtintegrator.prot_exclude'] = $cxt.prot_exclude
+            #end if
+            #if $cxt.best_psm != 'None'
+                #set $wfdict['tmtintegrator.best_psm'] = $cxt.best_psm
+            #end if
+            #if $cxt.psm_norm != 'None'
+                #set $wfdict['tmtintegrator.psm_norm'] = $cxt.psm_norm
+            #end if
+            #if $cxt.allow_overlabel != 'None'
+                #set $wfdict['tmtintegrator.allow_overlabel'] = $cxt.allow_overlabel
+            #end if
+            #if $cxt.allow_unlabeled != 'None'
+                #set $wfdict['tmtintegrator.allow_unlabeled'] = $cxt.allow_unlabeled
+            #end if
+            #if $cxt.outlier_removal != 'None'
+                #set $wfdict['tmtintegrator.outlier_removal'] = $cxt.outlier_removal
+            #end if
+            #if $cxt.ms1_int != 'None'
+                #set $wfdict['tmtintegrator.ms1_int'] = $cxt.ms1_int
+            #end if
+            #if $cxt.tolerance != ''
+                #set $wfdict['tmtintegrator.tolerance'] = $cxt.tolerance
+            #end if
+            #if $cxt.top3_pep != 'None'
+                #set $wfdict['tmtintegrator.top3_pep'] = $cxt.top3_pep
+            #end if
+            #if $cxt.print_RefInt != 'None'
+                #set $wfdict['tmtintegrator.print_RefInt'] = $cxt.print_RefInt
+            #end if
+        #end if
     ]]></token>
 
     <!-- License agreement texts. -->
