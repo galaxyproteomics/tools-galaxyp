@@ -1,0 +1,276 @@
+<tool id="fragpipe" name="FragPipe -  Academic Research and Education User License (Non-Commercial)" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="20.05">
+    <description>Data analysis for mass spectrometry-based proteomics</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+
+    <stdio>
+        <!-- The error code from individual tools run by FragPipe is not always propogated to the FragPipe process exit code -->
+        <regex match="exit code: [^0]"
+               source="stdout"
+               level="fatal"
+               description="A FragPipe pipeline process returned non-zero exit code."/>
+    </stdio>
+
+    <version_command>fragpipe --help | grep 'FragPipe v'</version_command>
+
+    <!--
+        FragPipe wrapper command:
+        - Links input files
+        - Modifies database path in workflow file
+        - Runs Philosopher to add decoys and contaminants
+        - Runs FragPipe, passing paths to MSFragger, Philosopher, Python, and IonQuant
+    -->
+    <command detect_errors="exit_code"><![CDATA[
+        ## Create symlink for workflow output
+        ln -s $workflow_configfile fp.workflow;
+
+        ## The user may opt to only output the workflow to review the parameters. If they haven't selected this option, we prepare and run FragPipe.
+        #if not $workflow_only
+            @PREPARE_ENVIRONMENT@
+            @PREPARE_INPUTS@
+            @PREPARE_DATABASE@
+
+            ## Run FragPipe
+            '$__tool_directory__/fragpipe'
+                --msfragger_key f28c4be2-759b0a11-6c1ea652-1240565a
+                --ionquant_key 47cb2953-b4bf7726-2c96f5fe-8f1013aa
+                --headless
+                --threads \${GALAXY_SLOTS:-8}
+                --ram \$[ \${GALAXY_MEMORY_MB:-8192} / 1024 ]
+                --workflow fp.workflow --manifest fp.manifest
+                --workdir outputs
+                --config-msfragger \${CONDA_PREFIX}/share/msfragger-*/MSFragger-*/MSFragger-*.jar
+                --config-philosopher `which philosopher`
+                --config-python `which python`
+                --config-ionquant \${CONDA_PREFIX}/share/ionquant-*/IonQuant.jar &&
+
+            @PREPARE_OUTPUTS@
+        #end if
+    ]]></command>
+
+    <!-- Config file is a FragPipe workflow file -->
+    <configfiles>
+        <expand macro="workflow_configfile" />
+    </configfiles>
+
+    <inputs>
+        <!-- License agreements -->
+        <expand macro="license_agreements"/>
+
+        <!-- Input scan samples -->
+        <expand macro="samples"/>
+
+        <!-- Searched database -->
+        <expand macro="fragger_database"/>
+
+        <!-- Workflow input, if the user chooses to re-use existing FragPipe workflow. -->
+        <expand macro="workflow"/>
+
+        <!-- Only generate a workflow, don't run FragPipe -->
+        <param name="workflow_only" type="boolean" truevalue="yes" falsevalue="no" checked="false" label="Only generate the workflow output"/>
+
+        <param name="output_options" label="Additional outputs" type="select" multiple="true" display="checkboxes" optional="true">
+            <option value="workflow">FragPipe Workflow</option>
+            <option value="log">FragPipe Log</option>
+            <option value="combined_outputs">FragPipe Combined Outputs</option>
+            <option value="concatenated_outputs">TSV Outputs Concatenated</option>
+        </param>
+    </inputs>
+
+    <outputs>
+        <!-- Workflow file used by FragPipe -->
+        <data name="output_workflow" format="txt" label="${tool.name} on ${on_string}: workflow" from_work_dir="fp.workflow">
+            <filter>workflow_only or (output_options and 'workflow' in output_options)</filter>
+        </data>
+        <!-- FragPipe log -->
+        <data name="log" format="txt" label="${tool.name} on ${on_string}: log.txt" from_work_dir="outputs/log.txt">
+            <filter>not workflow_only and output_options and 'log' in output_options</filter>
+        </data>
+
+        <!-- Collection outputs comprised of separate results for different experiments -->
+        <collection name="output_psm" type="list" label="${tool.name} - ${on_string}: psm.tsv" >
+            <filter>not workflow_only</filter>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+\.psm.tsv)" ext="tabular" directory="outputs"/>
+        </collection>
+        <collection name="output_ion" type="list" label="${tool.name} - ${on_string}: ion.tsv" >
+            <filter>not workflow_only</filter>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+\.ion.tsv)" ext="tabular" directory="outputs"/>
+        </collection>
+        <collection name="output_peptide" type="list" label="${tool.name} - ${on_string}: peptide.tsv" >
+            <filter>not workflow_only</filter>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+\.peptide.tsv)" ext="tabular" directory="outputs"/>
+        </collection>
+        <collection name="output_protein" type="list" label="${tool.name} - ${on_string}: protein.tsv" >
+            <filter>not workflow_only</filter>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+\.protein.tsv)" ext="tabular" directory="outputs"/>
+        </collection>
+
+        <!-- Combined results from all experimental groups -->
+        <collection name="combined_outputs" type="list" label="${tool.name} - ${on_string}: Combined Outputs" >
+            <filter>not workflow_only and output_options and 'combined_outputs' in output_options</filter>
+            <discover_datasets pattern="__designation__" ext="tabular" directory="outputs/combined_outputs"/>
+        </collection>
+
+        <!-- Galaxy-wrapper concatenated results -->
+        <data name="concat_psm_tsv" format="tabular" label="${tool.name} on ${on_string}: Concatenated psm.tsv" from_work_dir="outputs/concat_psm.tsv">
+            <filter>not workflow_only and 'concatenated_outputs' in output_options</filter>
+        </data>
+        <data name="concat_ion_tsv" format="tabular" label="${tool.name} on ${on_string}: Concatenated ion.tsv" from_work_dir="outputs/concat_ion.tsv">
+            <filter>not workflow_only and 'concatenated_outputs' in output_options</filter>
+        </data>
+        <data name="concat_peptide_tsv" format="tabular" label="${tool.name} on ${on_string}: Concatenated peptide.tsv" from_work_dir="outputs/concat_peptide.tsv">
+            <filter>not workflow_only and 'concatenated_outputs' in output_options</filter>
+        </data>
+        <data name="concat_protein_tsv" format="tabular" label="${tool.name} on ${on_string}: Concatenated protein.tsv" from_work_dir="outputs/concat_protein.tsv">
+            <filter>not workflow_only and 'concatenated_outputs' in output_options</filter>
+        </data>
+
+        <!-- PTM-Shepherd Results -->
+        <data name="global_profile_tsv" format="tabular" label="${tool.name} on ${on_string}: global.profile.tsv" from_work_dir="outputs/global.profile.tsv">
+               <filter>(not workflow_only) and ('Open' in  wf['workflow_name'])</filter>
+        </data>
+        <data name="global_summary_tsv" format="tabular" label="${tool.name} on ${on_string}: global.modsummary.tsv" from_work_dir="outputs/global.modsummary.tsv">
+               <filter>(not workflow_only) and ('Open' in  wf['workflow_name'])</filter>
+        </data>
+        <data name="global_diagmine_tsv" format="tabular" label="${tool.name} on ${on_string}: global.diagmine.tsv" from_work_dir="outputs/global.diagmine.tsv">
+               <filter>(not workflow_only) and ('Open' in  wf['workflow_name'])</filter>
+        </data>
+
+        <!--
+            TMT/iTRAW Results
+            Only produced by TMT, TRAQ, and SLC workflows
+        -->
+        <collection name="tmt_results" type="list" label="${tool.name} - ${on_string}: TMT Results" >
+            <discover_datasets pattern="__designation__" ext="tabular" directory="outputs/tmt-report"/>
+            <filter>(not workflow_only) and ('TMT' in wf['workflow_name'])</filter>
+        </collection>
+    </outputs>
+
+    <tests>
+      <test expect_num_outputs="11">
+        <param name="inputs" value="default/test1.mzML,default/test2.mzML" ftype="mzml"/>
+        <param name="database_name" value="default/test.fasta" ftype="fasta"/>
+        <param name="manifest" value="default/test.manifest" ftype="tabular"/>
+        <param name="workflow_name" value="Default"/>
+        <param name="output_options" value="workflow,log,combined_outputs,concatenated_outputs"/>
+        <param name="license_agreements" value="true"/>
+        <output name="concat_psm_tsv" ftype="tabular">
+            <assert_contents>
+                <has_text text="Experiment&#x9;Spectrum&#x9;Spectrum File&#x9;Peptide&#x9;Modified Peptide&#x9;Extended Peptide&#x9;Prev AA&#x9;Next AA&#x9;Peptide Length&#x9;Charge&#x9;Retention&#x9;Observed Mass&#x9;Calibrated Observed Mass&#x9;Observed M/Z&#x9;Calibrated Observed M/Z&#x9;Calculated Peptide Mass&#x9;Calculated M/Z&#x9;Delta Mass&#x9;Expectation&#x9;Hyperscore&#x9;Nextscore&#x9;PeptideProphet Probability&#x9;Number of Enzymatic Termini&#x9;Number of Missed Cleavages&#x9;Protein Start&#x9;Protein End&#x9;Intensity&#x9;Assigned Modifications&#x9;Observed Modifications&#x9;Purity&#x9;Is Unique&#x9;Protein&#x9;Protein ID&#x9;Entry Name&#x9;Gene&#x9;Protein Description&#x9;Mapped Genes&#x9;Mapped Proteins"/>
+                <has_text text="sample1"/>
+            </assert_contents>
+        </output>
+        <output name="concat_ion_tsv" ftype="tabular">
+            <assert_contents>
+                <has_text text="Experiment&#x9;Peptide Sequence&#x9;Modified Sequence&#x9;Prev AA&#x9;Next AA&#x9;Peptide Length&#x9;Protein Start&#x9;Protein End&#x9;M/Z&#x9;Charge&#x9;Observed Mass&#x9;Probability&#x9;Expectation&#x9;Spectral Count&#x9;Intensity&#x9;Assigned Modifications&#x9;Observed Modifications&#x9;Protein&#x9;Protein ID&#x9;Entry Name&#x9;Gene&#x9;Protein Description&#x9;Mapped Genes&#x9;Mapped Proteins"/>
+                <has_text text="sample1"/>
+            </assert_contents>
+        </output>
+        <output name="concat_peptide_tsv" ftype="tabular">
+            <assert_contents>
+                <has_text text="Experiment&#x9;Peptide&#x9;Prev AA&#x9;Next AA&#x9;Peptide Length&#x9;Protein Start&#x9;Protein End&#x9;Charges&#x9;Probability&#x9;Spectral Count&#x9;Intensity&#x9;Assigned Modifications&#x9;Observed Modifications&#x9;Protein&#x9;Protein ID&#x9;Entry Name&#x9;Gene&#x9;Protein Description&#x9;Mapped Genes&#x9;Mapped Proteins"/>
+                <has_text text="sample1"/>
+            </assert_contents>
+        </output>
+        <output name="concat_protein_tsv" ftype="tabular">
+            <assert_contents>
+                <has_text text="Experiment&#x9;Protein&#x9;Protein ID&#x9;Entry Name&#x9;Gene&#x9;Length&#x9;Organism&#x9;Protein Description&#x9;Protein Existence&#x9;Coverage&#x9;Protein Probability&#x9;Top Peptide Probability&#x9;Total Peptides&#x9;Unique Peptides&#x9;Razor Peptides&#x9;Total Spectral Count&#x9;Unique Spectral Count&#x9;Razor Spectral Count&#x9;Total Intensity&#x9;Unique Intensity&#x9;Razor Intensity&#x9;Razor Assigned Modifications&#x9;Razor Observed Modifications&#x9;Indistinguishable Proteins"/>
+                <has_text text="sample1"/>
+            </assert_contents>
+        </output>
+        <output name="output_workflow" ftype="txt" file="default/outputs/workflow.txt" compare="contains">
+            <assert_contents>
+                <has_text text="crystalc.run-crystalc=false"/>
+            </assert_contents>
+        </output>
+        <output name="log" ftype="txt">
+            <assert_contents>
+                <has_text text="FragPipe version 20.0"/>
+            </assert_contents>
+        </output>
+        <output_collection name="combined_outputs" type="list">
+            <element name="combined_protein.tsv" ftype="tabular">
+                <assert_contents>
+                    <has_text text="Protein&#x9;Protein ID&#x9;Entry Name&#x9;Gene&#x9;Protein Length&#x9;Organism&#x9;Protein Existence&#x9;Description&#x9;Protein Probability&#x9;Top Peptide Probability&#x9;Combined Total Peptides&#x9;Combined Spectral Count&#x9;Combined Unique Spectral Count&#x9;Combined Total Spectral Count&#x9;sample1 Spectral Count&#x9;sample2 Spectral Count&#x9;sample1 Intensity&#x9;sample2 Intensity&#x9;Indistinguishable Proteins"/>
+                </assert_contents>
+            </element>
+        </output_collection>
+      </test>
+      <test expect_num_outputs="11">
+        <param name="inputs" value="tmt11/test1.mzML,tmt11/test2.mzML" ftype="mzml"/>
+        <param name="database_name" value="tmt11/test.fasta" ftype="fasta"/>
+        <param name="manifest" value="tmt11/test.manifest" ftype="tabular"/>
+        <param name="annotation" value="tmt11/test.annotation" ftype="tabular"/>
+        <param name="workflow_name" value="TMT11"/>
+        <param name="output_options" value="workflow,log,concatenated_outputs"/>
+        <param name="license_agreements" value="true"/>
+        <output name="concat_psm_tsv" ftype="tabular">
+            <assert_contents>
+                <has_text text="Experiment&#x9;Spectrum&#x9;Spectrum File&#x9;Peptide&#x9;Modified Peptide&#x9;Extended Peptide&#x9;Prev AA&#x9;Next AA&#x9;Peptide Length&#x9;Charge&#x9;Retention&#x9;Observed Mass&#x9;Calibrated Observed Mass&#x9;Observed M/Z&#x9;Calibrated Observed M/Z&#x9;Calculated Peptide Mass&#x9;Calculated M/Z&#x9;Delta Mass&#x9;Expectation&#x9;Hyperscore&#x9;Nextscore&#x9;PeptideProphet Probability&#x9;Number of Enzymatic Termini&#x9;Number of Missed Cleavages&#x9;Protein Start&#x9;Protein End&#x9;Intensity&#x9;Assigned Modifications&#x9;Observed Modifications&#x9;Purity&#x9;Is Unique&#x9;Protein&#x9;Protein ID&#x9;Entry Name&#x9;Gene&#x9;Protein Description&#x9;Mapped Genes&#x9;Mapped Proteins"/>
+                <has_text text="sample1"/>
+            </assert_contents>
+        </output>
+        <output name="concat_ion_tsv" ftype="tabular">
+            <assert_contents>
+                <has_text text="Experiment&#x9;Peptide Sequence&#x9;Modified Sequence&#x9;Prev AA&#x9;Next AA&#x9;Peptide Length&#x9;Protein Start&#x9;Protein End&#x9;M/Z&#x9;Charge&#x9;Observed Mass&#x9;Probability&#x9;Expectation&#x9;Spectral Count&#x9;Intensity&#x9;Assigned Modifications&#x9;Observed Modifications&#x9;Protein&#x9;Protein ID&#x9;Entry Name&#x9;Gene&#x9;Protein Description&#x9;Mapped Genes&#x9;Mapped Proteins"/>
+                <has_text text="sample1"/>
+            </assert_contents>
+        </output>
+        <output name="concat_peptide_tsv" ftype="tabular">
+            <assert_contents>
+                <has_text text="Experiment&#x9;Peptide&#x9;Prev AA&#x9;Next AA&#x9;Peptide Length&#x9;Protein Start&#x9;Protein End&#x9;Charges&#x9;Probability&#x9;Spectral Count&#x9;Intensity&#x9;Assigned Modifications&#x9;Observed Modifications&#x9;Protein&#x9;Protein ID&#x9;Entry Name&#x9;Gene&#x9;Protein Description&#x9;Mapped Genes&#x9;Mapped Proteins"/>
+                <has_text text="sample1"/>
+            </assert_contents>
+        </output>
+        <output name="concat_protein_tsv" ftype="tabular">
+            <assert_contents>
+                <has_text text="Experiment&#x9;Protein&#x9;Protein ID&#x9;Entry Name&#x9;Gene&#x9;Length&#x9;Organism&#x9;Protein Description&#x9;Protein Existence&#x9;Coverage&#x9;Protein Probability&#x9;Top Peptide Probability&#x9;Total Peptides&#x9;Unique Peptides&#x9;Razor Peptides&#x9;Total Spectral Count&#x9;Unique Spectral Count&#x9;Razor Spectral Count&#x9;Total Intensity&#x9;Unique Intensity&#x9;Razor Intensity&#x9;Razor Assigned Modifications&#x9;Razor Observed Modifications&#x9;Indistinguishable Proteins"/>
+                <has_text text="sample1"/>
+            </assert_contents>
+        </output>
+        <output name="output_workflow" ftype="txt" file="tmt11/outputs/workflow.txt" compare="contains">
+            <assert_contents>
+                <has_text text="crystalc.run-crystalc=false"/>
+            </assert_contents>
+        </output>
+        <output name="log" ftype="txt">
+            <assert_contents>
+                <has_text text="FragPipe version 20.0"/>
+            </assert_contents>
+        </output>
+        <output_collection name="tmt_results" type="list">
+            <element name="abundance_gene_MD.tsv" ftype="tabular">
+                <assert_contents>
+                    <has_text text="Index&#x9;NumberPSM&#x9;ProteinID&#x9;MaxPepProb&#x9;ReferenceIntensity&#x9;sample-01&#x9;sample-02&#x9;sample-03&#x9;sample-04&#x9;sample-05&#x9;sample-06&#x9;sample-07&#x9;sample-08&#x9;sample-09&#x9;sample-10&#x9;Bridge"/>
+                </assert_contents>
+            </element>
+            <element name="ratio_gene_MD.tsv" ftype="tabular">
+                <assert_contents>
+                    <has_text text="Index&#x9;NumberPSM&#x9;ProteinID&#x9;MaxPepProb&#x9;ReferenceIntensity&#x9;sample-01&#x9;sample-02&#x9;sample-03&#x9;sample-04&#x9;sample-05&#x9;sample-06&#x9;sample-07&#x9;sample-08&#x9;sample-09&#x9;sample-10&#x9;Bridge"/>
+                </assert_contents>
+            </element>
+        </output_collection>
+      </test>
+    </tests>
+
+    <help><![CDATA[
+**FragPipe**
+
+FragPipe_ is a suite of computational tools enabling comprehensive analysis of mass spectrometry-based proteomics data.
+FragPipe uses MSFragger_ - an ultrafast proteomic search engine suitable for both conventional and “open” (wide precursor mass tolerance) peptide identification.
+
+FragPipe_ runs a user selected analysis workflow_
+
+**License Agreements**
+
+    @LICENSE_AGREEMENTS@
+
+.. _FragPipe: https://fragpipe.nesvilab.org
+.. _MSFragger: https://msfragger.nesvilab.org
+.. _workflow: https://fragpipe.nesvilab.org/docs/tutorial_fragpipe_workflows.html
+
+    ]]></help>
+    <expand macro="citations" />
+</tool>
