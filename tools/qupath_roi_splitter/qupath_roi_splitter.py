@@ -102,7 +102,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Split ROI coordinates of QuPath TMA annotation by cell type (classification)")
     parser.add_argument("--qupath_roi", default=False, help="Input QuPath annotation (GeoJSON file)")
     parser.add_argument("--fill", action="store_true", required=False, help="Fill pixels in ROIs (order of coordinates will be lost)")
-    parser.add_argument('--version', action='version', version='%(prog)s 0.2.0')
+    parser.add_argument('--version', action='version', version='%(prog)s 0.3.0')
     parser.add_argument("--all", action="store_true", required=False, help="Extracts all ROIs")
     parser.add_argument("--img", action="store_true", required=False, help="Generates image of ROIs")
     args = parser.parse_args()
