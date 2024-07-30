@@ -22,15 +22,20 @@ def collect_roi_coords(input_roi, feature_index):
     else:
         coord_index = 0
         for sub_roi in input_roi["geometry"]["coordinates"]:
-            # Polygon with holes or MultiPolygon
-            if not isinstance(sub_roi[0][0], list):
-                all_coords.extend(collect_coords(sub_roi, feature_index, coord_index))
-                coord_index += len(sub_roi)
+            if len(sub_roi) == 2:
+                # Special case: LMD data
+                all_coords.extend(collect_coords([sub_roi], feature_index, coord_index))
+                coord_index += 1
             else:
-                # MultiPolygon with holes
-                for sub_coord in sub_roi:
-                    all_coords.extend(collect_coords(sub_coord, feature_index, coord_index))
-                    coord_index += len(sub_coord)
+                # Polygon with holes or MultiPolygon
+                if not isinstance(sub_roi[0][0], list):
+                    all_coords.extend(collect_coords(sub_roi, feature_index, coord_index))
+                    coord_index += len(sub_roi)
+                else:
+                    # MultiPolygon with holes
+                    for sub_coord in sub_roi:
+                        all_coords.extend(collect_coords(sub_coord, feature_index, coord_index))
+                        coord_index += len(sub_coord)
     return all_coords
 
 
@@ -103,7 +108,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Split ROI coordinates of QuPath TMA annotation by cell type (classification)")
     parser.add_argument("--qupath_roi", default=False, help="Input QuPath annotation (GeoJSON file)")
     parser.add_argument("--fill", action="store_true", required=False, help="Fill pixels in ROIs (order of coordinates will be lost)")
-    parser.add_argument('--version', action='version', version='%(prog)s 0.3.0')
+    parser.add_argument('--version', action='version', version='%(prog)s 0.3.1')
     parser.add_argument("--all", action="store_true", required=False, help="Extracts all ROIs")
     parser.add_argument("--img", action="store_true", required=False, help="Generates image of ROIs")
     args = parser.parse_args()
