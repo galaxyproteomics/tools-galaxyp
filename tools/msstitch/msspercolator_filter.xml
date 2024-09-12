@@ -1,0 +1,225 @@
+<tool id="msspercolator_filter" name="Filter percolator output" version="1.2">
+    <description>retain uniques or specific protein headers</description>
+    <requirements>
+        <requirement type="package" version="2.5">msstitch</requirement>
+    </requirements>
+    <command detect_errors="exit_code">
+        <![CDATA[
+        ln -s '$input' perco.xml
+
+        #if $filterlen.yesno == "yes"
+            &&
+            msspercolator filterlen -i perco.xml -o filtered.xml
+                #if $filterlen.maxlen
+                --maxlen $filterlen.maxlen
+                #end if
+                #if $filterlen.minlen
+                    --minlen $filterlen.minlen 
+                #end if
+                && mv filtered.xml perco.xml
+            #end if
+
+        #if $filterheader.yesno == "yes"
+        #set headpattern = "{}".format($filterheader.pattern.translate(None))
+        &&
+                mkdir splitheader &&
+            msspercolator splitprotein -i perco.xml -d splitheader
+        --protheaders '$headpattern'
+        &&
+            mv splitheader/perco.xml_h0.xml perco.xml
+        #end if
+
+        #if $filteruni.yesno == "yes"
+            &&
+            msspercolator filteruni -i perco.xml -o filtered.xml
+            --score $filteruni.score
+                && mv filtered.xml perco.xml
+        #end if
+
+        #if $filterwholeprot.yesno == "yes"
+            &&
+            cp '$filterwholeprot.lookup' seqdb.sqlite
+            &&
+            msspercolator filterprot -i perco.xml -o filtered.xml
+                --fasta '$filterwholeprot.fasta' --dbfile seqdb.sqlite --minlen $filterwholeprot.minlen
+            #if $filterwholeprot.deamidate
+                --deamidate
+            #end if
+            #if $filterwholeprot.forcetryp
+                --enforce-tryptic
+            #end if
+                && mv filtered.xml perco.xml
+        #end if
+        
+        #if $filterseq.yesno == "yes"
+            &&
+                cp '$filterseq.lookup' seqdb.sqlite
+            &&
+            msspercolator filterseq -i perco.xml -o filtered.xml --dbfile seqdb.sqlite
+            #if $filterseq.falloff.value > 0
+                --insourcefrag $filterseq.falloff
+            #end if
+            #if $filterseq.deamidate
+                --deamidate
+            #end if
+                && mv filtered.xml perco.xml
+        #end if
+
+        && mv perco.xml '$output'
+        ]]>
+    </command>
+    
+    <inputs>
+        <param name="input" type="data" format="percout" label="Percolator output data" />
+        <conditional name="filteruni">
+            <param name="yesno" type="select" label="Filter unique peptides?">
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+            </param>
+            <when value="no" />
+            <when value="yes">
+                <param name="score" type="select" label="Score to use as filter">
+                    <option value="svm">svm score</option>
+                    <option value="pep">PEP</option>
+                    <option value="q">q-value</option>
+                    <option value="p">p-value</option>
+                </param>
+            </when>
+        </conditional>
+        <conditional name="filterheader">
+            <param name="yesno" type="select" label="Retain specific protein header?">
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+            </param>
+            <when value="no" />
+            <when value="yes">
+                <param name="pattern" type="text" label="Regex to match header to keep" />
+            </when>
+        </conditional>
+        <conditional name="filterlen">
+            <param name="yesno" type="select" label="Filter peptides by length?">
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+            </param>
+            <when value="no" />
+            <when value="yes"> 
+                <param name="maxlen" type="integer" label="Maximum allowed peptide length" value="" optional="true" />
+                <param name="minlen" type="integer" label="Minimum allowed peptide length" value="0" optional="true" />
+            </when>
+        </conditional>
+        <conditional name="filterwholeprot">
+            <param name="yesno" type="select" label="Filter whole protein matches?" help="With a whole protein lookup">
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+            </param>
+            <when value="no" />
+            <when value="yes"> 
+                <param name="fasta" type="data" format="fasta" label="Protein DB" help="Fasta file with proteins to remove peptide sequences from Percolator data" /> 
+                <param name="lookup" type="data" format="sqlite" label="Lookup with all peptides" help="Created from protein FASTA, containing all possible peptides of certain length" />
+                <param name="minlen" type="integer" label="Minimum length of peptides in experiment that will be filtered. Accidental peptides smaller than this will pass the filter." value="" />
+                <param name="deamidate" type="boolean" label="Deamidation" help="Also filters out peptides that are deamidated and not in the known DB"/>
+                <param name="forcetryp" type="boolean" label="Filter out tryptic peptides only" help="Peptides that match protein DB but are not tryptic (K/R before peptide in protein, K/R at peptide C-term) pass the filter" />
+           </when>
+        </conditional>
+        <conditional name="filterseq">
+            <param name="yesno" type="select" label="Filter by sequence?" help="With a sequence lookup">
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+            </param>
+            <when value="no" />
+            <when value="yes"> 
+                <param name="lookup" type="data" format="sqlite" label="known sequences" help="Sqlite DB containing sequences to be ignored. This file can be created by running msslookup" />
+                <param name="falloff" value="0" type="integer" label="Max amount of amino acids lost at N-terminal due to in-source fragmentation" help="Also filters peptides from result that partially match due to having lost residues N-terminally by MS"/>
+               <param name="deamidate" type="boolean" label="Deamidation" help="Also filters out peptides that are deamidated and not in the known DB"/>
+            </when>
+        </conditional>
+    </inputs>
+    
+    <outputs>
+        <data format="percout" name="output"/>
+    </outputs>
+    <tests>
+        <test>
+            <param name="input" value="percolator.xml" />
+            <param name="filteruni|yesno" value="yes" />
+            <param name="filterlen|yesno" value="no" />
+            <param name="filterheader|yesno" value="no" />
+            <param name="filterwholeprot|yesno" value="no" />
+            <param name="filterseq|yesno" value="no" />
+            <param name="filteruni|score" value="svm" />
+            <output name="output">
+                <assert_contents>
+                    <not_has_text text="dataset_308488_SII_975_1_fake_2_1" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="input" value="percolator.xml" />
+            <param name="filterlen|yesno" value="yes" />
+            <param name="filteruni|yesno" value="no" />
+            <param name="filterheader|yesno" value="no" />
+            <param name="filterwholeprot|yesno" value="no" />
+            <param name="filterseq|yesno" value="no" />
+            <param name="filterlen|minlen" value="18" />
+            <param name="filterlen|maxlen" value="21" />
+            <output name="output" value="perco_filterlen.xml" />
+        </test>
+        <test>
+            <param name="input" value="percolator.xml" />
+            <param name="filterwholeprot|yesno" value="yes" />
+            <param name="filterlen|yesno" value="no" />
+            <param name="filteruni|yesno" value="no" />
+            <param name="filterheader|yesno" value="no" />
+            <param name="filterseq|yesno" value="no" />
+            <param name="filterwholeprot|lookup" value="wholeproteinfilter.sql" />
+            <param name="filterwholeprot|fasta" value="ensembl.fasta" />
+            <param name="filterwholeprot|minlen" value="6" />
+            <param name="filterwholeprot|deamidate" value="true" />
+            <param name="filterwholeprot|forcetryp" value="true" />
+            <output name="output" value="perco_filterprotseq.xml" />
+        </test>
+        <test>
+            <param name="input" value="percolator.xml" />
+            <param name="filteruni|yesno" value="no" />
+            <param name="filterlen|yesno" value="no" />
+            <param name="filterheader|yesno" value="no" />
+            <param name="filterwholeprot|yesno" value="no" />
+            <param name="filterseq|yesno" value="yes" />
+            <param name="filterseq|lookup" value="tryptic_peptides.sql" />
+            <param name="filterseq|falloff" value="0" />
+            <param name="filterseq|deamidate" value="true" />
+            <output name="output" value="perco_filterprotseq.xml" />
+        </test>
+        <test>
+            <param name="input" value="percolator.xml" />
+            <param name="filterlen|yesno" value="yes" />
+            <param name="filteruni|yesno" value="yes" />
+            <param name="filterwholeprot|yesno" value="yes" />
+            <param name="filterseq|yesno" value="yes" />
+            <param name="filteruni|score" value="svm" />
+            <param name="filterlen|maxlen" value="30" />
+            <param name="filterheader|yesno" value="yes" />
+            <param name="filterheader|pattern" value="^ENSP" />
+            <param name="filterwholeprot|lookup" value="wholeproteinfilter.sql" />
+            <param name="filterwholeprot|fasta" value="ensembl.fasta" />
+            <param name="filterwholeprot|minlen" value="6" />
+            <param name="filterwholeprot|deamidate" value="true" />
+            <param name="filterwholeprot|forcetryp" value="true" />
+            <param name="filterseq|lookup" value="tryptic_peptides.sql" />
+            <param name="filterseq|falloff" value="2" />
+            <param name="filterseq|deamidate" value="true" />
+            <output name="output" compare="sim_size" value="perco_filterall.xml" />
+        </test>
+    </tests>
+    <help>
+        Filtering operations for percolator data. Use to filter out duplicate peptides
+        resulting from merged data (keeps the best scoring ones), peptides and PSMs
+        outside of certain length cutoffs, or peptides and PSMs which do not match
+        EXCLUSIVELY to a specified protein header. Two filters need a sequence lookup
+        SQLite file (can be made with msslookup), one filters on sequences in that
+        file, the other filters on whole protein sequences also in that lookup.
+    </help>
+    <citations>
+        <citation type="doi">10.1038/nmeth1113</citation>
+    </citations>
+</tool>

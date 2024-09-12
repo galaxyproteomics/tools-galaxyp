@@ -1,0 +1,112 @@
+<tool id="create_peptide_table" name="Create peptide table" version="1.2">
+    <description>from PSMs</description>
+    <requirements>
+        <requirement type="package" version="2.5">msstitch</requirement>
+    </requirements>
+    <command detect_errors="exit_code"> 
+        <![CDATA[
+            msspeptable psm2pep -i '$psmtable' -o initial_peptidetable.txt --scorecolpattern '$scorecol'
+                #if $fncol
+                    --spectracol $fncol
+                #end if
+                #if $isoquant.yesno.value == "true"
+                    --isobquantcolpattern '$isoquant.isobpatternstrip'
+                #end if
+                #if $precurqcolpattern
+                    --ms1quantcolpattern '$precurqcolpattern'
+                #end if
+            
+            &&
+                paste <(cut -f 12 initial_peptidetable.txt) <(cut -f1-11,13-200 initial_peptidetable.txt) > peptidetable.txt
+
+            #if $isoquant.yesno.value == "true"
+            && 
+            msspsmtable isoratio -i '$psmtable' -o isoquant.txt --targettable peptidetable.txt --protcol $isoquant.accessioncol --isobquantcolpattern '$isoquant.isobpatternratio' --minint '$isoquant.minint' --denompatterns 
+            #for $sampleset in $isoquant.setdenoms
+                #if not $sampleset.setpattern or str($sampleset.setpattern) in $psmtable.element_identifier
+                        $sampleset.denompatterns 
+                #break
+                    #end if
+            #end for
+            #if $isoquant.normalize.type != "false"
+                --normalize median
+                #if $isoquant.normalize.type == "medianother"
+                    --norm-ratios '$isoquant.normalize.norm_ratio_table'
+                #end if
+            #end if
+                &&
+                mv isoquant.txt peptidetable.txt
+            #end if
+            && mv peptidetable.txt '$output'
+        ]]>
+    </command>
+    <inputs>
+        <param name="psmtable" type="data" format="tabular" label="PSM table" help="Must contain isobaric ratios and accession of protein/gene/peptide" />
+        <param name="fncol" type="integer" value="" label="Column number containing spectra file name" optional="true" />
+        <param name="scorecol" type="text" label="Regular expression pattern to identify score column" help="E.g. svm"/>
+        <param name="precurqcolpattern" type="text" label="Regular expression pattern to identify precursor quant columns" optional="true" help="E.g. area"/>
+        <conditional name="isoquant">
+            <param name="yesno" type="select" label="Use isobaric data?">
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+            </param>
+            <when value="false" />
+            <when value="true"> 
+                <param name="isobpatternstrip" type="text" label="Broad pattern for stripping isobaric quant columns from PSM table before generating ratios" help="Regex to find quant columns, e.g. tmt10plex, itraq8plex, plex"/>
+                <param name="isobpatternratio" type="text" label="Narrower pattern for finding isobaric quant columns in PSM table to generate ratios" help="Regex to find quant columns, e.g. ^tmt10plex, ^itraq8plex"/>
+                    <repeat name="setdenoms" title="Biological sets denominators">
+                        <param name="setpattern" type="text" label="Sample set name for denominator" help="If no different sample sets are used, leave blank" optional="true" />
+                        <param name="denompatterns" type="text" label="Patterns for denominator isobaric quant columns in PSM table" help="Multiple are separated with space, e.g. ^tmt10plex_126 ^tmt10plex_127N." />
+                    </repeat>
+               <param name="accessioncol" type="integer" value="" label="Accession column number in PSM table containing the peptides to quantify" />
+               <param name="minint" type="float" value="0.1" label="Minimum intensity of PSM channel to include" />
+               <conditional name="normalize">
+                   <param name="type" type="select" label="Use isobaric data?">
+                       <option value="medianself">Median center using own ratios</option>
+                       <option value="medianother">Median center using ratios from other table</option>
+                       <option value="false">No</option>
+                  </param>
+                  <when value="false" />
+                  <when value="medianself" />
+                  <when value="medianother" >
+                      <param name="norm_ratio_table" type="data" label="Tabular datatable with ratios" help="Same isobaric quant columns should occur" />
+                  </when>
+               </conditional>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data format="tabular" name="output"/>
+    </outputs>
+    <tests>
+        <test>
+            <param name="psmtable" value="fullpsmtable.txt" />
+            <param name="fncol" value="1" />
+            <param name="scorecol" value="svm" />
+            <param name="isoquant|yesno" value="false" />
+            <output name="output" value="peptide_table_noquant.txt" compare="sim_size" />
+        </test>
+        <test>
+            <param name="psmtable" value="fullpsmtable.txt" ftype="tabular"/>
+            <param name="fncol" value="1" />
+            <param name="scorecol" value="svm" />
+            <param name="precurqcolpattern" value="area" />
+            <param name="isoquant|yesno" value="true" />
+            <param name="isoquant|isobpatternstrip" value="tmt10plex" />
+            <param name="isoquant|isobpatternratio" value="^tmt10plex" />
+            <repeat name="isoquant|setdenoms">
+                <param name="setpattern" value="fullpsmtable" />
+                <param name="denompatterns" value="^tmt10plex_126" />
+            </repeat>
+            <param name="isoquant|accessioncol" value="11" />
+            <param name="isoquant|minint" value="0.2" />
+            <param name="isoquant|normalize|type" value="medianother" />
+            <param name="isoquant|normalize|norm_ratio_table" value="peptide_ratios.txt" />
+            <output name="output" value="peptide_table.txt" compare="sim_size" />
+        </test>
+    </tests>
+    <help>
+        Creates a peptide table from PSM table. It is optional to add 
+        isobaric quant, precursor quant, probabilities.
+    </help>
+</tool>
