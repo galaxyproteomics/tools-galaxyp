@@ -11,7 +11,7 @@ More informations are available at:
  * https://www.openms.de/
 
 The wrappers for these tools and most of their tests are automatically
-generated using the `generate.sh` script. The generation of the tools is
+generated using the `./aux/generate.sh` script. The generation of the tools is
 based on the CTDConverter (https://github.com/WorkflowConversion/CTDConverter)
 which can be fine tuned via the `hardcoded_params.json` file. This file allows
 to blacklist and hardcode parameters and to modify or set arbitrary
@@ -128,15 +128,6 @@ More details can be found in the comments of the shell script.
 
 Open problems
 =============
-
-Some tools stall in CI testing using `--biocontainers` which is why the OpenMS
-tools are currently listed in `.tt_biocontainer_skip`. This is
-
-- AssayGeneratorMetabo and SiriusAdapter (both depend on sirius)
-- OMSSAAdapter
-
-Using `docker -t` seems to solve the problem (see
-https://github.com/galaxyproject/galaxy/issues/10153).
 
 Licence (MIT)
 =============
