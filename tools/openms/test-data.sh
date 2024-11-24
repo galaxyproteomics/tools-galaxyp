@@ -15,6 +15,7 @@ export OPENMSGIT="$tmp/OpenMS$VERSION.0-git"
 export OPENMSPKG="$tmp/OpenMS$VERSION-pkg/"
 export OPENMSENV="OpenMS$VERSION-env"
 
+
 if [ -z "$CTDCONVERTER" ]; then
     export CTDCONVERTER="$tmp/CTDConverter"
 fi
@@ -310,4 +311,5 @@ find test-data/ -xtype l -delete
 if [[ "$created" == "yes" ]]; then
     echo "Removing temporary directory"
     rm -rf "$tmp"
+    conda env remove -n "$OPENMSENV"
 fi
