@@ -2,11 +2,10 @@
 
 # set -x
 
-VERSION=3.1
+VERSION=3.2
 FILETYPES="aux/filetypes.txt"
-CONDAPKG="https://anaconda.org/bioconda/openms/3.1.0/download/linux-64/openms-3.1.0-h8964181_1.tar.bz2"
+CONDAPKG="https://anaconda.org/bioconda/openms/3.2.0/download/linux-64/openms-3.2.0-haddbca4_5.tar.bz2"
 
-# install conda
 if [ -z "$tmp" ]; then
     tmp=$(mktemp -d)
     created="yes"
@@ -29,9 +28,9 @@ fi
 if type conda > /dev/null; then  
     true
 else
-    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-    bash Miniconda3-latest-Linux-x86_64.sh -b -p "$tmp/miniconda"
-    source "$tmp/miniconda/bin/activate"
+    wget https://github.com/conda-forge/miniforge/releases/download/24.9.2-0/Miniforge3-Linux-x86_64.sh
+    bash Miniforge3-Linux-x86_64.sh -b -p "$tmp/miniforge"
+    source "$tmp/miniforge/bin/activate"
 fi
 eval "$(conda shell.bash hook)"
 
@@ -42,8 +41,8 @@ eval "$(conda shell.bash hook)"
 ## - the git clone of OpenMS (for generating the tests)
 ###############################################################################
 
-echo "Clone OpenMS $VERSION sources"
 if [[ ! -d $OPENMSGIT ]]; then
+    echo "Clone OpenMS $VERSION sources"
     if [[ "$created" == "yes" ]]; then
         GIT_DIR=$(mktemp -d --dry-run)
         GIT_EXTRA_OPTS="--separate-git-dir=$GIT_DIR"
@@ -56,6 +55,7 @@ if [[ ! -d $OPENMSGIT ]]; then
         rm -rf $GIT_DIR
     fi
 else
+    echo "Update OpenMS $VERSION sources"
     cd $OPENMSGIT
     git pull origin release/$VERSION.0
     cd -
@@ -120,8 +120,9 @@ if [ ! -f test-data/MetaboliteSpectralDB.mzML ]; then
     # wget -nc https://abibuilder.cs.uni-tuebingen.de/archive/openms/Tutorials/Data/latest/Example_Data/Metabolomics/databases/MetaboliteSpectralDB.mzML
     mv MetaboliteSpectralDB.mzML test-data/
 fi
-ln -fs TOFCalibration_ref_masses test-data/TOFCalibration_ref_masses.txt
-ln -fs TOFCalibration_const test-data/TOFCalibration_const.csv
+
+#TODO remove? ln -fs TOFCalibration_ref_masses test-data/TOFCalibration_ref_masses.txt
+#TODO remove? ln -fs TOFCalibration_const test-data/TOFCalibration_const.csv
 
 # if [ ! -d test-data/pepnovo_models/ ]; then
 #     mkdir -p /tmp/pepnovo
@@ -178,11 +179,15 @@ function prepare_test_data {
 #     id=$1
 # | egrep -i "$id\_.*[0-9]+(_prepare\"|_convert)?"
 
+    BL="$(mktemp)"
+    grep -v "^#\|^$" aux/tools_blacklist.txt > $BL
+
     OLD_OSW_PARAM=$(cat $OPENMSGIT/src/tests/topp/CMakeLists.txt |sed 's/#.*$//'| sed 's/^\s*//; s/\s*$//' |awk '{printf("%s@NEWLINE@", $0)}' |  sed 's/)@NEWLINE@/)\n/g' | sed 's/@NEWLINE@/ /g' | grep OLD_OSW_PARAM | head -n 1 | sed 's/^[^"]\+//; s/)$//; s/"//g')
     # TODO SiriusAdapter depends on online service which may timeout .. so keep disabled https://github.com/OpenMS/OpenMS/pull/5010
     cat $OPENMSGIT/src/tests/topp/CMakeLists.txt  $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake |
         sed "s/\${OLD_OSW_PARAM}/$OLD_OSW_PARAM/" |
         grep -v "\.ini\.json" |
+        grep -v -f "$BL" |
         sed 's/.ini.json /ini /' | 
         sed 's/#.*$//'| 
         sed 's/^\s*//; s/\s*$//' | 

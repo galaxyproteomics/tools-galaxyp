@@ -32,6 +32,7 @@ SKIP_LIST = [
     r"WRITEINI",
     r"WRITECTD",
     r"INVALIDVALUE",
+    r"\.flat\.json",
     r"\.ini\.json",
     r"OpenSwathMzMLFileCacher .*-convert_back",  # - OpenSwathMzMLFileCacher with -convert_back argument https://github.com/OpenMS/OpenMS/issues/4399
     r"MaRaClusterAdapter.*-consensus_out",  # - MaRaCluster with -consensus_out (parameter blacklister: https://github.com/OpenMS/OpenMS/issues/4456)
@@ -205,7 +206,6 @@ def process_test_line(
             return
         if re.search(skip, test_id):
             return
-
     line = fix_tmp_files(line, diff_pairs)
     # print(f"fix {line=}")
     line = unique_files(line)

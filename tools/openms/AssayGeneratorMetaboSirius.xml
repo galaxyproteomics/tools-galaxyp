@@ -1,0 +1,230 @@
+<!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
+<!--Proposed Tool Section: [Targeted Experiments and OpenSWATH]-->
+<tool id="AssayGeneratorMetaboSirius" name="AssayGeneratorMetaboSirius" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="23.0">
+  <description>Assay library generation from a SIRIUS project directory (Metabolomics)</description>
+  <macros>
+    <token name="@EXECUTABLE@">AssayGeneratorMetaboSirius</token>
+    <import>macros.xml</import>
+  </macros>
+  <expand macro="requirements"/>
+  <expand macro="stdio"/>
+  <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
+@EXT_FOO@
+#import re
+
+## Preprocessing
+mkdir in &&
+cp '$in' 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)' &&
+mkdir in_compoundinfo &&
+cp '$in_compoundinfo' 'in_compoundinfo/${re.sub("[^\w\-_]", "_", $in_compoundinfo.element_identifier)}.$gxy2omsext($in_compoundinfo.ext)' &&
+mkdir out &&
+
+## Main program call
+
+set -o pipefail &&
+@EXECUTABLE@ -write_ctd ./ &&
+python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
+@EXECUTABLE@ -ini @EXECUTABLE@.ctd
+-in
+'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
+-in_compoundinfo
+'in_compoundinfo/${re.sub("[^\w\-_]", "_", $in_compoundinfo.element_identifier)}.$gxy2omsext($in_compoundinfo.ext)'
+-out
+'out/output.${out_type}'
+
+## Postprocessing
+&& mv 'out/output.${out_type}' '$out'
+#if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
+  && mv '@EXECUTABLE@.ctd' '$ctd_out'
+#end if]]></command>
+  <configfiles>
+    <inputs name="args_json" data_style="paths"/>
+    <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
+  </configfiles>
+  <inputs>
+    <param argument="-in" type="data" format="txt" label="SIRIUS project directory" help=" select txt data sets(s)"/>
+    <param argument="-in_compoundinfo" type="data" format="tabular" label="Compound info table (.tsv file)" help=" select tabular data sets(s)"/>
+    <param name="out_type" type="select" label="File type of output out (Assay library output file)">
+      <option value="tsv">tabular (tsv)</option>
+      <option value="traML">traml</option>
+      <option value="pqp">pqp</option>
+    </param>
+    <param argument="-ambiguity_resolution_mz_tolerance" type="float" value="10.0" label="Mz tolerance for the resolution of identification ambiguity over multiple files" help=""/>
+    <param argument="-ambiguity_resolution_rt_tolerance" type="float" value="10.0" label="RT tolerance in seconds for the resolution of identification ambiguity over multiple files" help=""/>
+    <param argument="-total_occurrence_filter" type="float" min="0.0" max="1.0" value="0.1" label="Filter compound based on total occurrence in analysed samples" help=""/>
+    <param argument="-fragment_annotation_score_threshold" type="float" min="0.0" max="1.0" value="0.8" label="Filters annotations based on the explained intensity of the peaks in a spectrum" help=""/>
+    <param argument="-method" type="select" label="Spectrum with the highest precursor intensity or a consensus spectrum is used for assay library construction (if no fragment annotation is used)" help="">
+      <option value="highest_intensity" selected="true">highest_intensity</option>
+      <option value="consensus_spectrum">consensus_spectrum</option>
+      <expand macro="list_string_san" name="method"/>
+    </param>
+    <param argument="-use_exact_mass" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Use exact mass for precursor and fragment annotations" help=""/>
+    <param argument="-exclude_ms2_precursor" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Excludes precursor in ms2 from transition list" help=""/>
+    <param argument="-use_known_unknowns" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Use features without identification information" help=""/>
+    <param argument="-min_transitions" type="integer" value="3" label="Minimal number of transitions" help=""/>
+    <param argument="-max_transitions" type="integer" value="6" label="Maximal number of transitions" help=""/>
+    <param argument="-transition_threshold" type="float" value="5.0" label="Further transitions need at least x% of the maximum intensity (default 5%)" help=""/>
+    <param argument="-decoy_generation" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Decoys will be generated using the fragmentation tree re-rooting approach" help="This option does only work in combination with the fragment annotation via Sirius"/>
+    <param argument="-decoy_generation_method" type="select" label="Uses different methods for decoy generation" help="Basis for the method is the fragmentation-tree re-rooting approach ('original'). This approach can be extended by using 'resolve_overlap', which will resolve overlapping target/decoy fragments by adding -CH2 mass to the overlapping decoy fragments. 'generate_missing_decoys' will add a -CH2 mass shift to the target fragments and use them as decoys if fragmentation-tree re-rooting failed. 'Both' combines the extended methods (resolve_overlap, generate_missing_decoys)">
+      <option value="original" selected="true">original</option>
+      <option value="resolve_overlap">resolve_overlap</option>
+      <option value="generate_missing_decoys">generate_missing_decoys</option>
+      <option value="both">both</option>
+      <expand macro="list_string_san" name="decoy_generation_method"/>
+    </param>
+    <param argument="-decoy_resolution_mz_tolerance" type="float" value="10.0" label="Mz tolerance for the resolution of overlapping m/z values for targets and decoys of one compound" help=""/>
+    <expand macro="adv_opts_macro">
+      <param argument="-ambiguity_resolution_mz_tolerance_unit" type="select" label="Unit of the ambiguity_resolution_mz_tolerance" help="">
+        <option value="ppm" selected="true">ppm</option>
+        <option value="Da">Da</option>
+        <expand macro="list_string_san" name="ambiguity_resolution_mz_tolerance_unit"/>
+      </param>
+      <param argument="-min_fragment_mz" type="float" value="0.0" label="Minimal m/z of a fragment ion choosen as a transition" help=""/>
+      <param argument="-max_fragment_mz" type="float" value="2000.0" label="Maximal m/z of a fragment ion choosen as a transition" help=""/>
+      <param argument="-decoy_resolution_mz_tolerance_unit" type="select" label="Unit of the decoy_resolution_mz_tolerance" help="">
+        <option value="ppm" selected="true">ppm</option>
+        <option value="Da">Da</option>
+        <expand macro="list_string_san" name="decoy_resolution_mz_tolerance_unit"/>
+      </param>
+      <param argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
+      <param argument="-test" type="hidden" value="False" label="Enables the test mode (needed for internal use only)" help="" optional="true">
+        <expand macro="list_string_san" name="test"/>
+      </param>
+    </expand>
+    <param name="OPTIONAL_OUTPUTS" type="select" optional="true" multiple="true" label="Optional outputs">
+      <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+    </param>
+  </inputs>
+  <outputs>
+    <data name="out" label="${tool.name} on ${on_string}: out" format="pqp">
+      <change_format>
+        <when input="out_type" value="traML" format="traml"/>
+        <when input="out_type" value="tsv" format="tabular"/>
+      </change_format>
+    </data>
+    <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
+      <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+  </outputs>
+  <tests>
+    <!-- TOPP_AssayGeneratorMetaboSirius_1 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="ambiguity_resolution_mz_tolerance_unit" value="ppm"/>
+        <param name="min_fragment_mz" value="0.0"/>
+        <param name="max_fragment_mz" value="2000.0"/>
+        <param name="decoy_resolution_mz_tolerance_unit" value="ppm"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="AssayGeneratorMetabo-in-SIRIUS-project"/>
+      <param name="in_compoundinfo" value="SiriusExport_2_output_compoundinfo.tsv" ftype="tabular"/>
+      <param name="out_type" value="tsv"/>
+      <output name="out" value="AssayGeneratorMetaboSirius_output_1.tsv" compare="sim_size" delta_frac="0.7" ftype="tabular"/>
+      <param name="ambiguity_resolution_mz_tolerance" value="10.0"/>
+      <param name="ambiguity_resolution_rt_tolerance" value="10.0"/>
+      <param name="total_occurrence_filter" value="0.1"/>
+      <param name="fragment_annotation_score_threshold" value="0.8"/>
+      <param name="method" value="highest_intensity"/>
+      <param name="use_exact_mass" value="false"/>
+      <param name="exclude_ms2_precursor" value="true"/>
+      <param name="use_known_unknowns" value="false"/>
+      <param name="min_transitions" value="3"/>
+      <param name="max_transitions" value="3"/>
+      <param name="transition_threshold" value="5.0"/>
+      <param name="decoy_generation" value="false"/>
+      <param name="decoy_generation_method" value="original"/>
+      <param name="decoy_resolution_mz_tolerance" value="10.0"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_AssayGeneratorMetaboSirius_2 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="ambiguity_resolution_mz_tolerance_unit" value="ppm"/>
+        <param name="min_fragment_mz" value="0.0"/>
+        <param name="max_fragment_mz" value="2000.0"/>
+        <param name="decoy_resolution_mz_tolerance_unit" value="ppm"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="AssayGeneratorMetabo-in-SIRIUS-project"/>
+      <param name="in_compoundinfo" value="SiriusExport_2_output_compoundinfo.tsv" ftype="tabular"/>
+      <param name="out_type" value="tsv"/>
+      <output name="out" value="AssayGeneratorMetaboSirius_output_2.tsv" compare="sim_size" delta_frac="0.7" ftype="tabular"/>
+      <param name="ambiguity_resolution_mz_tolerance" value="10.0"/>
+      <param name="ambiguity_resolution_rt_tolerance" value="10.0"/>
+      <param name="total_occurrence_filter" value="0.1"/>
+      <param name="fragment_annotation_score_threshold" value="0.8"/>
+      <param name="method" value="highest_intensity"/>
+      <param name="use_exact_mass" value="false"/>
+      <param name="exclude_ms2_precursor" value="true"/>
+      <param name="use_known_unknowns" value="true"/>
+      <param name="min_transitions" value="3"/>
+      <param name="max_transitions" value="3"/>
+      <param name="transition_threshold" value="5.0"/>
+      <param name="decoy_generation" value="false"/>
+      <param name="decoy_generation_method" value="original"/>
+      <param name="decoy_resolution_mz_tolerance" value="10.0"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_AssayGeneratorMetaboSirius_3 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="ambiguity_resolution_mz_tolerance_unit" value="ppm"/>
+        <param name="min_fragment_mz" value="0.0"/>
+        <param name="max_fragment_mz" value="2000.0"/>
+        <param name="decoy_resolution_mz_tolerance_unit" value="ppm"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="AssayGeneratorMetabo-in-SIRIUS-project"/>
+      <param name="in_compoundinfo" value="SiriusExport_2_output_compoundinfo.tsv" ftype="tabular"/>
+      <param name="out_type" value="tsv"/>
+      <output name="out" value="AssayGeneratorMetaboSirius_output_3.tsv" compare="sim_size" delta_frac="0.7" ftype="tabular"/>
+      <param name="ambiguity_resolution_mz_tolerance" value="10.0"/>
+      <param name="ambiguity_resolution_rt_tolerance" value="10.0"/>
+      <param name="total_occurrence_filter" value="0.1"/>
+      <param name="fragment_annotation_score_threshold" value="0.8"/>
+      <param name="method" value="highest_intensity"/>
+      <param name="use_exact_mass" value="false"/>
+      <param name="exclude_ms2_precursor" value="true"/>
+      <param name="use_known_unknowns" value="false"/>
+      <param name="min_transitions" value="3"/>
+      <param name="max_transitions" value="3"/>
+      <param name="transition_threshold" value="5.0"/>
+      <param name="decoy_generation" value="true"/>
+      <param name="decoy_generation_method" value="resolve_overlap"/>
+      <param name="decoy_resolution_mz_tolerance" value="10.0"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+  </tests>
+  <help><![CDATA[Assay library generation from a SIRIUS project directory (Metabolomics)
+
+
+For more information, visit https://openms.de/doxygen/release/3.2.0/html/TOPP_AssayGeneratorMetaboSirius.html]]></help>
+  <expand macro="references"/>
+</tool>
