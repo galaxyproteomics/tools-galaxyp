@@ -273,7 +273,7 @@ head -n 10 macros.xml
 for i in $(ls ctd/*ctd)
 do
     b=$(basename "$i" .ctd)
-    ./get_tests.py --id "$b" --cmake "$OPENMSGIT"/src/tests/topp/CMakeLists.txt "$OPENMSGIT"/src/tests/topp/THIRDPARTY/third_party_tests.cmake >> "$autotests"
+    ./get_tests.py --id "$b" --version "$VERSION" --cmake "$OPENMSGIT"/src/tests/topp/CMakeLists.txt "$OPENMSGIT"/src/tests/topp/THIRDPARTY/third_party_tests.cmake >> "$autotests"
     wc -l "$autotests"
 done
 echo "</macros>" >> "$autotests"
