@@ -161,6 +161,7 @@ def process_test_line(
     failing_tests: List[str],
     skip_list: List[str],
     diff_pairs: Dict[str, str],
+    version: str
 ) -> Optional[str]:
 
     re_test_id = re.compile(r"add_test\(\"([^\"]+)\" ([^ ]+) (.*)")
@@ -257,7 +258,7 @@ def process_test_line(
             formats_file="aux/filetypes.txt",
             # tool_conf_destination = "tool.conf",
             hardcoded_parameters="aux/hardcoded_params.json",
-            tool_version="3.1",
+            tool_version=version,
             test_only=True,
             test_unsniffable=[
                 "csv",
@@ -285,6 +286,7 @@ def process_test_line(
 parser = argparse.ArgumentParser(description="Create Galaxy tests for a OpenMS tools")
 parser.add_argument("--id", dest="id", help="tool id")
 parser.add_argument("--cmake", nargs="+", help="OpenMS test CMake files")
+parser.add_argument("--version", dest="version", help="OpenMS Version")
 args = parser.parse_args()
 sys.stderr.write(f"generate tests for {args.id}\n")
 
@@ -330,7 +332,7 @@ for cmake in args.cmake:
                 test_lines.append(line)
 
 for line in test_lines:
-    test = process_test_line(args.id, line, failing_tests, SKIP_LIST, diff_pairs)
+    test = process_test_line(args.id, line, failing_tests, SKIP_LIST, diff_pairs, args.version)
     if test:
         tests.append(test)
 
