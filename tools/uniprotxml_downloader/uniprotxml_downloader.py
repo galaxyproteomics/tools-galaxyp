@@ -27,9 +27,10 @@ def __main__():
     parser.add_option('-c', '--column', dest='column', type='int', default=0, help='The column (zero-based) in the tabular file that contains search search_ids')
     parser.add_option('-s', '--search-id', dest='search_id', action='append', default=[], help='ID to search in Uniprot')
     parser.add_option('-r', '--reviewed', dest='reviewed', help='Only uniprot reviewed entries')
-    parser.add_option('-f', '--format', dest='format', choices=['xml', 'fasta'], default='xml', help='output format')
+    parser.add_option('-f', '--format', dest='format', choices=['xml', 'fasta', 'tsv'], default='xml', help='output format')
     parser.add_option('-k', '--field', dest='field', choices=['taxonomy_name', 'taxonomy_id', 'accession'], default='taxonomy_name', help='query field')
     parser.add_option('-o', '--output', dest='output', help='file path for the downloaded uniprot xml')
+    parser.add_option('--output_columns', dest='output_columns', help='Columns to include in output (tsv)')
     parser.add_option('-d', '--debug', dest='debug', action='store_true', default=False, help='Turn on wrapper debugging to stderr')
     (options, args) = parser.parse_args()
     search_ids = set(options.search_id)
@@ -66,13 +67,14 @@ def __main__():
             while batch_url:
                 response = session.get(batch_url)
                 response.raise_for_status()
-                print(response.headers)
                 total = response.headers["x-total-results"]
                 release = response.headers["x-uniprot-release"]
                 yield response, total, release
                 batch_url = get_next_link(response.headers)
 
         params = {'size': 500, 'format': options.format, 'query': search_query + reviewed}
+        if options.output_columns:
+            params['fields'] = options.output_columns
         url = f'https://rest.uniprot.org/uniprotkb/search?{parse.urlencode(params)}'
         print(f"Downloading from:{url}")
 
