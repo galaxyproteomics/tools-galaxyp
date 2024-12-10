@@ -17,31 +17,7 @@ import sys
 from urllib import parse
 
 import requests
-from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
-
-DEFAULT_TIMEOUT = 5  # seconds
-retry_strategy = Retry(
-    total=5,
-    backoff_factor=2,
-    status_forcelist=[429, 500, 502, 503, 504],
-    allowed_methods=["HEAD", "GET", "OPTIONS", "POST"]
-)
-
-
-class TimeoutHTTPAdapter(HTTPAdapter):
-    def __init__(self, *args, **kwargs):
-        self.timeout = DEFAULT_TIMEOUT
-        if "timeout" in kwargs:
-            self.timeout = kwargs["timeout"]
-            del kwargs["timeout"]
-        super().__init__(*args, **kwargs)
-
-    def send(self, request, **kwargs):
-        timeout = kwargs.get("timeout")
-        if timeout is None:
-            kwargs["timeout"] = self.timeout
-        return super().send(request, **kwargs)
+from requests.adapters import HTTPAdapter, Retry
 
 
 def __main__():
@@ -51,9 +27,10 @@ def __main__():
     parser.add_option('-c', '--column', dest='column', type='int', default=0, help='The column (zero-based) in the tabular file that contains search search_ids')
     parser.add_option('-s', '--search-id', dest='search_id', action='append', default=[], help='ID to search in Uniprot')
     parser.add_option('-r', '--reviewed', dest='reviewed', help='Only uniprot reviewed entries')
-    parser.add_option('-f', '--format', dest='format', choices=['xml', 'fasta'], default='xml', help='output format')
+    parser.add_option('-f', '--format', dest='format', choices=['xml', 'fasta', 'tsv'], default='xml', help='output format')
     parser.add_option('-k', '--field', dest='field', choices=['taxonomy_name', 'taxonomy_id', 'accession'], default='taxonomy_name', help='query field')
     parser.add_option('-o', '--output', dest='output', help='file path for the downloaded uniprot xml')
+    parser.add_option('--output_columns', dest='output_columns', help='Columns to include in output (tsv)')
     parser.add_option('-d', '--debug', dest='debug', action='store_true', default=False, help='Turn on wrapper debugging to stderr')
     (options, args) = parser.parse_args()
     search_ids = set(options.search_id)
@@ -75,25 +52,35 @@ def __main__():
         dest_path = "uniprot_%s.xml" % '_'.join(search_ids)
     reviewed = " reviewed:%s" % options.reviewed if options.reviewed else ''
     try:
-        url = 'https://rest.uniprot.org/uniprotkb/stream'
-        query = "%s%s" % (search_query, reviewed)
-        params = {'query': query, 'format': options.format}
-        if options.debug:
-            print("%s ? %s" % (url, params), file=sys.stderr)
-        data = parse.urlencode(params)
-        print(f"Retrieving: {url}?{data}")
-        adapter = TimeoutHTTPAdapter(max_retries=retry_strategy)
+        re_next_link = re.compile(r'<(.+)>; rel="next"')
+        retries = Retry(total=5, backoff_factor=0.25, status_forcelist=[500, 502, 503, 504])
+        session = requests.Session()
+        session.mount("https://", HTTPAdapter(max_retries=retries))
 
-        http = requests.Session()
-        http.mount("https://", adapter)
-        response = http.get(url, params=params)
-        http.close()
+        def get_next_link(headers):
+            if "Link" in headers:
+                match = re_next_link.match(headers["Link"])
+                if match:
+                    return match.group(1)
 
-        if response.status_code != 200:
-            exit(f"Request failed with status code {response.status_code}:\n{response.text}")
+        def get_batch(batch_url):
+            while batch_url:
+                response = session.get(batch_url)
+                response.raise_for_status()
+                total = response.headers["x-total-results"]
+                release = response.headers["x-uniprot-release"]
+                yield response, total, release
+                batch_url = get_next_link(response.headers)
+
+        params = {'size': 500, 'format': options.format, 'query': search_query + reviewed}
+        if options.output_columns:
+            params['fields'] = options.output_columns
+        url = f'https://rest.uniprot.org/uniprotkb/search?{parse.urlencode(params)}'
+        print(f"Downloading from:{url}")
 
         with open(dest_path, 'w') as fh:
-            fh.write(response.text)
+            for batch, total, release in get_batch(url):
+                fh.write(batch.text)
 
         if options.format == 'xml':
             with open(dest_path, 'r') as contents:
@@ -112,11 +99,9 @@ def __main__():
                     else:
                         print("failed: Not a uniprot xml file", file=sys.stderr)
                         exit(1)
-        print("Search IDs:%s" % search_ids, file=sys.stdout)
-        if 'X-UniProt-Release' in response.headers:
-            print("UniProt-Release:%s" % response.headers['X-UniProt-Release'], file=sys.stdout)
-        if 'X-Total-Results' in response.headers:
-            print("Entries:%s" % response.headers['X-Total-Results'], file=sys.stdout)
+        print(f"Search IDs:{search_ids}")
+        print(f"UniProt-Release:{release}")
+        print(f"Entries:{total}")
     except Exception as e:
         exit("%s" % e)
 
