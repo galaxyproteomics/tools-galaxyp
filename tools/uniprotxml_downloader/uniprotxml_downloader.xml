@@ -1,7 +1,13 @@
-<tool id="uniprotxml_downloader" name="UniProt" version="2.4.0" profile="21.01">
+<tool id="uniprotxml_downloader" name="UniProt" version="2.5.0" profile="23.1">
     <description>download proteome as XML or fasta</description>
     <macros>
-        <import>macros.xml</import>
+        <xml name="query_field">
+            <param name="field" type="select" label="Field">
+                <option value="taxonomy_name">Taxonomy Name</option>
+                <option value="taxonomy_id">Taxonomy ID</option>
+                <option value="accession">Accession</option>
+            </param>
+        </xml>
     </macros>
     <requirements>
         <requirement type="package" version="2.25.1">requests</requirement>
@@ -28,7 +34,10 @@ python '$__tool_directory__/uniprotxml_downloader.py'
     --input='${input_method.id_file}'
     --column=#echo int(str($input_method.column)) - 1#
 #end if
---format $format
+--format $format_cond.format
+#if $format_cond.format == "tsv"
+    --output_columns #echo ','.join($format_cond.columns)
+#end if
 --output '${proteome}'
 ]]>
     </command>
@@ -36,8 +45,8 @@ python '$__tool_directory__/uniprotxml_downloader.py'
         <conditional name="input_method">
             <param name="input_choice" type="select" label="Select">
                 <option value="common">A Common Organism</option>
-                <option value="enter_ids">A manually entered list of Uniprot IDs</option>
-                <option value="history">A history dataset with a column containing Uniprot IDs</option>
+                <option value="enter_ids">A manually entered list of accessions or taxonomy IDs/names</option>
+                <option value="history">A history dataset with a column containing accessions or taxonomy IDs/names</option>
             </param>
             <when value="common">
                 <param name="organism" type="select" label="Common Organisms"
@@ -72,34 +81,91 @@ python '$__tool_directory__/uniprotxml_downloader.py'
                 <expand macro="query_field"/>
             </when>
         </conditional>
-        <param name="format" type="select" label="uniprot output format">
-            <option value="xml">xml</option>
-            <option value="fasta">fasta</option>
-        </param>
+        <conditional name="format_cond">
+            <param name="format" type="select" label="uniprot output format">
+                <option value="fasta">fasta</option>
+                <option value="tsv">TSV</option>
+                <option value="xml">xml</option>
+            </param>
+            <when value="fasta"/>
+            <when value="xml"/>
+            <when value="tsv">
+                <param name="columns" type="select" multiple="true">
+                    <options from_url="https://rest.uniprot.org/configure/uniprotkb/result-fields">
+                        <postprocess_expression type="ecma5.1"><![CDATA[${
+                            var options = [];
+                            inputs.forEach(function(group) {
+                                var groupName = group.groupName;
+                                group.fields.forEach(function(field) {
+                                    var D = ["accession", "id", "reviewed", "protein_name", "gene_names", "organism_name", "length"];
+                                    var selected = D.includes(field.name);
+                                    options.push([group.groupName + " - " + field.label, field.name, selected]);
+                                });
+                            });
+                            return options;
+                        }]]></postprocess_expression>
+                    </options>
+                </param>
+            </when>
+        </conditional>
     </inputs>
     <outputs>
-        <data format="uniprotxml" name="proteome" label="UniProt.${format}">
+        <data format="uniprotxml" name="proteome">
             <change_format>
-                <when input="format" value="fasta" format="fasta" />
+                <when input="format_cond.format" value="fasta" format="fasta" />
+                <when input="format_cond.format" value="tsv" format="tsv" />
             </change_format>
         </data>
     </outputs>
     <tests>
         <test>
-            <param name="input_choice" value="enter_ids"/>
-            <param name="ids" value="1566990"/>
-            <param name="format" value="xml"/>
-            <output name="proteome">
+            <conditional name="input_method">
+                <param name="input_choice" value="enter_ids"/>
+                <param name="ids" value="1566990"/>
+            </conditional>
+            <conditional name="format_cond">
+                <param name="format" value="xml"/>
+            </conditional>
+            <output name="proteome" ftype="uniprotxml">
                 <assert_contents>
                     <has_text text="&lt;/uniprot&gt;" />
                 </assert_contents>
             </output>
+            <assert_stdout>
+                <has_text_matching expression="UniProt-Release:\d{4}_\d{2}"/>
+                <has_line line="Entries:0"/> <!-- searching by name using an ID -->
+            </assert_stdout>
         </test>
         <test>
-            <param name="input_choice" value="enter_ids"/>
-            <param name="ids" value="765963,512562"/>
-            <param name="field" value="taxonomy_id"/>
-            <param name="format" value="fasta"/>
+            <conditional name="input_method">
+                <param name="input_choice" value="enter_ids"/>
+                <param name="ids" value="765963,512562"/>
+                <param name="field" value="taxonomy_id"/>
+            </conditional>
+            <conditional name="format_cond">
+                <param name="format" value="fasta"/>
+            </conditional>
+            <output name="proteome" ftype="fasta">
+                <assert_contents>
+                    <has_text text="Shi470" />
+                    <has_text text="PeCan4" />
+                </assert_contents>
+            </output>
+            <assert_stdout>
+                <has_text_matching expression="UniProt-Release:\d{4}_\d{2}"/>
+                <has_text_matching expression="Entries:\d+"/>
+                <has_line line="Entries:0" negate="true"/>
+            </assert_stdout>
+        </test>
+        <test>
+            <conditional name="input_method">
+                <param name="input_choice" value="enter_ids"/>
+                <param name="ids" value="Shi470,PeCan4"/>
+                <param name="field" value="taxonomy_name"/>
+            </conditional>
+            <conditional name="format_cond">
+                <param name="format" value="fasta" ftype="fasta"/>
+            </conditional>
             <output name="proteome">
                 <assert_contents>
                     <has_text text="Shi470" />
@@ -108,67 +174,138 @@ python '$__tool_directory__/uniprotxml_downloader.py'
             </output>
         </test>
         <test>
-            <param name="input_choice" value="enter_ids"/>
-            <param name="ids" value="Shi470,PeCan4"/>
-            <param name="field" value="taxonomy_name"/>
-            <param name="format" value="fasta"/>
-            <output name="proteome">
-                <assert_contents>
-                    <has_text text="Shi470" />
-                    <has_text text="PeCan4" />
-                </assert_contents>
-            </output>
-        </test>
-        <test>
-            <param name="input_choice" value="enter_ids"/>
-            <param name="ids" value="E1Q2I0,E1Q3C4"/>
-            <param name="field" value="accession"/>
-            <param name="format" value="fasta"/>
-            <output name="proteome">
+            <conditional name="input_method">
+                <param name="input_choice" value="enter_ids"/>
+                <param name="ids" value="E1Q2I0,E1Q3C4"/>
+                <param name="field" value="accession"/>
+            </conditional>
+            <conditional name="format_cond">
+                <param name="format" value="fasta"/>
+            </conditional>
+            <output name="proteome" ftype="fasta">
                 <assert_contents>
                     <has_text text="E1Q2I0" />
                     <has_text text="E1Q3C4" />
                 </assert_contents>
             </output>
+            <assert_stdout>
+                <has_text_matching expression="UniProt-Release:\d{4}_\d{2}"/>
+                <has_text_matching expression="Entries:\d+"/>
+                <has_line line="Entries:0" negate="true"/>
+            </assert_stdout>
         </test>
         <test>
-            <param name="input_choice" value="history"/>
-            <param name="id_file" value="Helicobacter_strains.tsv" ftype="tabular"/>
-            <param name="column" value="1"/>
-            <param name="field" value="taxonomy_name"/>
-            <param name="format" value="fasta"/>
-            <output name="proteome">
+            <conditional name="input_method">
+                <param name="input_choice" value="history"/>
+                <param name="id_file" value="Helicobacter_strains.tsv" ftype="tabular"/>
+                <param name="column" value="1"/>
+                <param name="field" value="taxonomy_name"/>
+            </conditional>
+            <conditional name="format_cond">
+                <param name="format" value="fasta"/>
+            </conditional>
+            <output name="proteome" ftype="fasta">
                 <assert_contents>
                     <has_text text="Shi470" />
                     <has_text text="PeCan4" />
                 </assert_contents>
             </output>
+            <assert_stdout>
+                <has_text_matching expression="UniProt-Release:\d{4}_\d{2}"/>
+                <has_text_matching expression="Entries:\d+"/>
+                <has_line line="Entries:0" negate="true"/>
+            </assert_stdout>
         </test>
         <test>
-            <param name="input_choice" value="history"/>
-            <param name="id_file" value="Helicobacter_strains_ids.tsv" ftype="tabular"/>
-            <param name="column" value="2"/>
-            <param name="field" value="taxonomy_id"/>
+            <conditional name="input_method">
+                <param name="input_choice" value="history"/>
+                <param name="id_file" value="Helicobacter_strains_ids.tsv" ftype="tabular"/>
+                <param name="column" value="2"/>
+                <param name="field" value="taxonomy_id"/>
+            </conditional>
+                <conditional name="format_cond">
             <param name="format" value="fasta"/>
-            <output name="proteome">
+            </conditional>
+            <output name="proteome" ftype="fasta">
                 <assert_contents>
                     <has_text text="Shi470" />
                     <has_text text="PeCan4" />
                 </assert_contents>
             </output>
+            <assert_stdout>
+                <has_text_matching expression="UniProt-Release:\d{4}_\d{2}"/>
+                <has_text_matching expression="Entries:\d+"/>
+                <has_line line="Entries:0" negate="true"/>
+            </assert_stdout>
         </test>
         <test>
-            <param name="input_choice" value="history"/>
-            <param name="id_file" value="Helicobacter_protein_accessions.tsv" ftype="tabular"/>
-            <param name="column" value="1"/>
-            <param name="field" value="accession"/>
-            <param name="format" value="fasta"/>
-            <output name="proteome">
+            <conditional name="input_method">
+                <param name="input_choice" value="history"/>
+                <param name="id_file" value="Helicobacter_protein_accessions.tsv" ftype="tabular"/>
+                <param name="column" value="1"/>
+                <param name="field" value="accession"/>
+            </conditional>
+            <conditional name="format_cond">
+                <param name="format" value="fasta"/>
+            </conditional>
+            <output name="proteome" ftype="fasta">
                 <assert_contents>
                     <has_text text="E1Q2I0" />
                     <has_text text="E1Q3C4" />
                 </assert_contents>
             </output>
+            <assert_stdout>
+                <has_text_matching expression="UniProt-Release:\d{4}_\d{2}"/>
+                <has_text_matching expression="Entries:\d+"/>
+                <has_line line="Entries:0" negate="true"/>
+            </assert_stdout>
+        </test>
+        <!-- tsv output -->
+        <test>
+            <conditional name="input_method">
+                <param name="input_choice" value="enter_ids"/>
+                <param name="ids" value="765963,512562"/>
+                <param name="field" value="taxonomy_id"/>
+            </conditional>
+            <conditional name="format_cond">
+                <param name="format" value="tsv"/>
+            </conditional>
+            <output name="proteome" ftype="tsv">
+                <assert_contents>
+                    <has_n_columns n="7" />
+                    <has_text text="Shi470" />
+                    <has_text text="PeCan4" />
+                </assert_contents>
+            </output>
+            <assert_stdout>
+                <has_text_matching expression="UniProt-Release:\d{4}_\d{2}"/>
+                <has_text_matching expression="Entries:\d+"/>
+                <has_line line="Entries:0" negate="true"/>
+            </assert_stdout>
+        </test>
+        <!-- tsv output non default columns-->
+        <test>
+            <conditional name="input_method">
+                <param name="input_choice" value="enter_ids"/>
+                <param name="ids" value="765963,512562"/>
+                <param name="field" value="taxonomy_id"/>
+            </conditional>
+            <conditional name="format_cond">
+                <param name="format" value="tsv"/>
+                <param name="columns" value="accession,sequence"/>
+            </conditional>
+            <output name="proteome" ftype="tsv">
+                <assert_contents>
+                    <has_n_columns n="2" />
+                    <has_text text="Shi470" negate="true"/>
+                    <has_text text="B2US14" />
+                </assert_contents>
+            </output>
+            <assert_stdout>
+                <has_text_matching expression="UniProt-Release:\d{4}_\d{2}"/>
+                <has_text_matching expression="Entries:\d+"/>
+                <has_line line="Entries:0" negate="true"/>
+            </assert_stdout>
         </test>
     </tests>
     <help>
