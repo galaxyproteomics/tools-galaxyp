@@ -1,14 +1,11 @@
-<tool id="cardinal_classification" name="MSI classification" version="@VERSION@.0">
+<tool id="cardinal_classification" name="MSI classification" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="22.05">
     <description>spatial classification of mass spectrometry imaging data</description>
     <macros>
         <import>macros.xml</import>
     </macros>
-    <expand macro="requirements">
-        <requirement type="package" version="2.3">r-gridextra</requirement>
-        <requirement type="package" version="3.3.5">r-ggplot2</requirement>
-    </expand>
+    <expand macro="requirements"/>
     <command detect_errors="exit_code">
-    <![CDATA[
+        <![CDATA[
 
         @INPUT_LINKING@
         cat '${MSI_segmentation}' &&
@@ -27,10 +24,12 @@ library(gridExtra)
 library(ggplot2)
 library(scales)
 
+
+
 @READING_MSIDATA@
 
-   msidata = as(msidata, "MSImageSet") ##coercion to MSImageSet
 
+msidata = as(msidata, "MSImagingExperiment")
 
 ## remove duplicated coordinates
 msidata <- msidata[,!duplicated(coord(msidata))]
@@ -62,8 +61,11 @@ title(main=paste0(Title," for file: \n\n", "$infile.display_name"))
 ## table with values
 grid.table(property_df, rows= NULL)
 
+int_matrix = as.matrix(spectra(msidata))
+NAcount = sum(is.na(int_matrix))
 
-if (npeaks > 0 && sum(is.na(spectra(msidata)))==0){
+
+if (npeaks > 0 && NAcount==0){
 
     opar <- par()
 
@@ -75,45 +77,46 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)))==0){
 
         ## load y response (will be needed in every training scenario)
 
-            y_tabular = read.delim("$type_cond.annotation_file", header = $type_cond.tabular_header, stringsAsFactors = FALSE)
+        y_tabular = read.delim("$type_cond.annotation_file", header = $type_cond.tabular_header, stringsAsFactors = FALSE)
 
-            #if str($type_cond.column_fold) == "None":
-            y_input = y_tabular[,c($type_cond.column_x, $type_cond.column_y, $type_cond.column_response)]
-            #else
-            y_input = y_tabular[,c($type_cond.column_x, $type_cond.column_y, $type_cond.column_response, $type_cond.column_fold)]
-            #end if
+        #if str($type_cond.column_fold) == "None":
+        y_input = y_tabular[,c($type_cond.column_x, $type_cond.column_y, $type_cond.column_response)]
+        #else
+        y_input = y_tabular[,c($type_cond.column_x, $type_cond.column_y, $type_cond.column_response, $type_cond.column_fold)]
+        #end if
+        colnames(y_input)[1:2] = c("x", "y")
 
-            colnames(y_input)[1:2] = c("x", "y")
-            ## merge with coordinate information of msidata
-            msidata_coordinates = cbind(coord(msidata)[,1:2], c(1:ncol(msidata)))
-            colnames(msidata_coordinates)[3] = "pixel_index"
-            merged_response = merge(msidata_coordinates, y_input, by=c("x", "y"), all.x=TRUE)
-            merged_response[is.na(merged_response)] = "NA"
-            merged_response = merged_response[order(merged_response\$pixel_index),]
-            conditions = as.factor(merged_response[,4])
-            y_vector = conditions
-            
+        ## merge with coordinate information of msidata
+        msidata_coordinates = cbind(coord(msidata)[,1:2], c(1:ncol(msidata)))
+        colnames(msidata_coordinates)[3] = "pixel_index"
+        merged_response = as.data.frame(merge(msidata_coordinates, y_input, by=c("x", "y"), all.x=TRUE))
+        merged_response[is.na(merged_response)] = "NA"
+        merged_response = merged_response[order(merged_response\$pixel_index),]
+        conditions = as.factor(merged_response[,4])
+        y_vector = conditions
+
         ## colours selection:
 
-	#if str($colour_conditional.colour_type) == "manual_colour"
-	    #set $color_string = ','.join(['"%s"' % $color.annotation_color for $color in $colour_conditional.colours])
-	    colourvector = c($color_string)
+	    #if str($colour_conditional.colour_type) == "manual_colour"
+	        #set $color_string = ','.join(['"%s"' % $color.annotation_color for $color in $colour_conditional.colours])
+	        colourvector = c($color_string)
 
-	#elif str($colour_conditional.colour_type) == "colourpalette"
-	    number_levels = (length(levels(conditions)))
-	    colourvector = noquote($colour_conditional.palettes)(number_levels)
+	    #elif str($colour_conditional.colour_type) == "colourpalette"
+	        number_levels = (length(levels(conditions)))
+	        colourvector = noquote($colour_conditional.palettes)(number_levels)
 
-	#end if
+	    #end if
 
-    ## plot of y vector
 
-    position_df = cbind(coord(msidata)[,1:2], conditions)
-    y_plot = ggplot(position_df, aes(x=x, y=y, fill=conditions))+
+        ## plot of y vector
+
+        position_df = as.data.frame(cbind(coord(msidata)[,1:2], conditions))
+        y_plot = ggplot(position_df, aes(x=x, y=y, fill=conditions))+
            geom_tile() +
            coord_fixed()+
            ggtitle("Distribution of the conditions")+
-		theme_bw()+
-                theme(
+		   theme_bw()+
+           theme(
 	       plot.background = element_blank(),
 	       panel.grid.major = element_blank(),
 	       panel.grid.minor = element_blank())+
@@ -121,35 +124,33 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)))==0){
            theme(legend.position="bottom",legend.direction="vertical")+
            guides(fill=guide_legend(ncol=4,byrow=TRUE))+
            scale_discrete_manual(aesthetics = c("colour", "fill"), values = colourvector)
-    coord_labels = aggregate(cbind(x,y)~conditions, data=position_df, mean, na.rm=TRUE, na.action="na.pass")
-    coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$conditions)
-    print(y_plot)
+        coord_labels = aggregate(cbind(x,y)~conditions, data=position_df, mean, na.rm=TRUE, na.action="na.pass")
+        ##coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$conditions)
+        print(y_plot)
 
+        ## plot of folds
 
-    ## plot of folds
+        #if str($type_cond.column_fold) != "None":
+            fold_vector = as.factor(merged_response[,5])
 
-    #if str($type_cond.column_fold) != "None":
-        fold_vector = as.factor(merged_response[,5])
-
-
-        position_df = cbind(coord(msidata)[,1:2], fold_vector)
-        fold_plot = ggplot(position_df, aes(x=x, y=y, fill=fold_vector))+
+            position_df = as.data.frame(cbind(coord(msidata)[,1:2], fold_vector))
+            fold_plot = ggplot(position_df, aes(x=x, y=y, fill=fold_vector))+
                geom_tile() +
                coord_fixed()+
                ggtitle("Distribution of the fold variable")+
-	       theme_bw()+
+	           theme_bw()+
                theme(
-	       plot.background = element_blank(),
-	       panel.grid.major = element_blank(),
-	       panel.grid.minor = element_blank())+
+	           plot.background = element_blank(),
+	           panel.grid.major = element_blank(),
+	           panel.grid.minor = element_blank())+
                theme(text=element_text(family="ArialMT", face="bold", size=15))+
                theme(legend.position="bottom",legend.direction="vertical")+
                guides(fill=guide_legend(ncol=4,byrow=TRUE))
-        coord_labels = aggregate(cbind(x,y)~fold_vector, data=position_df, mean, na.rm=TRUE, na.action="na.pass")
-        coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$fold_vector)
-        print(fold_plot)
+            coord_labels = aggregate(cbind(x,y)~fold_vector, data=position_df, mean, na.rm=TRUE, na.action="na.pass")
+            ##coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$fold_vector)
+            print(fold_plot)
 
-    #end if
+        #end if
 
         ######################## PLS #############################
         #if str( $type_cond.method_cond.class_method) == "PLS":
@@ -164,39 +165,48 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)))==0){
                 number_groups = length(levels(y_vector))
 
                 ## PLS-cvApply:
-                msidata.cv.pls <- cvApply(msidata, .y = y_vector, .fold = fold_vector, .fun = "PLS", ncomp = components)
+                msidata.cv.pls <- crossValidate(msidata, .y = y_vector,  .fold = fold_vector, .fun = "PLS", ncomp = components)
 
                 ## remove msidata to clean up RAM space
                 rm(msidata)
                 gc()
 
-                ## create table with summary
-                count = 1
-                summary_plscv = list()
-                accuracy_vector = numeric()
-                for (iteration in components){
-                    summary_iteration = summary(msidata.cv.pls)\$accuracy[[paste0("ncomp = ", iteration)]]
-                    ## change class of numbers into numeric to round and calculate mean
-                    summary_iteration2 = round(as.numeric(summary_iteration), digits=2)
-                    summary_matrix = matrix(summary_iteration2, nrow=4, ncol=number_groups)
-                    accuracy_vector[count] = mean(summary_matrix[1,]) ## vector with accuracies to find later maximum for plot
-                    summary_iteration3 = cbind(rownames(summary_iteration), summary_matrix) ## include rownames in table
-                    summary_iteration4 = t(summary_iteration3)
-                    summary_iteration5 = cbind(c(paste0("ncomp = ", iteration), colnames(summary_iteration)), summary_iteration4)
-                    summary_plscv[[count]] = summary_iteration5
-                    count = count+1} ## create list with summary table for each component
-                summary_plscv = do.call(rbind, summary_plscv)
-                summary_df = as.data.frame(summary_plscv)
-                colnames(summary_df) = NULL
+                ## create new summary table with cv results
+                results_list <- NULL
+                for (i in seq_along(components)) {
+                  ## extract accuracy, sensitivity, and specificity for the current i
+                  accuracy <- round(as.data.frame(msidata.cv.pls@resultData@listData[[i]][["accuracy"]]), digits=2)
+                  sensitivity <- round(as.data.frame(msidata.cv.pls@resultData@listData[[i]][["sensitivity"]]), digits=2)
+                  specificity <- round(as.data.frame(msidata.cv.pls@resultData@listData[[i]][["specificity"]]), digits=2)
 
-                ## plots
-                ## plot to find ncomp with highest accuracy
-                plot(components, accuracy_vector, ylab = "mean accuracy",type="o", main="Mean accuracy of PLS classification")
-                ncomp_max = components[which.max(accuracy_vector)] ## find ncomp with max. accuracy
-                ## one image for each sample/fold, 4 images per page
-                minimumy = min(coord(msidata.cv.pls)[,2])
-                maximumy = max(coord(msidata.cv.pls)[,2])
-                image(msidata.cv.pls, model = list(ncomp = ncomp_max),ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy),layout = c(1, 1), col=colourvector)
+                  ## combine accuracy, sensitivity, and specificity into one data frame
+                  result_df <- cbind(folds = rownames(accuracy), ncomp = i, accuracy, sensitivity, specificity)
+                  colnames(result_df) <- c("folds", "ncomp", "accuracy", "sensitivity", "specificity")
+                  rownames(result_df) <- NULL
+
+                  ## add column names with ncomp as first row to each dataframe
+                  col_names_row <- data.frame(folds = "folds", ncomp = paste0("ncomp", i), accuracy = "accuracy", sensitivity = "sensitivity", specificity = "specificity")
+                  result_df <- rbind(col_names_row, result_df)
+
+                  results_list[[i]] <- result_df
+                }
+
+                ## combine all data frames in the list into one data frame
+                results_df <- do.call(rbind, results_list)
+
+                summary_df <- results_df
+
+                ## new table and plot of accuracies over all components
+                summary.cv.pls = as.data.frame(summary(msidata.cv.pls))
+                plot(0,type='n',axes=FALSE,ann=FALSE)
+                summary.cv.pls.round <- round(summary.cv.pls, digits=2)
+                grid.table(summary.cv.pls.round, rows=NULL)
+
+                accuracy_plot = ggplot(summary.cv.pls, aes(x = ncomp, y = Accuracy)) +
+                  geom_point(color = "blue", size = 3) +   # Add points
+                  geom_line() +
+                  theme_bw()
+                print(accuracy_plot)
 
                 ## print table with summary in pdf
                 par(opar)
@@ -216,7 +226,7 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)))==0){
                             mincount = mincount+20
                             maxcount = maxcount+20
                         }else{### stop last page with last sample otherwise NA in table
-                            grid.table(summary_df[mincount:nrow(summary_df),], rows= NULL)} 
+                            grid.table(summary_df[mincount:nrow(summary_df),], rows= NULL)}
                     }
                 }
 
@@ -249,67 +259,116 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)))==0){
                             message("Possible problems: Multiple values for component were selected - this is only possible in cvapply but not for PLS analysis or component was set to 0 but minimum for component is 1)")
                             stop(call.=FALSE)
                         }
-                    )    
+                    )
 
                 ### pls analysis and coefficients plot
                 msidata.pls <- PLS(msidata, y = y_vector, ncomp = component, scale=$type_cond.method_cond.analysis_cond.pls_scale)
                 plot(msidata.pls, main="PLS coefficients per m/z", col=colourvector)
 
-                ### summary table of PLS
-                summary_table = summary(msidata.pls)\$accuracy[[paste0("ncomp = ",component)]]
-                summary_table2 = round(as.numeric(summary_table), digits=2)
-                summary_matrix = matrix(summary_table2, nrow=4, ncol=number_groups)
-                summary_table3 = cbind(rownames(summary_table), summary_matrix) ## include rownames in table
-                summary_table4 = t(summary_table3)
-                summary_table5 = cbind(c(paste0("ncomp = ", component), colnames(summary_table)), summary_table4)
+
+                ## create new summary table
+                summary_df = as.data.frame(summary(msidata.pls))
+                colnames(summary_df) = c("Number of Components", "Accuracy", "Sensitivity", "Specificity")
+                summary_df = round(summary_df, digits = 2)
                 plot(0,type='n',axes=FALSE,ann=FALSE)
-                grid.table(summary_table5, rows= NULL)
+                grid.table(summary_df, rows= NULL)
 
-                ### image of the best m/z
-                minimumy = min(coord(msidata)[,2])
-                maximumy = max(coord(msidata)[,2])
-                print(image(msidata, mz = topFeatures(msidata.pls)[1,1], normalize.image = "linear", contrast.enhance = "histogram",ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy), smooth.image="gaussian", main="best m/z heatmap"))
+                ## Yweights plot: represent the importance of each response variable in predicting each component
 
-                ### m/z and pixel information output
-                pls_classes = data.frame(msidata.pls\$classes[[1]])
+                #if $type_cond.method_cond.analysis_cond.PLS_Yweights == "TRUE":
+                Yweights = as.data.frame(msidata.pls@resultData@listData[[1]][["Yweights"]])
+                Yweights = round(Yweights, digits = 4)
+                Yweights.class <- cbind("class" = rownames(Yweights), Yweights)
+
+                plot(0,type='n',axes=FALSE,ann=FALSE)
+                text(x = 0.95, y = 1, "Yweights", cex = 2, font = 2)
+                grid.table(Yweights.class, rows= NULL)
+
+                #end if
+
+                coefficient_plot = plot(msidata.pls, values="coefficients", lwd=2, main = "PLS coefficients per m/z")
+                print(coefficient_plot)
+
+                ## m/z and pixel information output
+                pls_classes = data.frame(msidata.pls@resultData@listData[[1]][["class"]])
+
                 ## pixel names and coordinates
-                ## to remove potential sample names and z dimension, split at comma and take only x and y 
-                x_coords = unlist(lapply(strsplit(names(pixels(msidata)), ","), `[[`, 1))
-                y_coords = unlist(lapply(strsplit(names(pixels(msidata)), ","), `[[`, 2))
-                x_coordinates = gsub("x = ","",x_coords)
-                y_coordinates = gsub(" y = ","",y_coords)
-                pixel_names = paste0("xy_", x_coordinates, "_", y_coordinates)
+                x_coords = msidata_coordinates@listData[["x"]]
+                y_coords = msidata_coordinates@listData[["y"]]
+                pixel_names = paste0("xy_", x_coords, "_", y_coords)
 
                 ## remove msidata to clean up RAM space
                 rm(msidata)
                 gc()
-                pls_classes2 = data.frame(pixel_names, x_coordinates, y_coordinates, pls_classes)
-                colnames(pls_classes2) = c("pixel names", "x", "y","predicted condition")
-                pls_toplabels = topFeatures(msidata.pls, n=Inf)
-                pls_toplabels[,4:6] <-round(pls_toplabels[,4:6],6)
-                write.table(pls_toplabels, file="$mzfeatures", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+
+                pls_classes2 = data.frame(pixel_names, x_coords, y_coords, pls_classes, y_vector)
+                colnames(pls_classes2) = c("pixel_name", "x", "y","predicted_class", "annotated_class")
+                pls_classes2\$correct <- ifelse(pls_classes2\$predicted_class==pls_classes2\$annotated_class, T, F)
+
                 write.table(pls_classes2, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
 
+                correctness = round(sum(pls_classes2\$correct)/length(pls_classes2\$correct)*100,2)
+
+                ## replace topFeatures table with coefficients table
+                coefficients.df = as.data.frame(msidata.pls@resultData@listData[[1]][["coefficients"]])
+                row_names <- msidata.pls@featureData@mz
+                coefficients.df.rownames <- cbind("mz" = row_names, coefficients.df)
+                write.table(coefficients.df.rownames, file = "$coefficients", quote = FALSE, sep = "\t", row.names = FALSE)
+
+                ## add loadings and weights table
+                loadings.df = as.data.frame(msidata.pls@resultData@listData[[1]][["loadings"]])
+                loadings.df <- cbind("mz" = row_names, loadings.df)
+                new_names <- paste0("loadings_", names(loadings.df)[-1])
+                names(loadings.df)[-1] <- new_names
+
+                weights.df = as.data.frame(msidata.pls@resultData@listData[[1]][["weights"]])
+                weights.df <- cbind("mz" = row_names, weights.df)
+                new_names <- paste0("weights_", names(weights.df)[-1])
+                names(weights.df)[-1] <- new_names
+
+                ## combine loading and weights table
+                merged.load.wei = merge(loadings.df, weights.df, by = "mz")
+                write.table(merged.load.wei, file = "$loadings_weights", quote = FALSE, sep = "\t", row.names = FALSE)
+
                 ## image with predicted classes
-                prediction_df = cbind(coord(msidata.pls)[,1:2], pls_classes)
+                prediction_df = as.data.frame(cbind(coord(msidata.pls)[,1:2], pls_classes))
                 colnames(prediction_df) = c("x", "y", "predicted_classes")
 
                 prediction_plot = ggplot(prediction_df, aes(x=x, y=y, fill=predicted_classes))+
                        geom_tile() +
                        coord_fixed()+
                        ggtitle("Predicted condition for each pixel")+
-			theme_bw()+
-		        theme(
-		       plot.background = element_blank(),
-		       panel.grid.major = element_blank(),
-		       panel.grid.minor = element_blank())+
+			        theme_bw()+
+		            theme(
+		            plot.background = element_blank(),
+		            panel.grid.major = element_blank(),
+		            panel.grid.minor = element_blank())+
                        theme(text=element_text(family="ArialMT", face="bold", size=15))+
                        theme(legend.position="bottom",legend.direction="vertical")+
                        guides(fill=guide_legend(ncol=4,byrow=TRUE))+
                        scale_discrete_manual(aesthetics = c("colour", "fill"), values = colourvector)
                 coord_labels = aggregate(cbind(x,y)~predicted_classes, data=prediction_df, mean, na.rm=TRUE, na.action="na.pass")
-                coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$predicted_classes)
+                ##coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$predicted_classes)
                 print(prediction_plot)
+
+	            ## correctness plot
+	            correctness_plot = ggplot(pls_classes2, aes(x=x, y=y, fill=correct))+
+                       geom_tile() +
+                       coord_fixed()+
+                       ggtitle(paste0("Correctness of classification: ", correctness, " %"))+
+                       scale_fill_manual(values = c("TRUE" = "orange","FALSE" = "darkblue"))+
+		                theme_bw()+
+                        theme(
+    		            plot.background = element_blank(),
+   		                panel.grid.major = element_blank(),
+  		                panel.grid.minor = element_blank())+
+                        theme(text=element_text(family="ArialMT", face="bold", size=15))+
+                        theme(legend.position="bottom",legend.direction="vertical")+
+                        guides(fill=guide_legend(ncol=2,byrow=TRUE))
+               coord_labels = aggregate(cbind(x,y)~correct, data=pls_classes2, mean, na.rm=TRUE, na.action="na.pass")
+               ##coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$predicted_classes)
+               print(correctness_plot)
+
 
                 ### optional output as .RData
                 #if $output_rdata:
@@ -331,41 +390,52 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)))==0){
                 number_groups = length(levels(y_vector))
 
                 ## OPLS-cvApply:
-                msidata.cv.opls <- cvApply(msidata, .y = y_vector, .fold = fold_vector, .fun = "OPLS", ncomp = components)
-                ## for use to reduce msidata: keep.Xnew = $type_cond.method_cond.opls_analysis_cond.xnew_cv
+                msidata.cv.opls <- crossValidate(msidata, .y = y_vector, .fold = fold_vector, .fun = "OPLS", ncomp = components)
 
                 ## remove msidata to clean up RAM space
                 rm(msidata)
                 gc()
 
-                ## create table with summary
-                count = 1
-                summary_oplscv = list()
-                accuracy_vector = numeric()
-                for (iteration in components){
 
-                    summary_iteration = summary(msidata.cv.opls)\$accuracy[[paste0("ncomp = ", iteration)]]
-                    ## change class of numbers into numeric to round and calculate mean
-                    summary_iteration2 = round(as.numeric(summary_iteration), digits=2)
-                    summary_matrix = matrix(summary_iteration2, nrow=4, ncol=number_groups)
-                    accuracy_vector[count] = mean(summary_matrix[1,]) ## vector with accuracies to find later maximum for plot
-                    summary_iteration3 = cbind(rownames(summary_iteration), summary_matrix) ## include rownames in table
-                    summary_iteration4 = t(summary_iteration3)
-                    summary_iteration5 = cbind(c(paste0("ncomp = ", iteration), colnames(summary_iteration)), summary_iteration4)
-                    summary_oplscv[[count]] = summary_iteration5
-                    count = count+1} ## create list with summary table for each component
-                summary_oplscv = do.call(rbind, summary_oplscv)
-                summary_df = as.data.frame(summary_oplscv)
-                colnames(summary_df) = NULL
 
-                ## plots
-                ## plot to find ncomp with highest accuracy
-                plot(components, accuracy_vector, ylab = "mean accuracy", type="o", main="Mean accuracy of OPLS classification")
-                ncomp_max = components[which.max(accuracy_vector)] ## find ncomp with max. accuracy
-                ## one image for each sample/fold, 4 images per page
-                minimumy = min(coord(msidata.cv.opls)[,2])
-                maximumy = max(coord(msidata.cv.opls)[,2])
-                image(msidata.cv.opls, model = list(ncomp = ncomp_max),ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy),layout = c(1, 1), col=colourvector)
+                ## new table with cv results to replace the old summary table
+                results_list <- NULL
+                for (i in seq_along(components)) {
+                  ## extract accuracy, sensitivity, and specificity for the current i
+                  accuracy <- round(as.data.frame(msidata.cv.opls@resultData@listData[[i]][["accuracy"]]), digits=2)
+                  sensitivity <- round(as.data.frame(msidata.cv.opls@resultData@listData[[i]][["sensitivity"]]), digits=2)
+                  specificity <- round(as.data.frame(msidata.cv.opls@resultData@listData[[i]][["specificity"]]), digits=2)
+
+                  ## combine accuracy, sensitivity, and specificity into one data frame
+                  result_df <- cbind(folds = rownames(accuracy), ncomp = i, accuracy, sensitivity, specificity)
+                  colnames(result_df) <- c("folds", "ncomp", "accuracy", "sensitivity", "specificity")
+                  rownames(result_df) <- NULL
+
+                  ## add column names with ncomp as first row to each dataframe
+                  col_names_row <- data.frame(folds = "folds", ncomp = paste0("ncomp", i), accuracy = "accuracy", sensitivity = "sensitivity", specificity = "specificity")
+                  result_df <- rbind(col_names_row, result_df)
+
+                  results_list[[i]] <- result_df
+                }
+
+                ## combine all data frames in the list into one data frame
+                results_df <- do.call(rbind, results_list)
+
+                summary_df <- results_df
+
+                ## new table and plot of accuracies over all components
+                summary.cv.opls = as.data.frame(summary(msidata.cv.opls))
+
+                ## table with values
+                plot(0,type='n',axes=FALSE,ann=FALSE)
+                summary.cv.opls.round <- round(summary.cv.opls, digits=2)
+                grid.table(summary.cv.opls.round, rows=NULL)
+
+                accuracy_plot = ggplot(summary.cv.opls, aes(x = ncomp, y = Accuracy)) +
+                  geom_point(color = "blue", size = 3) +   # Add points
+                  geom_line() +
+                  theme_bw()
+                print(accuracy_plot)
 
                 ## print table with summary in pdf
                 par(opar)
@@ -385,7 +455,7 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)))==0){
                             mincount = mincount+20
                             maxcount = maxcount+20
                         }else{### stop last page with last sample otherwise NA in table
-                            grid.table(summary_df[mincount:nrow(summary_df),], rows= NULL)} 
+                            grid.table(summary_df[mincount:nrow(summary_df),], rows= NULL)}
                     }
                 }
 
@@ -418,75 +488,119 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)))==0){
                             message("Possible problems: Multiple values for component were selected - this is only possible in cvapply but not for OPLS analysis or component was set to 0 but minimum for component is 1)")
                             stop(call.=FALSE)
                         }
-                    )    
+                    )
 
                 ### opls analysis and coefficients plot
-                msidata.opls <- PLS(msidata, y = y_vector, ncomp = component, scale=$type_cond.method_cond.opls_analysis_cond.opls_scale)
-                ## to reduce msidata: keep.Xnew = $type_cond.method_cond.opls_analysis_cond.xnew
+                msidata.opls <- OPLS(msidata, y = y_vector, ncomp = component, scale=$type_cond.method_cond.opls_analysis_cond.opls_scale)
                 plot(msidata.opls, main="OPLS coefficients per m/z", col=colourvector)
 
-
-                ### summary table of OPLS
-                summary_table = summary(msidata.opls)\$accuracy[[paste0("ncomp = ",component)]]
-                summary_table2 = round(as.numeric(summary_table), digits=2)
-                summary_matrix = matrix(summary_table2, nrow=4, ncol=number_groups)
-                summary_table3 = cbind(rownames(summary_table), summary_matrix) ## include rownames in table
-                summary_table4 = t(summary_table3)
-                summary_table5 = cbind(c(paste0("ncomp = ", component), colnames(summary_table)), summary_table4)
+                ## create new summary table
+                summary_df = as.data.frame(summary(msidata.opls))
+                colnames(summary_df) = c("Number of Components", "Accuracy", "Sensitivity", "Specificity")
+                summary_df = round(summary_df, digits = 2)
                 plot(0,type='n',axes=FALSE,ann=FALSE)
-                grid.table(summary_table5, rows= NULL)
+                grid.table(summary_df, rows= NULL)
 
-                ### image of the best m/z
-                minimumy = min(coord(msidata)[,2])
-                maximumy = max(coord(msidata)[,2])
-                print(image(msidata, mz = topFeatures(msidata.opls)[1,1], normalize.image = "linear", contrast.enhance = "histogram",smooth.image="gaussian", ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy), main="best m/z heatmap"))
 
-                opls_classes = data.frame(msidata.opls\$classes[[1]])
+                #if $type_cond.method_cond.opls_analysis_cond.OPLS_Yweights == "TRUE":
+                ## Yweights plot: represent the importance of each response variable in predicting each component
+                Yweights = as.data.frame(msidata.opls@resultData@listData[[1]][["Yweights"]])
+                Yweights = round(Yweights, digits = 4)
+                Yweights.class <- cbind("class" = rownames(Yweights), Yweights)
+
+                plot(0,type='n',axes=FALSE,ann=FALSE)
+                text(x = 0.95, y = 1, "Yweights", cex = 2, font = 2)
+                grid.table(Yweights.class, rows= NULL)
+                #end if
+
+                coefficient_plot = plot(msidata.opls, values="coefficients", lwd=2, main = "OPLS coefficients per m/z")
+                print(coefficient_plot)
+
+                ## m/z and pixel information output
+                opls_classes = data.frame(msidata.opls@resultData@listData[[1]][["class"]])
+
                 ## pixel names and coordinates
-                ## to remove potential sample names and z dimension, split at comma and take only x and y
-                x_coords = unlist(lapply(strsplit(names(pixels(msidata)), ","), `[[`, 1))
-                y_coords = unlist(lapply(strsplit(names(pixels(msidata)), ","), `[[`, 2))
-                x_coordinates = gsub("x = ","",x_coords)
-                y_coordinates = gsub(" y = ","",y_coords)
-                pixel_names = paste0("xy_", x_coordinates, "_", y_coordinates)
+                x_coords = msidata_coordinates@listData[["x"]]
+                y_coords = msidata_coordinates@listData[["y"]]
+                pixel_names = paste0("xy_", x_coords, "_", y_coords)
 
-                opls_classes2 = data.frame(pixel_names, x_coordinates, y_coordinates, opls_classes)
-                colnames(opls_classes2) = c("pixel names", "x", "y","predicted condition")
+                opls_classes2 = data.frame(pixel_names, x_coords, y_coords, opls_classes, y_vector)
+                colnames(opls_classes2) = c("pixel names", "x", "y","predicted_class", "annotated_class")
+                opls_classes2\$correct <- ifelse(opls_classes2\$predicted_class == opls_classes2\$annotated_class, T, F)
+
+                write.table(opls_classes2, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+
+                correctness = round(sum(opls_classes2\$correct)/length(opls_classes2\$correct)*100,2)
 
                 ## remove msidata to clean up RAM space
                 rm(msidata)
                 gc()
 
-                opls_toplabels = topFeatures(msidata.opls, n=Inf)
-                opls_toplabels[,4:6] <-round(opls_toplabels[,4:6],6)
-                write.table(opls_toplabels, file="$mzfeatures", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
-                write.table(opls_classes2, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+                ## replace topFeatures table with coefficients table
+                coefficients.df = as.data.frame(msidata.opls@resultData@listData[[1]][["coefficients"]])
+                row_names <- msidata.opls@featureData@mz
+                coefficients.df.rownames <- cbind("mz" = row_names, coefficients.df)
+                write.table(coefficients.df.rownames, file = "$coefficients", quote = FALSE, sep = "\t", row.names = FALSE)
+
+                ## add loadings and weights table
+                loadings.df = as.data.frame(msidata.opls@resultData@listData[[1]][["loadings"]])
+                loadings.df <- cbind("mz" = row_names, loadings.df)
+                new_names <- paste0("loadings_", names(loadings.df)[-1])
+                names(loadings.df)[-1] <- new_names
+
+                weights.df = as.data.frame(msidata.opls@resultData@listData[[1]][["weights"]])
+                weights.df <- cbind("mz" = row_names, weights.df)
+                new_names <- paste0("weights_", names(weights.df)[-1])
+                names(weights.df)[-1] <- new_names
+
+                ## combine loading and weights table
+                merged.load.wei = merge(loadings.df, weights.df, by = "mz")
+                write.table(merged.load.wei, file = "$loadings_weights", quote = FALSE, sep = "\t", row.names = FALSE)
 
                 ## image with predicted classes
-                prediction_df = cbind(coord(msidata.opls)[,1:2], opls_classes)
+                prediction_df = as.data.frame(cbind(coord(msidata.opls)[,1:2], opls_classes))
                 colnames(prediction_df) = c("x", "y", "predicted_classes")
 
                 prediction_plot = ggplot(prediction_df, aes(x=x, y=y, fill=predicted_classes))+
                        geom_tile() +
                        coord_fixed()+
                        ggtitle("Predicted condition for each pixel")+
-			theme_bw()+
-			theme(
-		       plot.background = element_blank(),
-		       panel.grid.major = element_blank(),
-		       panel.grid.minor = element_blank())+
+			            theme_bw()+
+			            theme(
+		                plot.background = element_blank(),
+		                panel.grid.major = element_blank(),
+		                panel.grid.minor = element_blank())+
                        theme(text=element_text(family="ArialMT", face="bold", size=15))+
                        theme(legend.position="bottom",legend.direction="vertical")+
                        guides(fill=guide_legend(ncol=4,byrow=TRUE))+
                        scale_discrete_manual(aesthetics = c("colour", "fill"), values = colourvector)
                 coord_labels = aggregate(cbind(x,y)~predicted_classes, data=prediction_df, mean, na.rm=TRUE, na.action="na.pass")
-                coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$predicted_classes)
+                ##coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$predicted_classes)
                 print(prediction_plot)
 
-                ## optional output as .RData
-                #if $output_rdata:
+                ## correctness plot
+                 correctness_plot = ggplot(opls_classes2, aes(x=x, y=y, fill=correct))+
+                       geom_tile() +
+                       coord_fixed()+
+                       ggtitle(paste0("Correctness of classification: ", correctness, " %"))+
+                       scale_fill_manual(values = c("TRUE" = "orange","FALSE" = "darkblue"))+
+		                theme_bw()+
+                        theme(
+    		            plot.background = element_blank(),
+   		                panel.grid.major = element_blank(),
+  		                panel.grid.minor = element_blank())+
+                        theme(text=element_text(family="ArialMT", face="bold", size=15))+
+                        theme(legend.position="bottom",legend.direction="vertical")+
+                        guides(fill=guide_legend(ncol=2,byrow=TRUE))
+                coord_labels = aggregate(cbind(x,y)~correct, data=opls_classes2, mean, na.rm=TRUE, na.action="na.pass")
+                ##coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$predicted_classes)
+                print(correctness_plot)
+
+
+                 ## optional output as .RData
+                 #if $output_rdata:
                     save(msidata.opls, file="$classification_rdata")
-                #end if
+                 #end if
             #end if
 
 
@@ -502,52 +616,97 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)))==0){
                 number_groups = length(levels(y_vector))
 
                 ## SSC-cvApply:
-                msidata.cv.ssc <- cvApply(msidata, .y = y_vector,.fold = fold_vector,.fun = "spatialShrunkenCentroids", r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method = "$type_cond.method_cond.ssc_kernel_method")
+                msidata.cv.ssc <- crossValidate(msidata, .y = y_vector,.fold = fold_vector,.fun = "spatialShrunkenCentroids", r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method = "$type_cond.method_cond.ssc_kernel_method")
+
 
                 ## remove msidata to clean up RAM space
                 rm(msidata)
                 gc()
 
-                ## create table with summary
-                count = 1
-                summary_ssccv = list()
-                accuracy_vector = numeric()
-                iteration_vector = character()
-                for (iteration in names(msidata.cv.ssc@resultData[[1]][,1])){
+                ## new table and plot of accuracies over all components
+                summary.cv.ssc = as.data.frame(summary(msidata.cv.ssc))
+                summary.cv.ssc.round <- round(summary.cv.ssc, digits=2)
 
-                    summary_iteration = summary(msidata.cv.ssc)\$accuracy[[iteration]]
-                    ## change class of numbers into numeric to round and calculate mean
-                    summary_iteration2 = round(as.numeric(summary_iteration), digits=2)
-                    summary_matrix = matrix(summary_iteration2, nrow=4, ncol=number_groups)
-                    accuracy_vector[count] = mean(summary_matrix[1,]) ## vector with accuracies to find later maximum for plot
-                    summary_iteration3 = cbind(rownames(summary_iteration), summary_matrix) ## include rownames in table
-                    summary_iteration4 = t(summary_iteration3)
-                    summary_iteration5 = cbind(c(iteration, colnames(summary_iteration)), summary_iteration4)
-                    summary_ssccv[[count]] = summary_iteration5
-                    iteration_vector[count] = unlist(strsplit(iteration, "[,]"))[3]
-                    count = count+1} ## create list with summary table for each component
-                summary_ssccv = do.call(rbind, summary_ssccv)
-                summary_df = as.data.frame(summary_ssccv)
-                colnames(summary_df) = NULL
-
-                ## plot to find parameters with highest accuracy
-                plot(c($type_cond.method_cond.ssc_s),accuracy_vector[!duplicated(iteration_vector)], type="o",ylab="Mean accuracy", xlab = "Shrinkage parameter (s)", main="Mean accuracy of SSC classification")
-                best_params = names(msidata.cv.ssc@resultData[[1]][,1])[which.max(accuracy_vector)] ## find parameters with max. accuracy
-                r_value = as.numeric(substring(unlist(strsplit(best_params, ","))[1], 4))
-                s_value = as.numeric(substring(unlist(strsplit(best_params, ","))[3], 5)) ## remove space
-                minimumy = min(coord(msidata.cv.ssc)[,2])
-                maximumy = max(coord(msidata.cv.ssc)[,2])
-                image(msidata.cv.ssc, model = list( r = r_value, s = s_value ), ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy),layout=c(1,1), col=colourvector)
-
-		#if $type_cond.method_cond.ssc_analysis_cond.write_best_params:
-                	write.table(r_value, file="$best_r", quote = FALSE, row.names = FALSE, col.names=FALSE, sep = "\t")
-                	write.table(s_value, file="$best_s", quote = FALSE, row.names = FALSE, col.names=FALSE, sep = "\t")
-                #end if
-                
-                ## print table with summary in pdf
                 par(opar)
                 plot(0,type='n',axes=FALSE,ann=FALSE)
                 title(main="Summary for the different parameters\n", adj=0.5)
+                ## 20 rows fits in one page:
+                if (nrow(summary.cv.ssc.round)<=20){
+                    grid.table(summary.cv.ssc.round, rows= NULL)
+                }else{
+                    grid.table(summary.cv.ssc.round[1:20,], rows= NULL)
+                    mincount = 21
+                    maxcount = 40
+                    for (count20 in 1:(ceiling(nrow(summary.cv.ssc.round)/20)-1)){
+                        plot(0,type='n',axes=FALSE,ann=FALSE)
+                        if (maxcount <= nrow(summary.cv.ssc.round)){
+                            grid.table(summary.cv.ssc.round[mincount:maxcount,], rows= NULL)
+                            mincount = mincount+20
+                            maxcount = maxcount+20
+                        }else{### stop last page with last sample otherwise NA in table
+                            grid.table(summary.cv.ssc.round[mincount:nrow(summary.cv.ssc.round),], rows= NULL)}
+                    }
+                }
+
+                ## new accuracy plots
+                #if $type_cond.method_cond.ssc_analysis_cond.ssc_cv_accuracy_plot == "TRUE":
+                accuracy_plot = ggplot(summary.cv.ssc, aes(x = s, y = Accuracy)) +
+                  geom_point(color = "blue", size = 3) +   # Add points
+                  geom_line() +
+                  theme_bw() +
+                  facet_wrap(~ r)
+
+                print(accuracy_plot)
+
+                ## or as alternative accuracy plot for each r value on own page:
+                #elif $type_cond.method_cond.ssc_analysis_cond.ssc_cv_accuracy_plot == "FALSE":
+                unique_r_values <- unique(summary.cv.ssc\$r)
+
+                for (r_value in unique_r_values) {
+                  ## Create a subset for the current value of r
+                  plot_data <- subset(summary.cv.ssc, r == r_value)
+                  ## Create the accuracy plot for the current value of r
+                  accuracy_plot <- ggplot(plot_data, aes(x = s, y = Accuracy)) +
+                                     geom_point(color = "blue", size = 3) +   # Add points
+                                     geom_line() +
+                                     theme_bw() +
+                                     ggtitle(paste("Plot for r =", r_value)) +  # Add a title
+                                     theme(plot.title = element_text(hjust = 0.5))  # Center the title
+                  print(accuracy_plot)
+                }
+                #end if
+
+                ## table with cv values per fold group for each combination of r and s
+                r_s_df = as.data.frame(msidata.cv.ssc@modelData@listData)
+                r_s_df\$parameter = paste0("r=", r_s_df\$r, " and s=", r_s_df\$s)
+                iteration = seq_along(r_s_df\$parameter)
+
+                results_list <- NULL
+                for (i in iteration) {
+                    ## extract accuracy, sensitivity, and specificity for the current i
+                    accuracy <- round(as.data.frame(msidata.cv.ssc@resultData@listData[[i]][["accuracy"]]), digits=2)
+                    sensitivity <- round(as.data.frame(msidata.cv.ssc@resultData@listData[[i]][["sensitivity"]]), digits=2)
+                    specificity <- round(as.data.frame(msidata.cv.ssc@resultData@listData[[i]][["specificity"]]), digits=2)
+
+                    ## combine accuracy, sensitivity, and specificity into one data frame
+                    result_df <- cbind(folds = rownames(accuracy), parameter = r_s_df\$parameter[i], accuracy, sensitivity, specificity)
+                    colnames(result_df) <- c("folds", "parameter", "accuracy", "sensitivity", "specificity")
+                    rownames(result_df) <- NULL
+
+                    ## add column names as first row to each dataframe
+                    col_names_row <- data.frame(folds = "folds", parameter = "parameter", accuracy = "accuracy", sensitivity = "sensitivity", specificity = "specificity")
+                    result_df <- rbind(col_names_row, result_df)
+
+                    results_list[[i]] <- result_df
+                  }
+
+                ## combine all data frames in the list into one data frame
+                results_df <- do.call(rbind, results_list)
+                summary_df <- results_df
+
+                par(opar)
+                plot(0,type='n',axes=FALSE,ann=FALSE)
+                title(main="More advanced folds output table: \n Summary for each fold\n", adj=0.5)
                 ## 20 rows fits in one page:
                 if (nrow(summary_df)<=20){
                     grid.table(summary_df, rows= NULL)
@@ -562,9 +721,22 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)))==0){
                             mincount = mincount+20
                             maxcount = maxcount+20
                         }else{### stop last page with last sample otherwise NA in table
-                            grid.table(summary_df[mincount:nrow(summary_df),], rows= NULL)} 
+                            grid.table(summary_df[mincount:nrow(summary_df),], rows= NULL)}
                     }
                 }
+
+
+                ## new code to extract best r and s values
+                max_accuracy_index <- which.max(summary.cv.ssc\$Accuracy)
+
+                ## extract the corresponding values of "r" and "s"
+                highest_accuracy_r <- summary.cv.ssc\$r[max_accuracy_index]
+                highest_accuracy_s <- summary.cv.ssc\$s[max_accuracy_index]
+
+		        #if $type_cond.method_cond.ssc_analysis_cond.write_best_params:
+                	write.table(highest_accuracy_r, file="$best_r", quote = FALSE, row.names = FALSE, col.names=FALSE, sep = "\t")
+                	write.table(highest_accuracy_s, file="$best_s", quote = FALSE, row.names = FALSE, col.names=FALSE, sep = "\t")
+                #end if
 
                 ## optional output as .RData
                 #if $output_rdata:
@@ -579,13 +751,8 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)))==0){
                 number_groups = length(levels(y_vector))
 
                 ## SSC analysis and plot
-                msidata.ssc <- spatialShrunkenCentroids(msidata, y = y_vector,
-r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method = "$type_cond.method_cond.ssc_kernel_method")
-                plot(msidata.ssc, mode = "tstatistics", model = list("r" = c($type_cond.method_cond.ssc_r), "s" = c($type_cond.method_cond.ssc_s)), 
-			col=colourvector, lwd=2)
-
-                ### summary table SSC
-                ##############summary_table = summary(msidata.ssc)
+                msidata.ssc <- spatialShrunkenCentroids(msidata, y = y_vector, r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method = "$type_cond.method_cond.ssc_kernel_method")
+                print(plot(msidata.ssc, values = "statistic", model = list(r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s)), col=colourvector, lwd=2))
 
                 ### stop if multiple values for r and s were used as input
                 tryCatch(
@@ -602,81 +769,76 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
                             message("Possible problem: multiple values for r or s selected - this is only possible in cvapply but not for spatial shrunken centroid analysis)")
                             stop(call.=FALSE)
                         }
-                    )    
+                    )
 
-                summary_table = summary(msidata.ssc)\$accuracy[[names(msidata.ssc@resultData)]]
-                summary_table2 = round(as.numeric(summary_table), digits=2)
-                summary_matrix = matrix(summary_table2, nrow=4, ncol=number_groups)
-                summary_table3 = cbind(rownames(summary_table), summary_matrix) ## include rownames in table
-                summary_table4 = t(summary_table3)
-                summary_table5 = cbind(c(names(msidata.ssc@resultData),colnames(summary_table)), summary_table4)
+                summary_df = as.data.frame(summary(msidata.ssc))
+                summary_df = round(summary_df, digits=3)
+                colnames(summary_df) = c("Radius r", "Shrinkage s", "Features/Class", "Accuracy", "Sensitivity", "Specificity")
                 plot(0,type='n',axes=FALSE,ann=FALSE)
-                grid.table(summary_table5, rows= NULL)
+                grid.table(summary_df, rows= NULL)
 
-                ### image of the best m/z
+                ## image of the best m/z
                 minimumy = min(coord(msidata)[,2])
                 maximumy = max(coord(msidata)[,2])
                 print(image(msidata, mz = topFeatures(msidata.ssc)[1,1], normalize.image = "linear", contrast.enhance = "histogram",smooth.image="gaussian", ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy), main="best m/z heatmap"))
 
                 ## m/z and pixel information output
-                ssc_classes = data.frame(msidata.ssc\$classes[[1]])
-                ssc_probabilities = data.frame(msidata.ssc\$probabilities[[1]])
-
-                ## pixel names and coordinates
-                ## to remove potential sample names and z dimension, split at comma and take only x and y 
-                x_coords = unlist(lapply(strsplit(names(pixels(msidata)), ","), `[[`, 1))
-                y_coords = unlist(lapply(strsplit(names(pixels(msidata)), ","), `[[`, 2))
-                x_coordinates = gsub("x = ","",x_coords)
-                y_coordinates = gsub(" y = ","",y_coords)
-                pixel_names = paste0("xy_", x_coordinates, "_", y_coordinates)
+                x_coords = msidata_coordinates@listData[["x"]]
+                y_coords = msidata_coordinates@listData[["y"]]
+                pixel_names = paste0("xy_", x_coords, "_", y_coords)
 
 
                 ## remove msidata to clean up RAM space
                 rm(msidata)
                 gc()
 
-                ssc_classes2 = data.frame(pixel_names, x_coordinates, y_coordinates, ssc_classes, ssc_probabilities)
-                colnames(ssc_classes2) = c("pixel names", "x", "y","predicted condition", levels(msidata.ssc\$classes[[1]]))
-                ssc_toplabels = topFeatures(msidata.ssc, n=Inf)
-                ssc_toplabels[,6:9] <-round(ssc_toplabels[,6:9],6)
+
+                ## toplabel (m/z features output)
+                ssc_toplabels = topFeatures(msidata.ssc, n=$type_cond.method_cond.ssc_toplabels)
+                ssc_toplabels@listData[["centers"]] = round (ssc_toplabels@listData[["centers"]], digits = 6)
+                ssc_toplabels@listData[["statistic"]] = round (ssc_toplabels@listData[["statistic"]], digits = 6)
                 write.table(ssc_toplabels, file="$mzfeatures", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+
+                print(image(msidata.ssc, model=list(r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s)), ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy), col=colourvector, values="class", layout=c(1,1), main="Class Prediction"))
+                print(image(msidata.ssc, model=list(r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s)), ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy), col=colourvector, values="probability", layout=c(1,1), main="Class Probabilities"))
+
+
+                ## pixel output with correctness
+                ssc_classes = data.frame(msidata.ssc@resultData@listData[[1]][["class"]])
+                colnames(ssc_classes) = "predicted_class"
+                ssc_classes\$predicted_class = ifelse(is.na(ssc_classes\$predicted_class), "NA", as.character(ssc_classes\$predicted_class))
+                ssc_probabilities = data.frame(msidata.ssc@resultData@listData[[1]][["probability"]])
+
+
+                ssc_classes2 = data.frame(pixel_names, x_coords, y_coords, ssc_classes, ssc_probabilities, y_vector)
+                colnames(ssc_classes2) = c("pixel_names", "x", "y","predicted_classes", levels(msidata.ssc@resultData@listData[[1]][["class"]]), "annotated_class")
+                ssc_classes2\$correct<- ifelse(ssc_classes2\$predicted_classes==ssc_classes2\$annotated_class, T, F)
+	            correctness = round(sum(ssc_classes2\$correct, na.rm = TRUE)/length(ssc_classes2\$correct)*100,2)
+
                 write.table(ssc_classes2, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
-     
-                image(msidata.ssc, model=list(r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s)), ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy),
-			col=colourvector, mode="classes", layout=c(1,1), main="Class Prediction")
-                image(msidata.ssc, model=list(r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s)), ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy),
-			col=colourvector, mode="probabilities", layout=c(1,1), main="Class probabilities")
 
-                
-               ## image with right and wrong classes: 
-               prediction_df = cbind(coord(msidata.ssc)[,1:2], ssc_classes)
-               colnames(prediction_df) = c("x", "y", "predicted_classes")
-               comparison_df = cbind(prediction_df, y_vector)
-               comparison_df\$correct<- ifelse(comparison_df\$predicted_classes==comparison_df\$y_vector, T, F)
-	       correctness = round(sum(comparison_df\$correct)/length(comparison_df\$correct)*100,2)
-
-               correctness_plot = ggplot(comparison_df, aes(x=x, y=y, fill=correct))+
+	            correctness_plot = ggplot(ssc_classes2, aes(x=x, y=y, fill=correct))+
                        geom_tile() +
                        coord_fixed()+
-                       ggtitle(paste0("Correctness of classification: ",correctness, "%"))+
+                       ggtitle(paste0("Correctness of classification: ", correctness, " %"))+
                        scale_fill_manual(values = c("TRUE" = "orange","FALSE" = "darkblue"))+
-		       theme_bw()+
-                       theme(
-    		       plot.background = element_blank(),
-   		       panel.grid.major = element_blank(),
-  		       panel.grid.minor = element_blank())+
-                       theme(text=element_text(family="ArialMT", face="bold", size=15))+
-                       theme(legend.position="bottom",legend.direction="vertical")+
-                       guides(fill=guide_legend(ncol=2,byrow=TRUE))
-               ## coord_labels = aggregate(cbind(x,y)~correct, data=comparison_df, mean, na.rm=TRUE, na.action="na.pass")
+		                theme_bw()+
+                        theme(
+    		            plot.background = element_blank(),
+   		                panel.grid.major = element_blank(),
+  		                panel.grid.minor = element_blank())+
+                        theme(text=element_text(family="ArialMT", face="bold", size=15))+
+                        theme(legend.position="bottom",legend.direction="vertical")+
+                        guides(fill=guide_legend(ncol=2,byrow=TRUE))
+                coord_labels = aggregate(cbind(x,y)~correct, data=ssc_classes2, mean, na.rm=TRUE, na.action="na.pass")
                 ##coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$predicted_classes)
                 print(correctness_plot)
+
 
                 ## optional output as .RData
                 #if $output_rdata:
                     save(msidata.ssc, file="$classification_rdata")
                 #end if
-
             #end if
         #end if
 
@@ -696,74 +858,119 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
             new_y_tabular = read.delim("$type_cond.new_y_values_cond.new_response_file", header = $type_cond.new_y_values_cond.new_tabular_header, stringsAsFactors = FALSE)
             new_y_input = new_y_tabular[,c($type_cond.new_y_values_cond.column_new_x, $type_cond.new_y_values_cond.column_new_y, $type_cond.new_y_values_cond.column_new_response)]
             colnames(new_y_input)[1:2] = c("x", "y")
+
             ## merge with coordinate information of msidata
             msidata_coordinates = cbind(coord(msidata)[,1:2], c(1:ncol(msidata)))
             colnames(msidata_coordinates)[3] = "pixel_index"
-            merged_response = merge(msidata_coordinates, new_y_input, by=c("x", "y"), all.x=TRUE)
+            merged_response = as.data.frame(merge(msidata_coordinates, new_y_input, by=c("x", "y"), all.x=TRUE))
             merged_response[is.na(merged_response)] = "NA"
             merged_response = merged_response[order(merged_response\$pixel_index),]
             new_y_vector = as.factor(merged_response[,4])
-            prediction = predict(training_data,msidata, newy = new_y_vector)
-            
+
+            prediction = predict(training_data, msidata, newy = new_y_vector)
+
             ##numbers of levels for colour selection
             number_levels = length(levels(new_y_vector))
-            
-	    ## Summary table prediction
-	    summary_table = summary(prediction)\$accuracy[[names(prediction@resultData)]]
-	    summary_table2 = round(as.numeric(summary_table), digits=2)
-	    summary_matrix = matrix(summary_table2, nrow=4, ncol=ncol(summary_table))
-	    summary_table3 = cbind(rownames(summary_table), summary_matrix) ## include rownames in table
-	    summary_table4 = t(summary_table3)
-	    summary_table5 = cbind(c(names(prediction@resultData),colnames(summary_table)), summary_table4)
-	    plot(0,type='n',axes=FALSE,ann=FALSE)
-	   grid.table(summary_table5, rows= NULL)
 
+	        ##new summary table
+
+	        ##if SSC classification, summary table has more results:
+	        #if str($type_cond.classification_type) == "SSC_classifier":
+            print("SSC classification summary")
+
+            summary_df = as.data.frame(summary(prediction))
+            summary_df = round(summary_df, digits=3)
+            colnames(summary_df) = c("Radius r", "Shrinkage s", "Features/Class", "Accuracy", "Sensitivity", "Specificity")
+            plot(0,type='n',axes=FALSE,ann=FALSE)
+            grid.table(summary_df, rows= NULL)
+
+	        ## else PLS or OPLS classifier:
+            #else
+            print("PLS/OPLS classifier")
+            summary_df = as.data.frame(summary(prediction))
+            colnames(summary_df) = c("Component", "Accuracy", "Sensitivity", "Specificity")
+            summary_df = round(summary_df, digits = 2)
+            plot(0,type='n',axes=FALSE,ann=FALSE)
+            grid.table(summary_df, rows= NULL)
+
+            #end if
+
+
+        ##else for prediction without a new annotation (no calculation of accuracy):
         #else
-            prediction = predict(training_data,msidata)
-            number_levels = length(levels(training_data\$y[[1]]))
+            prediction = predict(training_data, msidata)
+            number_levels = length(levels(training_data@resultData@listData[[1]][["class"]]))
         #end if
-        
+
         ## colours selection:
 
-	#if str($colour_conditional.colour_type) == "manual_colour"
+	    #if str($colour_conditional.colour_type) == "manual_colour"
 	    #set $color_string = ','.join(['"%s"' % $color.annotation_color for $color in $colour_conditional.colours])
-	    colourvector = c($color_string)
+	        colourvector = c($color_string)
 
-	#elif str($colour_conditional.colour_type) == "colourpalette"
+	    #elif str($colour_conditional.colour_type) == "colourpalette"
 	    colourvector = noquote($colour_conditional.palettes)(number_levels)
 
-	#end if
+	    #end if
 
         ## m/z and pixel information output
-        predicted_classes = data.frame(prediction\$classes[[1]])
-        pixel_names = gsub(", y = ", "_", names(pixels(msidata)))
-        pixel_names = gsub(" = ", "y_", pixel_names)
-        x_coordinates = matrix(unlist(strsplit(pixel_names, "_")), ncol=3, byrow=TRUE)[,2]
-        y_coordinates = matrix(unlist(strsplit(pixel_names, "_")), ncol=3, byrow=TRUE)[,3]
-        predicted_classes2 = data.frame(pixel_names, x_coordinates, y_coordinates, predicted_classes)
+        predicted_classes = data.frame(prediction@resultData@listData[[1]][["class"]])
+        msidata_coordinates = cbind(coord(msidata)[,1:2], c(1:ncol(msidata)))
+        colnames(msidata_coordinates)[3] = "pixel_index"
+        x_coords = msidata_coordinates@listData[["x"]]
+        y_coords = msidata_coordinates@listData[["y"]]
+        pixel_names = paste0("xy_", x_coords, "_", y_coords)
+        predicted_classes2 = data.frame(pixel_names, x_coords, y_coords, predicted_classes)
         colnames(predicted_classes2) = c("pixel names", "x", "y","predicted condition")
-        predicted_toplabels = topFeatures(prediction, n=Inf)
-        if (colnames(predicted_toplabels)[4] == "coefficients"){
-            predicted_toplabels[,4:6] <-round(predicted_toplabels[,4:6],5)
-        }else{
-            predicted_toplabels[,6:9] <-round(predicted_toplabels[,6:9],5)}
-            
+
+        ##topFeatures only available for SSC; for PLS and OPLS coefficients loading and weights are provided
+
+        #if str($type_cond.classification_type) == "SSC_classifier":
+        predicted_toplabels = topFeatures(prediction, n=$type_cond.classification_type_cond.predicted_toplabels)
+        predicted_toplabels <- as.data.frame(predicted_toplabels)
+        predicted_toplabels[,6:7] <-round(predicted_toplabels[,6:7], digits = 5)
+        write.table(predicted_toplabels, file="$mzfeatures", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+
+        #else
+	    ## if PLS or OPLS classifier, coefficients, loadings, and weights instead of topFeatures
+	    coefficients.df = as.data.frame(prediction@resultData@listData[[1]][["coefficients"]])
+        row_names <- prediction@featureData@mz
+        coefficients.df <- cbind("mz" = row_names, coefficients.df)
+        write.table(coefficients.df, file = "$coefficients", quote = FALSE, sep = "\t", row.names = FALSE)
+
+        ## add loadings and weights table
+        loadings.df = as.data.frame(prediction@resultData@listData[[1]][["loadings"]])
+        loadings.df <- cbind("mz" = row_names, loadings.df)
+        new_names <- paste0("loadings_", names(loadings.df)[-1])
+        names(loadings.df)[-1] <- new_names
+
+        weights.df = as.data.frame(prediction@resultData@listData[[1]][["weights"]])
+        weights.df <- cbind("mz" = row_names, weights.df)
+        new_names <- paste0("weights_", names(weights.df)[-1])
+        names(weights.df)[-1] <- new_names
+
+        ## combine loading and weights table
+        merged.load.wei = merge(loadings.df, weights.df, by = "mz")
+        write.table(merged.load.wei, file = "$loadings_weights", quote = FALSE, sep = "\t", row.names = FALSE)
+
+        #end if
+
         ##predicted classes
-        prediction_df = cbind(coord(prediction)[,1:2], predicted_classes)
+        prediction_df = as.data.frame(cbind(coord(prediction)[,1:2], predicted_classes))
         colnames(prediction_df) = c("x", "y", "predicted_classes")
-            
+
         #if str($type_cond.classification_type) == "SSC_classifier":
             ## this seems to work only for SSC, therefore overwrite tables
-            predicted_probabilities = data.frame(prediction\$probabilities[[1]])
-            predicted_classes2 = data.frame(pixel_names, x_coordinates, y_coordinates, predicted_classes, predicted_probabilities)
-            colnames(predicted_classes2) = c("pixel names", "x", "y","predicted condition", levels(prediction\$classes[[1]]))
+            predicted_probabilities = data.frame(prediction@resultData@listData[[1]][["probability"]])
+            predicted_classes2 = data.frame(pixel_names, x_coords, y_coords, predicted_classes, predicted_probabilities)
+            colnames(predicted_classes2) = c("pixel names", "x", "y","predicted condition", levels(prediction@resultData@listData[[1]][["class"]]))
             ## also image modes are specific to SSC
-            image(prediction, mode="classes", layout=c(1,1), main="Class", ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy), col=colourvector)
-            image(prediction, mode="probabilities", layout=c(1,1), main="Class probabilities",ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy), col=colourvector)
+            print(predicted_classes2[1:5,])
+            print(image(prediction, values="class", layout=c(1,1), main="Class Prediction", ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy), col=colourvector))
+            print(image(prediction, values="probability", layout=c(1,1), main="Class Probabilities",ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy), col=colourvector))
 
-	#else
-        
-                prediction_plot = ggplot(prediction_df, aes(x=x, y=y, fill=predicted_classes))+
+	    #else
+            prediction_plot = ggplot(prediction_df, aes(x=x, y=y, fill=predicted_classes))+
         	geom_tile()+
         	coord_fixed()+
         	ggtitle("Predicted condition for each spectrum")+
@@ -777,34 +984,39 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
         	guides(fill=guide_legend(ncol=4, byrow=TRUE))+
         	scale_discrete_manual(aesthetics = c("colour", "fill"), values = colourvector)
         	coord_labels = aggregate(cbind(x,y)~predicted_classes, data=prediction_df, mean, na.rm=TRUE, na.action="na.pass")
-        	coord_labels\$file_number = gsub( "_.*§", "", coord_labels\$predicted_classes)
+        	##coord_labels\$file_number = gsub( "_.*§", "", coord_labels\$predicted_classes)
         	print(prediction_plot)
         #end if
-        
-        write.table(predicted_toplabels, file="$mzfeatures", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
-        write.table(predicted_classes2, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
 
-
-
-        
         #if str($type_cond.new_y_values_cond.new_y_values) == "new_response":
-        ## image with right and wrong classes:     
+        ## image with right and wrong classes:
+	    comparison_df = as.data.frame(cbind(prediction_df, new_y_vector))
+	    colnames(comparison_df) = c("x", "y", "predicted_class", "annotated_class")
+	    comparison_df\$predicted_class = ifelse(is.na(comparison_df\$predicted_class), "NA", as.character(comparison_df\$predicted_class))
+        comparison_df\$correct <- ifelse(comparison_df\$predicted_class==comparison_df\$annotated_class, T, F)
+	    correctness = round(sum(comparison_df\$correct, na.rm = TRUE)/length(comparison_df\$correct)*100,2)
 
-	comparison_df = cbind(prediction_df, new_y_vector)
-	comparison_df\$correct<- ifelse(comparison_df\$predicted_classes==comparison_df\$new_y_vector, T, F)
-        correctness = round(sum(comparison_df\$correct)/length(comparison_df\$correct)*100,2)
-
-	correctness_plot = ggplot(comparison_df, aes(x=x, y=y, fill=correct))+
+	    correctness_plot = ggplot(comparison_df, aes(x=x, y=y, fill=correct))+
                        geom_tile()+
                        scale_fill_manual(values = c("TRUE" = "orange","FALSE" = "darkblue"))+
                        coord_fixed()+
-                       ggtitle(paste0("Correctness of classification: ",correctness, "%"))+
+                       ggtitle(paste0("Correctness of classification: ", correctness, " %"))+
                        theme_bw()+
                        theme(text=element_text(family="ArialMT", face="bold", size=15))+
                        theme(legend.position="bottom",legend.direction="vertical")+
                        guides(fill=guide_legend(ncol=2,byrow=TRUE))
         print(correctness_plot)
-        #end if      
+        #end if
+
+        ## pixel output
+        #if str($type_cond.new_y_values_cond.new_y_values) == "new_response":
+            print("new response output")
+            write.table(comparison_df, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+
+        #else
+            write.table(predicted_classes2, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+
+        #end if
 
         ## optional output as .RData
         #if $output_rdata:
@@ -817,6 +1029,8 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
     dev.off()
 
 }else{
+    plot.new()
+    text(0.5, 0.5, "Inputfile has no intensities > 0  \n or contains NA values.", cex = 1.5)
     print("Inputfile has no intensities > 0 or contains NA values")
     dev.off()
 }
@@ -864,8 +1078,9 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
                                 <param name="pls_comp" type="integer" value="5"
                                        label="The optimal number of PLS-DA components as indicated by cross-validations (minimum is 1)" help="Run cvApply first to optain optimal number of PLS-DA components"/>
                                 <param name="pls_scale" type="boolean" label="Data scaling" truevalue="TRUE" falsevalue="FALSE"/>
-                                <param name="pls_toplabels" type="integer" value="100"
-                                   label="Number of toplabels (m/z features) which should be written in tabular output"/>
+                                <param name="PLS_Yweights" type="boolean" label="Y weights" help="Y weights represent the coefficients associated with the response variables and are used to model the relationship between predictors and responses in the context of classification. They represent the importance of each response variable in predicting each component. They can be useful if you have multiple response variables."/>
+                                <!--param name="pls_toplabels" type="integer" value="100
+                                   label="Number of toplabels (m/z features) which should be written in tabular output"/-->
                             </when>
                         </conditional>
                     </when>
@@ -891,6 +1106,7 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
                                        label="The optimal number of OPLS-DA components as indicated by cross-validations (minimum is 1)" help="Run cvApply first to optain optimal number of OPLS-DA components"/>
                                 <!--param name="xnew" type="boolean" truevalue="TRUE" falsevalue="FALSE" label="Keep new matrix"/-->
                                 <param name="opls_scale" type="boolean" truevalue="TRUE" falsevalue="FALSE" label="Data scaling"/>
+                                <param name="OPLS_Yweights" type="boolean" label="Y weights" help="Y weights represent the coefficients associated with the response variables and are used to model the relationship between predictors and responses in the context of classification. They represent the importance of each response variable in predicting each component. They can be useful if you have multiple response variables."/>
                                 <!--param name="opls_toplabels" type="integer" value="100"
                                    label="Number of toplabels (m/z features) which should be written in tabular output"/-->
                             </when>
@@ -905,10 +1121,11 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
                             </param>
                             <when value="ssc_cvapply">
                                   <param name="write_best_params" type="boolean" label="Write out best r and s values" help="Can be used to generate automatic classification workflow"/>
+                                  <param name="ssc_cv_accuracy_plot" type="boolean" label="Plot CV accuracy plots on one page (=Yes) or individual pages (=No)"/>
                             </when>
                             <when value="ssc_analysis">
-                                <!--param name="ssc_toplabels" type="integer" value="100"
-                                   label="Number of toplabels (m/z features) which should be written in tabular output"/-->
+                                <param name="ssc_toplabels" type="integer" value="100"
+                                   label="Number of toplabels (m/z features) which should be written in tabular output"/>
                             </when>
                         </conditional>
                         <param name="ssc_r" type="text" value="2"
@@ -922,7 +1139,7 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
                         <param name="ssc_kernel_method" type="select" display="radio" label = "The method to use to calculate the spatial smoothing kernels for the embedding. The 'gaussian' method refers to spatially-aware (SA) weights, and 'adaptive' refers to spatially-aware structurally-adaptive (SASA) weights">
                             <option value="gaussian">gaussian</option>
                             <option value="adaptive" selected="True">adaptive</option>
-                        </param>                        
+                        </param>
                     </when>
                 </conditional>
 
@@ -930,13 +1147,19 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
 
             <when value="prediction">
                 <param name="training_result" type="data" format="rdata" label="Result from previous classification training"/>
-                <!--param name="predicted_toplabels" type="integer" value="100"
-                                   label="Number of toplabels (m/z features) which should be written in tabular output"/-->
-                <param name="classification_type" type="select" display="radio" optional="False" label="Which classification method was used">
-                	<option value="PLS_classifier" selected="True" >PLS classifier</option>
-                	<option value="OPLS_classifier">OPLS classifier</option>
-                	<option value="SSC_classifier">SSC_classifier</option>
-        	</param>
+                <conditional name="classification_type_cond">
+                    <param name="classification_type" type="select" label="Which classification method was used">
+                	    <option value="PLS_classifier" selected="True" >PLS classifier</option>
+                	    <option value="OPLS_classifier">OPLS classifier</option>
+                	    <option value="SSC_classifier">SSC classifier</option>
+                    </param>
+                    <when value="PLS_classifier"/>
+                    <when value="OPLS_classifier"/>
+                    <when value="SSC_classifier">
+                        <param name="predicted_toplabels" type="integer" value="100"
+                                   label="Number of toplabels (m/z features) which should be written in tabular output"/>
+                    </when>
+                </conditional>
                 <conditional name="new_y_values_cond">
                     <param name="new_y_values" type="select" label="Load annotations (optional, but allows accuracy calculations)">
                         <option value="no_new_response" selected="True">no</option>
@@ -984,20 +1207,30 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
     </inputs>
     <outputs>
         <data format="pdf" name="classification_images" from_work_dir="classificationpdf.pdf" label = "${tool.name} on ${on_string}: results"/>
-        <data format="tabular" name="mzfeatures" label="${tool.name} on ${on_string}: features"/>
-        <data format="tabular" name="pixeloutput" label="${tool.name} on ${on_string}: pixels"/>
+        <data format="tabular" name="mzfeatures" label="${tool.name} on ${on_string}: features">
+            <filter>type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'spatialShrunkenCentroids' and type_cond['method_cond']['ssc_analysis_cond']['ssc_method'] == 'ssc_analysis' or type_cond['type_method'] == 'prediction' and type_cond['classification_type_cond']['classification_type'] == 'SSC_classifier'</filter>
+        </data>
+        <data format="tabular" name="pixeloutput" label="${tool.name} on ${on_string}: pixels">
+            <filter>type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'PLS' and type_cond['method_cond']['analysis_cond']['PLS_method'] == 'PLS_analysis' or type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'OPLS' and type_cond['method_cond']['opls_analysis_cond']['opls_method'] == 'opls_analysis' or type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'spatialShrunkenCentroids' and type_cond['method_cond']['ssc_analysis_cond']['ssc_method'] == 'ssc_analysis' or type_cond['type_method'] == 'prediction'</filter>
+        </data>
+        <data format="tabular" name="coefficients" label="${tool.name} on ${on_string}: coefficients">
+            <filter>type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'PLS' and type_cond['method_cond']['analysis_cond']['PLS_method'] == 'PLS_analysis' or type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'OPLS' and type_cond['method_cond']['opls_analysis_cond']['opls_method'] == 'opls_analysis' or type_cond['type_method'] == 'prediction' and type_cond['classification_type_cond']['classification_type'] == 'PLS_classifier' or type_cond['type_method'] == 'prediction' and type_cond['classification_type_cond']['classification_type'] == 'OPLS_classifier'</filter>
+        </data>
+        <data format="tabular" name="loadings_weights" label="${tool.name} on ${on_string}: loadings and weights">
+            <filter>type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'PLS' and type_cond['method_cond']['analysis_cond']['PLS_method'] == 'PLS_analysis' or type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'OPLS' and type_cond['method_cond']['opls_analysis_cond']['opls_method'] == 'opls_analysis' or type_cond['type_method'] == 'prediction' and type_cond['classification_type_cond']['classification_type'] == 'PLS_classifier' or type_cond['type_method'] == 'prediction' and type_cond['classification_type_cond']['classification_type'] == 'OPLS_classifier'</filter>
+        </data>
         <data format="txt" name="best_r" label="${tool.name} on ${on_string}:best r">
         <filter>type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'spatialShrunkenCentroids' and type_cond['method_cond']['ssc_analysis_cond']['ssc_method'] == 'ssc_cvapply' and type_cond['method_cond']['ssc_analysis_cond']['write_best_params']</filter>
         </data>
         <data format="txt" name="best_s" label="${tool.name} on ${on_string}:best s">
         <filter>type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'spatialShrunkenCentroids' and type_cond['method_cond']['ssc_analysis_cond']['ssc_method'] == 'ssc_cvapply' and type_cond['method_cond']['ssc_analysis_cond']['write_best_params']</filter>
-        </data>                               
+        </data>
         <data format="rdata" name="classification_rdata" label="${tool.name} on ${on_string}: results.RData">
-            <filter>output_rdata</filter>
+        <filter>output_rdata</filter>
         </data>
     </outputs>
     <tests>
-        <test expect_num_outputs="3">
+        <test expect_num_outputs="1">
             <param name="infile" value="testfile_squares.rdata" ftype="rdata"/>
             <conditional name="type_cond">
                 <param name="type_method" value="training"/>
@@ -1015,12 +1248,10 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
                     </conditional>
                 </conditional>
             </conditional>
-            <output name="mzfeatures" file="features_test1.tabular"/>
-            <output name="pixeloutput" file="pixels_test1.tabular"/>
             <output name="classification_images" file="test1.pdf" compare="sim_size" delta="2000"/>
         </test>
 
-        <test expect_num_outputs="4">
+        <test expect_num_outputs="5">
             <param name="infile" value="testfile_squares.rdata" ftype="rdata"/>
             <conditional name="type_cond">
                 <param name="type_method" value="training"/>
@@ -1035,18 +1266,32 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
                         <param name="PLS_method" value="PLS_analysis"/>
                         <param name="pls_comp" value="2"/>
                         <param name="pls_scale" value="TRUE"/>
+                        <param name="PLS_Yweights" value="TRUE"/>
                         <!--param name="pls_toplabels" value="100"/-->
                     </conditional>
                 </conditional>
             </conditional>
             <param name="output_rdata" value="True"/>
-            <output name="mzfeatures" file="features_test2.tabular"/>
+            <output name="coefficients">
+                <assert_contents>
+                    <has_text text="900.004699707031"/>
+                    <has_text text="962.870727539062"/>
+                    <has_text text="999.606872558594"/>
+                </assert_contents>
+            </output>
+            <output name="loadings_weights">
+                <assert_contents>
+                    <has_text text="900.076354980469"/>
+                    <has_text text="950.495910644531"/>
+                    <has_text text="989.024536132812"/>
+                </assert_contents>
+            </output>
             <output name="pixeloutput" file="pixels_test2.tabular"/>
             <output name="classification_images" file="test2.pdf" compare="sim_size"/>
             <output name="classification_rdata" file="test2.rdata" compare="sim_size"/>
         </test>
 
-        <test expect_num_outputs="3">
+        <test expect_num_outputs="1">
             <param name="infile" value="testfile_squares.rdata" ftype="rdata"/>
             <conditional name="type_cond">
                 <param name="type_method" value="training"/>
@@ -1061,16 +1306,13 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
                     <conditional name="opls_analysis_cond">
                         <param name="opls_method" value="opls_cvapply"/>
                         <param name="opls_cvcomp" value="1:2"/>
-                        <param name="xnew_cv" value="FALSE"/>
                     </conditional>
                 </conditional>
             </conditional>
-            <output name="mzfeatures" file="features_test3.tabular"/>
-            <output name="pixeloutput" file="pixels_test3.tabular"/>
             <output name="classification_images" file="test3.pdf" compare="sim_size"/>
         </test>
 
-        <test expect_num_outputs="4">
+        <test expect_num_outputs="5">
             <param name="infile" value="testfile_squares.rdata" ftype="rdata"/>
             <conditional name="type_cond">
                 <param name="type_method" value="training"/>
@@ -1084,15 +1326,27 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
                     <conditional name="opls_analysis_cond">
                         <param name="opls_method" value="opls_analysis"/>
                         <param name="opls_comp" value="3"/>
-                        <param name="xnew" value="FALSE"/>
                         <param name="opls_scale" value="FALSE"/>
-                        <!--param name="opls_toplabels" value="100"/-->
+                        <param name="PLS_Yweights" value="FALSE"/>
                     </conditional>
                 </conditional>
             </conditional>
             <param name="output_rdata" value="True"/>
-            <output name="mzfeatures" file="features_test4.tabular"/>
             <output name="pixeloutput" file="pixels_test4.tabular"/>
+            <output name="coefficients">
+                <assert_contents>
+                    <has_text text="900.148010253906"/>
+                    <has_text text="974.132446289062"/>
+                    <has_text text="999.908935546875"/>
+                </assert_contents>
+            </output>
+            <output name="loadings_weights">
+                <assert_contents>
+                    <has_text text="901.581848144531"/>
+                    <has_text text="939.189086914062"/>
+                    <has_text text="984.185363769531"/>
+                </assert_contents>
+            </output>
             <output name="classification_images" file="test4.pdf" compare="sim_size"/>
             <output name="classification_rdata" file="test4.rdata" compare="sim_size"/>
         </test>
@@ -1114,12 +1368,13 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
                         <param name="ssc_r" value="1:2"/>
                         <param name="ssc_s" value="2:3"/>
                         <param name="ssc_kernel_method" value="adaptive"/>
+                        <param name="write_best_params" value="TRUE"/>
                     </conditional>
                 </conditional>
             </conditional>
-            <output name="mzfeatures" file="features_test5.tabular"/>
-            <output name="pixeloutput" file="pixels_test5.tabular"/>
             <output name="classification_images" file="test5.pdf" compare="sim_size"/>
+            <output name="best_r" file="best_r_test5.txt"/>
+            <output name="best_s" file="best_s_test5.txt"/>
         </test>
 
         <test expect_num_outputs="4">
@@ -1134,7 +1389,7 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
                     <param name="class_method" value="spatialShrunkenCentroids"/>
                     <conditional name="ssc_analysis_cond">
                         <param name="ssc_method" value="ssc_analysis"/>
-                        <!--param name="ssc_toplabels" value="20"/-->
+                        <param name="ssc_toplabels" value="20"/>
                      </conditional>
                     <param name="ssc_r" value="2"/>
                     <param name="ssc_s" value="2"/>
@@ -1148,11 +1403,13 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
             <output name="classification_rdata" file="test6.rdata" compare="sim_size" delta="15000"/>
         </test>
 
-        <test expect_num_outputs="4">
+        <test expect_num_outputs="5">
             <param name="infile" value="testfile_squares.rdata" ftype="rdata"/>
             <conditional name="type_cond">
                 <param name="type_method" value="prediction"/>
+                <param name="type_method" value="prediction"/>
                 <param name="training_result" value="test2.rdata" ftype="rdata"/>
+                <param name="classification_type" value="PLS_classifier"/>
                 <conditional name="new_y_values_cond">
                     <param name="new_y_values" value="new_response"/>
                         <param name="new_response_file" value="pixel_annotation_file1.tabular" ftype="tabular"/>
@@ -1163,7 +1420,8 @@ r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method
                 </conditional>
             </conditional>
             <param name="output_rdata" value="True"/>
-            <output name="mzfeatures" file="features_test7.tabular"/>
+            <output name="coefficients" file="coefficients_test7.tabular"/>
+            <output name="loadings_weights" file="loadings_and_weights_test7.tabular"/>
             <output name="pixeloutput" file="pixels_test7.tabular"/>
             <output name="classification_images" file="test7.pdf" compare="sim_size"/>
             <output name="classification_rdata" file="test7.rdata" compare="sim_size" />
@@ -1223,7 +1481,7 @@ This tool provides three different Cardinal functions for supervised classificat
 **Tips**
 
 - The classification function will only run on files with valid intensity values (NA are not allowed)
-- Only a single input file is accepted, several files have to be combined previously, for example with the MSI combine tool. 
+- Only a single input file is accepted, several files have to be combined previously, for example with the MSI combine tool.
 
 
 **Output**
