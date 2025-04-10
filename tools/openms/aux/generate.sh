@@ -2,9 +2,9 @@
 
 # set -x
 
-VERSION=3.1
+VERSION=3.2
 FILETYPES="aux/filetypes.txt"
-PROFILE="21.05"
+PROFILE="23.0"
 ## FILETYPES_RE=$(grep -v "^#" $FILETYPES | grep -v "^$" | cut -f 1 -d" " | tr '\n' '|' | sed 's/|$//'| sed 's/|/\\|/g')
 
 # export tmp=$(mktemp -d)
