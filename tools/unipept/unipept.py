@@ -558,6 +558,8 @@ def __main__():
         post_data = []
         if options.equate_il:
             post_data.append(('equate_il', 'true'))
+        else:
+            post_data.append(('equate_il', 'false'))
         if options.names or options.json:
             post_data.append(('extra', 'true'))
             post_data.append(('names', 'true'))
