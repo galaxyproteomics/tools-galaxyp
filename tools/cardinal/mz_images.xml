@@ -1,11 +1,13 @@
-<tool id="cardinal_mz_images" name="MSI mz images" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="22.05">
+<tool id="cardinal_mz_images" name="MSI mz images" version="@VERSION@.0">
     <description>
         mass spectrometry imaging m/z heatmaps
     </description>
     <macros>
         <import>macros.xml</import>
     </macros>
-    <expand macro="requirements"/>
+    <expand macro="requirements">
+        <requirement type="package" version="2.3">r-gridextra</requirement>
+    </expand>
     <command detect_errors="aggressive">
 <![CDATA[
         @INPUT_LINKING@
@@ -45,9 +47,11 @@ inputnames = as.character(inputmasses[,2])
 
 pdf("heatmaps.pdf", fonts = "Times", pointsize = 12)
 plot(0,type='n',axes=FALSE,ann=FALSE)
+
 #if not $filename:
     #set $filename = $infile.display_name
 #end if
+
 title(main=paste("\nHeatmap images\n\n", "Filename:\n", "$filename"))
 
 new_row = data.frame(paste0("# valid m/z in \n", "$calibrant_file.display_name"), paste0(length(inputmz), "/", length(input_list[,1])))
@@ -58,21 +62,42 @@ grid.table(property_df, rows= NULL)
 
 ############################# II) images ####################################
 
-### only plot images when file has features and pixels: 
-par(mar=c(0,0,0,0), oma=c(0,0,0,1))## margin for image legend
+colourpalette = cpal(palette = "$colorscale")
+
+image_contrast = "$image_contrast"
+if (image_contrast == "NULL") {
+  image_contrast <- NULL
+}
+
+image_smoothing = "$image_smoothing"
+if (image_smoothing == "NULL") {
+  image_smoothing <- NULL
+}
+
+### only plot images when file has features and pixels:
+par(mar=c(0,0,0,0), oma=c(0,0,0,1)) ## margin for image legend
 
 #if str($light_mode) == "white":
-    lightmode()
+    matter::vizi_style(style= "light") #lightmode()
 #else
-    darkmode()
+    matter::vizi_style(style= "dark") #darkmode()
 #end if
 
 if (ncol(msidata)>0 & nrow(msidata) >0){
     if (length(inputmz) != 0){
         for (mass in 1:length(inputmz)){
-
-                print(image(msidata, mz=inputmz[mass],plusminus = $plusminus_dalton, normalize.image="$normalize_image", contrast.enhance = "$image_contrast", 
-                smooth.image = "$image_smoothing", colorkey=$colorkey, colorscale=$colorscale, alpha.power=$alpha_power, ylim= c(maximumy,minimumy)))
+                print(image(msidata,
+                mz=inputmz[mass],
+                tolerance = $plusminus_dalton,
+                unit = "$plusminus_unit",
+                enhance = image_contrast,
+                smooth = image_smoothing,
+                scale = $scale_factor,
+                key=$colorkey,
+                col=colourpalette,
+                alphapow = $alpha_power,
+                ylim= c(maximumy+1,minimumy-1),
+                xlim= c(minimumx-1,maximumx+1)))
                 title(inputnames[mass], adj = 0.5, line = 1)}
 
 
@@ -81,17 +106,35 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
             print("svg pixel image")
             ## reverse y axis for svg output = correct order and nice svg image
             coord(msidata)\$y <- max(coord(msidata)\$y) - coord(msidata)\$y + 1
-
             msidata = as(msidata,"MSImagingExperiment")
 
+
             svg(file="svg_pixel_output.svg", width=maximumx, height=maximumy)
-            par(mar=c(0,0,0,0), oma=c(0,0,0,0))## no margin for svg
+            par(mar=c(0,0,0,0), oma=c(0,0,0,0)) ##, xaxt = "n", yaxt = "n")## no margin for svg
+
 	    #if str($light_mode) == "white":
-	        lightmode()
+	        matter::vizi_style(style= "light") #lightmode()
 	    #else
-	        darkmode()
+	        matter::vizi_style(style= "dark") #darkmode()
 	    #end if
-            print(image(msidata, mz = inputmz[1],strip=FALSE, plusminus = $plusminus_dalton,colorscale=$colorscale, colorkey = FALSE,axes=FALSE, xlab=NA, ylab=NA,contrast.enhance = "$image_contrast", smooth.image = "$image_smoothing", alpha.power=$alpha_power, normalize.image="$normalize_image"))
+            svg_image = image(msidata,
+                    strip=FALSE,
+                    mz = inputmz[1],
+                    tolerance = $plusminus_dalton,
+                    unit = "$plusminus_unit",
+                    col=colourpalette,
+                    scale = $scale_factor,
+                    alphapow = $alpha_power,
+                    key = FALSE,
+                    axes=FALSE,
+                    xlab=NA,
+                    ylab=NA,
+                    ##main=NULL,
+                    enhance = image_contrast,
+                    smooth = image_smoothing)
+            svg_image\$labels <- NULL
+            print(svg_image)
+            ##title(main = "")
             dev.off()
         #end if
 
@@ -101,17 +144,20 @@ if (ncol(msidata)>0 & nrow(msidata) >0){
         #set $color_string = ','.join(['"%s"' % $color.feature_color for $color in $overlay_cond.colours])
         colourvector = c($color_string)
             print(image(msidata, mz=inputmz, 
-                  plusminus = $plusminus_dalton,
-                  col=colourvector, 
-                  contrast.enhance = "$image_contrast", 
-                  normalize.image="$normalize_image", 
-                  smooth.image = "$image_smoothing",
-                  superpose=TRUE, main="overlay of all m/z", 
-                  key=FALSE, alpha.power=$alpha_power,
-                  ylim= c(maximumy,minimumy)))
+                  tolerance = $plusminus_dalton,
+                  unit = "$plusminus_unit",
+                  col=colourvector,
+                  alphapow = $alpha_power,
+                  enhance = image_contrast,
+                  smooth = image_smoothing,
+                  superpose=TRUE,
+                  main="overlay of all m/z",
+                  key=FALSE,
+                  ylim= c(maximumy+1,minimumy-1),
+                  xlim= c(minimumx-1,maximumx+1)))
 
              legend("$overlay_cond.legend_position",
-                       fill=colourvector,
+                      fill=colourvector,
                       legend=as.numeric(inputmz))
         #end if
 
@@ -130,20 +176,27 @@ dev.off()
         <expand macro="pdf_filename"/>
         <expand macro="reading_2_column_mz_tabular"/>
 
-        <param name="plusminus_dalton" value="0.25" type="float" label="plusminus m/z" help="m/z range to add on either side of the given m/z to create a window in which the mean of all intensities will be computed"/>
-        <param name="image_contrast" type="select" label="Contrast enhancement" help="The 'histogram' equalization method flatterns the distribution of intensities. The hotspot 'suppression' method uses thresholding to reduce the intensities of hotspots">
-            <option value="none" selected="True">none</option>
-            <option value="suppression">suppression</option>
+        <param name="plusminus_dalton" value="0.25" type="float" label="plusminus ppm or m/z" help="m/z or ppm range to add on either side of the given m/z to create a window in which the mean of all intensities will be computed"/>
+        <param name="plusminus_unit" type="select" label="unit" help="Select whether the plusminus tolerance is given in m/z or ppm.">
+            <option value="mz" selected="TRUE" >mz</option>
+            <option value="ppm" >ppm</option>
+        </param>
+        <param name="image_contrast" type="select" label="Contrast enhancement" help="The 'histogram' equalization method flatterns the distribution of intensities. The 'adaptive' equalization performs contrast-limited adaptive histogram equalization to enhance local contrast, but avoid local noise.">
+            <option value="NULL" selected="True">none</option>
             <option value="histogram">histogram</option>
+            <option value="adapt">adaptive</option>
         </param>
         <param name="image_smoothing" type="select" label="Image smoothing" help="The 'gaussian' smoothing method smooths images with a simple gaussian kernel. The 'adaptive' method uses bilateral filtering to preserve edges">
-            <option value="none" selected="True">none</option>
+            <option value="NULL" selected="True">none</option>
             <option value="gaussian">gaussian</option>
             <option value="adaptive">adaptive</option>
+            <option value="mean">mean</option>
+            <option value="diffusion">diffusion</option>
+            <option value="ma">moving average</option>
         </param>
+        <param name="scale_factor" type="boolean" checked="FALSE" truevalue="TRUE" falsevalue="FALSE" label="Data scaling" help="If multiple images are plotted, should they be scaled to the same intensity scale?" />
         <param name="colorscale" type="select" display="radio" label="Colorscale">
             <option value="viridis" selected="True">viridis</option>
-            <option value="magma">magma</option>
             <option value="plasma">plasma</option>
             <option value="inferno">inferno</option>
         </param>
@@ -153,7 +206,6 @@ dev.off()
         </param>
         <param name="alpha_power" type="float" value="1" label="Alpha power" help="Opacity scaling factor (1 is linear)"/>
         <param name="colorkey" type="boolean" checked="True" truevalue="TRUE" falsevalue="FALSE" label="Display colorkey in plot"/>
-        <param name="normalize_image" type="boolean" truevalue="linear" falsevalue="none" label="Linear normalization of image"/>
         <param name="svg_pixelimage" type="boolean" label="Export first valid m/z from tabular file as SVG"/>
         <conditional name="overlay_cond">
             <param name="overlay_selection" type="select" label="Overlay image">
