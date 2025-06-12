@@ -2,7 +2,7 @@
     <description>is a software for DIA/SWATH data processing</description>
     <macros>
         <token name="@TOOL_VERSION@">1.8.1</token>
-        <token name="@VERSION_SUFFIX@">4</token>
+        <token name="@VERSION_SUFFIX@">5</token>
     </macros>
     <requirements>
         <container type="docker">biocontainers/diann:@TOOL_VERSION@_cv2</container>
@@ -17,14 +17,17 @@
         ## generate string like "--f file1 --f file2 ..." for each input in $input.f, which are comma separated
         #set infiles_str = ''
         #for $infile in $input.f
+            #if not $infile:
+                #continue
+            #end if
             ## if brukertdf.d.tar, extract to ./input_data and append "./input_data/" to infiles_str
             #if $infile.is_of_type("brukertdf.d.tar"):
                 tar -xf '$infile' -C ./input_data &&
-                #set $infiles_str += '--f ./input_data/' + str($infile.element_identifier[:-4])
+                #set $infiles_str += "--f './input_data/" + str($infile.element_identifier[:-4]) + "' "
             #else
                 #set name = './input_data/' + $infile.element_identifier + '.' + $infile.ext
                 ln -s '$infile' '$name' &&
-                #set $infiles_str += '--f ' + $name + ' '
+                #set $infiles_str += "--f '" + $name + "' "
             #end if
         #end for
 
@@ -38,8 +41,8 @@
         #end if
 
         diann
-            #if $input.f != 'None'
-            '$infiles_str'
+            #if $infiles_str != ''
+                $infiles_str
             #end if
             --dir ./
             #if $input.spectral_lib_options.lib
@@ -47,8 +50,8 @@
             #else
             --lib
             #end if
-            #if $input.f != 'None'
-            --out ./report.tsv
+            #if $infiles_str != ''
+                --out ./report.tsv
             #end if
             #if $input.spectral_lib_options.gen_spec_lib
             --out-lib ./report-lib.tsv
@@ -228,16 +231,6 @@
             --vis '$output_options.vis'
             #end if
             --verbose '$output_options.verbose'
-
-            #if len($input.f) > 0
-            && cp ./report.tsv '$output_report'
-            #end if
-
-            #if $input.spectral_lib_options.gen_spec_lib
-            && cp ./report-lib.tsv '$output_report_lib'
-            && cp ./report-lib.tsv.speclib '$output_report_speclib'
-            && cp ./report-lib.predicted.speclib '$output_report_pred_speclib'
-            #end if
     ]]></command>
     <inputs>
         <!-- not used: cfg, convert, dir, ext, no_quant_files, out, out_lib, out_lib_copy, prefix, temp, threads, use-quant -->
@@ -417,16 +410,18 @@
         </section>
     </inputs>
     <outputs>
-        <data format="tabular" name="output_report" label="${tool.name} on ${on_string}: report.tsv">
+        <data format="tabular" name="output_report" from_work_dir="report.tsv" label="${tool.name} on ${on_string}: report.tsv">
             <filter>input['f'] != None</filter>
         </data>
-        <data format="tabular" name="output_report_lib" label="${tool.name} on ${on_string}: report-lib.tsv">
+        <data format="tabular" name="output_report_lib" from_work_dir="report-lib.tsv" label="${tool.name} on ${on_string}: report-lib.tsv">
             <filter>input['spectral_lib_options']['gen_spec_lib'] == True</filter>
+            <filter>input['f'] != None</filter>
         </data>
-        <data format="data" name="output_report_speclib" label="${tool.name} on ${on_string}: report-lib.tsv.speclib">
+        <data format="data" name="output_report_speclib" from_work_dir="report-lib.tsv.speclib" label="${tool.name} on ${on_string}: report-lib.tsv.speclib">
             <filter>input['spectral_lib_options']['gen_spec_lib'] == True</filter>
+            <filter>input['f'] != None</filter>
         </data>
-        <data format="data" name="output_report_pred_speclib" label="${tool.name} on ${on_string}: report-lib.predicted.speclib">
+        <data format="data" name="output_report_pred_speclib" from_work_dir="report-lib.predicted.speclib" label="${tool.name} on ${on_string}: report-lib.predicted.speclib">
             <filter>input['spectral_lib_options']['gen_spec_lib'] == True</filter>
         </data>
     </outputs>
@@ -455,6 +450,20 @@
                 </assert_contents>
             </output>
             <output name="output_report_speclib" file="report-lib.tsv.speclib" compare="sim_size" delta="100"/>
+            <output name="output_report_pred_speclib" file="report-lib.predicted.speclib" compare="sim_size" delta="100"/>
+        </test>
+        <!-- test for default run wo MS files -->
+        <test expect_num_outputs="1">
+            <section name="input">
+                <section name="spectral_lib_options">
+                    <param name="gen_spec_lib" value="True"/>
+                    <param name="predictor" value="True"/>
+                </section>
+                <section name="fasta_db_options">
+                    <param name="fasta" value="bsa.fasta"/>
+                    <param name="fasta_search" value="True"/>
+                </section>
+            </section>
             <output name="output_report_pred_speclib" file="report-lib.predicted.speclib" compare="sim_size" delta="100"/>
         </test>
         <!-- test for multiple fastas -->
@@ -491,7 +500,7 @@
             </output>
         </test>
         <!-- test for Bruker data -->
-       <!-- <test expect_num_outputs="2">
+        <!-- <test expect_num_outputs="2">
            <section name="input">
                <param name="f" value="ThyroglobMRM000003.d.tar" />
                <section name="spectral_lib_options">
