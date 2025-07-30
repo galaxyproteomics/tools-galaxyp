@@ -35,7 +35,7 @@ def __main__():
             'complete/partial', 'gene score', 'used model',
             'rbs start', 'rbs end', 'rbs score']))
 
-    gc_rbs_pat = '# gc = (-?[0-9]*[.]?[0-9]+), rbs = (-?[0-9]*[.]?[0-9]+)' 
+    gc_rbs_pat = '# gc = (-?[0-9]*[.]?[0-9]+), rbs = (-?[0-9]*[.]?[0-9]+)'
     seq_count = 0
     gene_count = 0
     for i, line in enumerate(input_rdr):
@@ -46,12 +46,12 @@ def __main__():
             try:
                 m = re.match(gc_rbs_pat, line.strip())
                 seq_gc, seq_rbs = m.groups()
-            except:
+            except ValueError:
                 seq_gc = seq_rbs = ''
         elif line.startswith('# self:'):
             seq_type = re.sub('# self:', '', line.rstrip())
         elif line.startswith('# '):
-            seq_name = re.sub('# (\S+).*$', '\\1', line.rstrip())
+            seq_name = re.sub(r'# (\S+).*$', '\\1', line.rstrip())
             seq_count += 1
         else:
             fields = line.split('\t')
