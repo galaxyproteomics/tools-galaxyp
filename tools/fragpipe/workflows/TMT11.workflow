@@ -1,4 +1,4 @@
-# Workflow: TMT10
+# Workflow: TMT11
 
 crystalc.run-crystalc=false
 database.decoy-tag=rev_
