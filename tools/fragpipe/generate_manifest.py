@@ -8,7 +8,7 @@ import argparse
 import csv
 
 # The three columns for each scanfile are "Experiment, Bioreplicate, and Data type
-columns = ('exp', 'bio', 'type')
+column_types = ('exp', 'bio', 'type')
 output_filename = 'fp.manifest'
 
 
@@ -40,13 +40,10 @@ def main():
     parser = argparse.ArgumentParser()
 
     # Each column has the same methods for populating
-    for prefix in columns:
+    for prefix in column_types:
         parser.add_argument(f'--{prefix}-consec', action='store_true')
         parser.add_argument(f'--{prefix}-assign-all')
         parser.add_argument(f'--{prefix}-col')
-
-    # This script will be called once for each scan group
-    parser.add_argument('--append', action='store_true')
 
     # Scanfile names, which should be identical to history identifiers
     parser.add_argument('scanfiles', nargs='+')
@@ -55,12 +52,12 @@ def main():
 
     # Create and populate data structure for tabular output
     rows = [[scanfile] for scanfile in args.scanfiles]
-    for column in columns:
-        add_column(column, args, rows)
+    for column_type in column_types:
+        add_column(column_type, args, rows)
 
-    # Write out manifest file
-    mode = 'a' if args.append else 'w'
-    with open(output_filename, mode) as outf:
+    # Write out manifest file.
+    # Use mode=a as the script will be called once for each scan group.
+    with open(output_filename, mode='a') as outf:
         manifest_writer = csv.writer(outf, delimiter='\t')
         for row in rows:
             manifest_writer.writerow(row)
