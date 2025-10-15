@@ -11,27 +11,28 @@ import csv
 columns = ('exp', 'bio', 'type')
 output_filename = 'fp.manifest'
 
+
 # Add column values to a list of rows for each scan file.
 def add_column(column_type, args, rows):
     nfiles = len(args.scanfiles)
 
     # Each scan file is numbered 1 through n in column
-    if getattr(args,f'{column_type}_consec'):
+    if getattr(args, f'{column_type}_consec'):
         vals = range(1, nfiles + 1)
 
     # All scan files have same value in column
-    elif getattr(args,f'{column_type}_assign_all'):
+    elif getattr(args, f'{column_type}_assign_all'):
         vals = [getattr(args, f'{column_type}_assign_all')] * nfiles
 
     # Values are provided for scan files in a comma-delimited list
-    elif getattr(args,f'{column_type}_col'):
-        vals = getattr(args,f'{column_type}_col').split(',')
+    elif getattr(args, f'{column_type}_col'):
+        vals = getattr(args, f'{column_type}_col').split(',')
 
     # Otherwise, this column remains empty.
     else:
         vals = [''] * nfiles
 
-    for i,row in enumerate(rows):
+    for i, row in enumerate(rows):
         row.append(vals[i])
 
 
@@ -63,6 +64,7 @@ def main():
         manifest_writer = csv.writer(outf, delimiter='\t')
         for row in rows:
             manifest_writer.writerow(row)
+
 
 if __name__ == "__main__":
     main()
