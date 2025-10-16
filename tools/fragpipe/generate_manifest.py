@@ -40,10 +40,10 @@ def main():
     parser = argparse.ArgumentParser()
 
     # Each column has the same methods for populating
-    for prefix in column_types:
-        parser.add_argument(f'--{prefix}-consec', action='store_true')
-        parser.add_argument(f'--{prefix}-assign-all')
-        parser.add_argument(f'--{prefix}-col')
+    for column_type in column_types:
+        parser.add_argument(f'--{column_type}-consec', action='store_true')
+        parser.add_argument(f'--{column_type}-assign-all')
+        parser.add_argument(f'--{column_type}-col')
 
     # Scanfile names, which should be identical to history identifiers
     parser.add_argument('scanfiles', nargs='+')
