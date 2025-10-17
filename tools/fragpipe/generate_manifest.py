@@ -27,6 +27,9 @@ def add_column(column_type, args, rows):
     # Values are provided for scan files in a comma-delimited list
     elif getattr(args, f'{column_type}_col'):
         vals = getattr(args, f'{column_type}_col').split(',')
+        if len(vals) != nfiles:
+            raise ValueError((f'Incorrect number of values entered for column {column_type}. '
+                              'Exactly one value must be entered for each scan file.'))
 
     # Otherwise, this column remains empty.
     else:
