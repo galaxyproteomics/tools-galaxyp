@@ -1,0 +1,198 @@
+<tool id="fragpipe_manifest_generator" name="FragPipe Manifest Generator" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.2">
+    <description>
+        Generate a FragPipe Manifest File (Experimental Design File)
+    </description>
+
+    <macros>
+        <import>macros.xml</import>
+        <import>msfragger_macros.xml</import>
+        <token name="@SCAN_DATA_TYPE_REGEX@">(DDA|DDA+|DIA|GPF-DIA|DIA-Quant|DIA-Lib)</token>
+        <token name="@RUN_GENERATOR@"><![CDATA[
+            python '$__tool_directory__/generate_manifest.py'
+
+            #if $experiment_conditional_element.entry_type == 'consecutive'
+                --exp-consec
+            #elif $experiment_conditional_element.entry_type == 'assign_all'
+                --exp-assign-all '$experiment_conditional_element.experiment'
+            #elif $experiment_conditional_element.entry_type == 'column'
+                --exp-col '$experiment_conditional_element.experiment_values'
+            #end if
+
+            #if $bioreplicate_conditional_element.entry_type == 'consecutive'
+                --bio-consec
+            #elif $bioreplicate_conditional_element.entry_type == 'assign_all'
+                --bio-assign-all '$bioreplicate_conditional_element.bioreplicate'
+            #elif $bioreplicate_conditional_element.entry_type == 'column'
+                --bio-col '$bioreplicate_conditional_element.bioreplicate_values'
+            #end if
+
+            #if $scan_data_type_conditional_element.entry_type == 'assign_all'
+                --type-assign-all '$scan_data_type_conditional_element.scan_data_type'
+            #elif $scan_data_type_conditional_element.entry_type == 'column'
+                --type-col '$scan_data_type_conditional_element.scan_data_type_values'
+            #end if
+
+            #for $sf in $inputs_element
+                #set $i_name = $ln_name($sf)
+                $i_name
+            #end for
+        ]]></token>
+
+        <xml name="scan_parameters">
+            <!-- Input Scan Files -->
+            <param name="inputs" type="data" format="mzml,mzxml,thermo.raw" multiple="true" label="Proteomics spectrum files"  help="All input scan files must be named with one of the following extensions: .mzML, .mzXML, or .raw"/>
+
+            <!-- Experiment input -->
+            <conditional name="experiment_conditional">
+                <param name="entry_type" type="select" label="Assign experiments">
+                    <option value="none" selected="true">Leave blank</option>
+                    <option value="consecutive">Assign consecutive integers</option>
+                    <option value="column">Enter column values</option>
+                    <option value="assign_all">Assign to all scan files</option>
+                </param>
+                <when value="none"/>
+                <when value="consecutive"/>
+                <when value="column">
+                    <param name="experiment_values" type="text" label="Comma-separated experiment numbers">
+                        <validator type="empty_field"/>
+                    </param>
+                </when>
+                <when value="assign_all">
+                    <param name="experiment" type="text" label="Experiment">
+                        <validator type="empty_field"/>
+                    </param>
+                </when>
+            </conditional>
+
+            <!-- Bioreplicate input -->
+            <conditional name="bioreplicate_conditional">
+                <param name="entry_type" type="select" label="Assign bioreplicates">
+                    <option value="none" selected="true">Leave blank</option>
+                    <option value="consecutive">Assign consecutive integers</option>
+                    <option value="column">Enter column values</option>
+                    <option value="assign_all">Assign to all scan files</option>
+                </param>
+                <when value="none"/>
+                <when value="consecutive"/>
+                <when value="column">
+                    <param name="bioreplicate_values" type="text" label="Comma-separated bioreplicate numbers">
+                        <validator type="empty_field"/>
+                    </param>
+                </when>
+                <when value="assign_all">
+                    <param name="bioreplicate" type="text" label="Bioreplicate">
+                        <validator type="empty_field"/>
+                    </param>
+                </when>
+            </conditional>
+
+            <!-- Data type input -->
+            <conditional name="scan_data_type_conditional">
+                <param name="entry_type" type="select" label="Assign scan_data_types">
+                    <option value="column">Enter column values</option>
+                    <option value="assign_all" selected="true">Assign to all scan files</option>
+                </param>
+                <when value="assign_all">
+                    <param name="scan_data_type" type="select" optional="false" label="Data Type">
+                        <option value="DDA" selected="true">DDA</option>
+                        <option value="DDA+">DDA+</option>
+                        <option value="DIA">DIA</option>
+                        <option value="GPF-DIA">GPF-DIA</option>
+                        <option value="DIA-Quant">DIA-Quant</option>
+                        <option value="DIA-Lib">DIA-Lib</option>
+                    </param>
+                </when>
+                <when value="column">
+                    <param name="scan_data_type_values" type="text" optional="false" label="Comma-separated Data Types">
+                        <validator type="regex">^@SCAN_DATA_TYPE_REGEX@(,@SCAN_DATA_TYPE_REGEX)*$</validator>
+                    </param>
+                </when>
+            </conditional>
+        </xml>
+    </macros>
+
+    <requirements>
+        <requirement type="package" version="3.11">python</requirement>
+    </requirements>
+
+    <command><![CDATA[
+    @CMD_IMPORTS@
+
+    #set $experiment_conditional_element = $experiment_conditional
+    #set $bioreplicate_conditional_element = $bioreplicate_conditional
+    #set $scan_data_type_conditional_element = $scan_data_type_conditional
+    #set $inputs_element = $inputs
+
+    @RUN_GENERATOR@
+
+    #for $i, $g in enumerate($scan_groups)
+        #set $experiment_conditional_element = $g.experiment_conditional
+        #set $bioreplicate_conditional_element = $g.bioreplicate_conditional
+        #set $scan_data_type_conditional_element = $g.scan_data_type_conditional
+        #set $inputs_element = $g.inputs
+
+        && @RUN_GENERATOR@
+    #end for
+    ]]>
+    </command>
+
+    <inputs>
+        <expand macro="scan_parameters"/>
+        <repeat name="scan_groups" title="Additional Scan Groups">
+            <expand macro="scan_parameters"/>
+        </repeat>
+    </inputs>
+
+    <outputs>
+        <data name="manifest_file" format="tabular" label="FragPipe Manifest File" from_work_dir="fp.manifest"/>
+    </outputs>
+
+    <tests>
+        <!-- Test different entry types -->
+        <test expect_num_outputs="1">
+            <param name="inputs" value="basic-search/test1.mzML,basic-search/test2.mzML" ftype="mzml"/>
+            <param name="experiment_conditional|entry_type" value="consecutive"/>
+            <param name="bioreplicate_conditional|entry_type" value="column"/>
+            <param name="bioreplicate_conditional|bioreplicate_values" value="3,4"/>
+            <param name="scan_data_type_conditional|entry_type" value="assign_all"/>
+            <param name="scan_data_type_conditional|scan_data_type" value="DIA"/>
+            <output name="manifest_file" ftype="tabular" file="manifest-generator/test1.manifest" compare="contains"/>
+        </test>
+        <!-- Test scan groups -->
+        <test expect_num_outputs="1">
+            <param name="inputs" value="basic-search/test1.mzML" ftype="mzml"/>
+            <param name="experiment_conditional|entry_type" value="assign_all"/>
+            <param name="experiment_conditional|experiment" value="1"/>
+            <param name="bioreplicate_conditional|entry_type" value="assign_all"/>
+            <param name="bioreplicate_conditional|bioreplicate" value="1"/>
+            <param name="scan_data_type_conditional|entry_type" value="assign_all"/>
+            <param name="scan_data_type_conditional|scan_data_type" value="DIA"/>
+            <repeat name="scan_groups">
+                <param name="inputs" value="basic-search/test2.mzML" ftype="mzml"/>
+                <param name="experiment_conditional|entry_type" value="assign_all"/>
+                <param name="experiment_conditional|experiment" value="2"/>
+                <param name="bioreplicate_conditional|entry_type" value="assign_all"/>
+                <param name="bioreplicate_conditional|bioreplicate" value="2"/>
+                <param name="scan_data_type_conditional|entry_type" value="assign_all"/>
+                <param name="scan_data_type_conditional|scan_data_type" value="GPF-DIA"/>
+            </repeat>
+            <output name="manifest_file" ftype="tabular" file="manifest-generator/test2.manifest" compare="contains"/>
+        </test>
+    </tests>
+    <help>
+Generates a *manifest file* that may be used as input for the FragPipe Galaxy tool, or headless FragPipe_.
+This file is analagous to an experimental design file.
+
+The tool takes as input a collection of scan files, or multiple collections using the *Insert Additional Scan Groups* parameter, and options for assigning experiment numbers, bioreplicates,
+and data types for each file.
+
+Each scan group will have values from three columns applied to it using different methods.
+
+- Assign consecutive integers: The scans will be number consecutively starting with 1.
+- Enter column values: The column values for each scan file are entered as a comma-delimited list in the same order as the files.
+- Assign to all scan files: A value supplied by the user is applied to all files.
+
+.. _FragPipe: https://fragpipe.nesvilab.org/docs/tutorial_headless.html
+    </help>
+    <expand macro="citations" />
+</tool>
