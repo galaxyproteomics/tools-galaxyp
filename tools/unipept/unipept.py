@@ -199,16 +199,16 @@ def __main__():
 
         def get_node(id, name, rank, child, seq):
             if id not in id_to_node:
-                data = {'count': 0, 'self_count': 0, 'valid_taxon': 1, 'rank': rank, 'sequences': []}
-                node = {'id': id, 'name': name, 'children': [], 'kids': [], 'data': data}
+                extra = {'valid_taxon': 1, 'rank': rank, 'sequences': []}
+                node = {'id': id, 'name': name, 'children': [], 'kids': [], 'count': 0, 'selfCount': 0, 'extra': extra}
                 id_to_node[id] = node
             else:
                 node = id_to_node[id]
-            node['data']['count'] += 1
-            if seq is not None and seq not in node['data']['sequences']:
-                node['data']['sequences'].append(seq)
+            node['count'] += 1
+            if seq is not None and seq not in node['extra']['sequences']:
+                node['extra']['sequences'].append(seq)
             if child is None:
-                node['data']['self_count'] += 1
+                node['selfCount'] += 1
             elif child['id'] not in node['kids']:
                 node['kids'].append(child['id'])
                 node['children'].append(child)
@@ -249,16 +249,16 @@ def __main__():
 
         def get_node(id, name, child, seq):
             if id not in id_to_node:
-                data = {'count': 0, 'self_count': 0, 'sequences': []}
-                node = {'id': id, 'name': name, 'children': [], 'kids': [], 'data': data}
+                extra = {'sequences': []}
+                node = {'id': id, 'name': name, 'children': [], 'kids': [], 'count': 0, 'selfCount': 0, 'extra': extra}
                 id_to_node[id] = node
             else:
                 node = id_to_node[id]
-            node['data']['count'] += 1
-            if seq is not None and seq not in node['data']['sequences']:
-                node['data']['sequences'].append(seq)
+            node['count'] += 1
+            if seq is not None and seq not in node['extra']['sequences']:
+                node['extra']['sequences'].append(seq)
             if child is None:
-                node['data']['self_count'] += 1
+                node['selfCount'] += 1
             elif child['id'] not in node['kids']:
                 node['kids'].append(child['id'])
                 node['children'].append(child)
