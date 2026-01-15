@@ -4,8 +4,8 @@
 # Generates a FragPipe Workflow file.
 #
 
-import sys
 import pathlib
+import sys
 
 default_workflow = sys.argv[1]
 user_params_filename = sys.argv[2]
