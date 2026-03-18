@@ -7,8 +7,7 @@ from mqparam import MQParam
 
 parser = argparse.ArgumentParser()
 
-arguments = ('--infiles',
-             '--version',
+arguments = ('--version',
              '--num_threads',
              '--substitution_rx',
              '--fasta_files',
@@ -16,13 +15,14 @@ arguments = ('--infiles',
              '--identifier_parse_rule',
              'mqpar')
 
+parser.add_argument('--infiles', nargs='+')
 for arg in arguments:
     parser.add_argument(arg)
 
 args = parser.parse_args()
 
 mqpar_out = os.path.join(os.getcwd(), 'mqpar.xml')
-infiles = [os.path.join(os.getcwd(), f) for f in args.infiles.split(',')]
+infiles = [os.path.join(os.getcwd(), f) for f in args.infiles]
 mqparam = MQParam(args.mqpar, None, substitution_rx=args.substitution_rx)
 if mqparam.version != args.version:
     raise Exception('mqpar version is ' + mqparam.version + '. Tool uses version {}.'.format(args.version))
