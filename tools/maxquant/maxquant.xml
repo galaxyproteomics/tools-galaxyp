@@ -9,30 +9,35 @@
     ## this is needed to avoid dotnet from crashing, in a newer dotnet version we can remove that
     export COMPlus_EnableDiagnostics=0 &&
     #import re
-    maxquant -c mqpar.xml 2>/dev/null  ## MQ writes success of creation to stderr
+    maxquant -c mqpar.xml 2>/dev/null &&  ## MQ writes success of creation to stderr
 
     #if 'config' in $output_opts.output:
-      &&
-      cp '$mq_conf' '$config'
+      cp '$mq_conf' '$config'  &&
     #end if
-    #set infiles = [$name for $pg in $paramGroups for $name in $pg.files]
-    #set names = [re.sub('@SUBSTITUTION_RX@', '_', str($n.element_identifier)) for $n in $infiles]
-    #set names_with_ext = [($name if ($name).lower().endswith(str($input_opts.ftype)) else $name + str($input_opts.ftype)) for $name in $names]
-    #for $target, $link in zip($infiles, $names_with_ext)
-        &&
-        #if str($input_opts.ftype) == '.thermo.raw':
-        cp '$target' '$link'
-        #else:
-        ln -s '$target' '$link'
-        #end if
+    #set $link_names = []
+    #for $pg in $paramGroups
+        #for $infile in $pg.files
+            #set $identifier = re.sub('@SUBSTITUTION_RX@', '_', str($infile.element_identifier))
+            #if $identifier.lower().endswith("."+$infile.ext)
+                #set $link_name = $identifier
+            #else    
+                #set $link_name = $identifier + "." + $infile.ext
+            #end if
+            #if $infile.ext == 'thermo.raw':
+            cp '$infile' '$link_name' &&
+            #else:
+            ln -s '$infile' '$link_name' &&
+            #end if
+            #silent $link_names.append($link_name)
+        #end for
     #end for
-    &&
+
     python3 '$__tool_directory__/create_mqpar.py'
     #if $search_opts.template
         --exp_design='$search_opts.template'
     #end if
     --version=@VERSION@ 
-    --num_threads=\${GALAXY_SLOTS:-1}
+    --num_threads="\${GALAXY_SLOTS:-1}"
     --substitution_rx='@SUBSTITUTION_RX@'
     --yaml='$mq_conf'
     mqpar.xml
@@ -104,9 +109,17 @@
             #end if
             paramGroups:
             #for $pg in $paramGroups:
-              #set names = [re.sub('@SUBSTITUTION_RX@', '_', str($n.element_identifier)) for $n in $pg.files]
-              #set names_with_ext = [($name if ($name).lower().endswith(str($input_opts.ftype)) else $name + str($input_opts.ftype)) for $name in $names]
-              - files: $names_with_ext
+                #set $link_names = []
+                #for $infile in $pg.files
+                    #set $identifier = re.sub('@SUBSTITUTION_RX@', '_', str($infile.element_identifier))
+                    #if $identifier.lower().endswith("."+$infile.ext)
+                        #set $link_name = $identifier
+                    #else    
+                        #set $link_name = $identifier + "." + $infile.ext
+                    #end if
+                    #silent $link_names.append($link_name)
+                #end for
+              - files: $link_names
                 maxMissedCleavages: ${pg.maxMissedCleavages}
                 #if $pg.fixedModifications:
                 fixedModifications: [${pg.fixedModifications}]
@@ -251,11 +264,6 @@
 
     <inputs>
         <section name="input_opts" title="Input Options" expanded="True">
-            <param name="ftype" type="select" label="choose the type of your input files">
-                <option value=".thermo.raw">thermo.raw</option>
-                <option value=".mzxml">mzxml</option>
-                <option value=".mzml">mzml</option>
-            </param>
             <param format="fasta" multiple="true" name="fasta_files"
                    type="data" label="FASTA files"
                    help="Specify one or more FASTA databases."/>
@@ -410,7 +418,7 @@ short peptides are usually not unique in the protein database and therefore not 
 
         <repeat name="paramGroups" title="Parameter Group" min="1" default="1">
             <param type="data" format="thermo.raw,mzxml,mzml" name="files" label="Infiles" multiple="true"
-                   help="Only select infiles matching the filetype specified in the input options."/>
+                   help="Only select infiles of the same datatype."/>
             <param type="integer" name="maxMissedCleavages"
                    label="missed cleavages" value="2"
                    help="The number of missed cleavages that are maximally tolerated in the in-silico digestion of the protien sequences."/>
@@ -540,13 +548,12 @@ short peptides are usually not unique in the protein database and therefore not 
         <!-- functional test with small mzXML file, no quantitation methods -->
         <test expect_num_outputs="14">
             <section name="input_opts">
-                <param name="ftype" value=".mzxml" />
                 <param name="fasta_files" value="bsa.fasta" />
                 <param name="identifier_parse_rule" value="&gt;([^\s]*)" />
                 <param name="description_parse_rule" value="&gt;(.*)" />
             </section>
             <repeat name="paramGroups">
-                <param name="files" value="BSA_min_23.mzXML"/>
+                <param name="files" value="BSA_min_23.mzXML" ftype="mzxml"/>
                 <param name="maxMissedCleavages" value="1"/>
                 <param name="fixedModifications" value="Carbamidomethyl (C)" />
                 <param name="variableModifications" value="Oxidation (M)" />
@@ -612,7 +619,6 @@ short peptides are usually not unique in the protein database and therefore not 
         <!-- 2 reporter ion ms2 + multiple param groups, testing yaml conf file and mqpar.xml only -->
         <test expect_num_outputs="3">
             <section name="input_opts">
-                <param name="ftype" value=".mzxml" />
                 <param name="fasta_files" value="bsa.fasta" />
                 <param name="identifier_parse_rule" value="&gt;([^\s]*)" />
                 <param name="description_parse_rule" value="&gt;(.*)" />
@@ -633,7 +639,7 @@ short peptides are usually not unique in the protein database and therefore not 
                 </conditional>
             </section>
             <repeat name="paramGroups">
-                <param name="files" value="BSA_min_23.mzXML"/>
+                <param name="files" value="BSA_min_23.mzXML" ftype="mzxml"/>
                 <param name="variableModifications" value="Oxidation (M)" />
                 <param name="fixedModifications" value_json="null" />
                 <conditional name="quant_method">
@@ -685,7 +691,6 @@ short peptides are usually not unique in the protein database and therefore not 
         <!-- 3 reporter ion ms3 + multiple param groups, testing yaml conf file and mqpar.xml only -->
         <test expect_num_outputs="3">
             <section name="input_opts">
-                <param name="ftype" value=".mzxml" />
                 <param name="fasta_files" value="bsa.fasta" />
                 <param name="identifier_parse_rule" value="&gt;([^\s]*)" />
                 <param name="description_parse_rule" value="&gt;(.*)" />
@@ -706,7 +711,7 @@ short peptides are usually not unique in the protein database and therefore not 
                 </conditional>
             </section>
             <repeat name="paramGroups">
-                <param name="files" value="BSA_min_23.mzXML"/>
+                <param name="files" value="BSA_min_23.mzXML" ftype="mzxml"/>
                 <param name="variableModifications" value="Oxidation (M)" />
                 <param name="fixedModifications" value_json="null" />
                 <conditional name="quant_method">
@@ -732,7 +737,7 @@ short peptides are usually not unique in the protein database and therefore not 
                 </conditional>
             </repeat>
             <repeat name="paramGroups">
-                <param name="files" value="BSA_min_22"/>
+                <param name="files" value="BSA_min_22" ftype="mzxml"/>
                 <param name="variableModifications" value_json="null" />
                 <param name="fixedModifications" value_json="null" />
                 <param name="enzymes" value_json="null" />
@@ -765,7 +770,6 @@ short peptides are usually not unique in the protein database and therefore not 
         <!-- 4 lfq, testing yaml conf file and mqpar.xml only -->
         <test expect_num_outputs="2">
             <section name="input_opts">
-                <param name="ftype" value=".mzxml" />
                 <param name="fasta_files" value="bsa.fasta" />
                 <param name="identifier_parse_rule" value="^&gt;.*\|(.*)\|.*$" />
                 <param name="description_parse_rule" value="^&gt;.*\|.*\|[^ ]+ (.*) OS.*$" />
@@ -782,7 +786,7 @@ short peptides are usually not unique in the protein database and therefore not 
                 </section>
             </section>
             <repeat name="paramGroups">
-                <param name="files" value="BSA_min_22"/>
+                <param name="files" value="BSA_min_22" ftype="mzxml"/>
                 <param name="maxMissedCleavages" value="1"/>
                 <param name="variableModifications" value="Oxidation (M)" />
                 <conditional name="quant_method">
@@ -799,7 +803,6 @@ short peptides are usually not unique in the protein database and therefore not 
         <!-- 5  Test for MBR -->
         <test expect_num_outputs="2">
             <section name="input_opts">
-                <param name="ftype" value=".mzxml" />
                 <param name="fasta_files" value="bsa.fasta" />
                 <param name="identifier_parse_rule" value="^&gt;.*\|(.*)\|.*$" />
                 <param name="description_parse_rule" value="^&gt;.*\|.*\|[^ ]+ (.*) OS.*$" />
@@ -819,7 +822,7 @@ short peptides are usually not unique in the protein database and therefore not 
                 </section>
             </section>
             <repeat name="paramGroups">
-                <param name="files" value="BSA_min_22"/>
+                <param name="files" value="BSA_min_22" ftype="mzxml"/>
                 <param name="maxMissedCleavages" value="1"/>
                 <param name="variableModifications" value="Oxidation (M)" />
                 <conditional name="quant_method">
@@ -844,7 +847,6 @@ short peptides are usually not unique in the protein database and therefore not 
         <!-- 6 silac + fractions with experimental design template, testing yaml conf file and mqpar.xml only -->
         <test expect_num_outputs="2">
             <section name="input_opts">
-                <param name="ftype" value=".mzxml" />
                 <param name="fasta_files" value="bsa.fasta" />
                 <param name="identifier_parse_rule" value="&gt;([^\s]*)" />
                 <param name="description_parse_rule" value="&gt;(.*)" />                
@@ -853,7 +855,7 @@ short peptides are usually not unique in the protein database and therefore not 
                 <param name="template" value="04/exp_design" />
             </section>
             <repeat name="paramGroups">
-                <param name="files" value="BSA_min_23.mzXML,BSA_min_22"/>
+                <param name="files" value="BSA_min_23.mzXML,BSA_min_22" ftype="mzxml"/>
                 <param name="fixedModifications" value="Carbamidomethyl (C)" />
                 <param name="variableModifications" value="Oxidation (M)" />
                 <param name="enzymes" value="Trypsin/P" />
@@ -873,13 +875,12 @@ short peptides are usually not unique in the protein database and therefore not 
         <!-- 7 -->
         <test expect_num_outputs="2">
             <section name="input_opts">
-                <param name="ftype" value=".mzxml" />
                 <param name="fasta_files" value="tmt_data.fasta" />
                 <param name="identifier_parse_rule" value="&gt;([^\s]*)" />
                 <param name="description_parse_rule" value="&gt;(.*)" />
             </section>
             <repeat name="paramGroups">
-                <param name="files" value="tmt_data.mzXML"/>
+                <param name="files" value="tmt_data.mzXML" ftype="mzxml"/>
                 <param name="variableModifications" value="Oxidation (M)" />
                 <param name="fixedModifications" value_json="null" />
                 <conditional name="quant_method">
@@ -899,13 +900,12 @@ short peptides are usually not unique in the protein database and therefore not 
         <!-- 8 TMTpro16plex test -->
         <test expect_num_outputs="3">
             <section name="input_opts">
-                <param name="ftype" value=".mzxml" />
                 <param name="fasta_files" value="tmt_data_16.fasta" />
                 <param name="identifier_parse_rule" value="&gt;([^\s]*)" />
                 <param name="description_parse_rule" value="&gt;(.*)" />                
             </section>
             <repeat name="paramGroups">
-                <param name="files" value="tmt_data.mzXML"/>
+                <param name="files" value="tmt_data.mzXML" ftype="mzxml"/>
                 <param name="variableModifications" value="Oxidation (M)" />
                 <param name="fixedModifications" value_json="null" />
                 <conditional name="quant_method">
@@ -926,13 +926,12 @@ short peptides are usually not unique in the protein database and therefore not 
         <!-- 9 TMTpro18plex test -->
         <test expect_num_outputs="2">
             <section name="input_opts">
-                <param name="ftype" value=".mzxml" />
                 <param name="fasta_files" value="tmt_data_18.fasta" />
                 <param name="identifier_parse_rule" value="&gt;([^\s]*)" />
                 <param name="description_parse_rule" value="&gt;(.*)" />                
             </section>
             <repeat name="paramGroups">
-                <param name="files" value="tmt_data_18.mzXML"/>
+                <param name="files" value="tmt_data_18.mzXML" ftype="mzxml"/>
                 <param name="variableModifications" value="Oxidation (M)" />
                 <param name="fixedModifications" value_json="null" />
                 <conditional name="quant_method">
@@ -954,7 +953,6 @@ short peptides are usually not unique in the protein database and therefore not 
         <!-- 10 Thermo RAW file test -->
         <test expect_num_outputs="2">
             <section name="input_opts">
-                <param name="ftype" value=".thermo.raw" />
                 <param name="fasta_files" value="bsa.fasta" />
                 <param name="identifier_parse_rule" value="^&gt;.*\|(.*)\|.*$" />
                 <param name="description_parse_rule" value="^&gt;.*\|.*\|[^ ]+ (.*) OS.*$" />
@@ -963,7 +961,7 @@ short peptides are usually not unique in the protein database and therefore not 
                 <param name="min_unique_pep" value="1" />
             </section>
             <repeat name="paramGroups">
-                <param name="files" value="thermo.raw"/>
+                <param name="files" value="thermo.raw" ftype="thermo.raw"/>
                 <param name="maxMissedCleavages" value="1"/>
                 <param name="variableModifications" value="Oxidation (M)" />
                 <conditional name="quant_method">
@@ -981,7 +979,6 @@ short peptides are usually not unique in the protein database and therefore not 
               (same as 10, ecxept for the modifications) -->
         <test expect_num_outputs="2">
             <section name="input_opts">
-                <param name="ftype" value=".thermo.raw" />
                 <param name="fasta_files" value="bsa.fasta" />
                 <param name="identifier_parse_rule" value="^&gt;.*\|(.*)\|.*$" />
                 <param name="description_parse_rule" value="^&gt;.*\|.*\|[^ ]+ (.*) OS.*$" />
@@ -990,7 +987,7 @@ short peptides are usually not unique in the protein database and therefore not 
                 <param name="min_unique_pep" value="1" />
             </section>
             <repeat name="paramGroups">
-                <param name="files" value="thermo.raw"/>
+                <param name="files" value="thermo.raw" ftype="thermo.raw"/>
                 <param name="maxMissedCleavages" value="1"/>
                 <param name="variableModifications" value="Glu-&gt;pyro-Glu" />
                 <param name="fixedModifications" value="Ala-&gt;Asp" />
