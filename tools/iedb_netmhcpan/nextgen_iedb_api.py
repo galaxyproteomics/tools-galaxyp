@@ -295,7 +295,10 @@ def __main__():
 
     allele_string = ','.join(parse_alleles(args.allelefile))
 
-    length_range = [int(i) for i in args.lengthrange.split(',')]
+    if args.lengthrange:
+        length_range = [int(i) for i in args.lengthrange.split(',')]
+    else:
+        length_range = None
 
     pipeline_url = 'https://api-nextgen-tools.iedb.org/api/v1/pipeline'
 

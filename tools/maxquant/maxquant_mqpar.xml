@@ -9,25 +9,30 @@
     export COMPlus_EnableDiagnostics=0 &&
     ## link galaxy datasets to filenames accepted by maxquant
     #import re
-    #set names = [re.sub('@SUBSTITUTION_RX@', '_', str($n.element_identifier)) for $n in $input_opts.infiles]
-    #set names_with_ext = [($name if ($name).lower().endswith(str($input_opts.ftype)) else $name + str($input_opts.ftype)) for $name in $names]
-    #for $target, $link in zip($infiles, $names_with_ext)
-        #if str($input_opts.ftype) == '.thermo.raw':
-        cp '$target' '$link' &&
-        #else:
-        ln -s '$target' '$link' &&
+    #set $link_names = []
+    #for $infile in $infiles
+        #set $identifier = re.sub('@SUBSTITUTION_RX@', '_', str($infile.element_identifier))
+        #if $identifier.lower().endswith("."+$infile.ext)
+            #set $link_name = $identifier
+        #else    
+            #set $link_name = $identifier + "." + $infile.ext
         #end if
+        #if $infile.ext == 'thermo.raw':
+        cp '$infile' '$link_name' &&
+        #else:
+        ln -s '$infile' '$link_name' &&
+        #end if
+        #silent $link_names.append($link_name)
     #end for
 
     python3 '$__tool_directory__/modify_mqpar.py'
-    #set inf = ','.join($names_with_ext)
-    --infiles='$inf'
-    --version=@VERSION@
-    --num_threads=\${GALAXY_SLOTS:-1}
-    --substitution_rx='@SUBSTITUTION_RX@'
-    --fasta_files='$fasta_files'
-    --description_parse_rule='$description_parse_rule'
-    --identifier_parse_rule='$identifier_parse_rule'
+    --infiles #echo ' '.join([f"'{n}'" for n in $link_names])
+    --version @VERSION@
+    --num_threads "\${GALAXY_SLOTS:-1}"
+    --substitution_rx '@SUBSTITUTION_RX@'
+    --fasta_files '$fasta_files'
+    --description_parse_rule '$description_parse_rule'
+    --identifier_parse_rule '$identifier_parse_rule'
     '$mqpar_input'
 
     &&
@@ -43,28 +48,9 @@
     ]]></command>
 
     <inputs>
-        <conditional name="input_opts">
-            <param name="ftype" type="select" label="choose the type of your input files">
-                <option value=".thermo.raw">thermo.raw</option>
-                <option value=".mzxml">mzxml</option>
-                <option value=".mzml">mzml</option>
-            </param>
-            <when value=".thermo.raw"> 
-                <param multiple="true" name="infiles" type="data"
-                       format="thermo.raw" label="RAW Files"
-                       help="Specify one or more Thermo RAW files" />
-            </when>
-            <when value=".mzxml">
-                <param multiple="true" name="infiles" type="data"
-                       format="mzxml" label="mzXML Files"
-                       help="Specify one or more mzXML files" />
-            </when>
-            <when value=".mzml">
-                <param multiple="true" name="infiles" type="data"
-                       format="mzml" label="mzML Files"
-                       help="Specify one or more mzML files" />
-            </when>
-        </conditional>
+        <param multiple="true" name="infiles" type="data"
+            format="thermo.raw,mzml,mzxml" label="Infiles"
+            help="One or more files. All need to be of the same datatype." />
         <param format="fasta" multiple="true" name="fasta_files"
                type="data" label="FASTA files"
                help="Specify one or more FASTA databases." />
@@ -113,15 +99,10 @@
             <option value="log">MaxQuant and PTXQC log</option>
         </param>
     </inputs>
-
     <expand macro="outputs"/>
-
     <tests>
         <test expect_num_outputs="19">
-            <conditional name="input_opts">
-                <param name="ftype" value=".mzxml" />
-                <param name="infiles" value="BSA_min_22,BSA_min_21.mzXML" />
-            </conditional>
+            <param name="infiles" value="BSA_min_22,BSA_min_21.mzXML" ftype="mzxml"/>
             <param name="fasta_files" value="bsa.fasta" />
             <param name="identifier_parse_rule" value="&gt;([^\s]*)" />
             <param name="description_parse_rule" value="&gt;(.*)" />
