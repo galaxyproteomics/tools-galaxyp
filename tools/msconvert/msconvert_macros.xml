@@ -1,6 +1,6 @@
 <macros>
-  <token name="@VERSION@">3.0.20287</token>
-  <token name="@FULL_VERSION@">@VERSION@-769529fa4</token>
+  <token name="@VERSION@">3.0.26121</token>
+  <token name="@FULL_VERSION@">@VERSION@-ed8dc8a</token>
   <token name="@PROFILE_VERSION@">23.2</token>
   <xml name="msconvertCommand">
     <command detect_errors="exit_code">
@@ -12,11 +12,11 @@
     #set basename = $re.sub(r'[^\w ,.\-+]','_',$input.element_identifier)
 
     #if $ext == 'wiff':
-      ln -s '${input.extra_files_path}/wiff' '${basename}.wiff' &&
-      ln -s '${input.extra_files_path}/wiff_scan' '${basename}.wiff.scan' &&
+      cp '${input.extra_files_path}/wiff' '${basename}.wiff' &&
+      cp '${input.extra_files_path}/wiff_scan' '${basename}.wiff.scan' &&
       #set inputmask = "'"+$basename+"'"
     #elif $ext.endswith('tar'):
-      ln -s '$input' '${basename}' &&
+      cp '$input' '${basename}' &&
       tar xf '${basename}' &&
       #set basename = $os.path.splitext($basename)[0]
       #if $ext.startswith('waters'):
@@ -24,19 +24,19 @@
       #elif $ext.startswith('agilent') or $ext.startswith('bruker'):
         #set inputmask = '*.d'
       #elif $ext.startswith('wiff'):
-        #set inputmask = '*.wiff *.wiff2'
+        #set inputmask = '`ls *.wiff *.wiff2 2>/dev/null`'
       #else
         #raise RuntimeError("Unrecognized type of tar (${ext})")
       #end if
     #else
-      ln -s '$input' '${basename}' &&
+      cp '$input' '${basename}' &&
       #set inputmask = "'"+$basename+"'"
     #end if
 
     #if $data_processing.precursor_refinement.use_mzrefinement == "true"
       #set input_ident_name = ".".join((os.path.splitext($basename)[0], $data_processing.precursor_refinement.input_ident.ext))
       #set output_refinement_name = os.path.splitext($basename)[0] + '.mzRefinement.tsv'
-      ln -s '$data_processing.precursor_refinement.input_ident' '$input_ident_name' &&
+      cp '$data_processing.precursor_refinement.input_ident' '$input_ident_name' &&
     #end if
 
     ## CAN_SUDO is "" if successful and "1" otherwise
@@ -45,9 +45,9 @@
     if [ -z "\$CAN_SUDO" ]; then
       uid=`id -u` &&
       gid=`id -g` &&
-      WINE="wine64_anyuser";
+      WINE="wine_anyuser";
     else
-      WINE="wine64" &&
+      WINE="wine" &&
       ## create a writable copy of wine prefix (since copying fails for some html
       ## stderr and exit code is swallowed)
       export WINEPREFIX=\$(mktemp -d) &&
@@ -169,7 +169,7 @@
       #end if
 
       #if $filtering.filter_ms_levels.do_ms_level_filter == "true"
-        --filter "msLevel [$filtering.filter_ms_levels.ms_level_from, $filtering.filter_ms_levels.ms_level_to]"
+        --filter "msLevel [$filtering.filter_ms_levels.ms_level_from,$filtering.filter_ms_levels.ms_level_to]"
       #end if
 
       #if str($filtering.polarity) != "false"
@@ -225,7 +225,7 @@
       #else
         ## make mzML and mzXML extensions lower case (the Galaxy data type is ) otherwise detetion of the file
         ## this won't be necessay from Galaxy 25.0 https://github.com/galaxyproject/galaxy/pull/19954
-        #if $output_type == 'mzML' or $output_type == 'mzXML'
+        #if $output_type == 'mzML' or $output_type == 'mzXML' or $output_type == 'mzMLb'
           && find outputs/ -name "*.$output_type" | xargs -I "FILE" sh -c 'mv FILE outputs/\$(basename FILE .$output_type).#echo str($output_type).lower()
           ## a newline is needed after `#echo ...` therefore the `;'` on the next line
 ;'
@@ -245,7 +245,8 @@
     </param>
 
     <param name="output_type" type="select" label="Output Type">
-      <option value="mz5" selected="true">mz5</option>
+      <option value="mzMLb" selected="true">mzMLb</option>
+      <option value="mz5">mz5</option>
       <option value="mzML">mzML</option>
       <option value="mzXML">mzXML</option>
       <option value="mgf">mgf</option>
@@ -555,6 +556,7 @@
       <data format="mzml" name="output" label="${($input.name[:-4] if $input.name.endswith('.tar') else $input.name).rsplit('.',1)[0]}.${output_type}" >
         <filter>general_options['multi_run_output']['do_multi_run_output'] == "false"</filter>
         <change_format>
+          <when input="output_type" value="mzMLb" format="mzmlb" />
           <when input="output_type" value="mz5" format="mz5" />
           <when input="output_type" value="mzXML" format="mzxml" />
           <when input="output_type" value="ms2" format="ms2" />
@@ -600,6 +602,8 @@
       <param name="license_agreement" value="true" />
       <param name="output_type" value="mzXML" />
       <param name="data_processing|peak_picking|pick_peaks" value="false" />
+      <param name="filtering|indices_0|from" value="0" />
+      <param name="filtering|indices_0|to" value="249" />
       <output name="output" file="AgilentMassHunterTest.mzXML" ftype="mzxml" lines_diff="4" />
     </test>
     <test expect_num_outputs="1">
@@ -654,6 +658,14 @@
       <param name="settings|mz_encoding" value="64" />
       <param name="settings|intensity_encoding" value="64" />
       <output name="output" file="small-zlib-64.mz5" compare="sim_size" ftype="mz5" delta="150000" />
+    </test>
+    <test expect_num_outputs="1">
+      <param name="input" value="small-peakpicking-cwt-allMS.mzML" ftype="mzml" />
+      <param name="license_agreement" value="true" />
+      <param name="output_type" value="mzMLb" />
+      <param name="settings|mz_encoding" value="64" />
+      <param name="settings|intensity_encoding" value="64" />
+      <output name="output" file="small-zlib-64.mzMLb" compare="sim_size" ftype="mzmlb" delta="150000" />
     </test>
     <!-- TODO: how to test gzipped output?
     <test>
