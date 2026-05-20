@@ -1,4 +1,5 @@
 import argparse
+import shutil
 import tempfile
 import urllib.request
 from pathlib import Path
@@ -36,7 +37,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </style>
 </head>
 <body>
-<h2>🤠 Proteins Mosaic Q  __PDB_ID__</h2>
+<h2>&#x1F920; Proteins Mosaic Q  __PDB_ID__</h2>
 
 <div class="metrics">
   <table>
@@ -92,27 +93,48 @@ viewer.render();
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--pdb_id", required=True)
+    parser.add_argument("--pdb_id", required=False, default=None)
+    parser.add_argument("--pdb_file", required=False, default=None)
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
-    pdb_id = args.pdb_id.strip().upper()
+    # Determine label and source
+    if args.pdb_file:
+        pdb_label = args.pdb_id.strip().upper() if args.pdb_id else "Uploaded structure"
+    elif args.pdb_id:
+        pdb_label = args.pdb_id.strip().upper()
+    else:
+        pdb_label = "UNKNOWN"
 
     q, q_alt = "N/A", "N/A"
     pdb_content = ""
     try:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            url = f"https://files.rcsb.org/download/{pdb_id}.pdb"
-            filepath = Path(tmpdir) / f"{pdb_id}.pdb"
-            try:
-                urllib.request.urlretrieve(url, str(filepath))
-            except Exception as download_err:
-                raise RuntimeError(f"Could not download {pdb_id}: {download_err}")
-            if filepath.exists():
-                pdb_content = filepath.read_text()
+        if args.pdb_file:
+            # Galaxy passes files with a UUID filename — copy to .pdb so mosaicq recognises it
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmp_pdb = Path(tmpdir) / "structure.pdb"
+                shutil.copy(args.pdb_file, str(tmp_pdb))
+                pdb_content = tmp_pdb.read_text()
                 if MOSAICQ_AVAILABLE:
-                    q = f"{calculate_q(str(filepath)):.4f}"
-                    q_alt = f"{calculate_q_alt(str(filepath)):.4f}"
+                    q = f"{calculate_q(str(tmp_pdb)):.4f}"
+                    q_alt = f"{calculate_q_alt(str(tmp_pdb)):.4f}"
+        elif args.pdb_id:
+            # Download from RCSB
+            pdb_id = args.pdb_id.strip().upper()
+            with tempfile.TemporaryDirectory() as tmpdir:
+                url = f"https://files.rcsb.org/download/{pdb_id}.pdb"
+                filepath = Path(tmpdir) / f"{pdb_id}.pdb"
+                try:
+                    urllib.request.urlretrieve(url, str(filepath))
+                except Exception as download_err:
+                    raise RuntimeError(f"Could not download {pdb_id}: {download_err}")
+                if filepath.exists():
+                    pdb_content = filepath.read_text()
+                    if MOSAICQ_AVAILABLE:
+                        q = f"{calculate_q(str(filepath)):.4f}"
+                        q_alt = f"{calculate_q_alt(str(filepath)):.4f}"
+        else:
+            raise RuntimeError("Please provide either a PDB ID or a PDB file.")
     except Exception as e:
         q, q_alt = f"Error: {e}", "N/A"
 
@@ -122,7 +144,7 @@ def main():
     # Use .replace() for all substitutions — no .format() needed,
     # so JavaScript { } syntax requires no escaping whatsoever
     html = HTML_TEMPLATE
-    html = html.replace("__PDB_ID__", pdb_id)
+    html = html.replace("__PDB_ID__", pdb_label)
     html = html.replace("__Q__", str(q))
     html = html.replace("__Q_ALT__", str(q_alt))
     html = html.replace("__PDB_CONTENT__", pdb_content_js)
@@ -133,3 +155,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
