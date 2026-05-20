@@ -121,11 +121,11 @@ def main():
 
     # Use .replace() for all substitutions — no .format() needed,
     # so JavaScript { } syntax requires no escaping whatsoever
-    html = (HTML_TEMPLATE
-        .replace("__PDB_ID__", pdb_id)
-        .replace("__Q__", str(q))
-        .replace("__Q_ALT__", str(q_alt))
-        .replace("__PDB_CONTENT__", pdb_content_js))
+    html = HTML_TEMPLATE
+    html = html.replace("__PDB_ID__", pdb_id)
+    html = html.replace("__Q__", str(q))
+    html = html.replace("__Q_ALT__", str(q_alt))
+    html = html.replace("__PDB_CONTENT__", pdb_content_js)
 
     with open(args.output, "w", encoding="utf-8") as f:
         f.write(html)
