@@ -1,6 +1,5 @@
 import argparse
 import tempfile
-import os
 import urllib.request
 from pathlib import Path
 
@@ -112,7 +111,7 @@ def main():
             if filepath.exists():
                 pdb_content = filepath.read_text()
                 if MOSAICQ_AVAILABLE:
-                    q     = f"{calculate_q(str(filepath)):.4f}"
+                    q = f"{calculate_q(str(filepath)):.4f}"
                     q_alt = f"{calculate_q_alt(str(filepath)):.4f}"
     except Exception as e:
         q, q_alt = f"Error: {e}", "N/A"
@@ -123,10 +122,10 @@ def main():
     # Use .replace() for all substitutions — no .format() needed,
     # so JavaScript { } syntax requires no escaping whatsoever
     html = (HTML_TEMPLATE
-            .replace("__PDB_ID__",      pdb_id)
-            .replace("__Q__",           str(q))
-            .replace("__Q_ALT__",       str(q_alt))
-            .replace("__PDB_CONTENT__", pdb_content_js))
+        .replace("__PDB_ID__", pdb_id)
+        .replace("__Q__", str(q))
+        .replace("__Q_ALT__", str(q_alt))
+        .replace("__PDB_CONTENT__", pdb_content_js))
 
     with open(args.output, "w", encoding="utf-8") as f:
         f.write(html)
