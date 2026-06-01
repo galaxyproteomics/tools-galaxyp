@@ -26,7 +26,8 @@ infiles = [os.path.join(os.getcwd(), f) for f in args.infiles]
 mqparam = MQParam(args.mqpar, None, substitution_rx=args.substitution_rx)
 if mqparam.version != args.version:
     raise Exception('mqpar version is ' + mqparam.version + '. Tool uses version {}.'.format(args.version))
-mqparam.translate(infiles)
+mqparam.add_infiles([infiles])
+
 mqparam.add_fasta_files(args.fasta_files.split(','),
                         {'identifierParseRule': args.identifier_parse_rule,
                          'descriptionParseRule': args.description_parse_rule})

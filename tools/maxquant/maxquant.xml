@@ -18,13 +18,21 @@
     #for $pg in $paramGroups
         #for $infile in $pg.files
             #set $identifier = re.sub('@SUBSTITUTION_RX@', '_', str($infile.element_identifier))
-            #if $identifier.lower().endswith("."+$infile.ext)
+            #if $infile.is_of_type("brukertdf.d.tar")
+                #set $link_name = re.sub('(?i)\\.tar$', '', $identifier)
+                #if not $link_name.lower().endswith(".d")
+                    #set $link_name = $link_name + ".d"
+                #end if
+            #elif $identifier.lower().endswith("."+$infile.ext)
                 #set $link_name = $identifier
-            #else    
+            #else
                 #set $link_name = $identifier + "." + $infile.ext
             #end if
             #if $infile.ext == 'thermo.raw':
             cp '$infile' '$link_name' &&
+            #elif $infile.is_of_type("brukertdf.d.tar")
+            mkdir -p '$link_name' &&
+            tar -xf '$infile' -C '$link_name' --strip-components=1 &&
             #else:
             ln -s '$infile' '$link_name' &&
             #end if
@@ -107,20 +115,46 @@
             #end if
             useCounterparts: $protein_quant.only_unmod_prot.discard_unmod_cpart_peptides
             #end if
+            #if str($search_opts.full_min_mz) != '':
+            fullMinMz: '${search_opts.full_min_mz}'
+            #end if
+            #if str($search_opts.full_max_mz) != '':
+            fullMaxMz: '${search_opts.full_max_mz}'
+            #end if
+            #if str($search_opts.grid_spacing) != '':
+            gridSpacing: ${search_opts.grid_spacing}
+            #end if
             paramGroups:
             #for $pg in $paramGroups:
                 #set $link_names = []
+                #set $is_bruker_tims = False
                 #for $infile in $pg.files
                     #set $identifier = re.sub('@SUBSTITUTION_RX@', '_', str($infile.element_identifier))
-                    #if $identifier.lower().endswith("."+$infile.ext)
+                    #if $infile.is_of_type("brukertdf.d.tar")
+                        #set $link_name = re.sub('(?i)\\.tar$', '', $identifier)
+                        #if not $link_name.lower().endswith(".d")
+                            #set $link_name = $link_name + ".d"
+                        #end if
+                        #set $is_bruker_tims = True
+                    #elif $identifier.lower().endswith("."+$infile.ext)
                         #set $link_name = $identifier
-                    #else    
+                    #else
                         #set $link_name = $identifier + "." + $infile.ext
                     #end if
                     #silent $link_names.append($link_name)
                 #end for
               - files: $link_names
                 maxMissedCleavages: ${pg.maxMissedCleavages}
+                #if $is_bruker_tims
+                lcmsRunType: 'TIMS-DDA'
+                timsHalfWidth: ${pg.timsHalfWidth}
+                timsStep: ${pg.timsStep}
+                timsResolution: ${pg.timsResolution}
+                timsMinMsmsIntensity: ${pg.timsMinMsmsIntensity}
+                timsRemovePrecursor: ${pg.timsRemovePrecursor}
+                timsIsobaricLabels: False
+                timsCollapseMsms: ${pg.timsCollapseMsms}
+                #end if
                 #if $pg.fixedModifications:
                 fixedModifications: [${pg.fixedModifications}]
                 #else:
@@ -341,6 +375,14 @@ short peptides are usually not unique in the protein database and therefore not 
                    help="Specify the desired false discovery rate (FDR) at the peptide spectrum match (PSM) level. It is determined by the target-decoy approach. A value of 0.01 stands for 1% FDR."/>
             <param name="protein_fdr" type="float" label="Protein FDR" min="0" value="0.01"
                    help="Specify the desired false discovery rate (FDR) at the protein level. It is determined by the target-decoy approach. A value of 0.01 stands for 1% FDR."/>
+            <param name="full_min_mz" type="integer" label="Full scan minimum m/z" value="" optional="true"
+                   help="Generic MaxQuant full scan lower m/z bound. Leave empty to keep the MaxQuant template value.">
+            </param>
+            <param name="full_max_mz" type="integer" label="Full scan maximum m/z" value="" optional="true"
+                   help="Generic MaxQuant full scan upper m/z bound. Leave empty to keep the MaxQuant template value.">
+            </param>
+            <param name="grid_spacing" type="float" label="Grid spacing" min="0" value="" optional="true"
+                   help="Generic MaxQuant grid spacing. Leave empty to keep the MaxQuant template value. Adjust for ion mobility/TIMS workflows when required."/>
             <param name="min_pep_length" type="integer" label="Minimum peptide length for unspecific searches" min="1" value="8"
                    help="During unspecific searches peptides that have fewer amino acids than this value will be discarded. This applies also to semi-specific (e.g. semi tryptic) searches"/>
             <param name="max_pep_length" type="integer" label="Maximum peptide length for unspecific searches" min="1" value="25"
@@ -417,8 +459,8 @@ short peptides are usually not unique in the protein database and therefore not 
 
 
         <repeat name="paramGroups" title="Parameter Group" min="1" default="1">
-            <param type="data" format="thermo.raw,mzxml,mzml" name="files" label="Infiles" multiple="true"
-                   help="Only select infiles of the same datatype."/>
+            <param type="data" format="thermo.raw,mzxml,mzml,brukertdf.d.tar" name="files" label="Infiles" multiple="true"
+                   help="Only select infiles of the same datatype. Bruker .d folders must use the brukertdf.d.tar datatype and contain one top-level .d directory."/>
             <param type="integer" name="maxMissedCleavages"
                    label="missed cleavages" value="2"
                    help="The number of missed cleavages that are maximally tolerated in the in-silico digestion of the protien sequences."/>
@@ -463,6 +505,26 @@ short peptides are usually not unique in the protein database and therefore not 
                 <option value="4">Unspecific</option>
                 <option value="5">No digestion</option>
             </param>
+            <param type="integer" name="timsHalfWidth"
+                   label="TIMS half width" value="4" min="1"
+                   help="Used only for Bruker .d.tar inputs."/>
+            <param type="integer" name="timsStep"
+                   label="TIMS step" value="3" min="1"
+                   help="Used only for Bruker .d.tar inputs."/>
+            <param type="integer" name="timsResolution"
+                   label="TIMS resolution" value="32000" min="1"
+                   help="Used only for Bruker .d.tar inputs."/>
+            <param type="float" name="timsMinMsmsIntensity"
+                   label="TIMS minimum MS/MS intensity" value="1.5" min="0"
+                   help="Used only for Bruker .d.tar inputs."/>
+            <param name="timsRemovePrecursor" type="boolean" checked="true"
+                   label="TIMS remove precursor"
+                   truevalue="True" falsevalue="False"
+                   help="Used only for Bruker .d.tar inputs."/>
+            <param name="timsCollapseMsms" type="boolean" checked="true"
+                   label="TIMS collapse MS/MS"
+                   truevalue="True" falsevalue="False"
+                   help="Used only for Bruker .d.tar inputs."/>
             <conditional name="quant_method">
                 <param name="select_quant_method" type="select" label="Quantitation Methods"
                        help="Select a method if needed.">
@@ -849,7 +911,7 @@ short peptides are usually not unique in the protein database and therefore not 
             <section name="input_opts">
                 <param name="fasta_files" value="bsa.fasta" />
                 <param name="identifier_parse_rule" value="&gt;([^\s]*)" />
-                <param name="description_parse_rule" value="&gt;(.*)" />                
+                <param name="description_parse_rule" value="&gt;(.*)" />
             </section>
             <section name="search_opts">
                 <param name="template" value="04/exp_design" />
@@ -902,7 +964,7 @@ short peptides are usually not unique in the protein database and therefore not 
             <section name="input_opts">
                 <param name="fasta_files" value="tmt_data_16.fasta" />
                 <param name="identifier_parse_rule" value="&gt;([^\s]*)" />
-                <param name="description_parse_rule" value="&gt;(.*)" />                
+                <param name="description_parse_rule" value="&gt;(.*)" />
             </section>
             <repeat name="paramGroups">
                 <param name="files" value="tmt_data.mzXML" ftype="mzxml"/>
@@ -928,7 +990,7 @@ short peptides are usually not unique in the protein database and therefore not 
             <section name="input_opts">
                 <param name="fasta_files" value="tmt_data_18.fasta" />
                 <param name="identifier_parse_rule" value="&gt;([^\s]*)" />
-                <param name="description_parse_rule" value="&gt;(.*)" />                
+                <param name="description_parse_rule" value="&gt;(.*)" />
             </section>
             <repeat name="paramGroups">
                 <param name="files" value="tmt_data_18.mzXML" ftype="mzxml"/>
@@ -1006,6 +1068,49 @@ short peptides are usually not unique in the protein database and therefore not 
             </output>
             <output name="mqpar" file="10/mqpar.xml" lines_diff="10" />
         </test>
+        <!-- 12 Bruker .d.tar dry-run test -->
+        <test expect_num_outputs="2">
+            <section name="input_opts">
+                <param name="fasta_files" value="bsa.fasta" />
+                <param name="identifier_parse_rule" value="&gt;([^\s]*)" />
+                <param name="description_parse_rule" value="&gt;(.*)" />
+            </section>
+            <section name="search_opts">
+                <param name="grid_spacing" value="0.7" />
+            </section>
+            <repeat name="paramGroups">
+                <param name="files" value="ThyroglobMRM000003.d.tar" ftype="brukertdf.d.tar"/>
+                <param name="maxMissedCleavages" value="2"/>
+                <param name="fixedModifications" value="Carbamidomethyl (C)" />
+                <param name="variableModifications" value="Oxidation (M)" />
+                <param name="enzymes" value="Trypsin/P" />
+            </repeat>
+            <section name="output_opts">
+                <param name="dry_run" value="True" />
+                <param name="output" value="config,mqpar" />
+            </section>
+            <output name="config">
+                <assert_contents>
+                    <has_text text="gridSpacing: 0.7" />
+                    <has_text text="files: ['ThyroglobMRM000003.d']" />
+                    <has_text text="lcmsRunType: 'TIMS-DDA'" />
+                    <has_text text="timsHalfWidth: 4" />
+                    <has_text text="timsStep: 3" />
+                    <has_text text="timsResolution: 32000" />
+                    <has_text text="timsMinMsmsIntensity: 1.5" />
+                </assert_contents>
+            </output>
+            <output name="mqpar">
+                <assert_contents>
+                    <has_text text="ThyroglobMRM000003.d" />
+                    <has_text text="&lt;lcmsRunType&gt;TIMS-DDA&lt;/lcmsRunType&gt;" />
+                    <has_text text="&lt;timsHalfWidth&gt;4&lt;/timsHalfWidth&gt;" />
+                    <has_text text="&lt;timsStep&gt;3&lt;/timsStep&gt;" />
+                    <has_text text="&lt;timsResolution&gt;32000&lt;/timsResolution&gt;" />
+                    <has_text text="&lt;timsMinMsmsIntensity&gt;1.5&lt;/timsMinMsmsIntensity&gt;" />
+                </assert_contents>
+            </output>
+        </test>
     </tests>
 
     <help><![CDATA[
@@ -1015,9 +1120,11 @@ This tool is a wrapper for MaxQuant v@VERSION@. The current version of the wrapp
 
 **Input files**
 
-- Thermo raw, mzML, or mzXML files (in parameter group section)
+- Thermo raw, mzML, mzXML files, or Bruker .d folders tarred as `*.d.tar`
+  (in parameter group section)
 
-    - The datatype of all files has to be either 'thermo.raw', 'mzml' or 'mzxml'. Make sure to specify the correct datatype either during upload to Galaxy or afterwards (edit attributes --> datatypes)
+    - The datatype of all non-Bruker files has to be either 'thermo.raw', 'mzml' or 'mzxml'. Make sure to specify the correct datatype either during upload to Galaxy or afterwards (edit attributes --> datatypes)
+    - Bruker .d folders must use the `brukertdf.d.tar` datatype and contain one top-level `.d` directory. The wrapper extracts the archive and passes the resulting `.d` directory to MaxQuant.
 - Fasta file: specify parse rules according to your fasta file (header). Some examples for different fasta headers:  
 
                 ::

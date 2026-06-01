@@ -20,6 +20,22 @@ def et_add_child(el, name, text, attrib=None):
     return child
 
 
+def make_fasta_file_node():
+    "Create a MaxQuant FastaFileInfo node for mqpar templates without one."
+    node = ET.Element('FastaFileInfo')
+    for tag in (
+        'fastaFilePath',
+        'identifierParseRule',
+        'descriptionParseRule',
+        'taxonomyParseRule',
+        'variationParseRule',
+        'modificationParseRule',
+        'taxonomyId',
+    ):
+        et_add_child(node, tag, '')
+    return node
+
+
 class ParamGroup:
     """Represents one parameter Group
     """
@@ -116,7 +132,13 @@ class MQParam:
         self.substitution_rx = substitution_rx
         self.pg_node = copy.deepcopy(self._root.find('parameterGroups')[0])
         self._paramGroups = []
-        self.fasta_file_node = copy.deepcopy(self._root.find('fastaFiles')[0])
+        fasta_files_node = self._root.find('fastaFiles')
+        if fasta_files_node is None:
+            fasta_files_node = ET.SubElement(self._root, 'fastaFiles')
+        if len(fasta_files_node) > 0 and fasta_files_node[0].find('fastaFilePath') is not None:
+            self.fasta_file_node = copy.deepcopy(fasta_files_node[0])
+        else:
+            self.fasta_file_node = make_fasta_file_node()
         if yaml:
             self._from_yaml(yaml)
 
@@ -288,12 +310,20 @@ class MQParam:
             None
         """
         fasta_node = self._root.find('fastaFiles')
+        if fasta_node is None:
+            fasta_node = ET.SubElement(self._root, 'fastaFiles')
         fasta_node.clear()
         for f in files:
             fasta_node.append(copy.deepcopy(self.fasta_file_node))
-            fasta_node[-1].find('fastaFilePath').text = f
+            fasta_file_path = fasta_node[-1].find('fastaFilePath')
+            if fasta_file_path is None:
+                fasta_file_path = et_add_child(fasta_node[-1], 'fastaFilePath', '')
+            fasta_file_path.text = f
             for rule in parse_rules:
-                fasta_node[-1].find(rule).text = parse_rules[rule]
+                rule_node = fasta_node[-1].find(rule)
+                if rule_node is None:
+                    rule_node = et_add_child(fasta_node[-1], rule, '')
+                rule_node.text = parse_rules[rule]
 
     def set_simple_param(self, key, value):
         """Set a simple parameter.

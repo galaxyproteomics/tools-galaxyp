@@ -12,13 +12,21 @@
     #set $link_names = []
     #for $infile in $infiles
         #set $identifier = re.sub('@SUBSTITUTION_RX@', '_', str($infile.element_identifier))
-        #if $identifier.lower().endswith("."+$infile.ext)
+        #if $infile.is_of_type("brukertdf.d.tar")
+            #set $link_name = re.sub('(?i)\\.tar$', '', $identifier)
+            #if not $link_name.lower().endswith(".d")
+                #set $link_name = $link_name + ".d"
+            #end if
+        #elif $identifier.lower().endswith("."+$infile.ext)
             #set $link_name = $identifier
-        #else    
+        #else
             #set $link_name = $identifier + "." + $infile.ext
         #end if
         #if $infile.ext == 'thermo.raw':
         cp '$infile' '$link_name' &&
+        #elif $infile.is_of_type("brukertdf.d.tar")
+        mkdir -p '$link_name' &&
+        tar -xf '$infile' -C '$link_name' --strip-components=1 &&
         #else:
         ln -s '$infile' '$link_name' &&
         #end if
@@ -37,7 +45,7 @@
 
     &&
     maxquant mqpar.xml
-    #if 'log' in $output:
+    #if 'log' in $output_opts.output:
         >> '$log'
     #end if
     && mv mqpar.xml combined/txt/mqpar.xml
@@ -49,8 +57,8 @@
 
     <inputs>
         <param multiple="true" name="infiles" type="data"
-            format="thermo.raw,mzml,mzxml" label="Infiles"
-            help="One or more files. All need to be of the same datatype." />
+            format="thermo.raw,mzml,mzxml,brukertdf.d.tar" label="Infiles"
+            help="One or more files. All need to be of the same datatype. Bruker .d folders must use the brukertdf.d.tar datatype and contain one top-level .d directory." />
         <param format="fasta" multiple="true" name="fasta_files"
                type="data" label="FASTA files"
                help="Specify one or more FASTA databases." />
@@ -72,42 +80,47 @@
             </sanitizer>
         </param>
         <param type="data" name="mqpar_input" format="xml"
-               label="mqpar.xml file with your search parameters. RAW file names 
-                      must match the names displayed in galaxy. Their paths 
-                      from the local machine are ignored. E.g. a file named
-                      'test01.raw' in galaxy can either be named 'test01.raw' or
-                      'D:\path\to\test01.raw' in the mqpar.xml."/>
-        <param type="select" name="output" label="Select the desired outputs."
-               multiple="true" optional="false">
-            <option value="proteinGroups">Protein Groups</option>
-            <option value="mqpar">mqpar.xml</option>
-            <option value="peptides">Peptides</option>
-            <option value="evidence">Evidence</option>
-            <option value="parameters">Tabular Paramters</option>
-            <option value="msms">MSMS</option>
-            <option value="mzTab">mzTab</option>
-            <option value="allPeptides">all peptides</option>
-            <option value="libraryMatch">library match</option>
-            <option value="matchedFeatures">matched features</option>
-            <option value="modificationSpecificPeptides">modification specific peptides</option>
-            <option value="ms3Scans">ms3 scans</option>
-            <option value="msmsScans">msms scans</option>
-            <option value="mzRange">mz range</option>
-            <option value="peptideSection">peptide section</option>
-            <option value="summary">summary</option>
-            <option value="output_all">complete 'combined/txt/' directory (compressed)</option>
-            <option value="log">MaxQuant and PTXQC log</option>
-        </param>
+               label="mqpar.xml file with your search parameters"
+               help="Use this as a MaxQuant parameter template. The wrapper ignores raw file entries in this mqpar.xml and writes the selected Galaxy infiles into the generated mqpar.xml before MaxQuant starts."/>
+        <param format="tabular" name="exp_design" type="data" optional="true"
+               label="Experimental design template"
+               help="Optional MaxQuant experimental design table. The Name column is matched to the selected Galaxy infiles after filename sanitization. Matched Galaxy paths are written into the generated mqpar.xml."/>
+        <section title="Output Options" name="output_opts" expanded="true">
+            <param type="select" name="output" label="Select the desired outputs."
+                   multiple="true" optional="false">
+                <option value="proteinGroups">Protein Groups</option>
+                <option value="mqpar">mqpar.xml</option>
+                <option value="peptides">Peptides</option>
+                <option value="evidence">Evidence</option>
+                <option value="parameters">Tabular Parameters</option>
+                <option value="msms">MSMS</option>
+                <option value="mzTab">mzTab</option>
+                <option value="allPeptides">all peptides</option>
+                <option value="libraryMatch">library match</option>
+                <option value="matchedFeatures">matched features</option>
+                <option value="modificationSpecificPeptides">modification specific peptides</option>
+                <option value="ms3Scans">ms3 scans</option>
+                <option value="msmsScans">msms scans</option>
+                <option value="mzRange">mz range</option>
+                <option value="peptideSection">peptide section</option>
+                <option value="summary">summary</option>
+                <option value="output_all">complete 'combined/txt/' directory (compressed)</option>
+                <option value="log">MaxQuant and PTXQC log</option>
+            </param>
+        </section>
     </inputs>
     <expand macro="outputs"/>
     <tests>
-        <test expect_num_outputs="19">
+        <test expect_num_outputs="13">
             <param name="infiles" value="BSA_min_22,BSA_min_21.mzXML" ftype="mzxml"/>
             <param name="fasta_files" value="bsa.fasta" />
             <param name="identifier_parse_rule" value="&gt;([^\s]*)" />
             <param name="description_parse_rule" value="&gt;(.*)" />
             <param name="mqpar_input" value="mqpar/mqpar.xml" />
-            <param name="output" value="evidence,msms,mzTab,allPeptides,msmsScans,mzRange,parameters,peptides,proteinGroups,summary,modificationSpecificPeptides,mqpar,output_all" />
+            <param name="exp_design" value="mqpar/exp_design" />
+            <section name="output_opts">
+                <param name="output" value="evidence,msms,mzTab,allPeptides,msmsScans,mzRange,parameters,peptides,proteinGroups,summary,modificationSpecificPeptides,mqpar,output_all" />
+            </section>
             <output name="evidence">
                 <assert_contents>
                     <has_text text="AEFVEVTK" />
@@ -118,13 +131,23 @@
                     <has_text text="ECCHGDLLECADDR" />
                 </assert_contents>
             </output>
-            <output name="allPeptides" file="mqpar/txt/allPeptides.txt" lines_diff="32" />
+            <output name="allPeptides">
+                <assert_contents>
+                    <has_text text="Raw file" />
+                    <has_text text="BSA_min_21" />
+                </assert_contents>
+            </output>
             <output name="msmsScans">
                 <assert_contents>
                     <has_text text="LLEEQVFMANGVSLQLQR" />
                 </assert_contents>
             </output>
-            <output name="mzRange" file="mqpar/txt/mzRange.txt" />
+            <output name="mzRange">
+                <assert_contents>
+                    <has_text text="Raw file" />
+                    <has_text text="m/z" />
+                </assert_contents>
+            </output>
             <output name="parameters" file="mqpar/txt/parameters.txt" lines_diff="8"/>
             <output name="peptides">
                 <assert_contents>
@@ -136,13 +159,24 @@
                     <has_text text="ENSBTAP00000007350" />
                 </assert_contents>
             </output>
-            <output name="summary" file="mqpar/txt/summary.txt" />
+            <output name="summary">
+                <assert_contents>
+                    <has_text text="LC-MS run type" />
+                    <has_text text="BSA_min_21" />
+                </assert_contents>
+            </output>
             <output name="modificationSpecificPeptides">
                 <assert_contents>
                     <has_text text="ECCHGDLLECADDR" />
                 </assert_contents>
             </output>
-            <output name="mqpar" file="mqpar/txt/mqpar.xml" lines_diff="8" />
+            <output name="mqpar">
+                <assert_contents>
+                    <has_text text="BSA_min_22.mzxml" />
+                    <has_text text="&lt;short&gt;32767&lt;/short&gt;" />
+                    <has_text text="&lt;string&gt;BSA_min_22.mzxml&lt;/string&gt;" />
+                </assert_contents>
+            </output>
         </test>
     </tests>
     <help><![CDATA[
@@ -152,9 +186,10 @@ This tool is a wrapper for MaxQuant v@VERSION@. It gets its search parameters fr
 
 **Input files**
 
-- Thermo raw file or mzXML file
-    - The datatype has to be 'thermo.raw' or 'mzxml'. Make sure to specify the correct datatype either during upload to Galaxy or afterwards (edit attributes --> datatypes)
-- mqpar.xml: 
+- Thermo raw, mzML, mzXML files, or Bruker .d folders tarred as `*.d.tar`
+    - The datatype of all non-Bruker files has to be either 'thermo.raw', 'mzml' or 'mzxml'. Make sure to specify the correct datatype either during upload to Galaxy or afterwards (edit attributes --> datatypes)
+    - Bruker .d folders must use the `brukertdf.d.tar` datatype and contain one top-level `.d` directory. The wrapper extracts the archive and passes the resulting `.d` directory to MaxQuant.
+- mqpar.xml:
     - MaxQuant parameters will be taken from the provided mqpar.xml file. This parameter file MUST be created using the same version of MaxQuant as is used by this tool. The correct version of MaxQuant can be obtained via the bioconda channel for the conda package manager.
 
 **Output files**
