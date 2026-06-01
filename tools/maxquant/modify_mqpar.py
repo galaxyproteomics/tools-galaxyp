@@ -1,4 +1,4 @@
-"Modify a given mqpar.xml to run Galaxy MaxQuant with it."
+"Modify a given mqpar.xml template to run Galaxy MaxQuant with it."
 
 import argparse
 import os
@@ -16,6 +16,7 @@ arguments = ('--version',
              'mqpar')
 
 parser.add_argument('--infiles', nargs='+')
+parser.add_argument('--exp_design')
 for arg in arguments:
     parser.add_argument(arg)
 
@@ -23,7 +24,7 @@ args = parser.parse_args()
 
 mqpar_out = os.path.join(os.getcwd(), 'mqpar.xml')
 infiles = [os.path.join(os.getcwd(), f) for f in args.infiles]
-mqparam = MQParam(args.mqpar, None, substitution_rx=args.substitution_rx)
+mqparam = MQParam(args.mqpar, args.exp_design, substitution_rx=args.substitution_rx)
 if mqparam.version != args.version:
     raise Exception('mqpar version is ' + mqparam.version + '. Tool uses version {}.'.format(args.version))
 mqparam.add_infiles([infiles])

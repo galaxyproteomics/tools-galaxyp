@@ -133,6 +133,20 @@ class TestMQParam:
         assert [e.text for e in t._root.find('paramGroupIndices')] == ['0', '0', '1', '1']
         assert t[1]
 
+    def test_add_infiles_exp_design(self):
+        t = MQParam(TEMPLATE_PATH, exp_design='./test-data/04/exp_design')
+        t.add_infiles([('/galaxy/working/BSA_min_23.mzXML',
+                        '/galaxy/working/BSA_min_22.mzxml')])
+
+        assert [e.text for e in t._root.find('filePaths')] == [
+            '/galaxy/working/BSA_min_22.mzxml',
+            '/galaxy/working/BSA_min_23.mzXML',
+        ]
+        assert [e.text for e in t._root.find('fractions')] == ['1', '2']
+        assert [e.text for e in t._root.find('experiments')] == ['e1', 'e2']
+        assert [e.text for e in t._root.find('ptms')] == ['False', 'False']
+        assert [e.text for e in t._root.find('paramGroupIndices')] == ['0', '0']
+
     def test_translate(self):
         t = MQParam(TEMPLATE_PATH)
         t.add_infiles([('/posix/path/to/Test1.mzXML',
