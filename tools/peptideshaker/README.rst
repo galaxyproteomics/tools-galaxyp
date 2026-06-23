@@ -9,7 +9,7 @@ GalaxyP - PeptideShaker
 Description
 -----------
 
-Perform protein identification combining numerous search engines (using SearchGUI) followed by peptide and protein inference with PeptideShaker.
+Perform protein identification combining numerous search engines and de novo sequencing algorithms (using SearchGUI) followed by peptide and protein inference with PeptideShaker.
 
 Includes tool wrappers for FastaCLI, IdentificationParametersCLI, SearchGUI and PeptideShaker.
 
@@ -19,7 +19,7 @@ FastaCLI adds decoy sequences to any fasta file.
 
 The Identification Parameters tool allows to create a parameters (par) file which can be (re)used later to parameterize SearchGUI or PeptideShaker.
 
-The SearchGUI tool takes any number of mgf files and performs searches on these. It creates a large zip archive with all search results, the original database and spectra.
+The SearchGUI tool takes any number of mgf files and performs searches or de novo sequencing on these. It creates a large zip archive with all search results, the original database when provided, and spectra.
 
 This can then be fed to the PeptideShaker tool which merges the results and performs peptide and protein inference.
 
