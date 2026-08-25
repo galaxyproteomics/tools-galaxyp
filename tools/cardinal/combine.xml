@@ -1,15 +1,11 @@
-<tool id="cardinal_combine" name="MSI combine" version="@VERSION@.0">
+<tool id="cardinal_combine" name="MSI combine" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
     <description>
         combine several mass spectrometry imaging datasets into one
     </description>
     <macros>
         <import>macros.xml</import>
     </macros>
-    <expand macro="requirements">
-        <requirement type="package" version="3.3.5">r-ggplot2</requirement>
-        <requirement type="package" version="0.12">r-maldiquantforeign</requirement>
-        <requirement type="package" version="1.20">r-maldiquant</requirement>
-    </expand>
+    <expand macro="requirements"/>
     <command detect_errors="exit_code">
     <![CDATA[
         #for $i, $infile in enumerate($infiles):
@@ -52,6 +48,18 @@ library(ggplot2)
 library(MALDIquantForeign)
 library(MALDIquant)
 
+## Disable matter's run-length compression of atom 'source' slots.
+## cbind() of several matter-backed MSImagingExperiments (continuous imzML
+## read with memory=FALSE) combines their atoms via c(source1, source2).
+## When one source is a plain factor and another is a compressed drle_fct,
+## c(factor, drle_fct) returns a list, and as.factor() on that list crashes
+## inside matter::atoms with "unimplemented type 'list' in 'orderVector1'".
+## This depends on the order and relative size of the inputs (the larger
+## dataset ends up drle-compressed), so combining a smaller file followed by
+## a larger one fails while the reverse order works (see issue #831).
+## Keeping all atom sources as plain factors makes cbind order-independent.
+options(matter.compress.atoms = FALSE)
+
 
 ## read tabular file for xy_shift option
 #if str( $combine_conditional.combine_method ) == 'xy_shifts':
@@ -86,14 +94,14 @@ all_files = $num_infiles
 
         #if $infile.ext == 'imzml'
             #if str($processed_cond.processed_file) == "processed":
-                msidata_$i <- readImzML('infile_${i}', memory=FALSE, mass.range =c($processed_cond.min_massrange, $processed_cond.max_massrange), resolution=$processed_cond.accuracy, units = "$processed_cond.units")
+                msidata_$i <- readImzML('infile_${i}.imzML', memory=FALSE, mass.range =c($processed_cond.min_massrange, $processed_cond.max_massrange), resolution=$processed_cond.accuracy, units = "$processed_cond.units")
                 centroided(msidata_$i) = $centroids
             #else
-                msidata_$i <- readImzML('infile_${i}', memory=FALSE, as="MSImagingExperiment")
+                msidata_$i <- readImzML('infile_${i}.imzML', memory=FALSE, as="MSImagingExperiment")
                 centroided(msidata_$i) = $centroids
             #end if
         #elif $infile.ext == 'analyze75'
-            msidata_$i = readAnalyze('infile_${i}', memory=FALSE, as="MSImagingExperiment")
+            msidata_$i = readAnalyze('infile_${i}.hdr', memory=FALSE, as="MSImagingExperiment")
             centroided(msidata_$i) = $centroids
         #else
             ## function to read RData files independent of filename
@@ -257,7 +265,7 @@ all_files = $num_infiles
         msidata = do.call(cbind, valid_data)
         print("Valid datasets in order of input bottom to top:")
         print(valid_dataset)
-        writeImzML(msidata, "out")
+        writeImzML(msidata, "out.imzML", bundle=FALSE)
 
     #else
 
@@ -289,7 +297,7 @@ all_files = $num_infiles
                 datasetlist[[count]] = filtered_dataset}
             count = count +1}
         msidata = do.call(cbind, datasetlist)
-        writeImzML(msidata, "out")
+        writeImzML(msidata, "out.imzML", bundle=FALSE)
 
     #else
 
@@ -368,7 +376,7 @@ print(combine_plot)
         <param name="centroids" type="boolean" label="Centroided input" help="Choose Yes if peak detection has already been done." truevalue="TRUE" falsevalue="FALSE"/>
         <conditional name="processed_cond">
             <param name="processed_file" type="select" label="Processed imzML file" help="Choose no if your input is an Analyze7.5 or continuous imzML file">
-                <option value="no_processed" selected="True">no</option>
+                <option value="no_processed" selected="true">no</option>
                 <option value="processed">yes</option>
             </param>
             <when value="no_processed"/>
@@ -376,7 +384,7 @@ print(combine_plot)
                 <param name="accuracy" type="float" value="50" label="Mass accuracy to which the m/z values will be binned" help="This is the width of the m/z bins when converting the data to continuous imzML (MSImagingExperiment). This should be set to the native accuracy of the mass spectrometer, if known. Otherwise it will be guessed from the data."/>
                 <param name="units" display="radio" type="select" label="Unit of the mass accuracy" help="either m/z or ppm">
                     <option value="mz" >mz</option>
-                    <option value="ppm" selected="True" >ppm</option>
+                    <option value="ppm" selected="true" >ppm</option>
                 </param>
                 <param name="min_massrange" type="float" value="600" label="Minimum m/z value to which values will be binned" help="The minimum mass range to which the m/z features will be binned."/>
                 <param name="max_massrange" type="float" value="2500" label="Maximum m/z value to which values will be binned" help="The maximum mass range to which the m/z features will be binned."/>
@@ -384,7 +392,7 @@ print(combine_plot)
         </conditional>
         <conditional name="annotation_cond">
             <param name="annotation_tabular" type="select" label="Optional annotation of pixels with tabular files">
-                <option value="no_annotation" selected="True">no annotation</option>
+                <option value="no_annotation" selected="true">no annotation</option>
                 <option value="annotation">pixel annotations</option>
             </param>
             <when value="no_annotation"/>
@@ -397,7 +405,7 @@ print(combine_plot)
         </conditional>
         <conditional name="combine_conditional">
             <param name="combine_method" type="select" label="Way of combining multiple files">
-                <option value="automatic_combine" selected="True" >automatic combination</option>
+                <option value="automatic_combine" selected="true" >automatic combination</option>
                 <option value="xy_shifts">shift xy coordinates with a tabular file</option>
             </param>
             <when value="automatic_combine">
