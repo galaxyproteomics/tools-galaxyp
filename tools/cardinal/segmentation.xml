@@ -1,15 +1,21 @@
-<tool id="cardinal_segmentations" name="MSI segmentation" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="22.05">
+<tool id="cardinal_segmentations" name="MSI segmentation" version="@VERSION@.0">
     <description>mass spectrometry imaging spatial clustering</description>
     <macros>
         <import>macros.xml</import>
     </macros>
-    <expand macro="requirements"/>
+    <expand macro="requirements">
+        <requirement type="package" version="2.3">r-gridextra</requirement>
+        <requirement type="package" version="3.3.5">r-ggplot2</requirement>
+    </expand>
     <command detect_errors="exit_code">
     <![CDATA[
 
         @INPUT_LINKING@
         cat '${MSI_segmentation}' &&
         Rscript '${MSI_segmentation}'
+
+        ####mkdir output_tabs
+        ####&& mv *.tabular output_tabs/
 
     ]]>
     </command>
@@ -56,7 +62,16 @@ if (npeaks > 0 && NAcount==0)
 ######################## II) segmentation tools #############################
 #############################################################################
 
-        #if str( $segm_cond.segmentationtool ) == 'kmeans':
+        ## old color selection removed, look below
+        ###set $color_string = ','.join(['"%s"' % $color.feature_color for $color in $colours])
+        ###colourvector = c($color_string)
+
+
+        #if str( $segm_cond.segmentationtool ) == 'pca':
+         number_colors = max(c($segm_cond.pca_ncomp))
+         print(number_colors)
+
+        #elif str( $segm_cond.segmentationtool ) == 'kmeans':
 	     number_colors = max(c($segm_cond.kmeans_k))
 
 	    #elif str( $segm_cond.segmentationtool ) == 'centroids':
@@ -64,13 +79,21 @@ if (npeaks > 0 && NAcount==0)
 
 	    #end if
 
+
 	    #if str($colour_conditional.colour_type) == "manual_colour"
 	        #set $color_string = ','.join(['"%s"' % $color.annotation_color for $color in $colour_conditional.colours])
 	        colourvector = c($color_string)
 
+
 	    #elif str($colour_conditional.colour_type) == "colourpalette"
 	        number_levels = (number_colors)
 	        colourvector = noquote($colour_conditional.palettes)(number_levels)
+
+
+	    #elif str($colour_conditional.colour_type) == "cardinal_default"
+	        number_levels = (number_colors)
+	        colourvector = dpal(palette = "Tableau 10")(number_levels)
+
 
 	    #end if
 
@@ -78,45 +101,159 @@ if (npeaks > 0 && NAcount==0)
         ## set seed to make analysis reproducible
         set.seed($setseed)
 
-        #if str( $segm_cond.segmentationtool ) == 'kmeans':
+        #if str( $segm_cond.segmentationtool ) == 'pca':
+            print('pca')
+            ##pca
+
+            component_vector = character()
+            for (numberofcomponents in 1:$segm_cond.pca_ncomp)
+                {component_vector[numberofcomponents]= paste0("PC", numberofcomponents)}
+
+            pca_result = PCA(msidata, ncomp=$segm_cond.pca_ncomp, scale = $segm_cond.pca_scale, center = $segm_cond.pca_scale)
+            print(pca_result)
+
+            print("PCA done")
+
+            ## remove msidata to clean up RAM space
+            ###rm(msidata)
+            ###gc()
+
+            ### table in pdf file
+            plot(0,type='n',axes=FALSE,ann=FALSE)
+            sd_table= as.data.frame(round(pca_result@model[["sdev"]], digits = 2))
+
+            PC_vector = character()
+            for (PCs in 1:$segm_cond.pca_ncomp){
+                PC_vector[[PCs]] = c(paste0("PC",PCs))}
+            sd_table = cbind(PC_vector, sd_table)
+            colnames(sd_table) = c("Principal components", "Standard deviation")
+            grid.table(sd_table, rows=NULL)
+
+
+            ### images in pdf file
+
+            ## overlaid PCA
+            print(image(pca_result, strip = FALSE, col=colourvector, ylim=c(maximumy+2, minimumy-2)))
+
+            ## single PCAs
+            print(image(pca_result, type="x", superpose=FALSE, col=colourvector, scale=TRUE, ylim=c(maximumy+2, minimumy-2)))
+
+            ## overlaid loadings
+            print(plot(pca_result, type="rotation", col=colourvector, linewidth=2))
+
+            ## single loadings
+            print(plot(pca_result, type="rotation", superpose=FALSE, col=colourvector, linewidth=2))
+
+            ## scores plot (first and second component)
+            print(plot(pca_result, type="x", linewidth=2))
+
+            ## scree plot
+            print(plot(pca_result, type="scree", linewidth=2, col=colourvector))
+
+
+            ### results in tabular files
+
+            ## loadings in irlba called rotation, for each feature
+            rotation_table = as.data.frame(formatC(pca_result@model[["rotation"]], format = "e", digits = 6))
+            mz = msidata@featureData@listData[["mz"]]
+            rotation_table = data.frame(mz, rotation_table)
+
+            ##scores table in irlba called x, for each spectrum
+            x_table = as.data.frame(round(pca_result@model[["x"]], digits = 6))
+
+            ## pixel names and coordinates for each spectrum
+            x_coords = msidata@elementMetadata@listData[["x"]]
+            y_coords = msidata@elementMetadata@listData[["y"]]
+            x = gsub("x = ","",x_coords)
+            y = gsub(" y = ","",y_coords)
+
+            pixel_names = paste0("xy_", x, "_", y)
+            x_table = data.frame(pixel_names, x, y, x_table)
+
+
+            ## write loadings and scores tables
+            write.table(rotation_table, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+            write.table(x_table, file="$mzfeatures", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+
+            ## optional output as .RData
+            #if $output_rdata:
+            ## save as (.RData)
+            save(pca, file="$segmentation_rdata")
+
+            #end if
+
+        #elif str( $segm_cond.segmentationtool ) == 'kmeans':
             print('kmeans')
             ##k-means
-            skm = spatialKMeans(msidata, r=c($segm_cond.kmeans_r), k=c($segm_cond.kmeans_k), method="gaussian")
+
+            skm = spatialKMeans(msidata, r=c($segm_cond.kmeans_r), k=c($segm_cond.kmeans_k), weights="$segm_cond.kmeans_method")
+
 
             ## remove msidata to clean up RAM space
             rm(msidata)
             gc()
 
             k_value = c($segm_cond.kmeans_k)
-            r_value = c($segm_cond.kmeans_r)
 
-            for (k in k_value) {
-                for (r in r_value) {
-                    print(image(skm, key=TRUE, model = list(k = k, r = r),
-                                main = paste("K-means clustering (r =", r, ", k =", k, ")"),
+            model_elements = c(1:length(k_value))
+
+            for (i in model_elements) {
+                    print(image(skm, key=TRUE, i=i,
                                 strip = FALSE, col = colourvector, layout = c(1, 1), ylim = c(maximumy+2, minimumy-2)))
 
-                    print(plot(skm, model = list(k = k, r = r), key = TRUE,
-                                main = paste("K-means plot (r =", r, ", k =", k, ")"),
+                    print(plot(skm, i=i, key = TRUE, type = "correlation",
+                                strip = FALSE, col = colourvector, layout = c(1, 1), ylim = c(-1.5, 1.5)))
+
+                    print(plot(skm, i=i, key = TRUE, type = "centers",
                                 strip = FALSE, col = colourvector, layout = c(1, 1)))
-              }
             }
 
-            skm_clusters = data.frame(matrix(NA, nrow = pixelcount, ncol = 0))
-            for (iteration in 1:length(skm@resultData)){
-                    skm_cluster = ((skm@resultData)[[iteration]]\$cluster)
-                    skm_clusters = cbind(skm_clusters, skm_cluster) }
 
-            skm.coordinates = coord(skm)
-            x_coords = skm.coordinates@listData[["x"]]
-            y_coords = skm.coordinates@listData[["y"]]
+            if (length(k_value) == 1) {
+            ### run this code when there is only a single k value:
+
+            print("single value for k")
+            skm_clusters = skm@model[["cluster"]]
+
+            x_coords = skm@pixelData@listData[["x"]]
+            y_coords = skm@pixelData@listData[["y"]]
             pixel_names = paste0("xy_", x_coords, "_", y_coords)
 
             skm_clusters2 = data.frame(pixel_names, x_coords, y_coords, skm_clusters)
-            r_values = skm@modelData@listData[["r"]]
-            k_values = skm@modelData@listData[["k"]]
+            r_values = skm@model[["r"]]
+            k_values = skm@model[["k"]]
             new_names = paste0("r=", r_values, ", k=", k_values)
             colnames(skm_clusters2) = c("pixel names", "x", "y", new_names)
+
+
+            } else if (length(k_value) > 1) {
+            ### run this code when there are multiple k values:
+
+            print("multiple values for k")
+
+            skm_clusters = data.frame(matrix(NA, nrow = pixelcount, ncol = 0))
+            for (i in model_elements) {
+                  skm_cluster <- skm@listData[[i]]@model[["cluster"]]
+                  skm_clusters = cbind(skm_clusters, skm_cluster)
+                }
+
+            ## extract spectra names from skm model:
+            first_element = model_elements[1]
+            skm.coordinates = skm@listData[[first_element]]@pixelData@listData
+            x_coords = skm.coordinates[["x"]]
+            y_coords = skm.coordinates[["y"]]
+            pixel_names = paste0("xy_", x_coords, "_", y_coords)
+
+            ## dataframe cluster table
+            skm_clusters2 = data.frame(pixel_names, x_coords, y_coords, skm_clusters)
+
+            ## rename cluster table
+            r_values = skm@elementMetadata@listData[["r"]]
+            k_values = skm@elementMetadata@listData[["k"]]
+            new_names = paste0("r=", r_values, "_k=", k_values)
+            new_names_reversed <- rev(new_names)
+            colnames(skm_clusters2) = c("pixel names", "x", "y", new_names_reversed)
+            }
 
             skm_toplabels = topFeatures(skm, n=$segm_cond.kmeans_toplabels)
 
@@ -131,135 +268,160 @@ if (npeaks > 0 && NAcount==0)
 
             #end if
 
+
         #elif str( $segm_cond.segmentationtool ) == 'centroids':
             print('centroids')
             ##centroids
 
-            ssc = spatialShrunkenCentroids(msidata, r=c($segm_cond.centroids_r), k=c($segm_cond.centroids_k), s=c($segm_cond.centroids_s), method="gaussian")
+            ssc = spatialShrunkenCentroids(msidata, r=c($segm_cond.centroids_r), k=c($segm_cond.centroids_k), s=c($segm_cond.centroids_s), weights="$segm_cond.centroids_method")
+
 
             ## remove msidata to clean up RAM space
             rm(msidata)
             gc()
 
-            ## new plots and summary table
-
-            summary_df = summary(ssc)
-            summary_df = as.data.frame(summary_df@listData)
-            colnames(summary_df) = c("r", "initial_k", "s", "k", "features_per_k")
-
-            opar <- par()
-            par(opar)
-            plot(0,type='n',axes=FALSE,ann=FALSE)
-            title(main="\n Summary for the different parameters\n", adj=0.5)
-            ## 20 rows fits in one page:
-            if (nrow(summary_df)<=20){
-                grid.table(summary_df, rows= NULL)
-            }else{
-                grid.table(summary_df[1:20,], rows= NULL)
-                mincount = 21
-                maxcount = 40
-                for (count20 in 1:(ceiling(nrow(summary_df)/20)-1)){
-                    plot(0,type='n',axes=FALSE,ann=FALSE)
-                    if (maxcount <= nrow(summary_df)){
-                        grid.table(summary_df[mincount:maxcount,], rows= NULL)
-                        mincount = mincount+20
-                        maxcount = maxcount+20
-                    }else{### stop last page with last sample otherwise NA in table
-                        grid.table(summary_df[mincount:nrow(summary_df),], rows= NULL)}
-                }
-            }
-
-            ## plot
-            summary_df\$r <- factor(summary_df\$r)
-            summary_df\$initial_k <- factor(summary_df\$initial_k)
-
-            cluster_plot = ggplot(summary_df, aes(x = s, y = k, color = initial_k)) +
-                        geom_point(size = 3) +   ### Add points
-                        geom_line() +
-                        theme_bw() +
-                        facet_wrap(~ paste("r =", r)) +
-                        labs(title =  "Number of segments", y = "predicted number of k", x = "shrinkage parameter (s)")
-
-            print(cluster_plot)
 
             s_value = c($segm_cond.centroids_s)
             k_value = c($segm_cond.centroids_k)
             r_value = c($segm_cond.centroids_r)
 
-            to_remove = subset(summary_df, features_per_k == 0)
-            s_to_remove = unique(c(to_remove\$s))
-            s_value = s_value[!s_value %in% s_to_remove]
+            if (length(k_value) == 1 && length(s_value) == 1) {
+                ### run this code when there is only a single k value and a single s value:
+                print("single values for k and s")
 
-            for (s in s_value) {
-              for (k in k_value) {
-                for (r in r_value) {
-                    print(image(ssc, model = list(s = s, k = k, r = r), key = TRUE, values = "class",
-                                main = paste("Spatial shrunken centroids (s =", s, ", k =", k, ", r =", r, ")"),
-                                strip = FALSE, col = colourvector, layout = c(1, 1), ylim = c(maximumy+2, minimumy-2)))
+                print(image(ssc, key = TRUE, type = "class", strip = FALSE, col = colourvector, layout = c(1, 1), ylim = c(maximumy+2, minimumy-2)))
+                mtext("Class", side = 3, line = 0.8, col = "black", cex = 1, font = 4)
 
-                    print(image(ssc, model = list(s = s, k = k, r = r), key = TRUE, values = "probability",
-                                main = paste("Class Probability (s =", s, ", k =", k, ", r =", r, ")"),
-                                strip = FALSE, col = colourvector, layout = c(1, 1), ylim = c(maximumy+2, minimumy-2)))
+                print(image(ssc, key = TRUE, type = "probability", strip = FALSE, col = colourvector, layout = c(1, 1), ylim = c(maximumy+2, minimumy-2)))
+                mtext("Probability", side = 3, line = 0.8, col = "black", cex = 1, font = 4)
 
-                    print(plot(ssc, model = list(s = s, k = k, r = r), key = TRUE,
-                               main = paste("Spatial shrunken centroids features (s =", s, ", k =", k, ", r =", r, ")"),
-                               col = colourvector, strip = TRUE, layout = c(1, 1)))
+                print(plot(ssc, key = TRUE, type = "centers", col = colourvector, strip = TRUE, layout = c(1,1)))
+                mtext("Centers", side = 3, line = 0.8, col = "black", cex = 1, font = 4)
 
-                    print(plot(ssc, model = list(s = s, k = k, r = r), values = "statistic", key = TRUE,
-                               layout = c(1, 1),
-                               main = paste("t-statistics (s =", s, ", k =", k, ", r =", r, ")"),
-                               col = colourvector))
+                print(plot(ssc, type = "statistic", key = TRUE, layout = c(1, 1), col = colourvector))
+                mtext("Statistic", side = 3, line = 0.8, col = "black", cex = 1, font = 4)
+
+                ssc_class = ssc@model[["class"]]
+
+                x_coords = ssc@pixelData@listData[["x"]]
+                y_coords = ssc@pixelData@listData[["y"]]
+                pixel_names = paste0("xy_", x_coords, "_", y_coords)
+
+                ssc_classes2 = data.frame(pixel_names, x_coords, y_coords, ssc_class)
+                r_values = ssc@model[["r"]]
+                k_values = ssc@model[["k"]]
+                s_values = ssc@model[["s"]]
+                new_names = paste0("r=", r_values, ", k=", k_values, ", s=", s_values)
+                colnames(ssc_classes2) = c("pixel names", "x", "y", new_names)
+
+
+            } else {
+                ### run this code when there are multiple k values:
+                print("multiple values for and/or s")
+
+                ## new plots and summary table
+                summary_df = as.data.frame(ssc@elementMetadata)
+                print(colnames(summary_df))
+
+                opar <- par()
+                par(opar)
+                plot(0,type='n',axes=FALSE,ann=FALSE)
+                title(main="\n Summary for the different parameters\n", adj=0.5)
+                ## 20 rows fits in one page:
+                if (nrow(summary_df)<=20){
+                    grid.table(summary_df, rows= NULL)
+                }else{
+                    grid.table(summary_df[1:20,], rows= NULL)
+                    mincount = 21
+                    maxcount = 40
+                    for (count20 in 1:(ceiling(nrow(summary_df)/20)-1)){
+                        plot(0,type='n',axes=FALSE,ann=FALSE)
+                        if (maxcount <= nrow(summary_df)){
+                            grid.table(summary_df[mincount:maxcount,], rows= NULL)
+                            mincount = mincount+20
+                            maxcount = maxcount+20
+                        }else{### stop last page with last sample otherwise NA in table
+                            grid.table(summary_df[mincount:nrow(summary_df),], rows= NULL)}
+                    }
                 }
-              }
+
+                ## plot
+                summary_df\$r <- factor(summary_df\$r)
+                summary_df\$k <- factor(summary_df\$k)
+
+                cluster_plot = ggplot(summary_df, aes(x = s, y = clusters, color = k)) +
+                            geom_point(size = 3) +   ### Add points
+                            geom_line() +
+                            theme_bw() +
+                            ##facet_wrap(~ paste("r =", r)) +
+                            labs(title =  "Number of segments", y = "predicted number of k", x = "shrinkage parameter (s)")
+
+                print(cluster_plot)
+
+                model_elements = c(1:length(ssc@listData))
+
+                for (i in model_elements) {
+
+                    print(image(ssc, i=i, key = TRUE, type = "class", strip = FALSE, col = colourvector, layout = c(1, 1), ylim = c(maximumy+2, minimumy-2)))
+                    mtext("Class", side = 3, line = 0.8, col = "black", cex = 1, font = 4)
+
+                    print(image(ssc, i=i, key = TRUE, type = "probability", strip = FALSE, col = colourvector, layout = c(1, 1), ylim = c(maximumy+2, minimumy-2)))
+                    mtext("Probability", side = 3, line = 0.8, col = "black", cex = 1, font = 4)
+
+                    print(plot(ssc, i=i, key = TRUE, type = "centers", col = colourvector, strip = TRUE, layout = c(1,1)))
+                    mtext("Centers", side = 3, line = 0.8, col = "black", cex = 1, font = 4)
+
+                    print(plot(ssc, i=i, type = "statistic", key = TRUE, layout = c(1, 1), col = colourvector))
+                    mtext("Statistic", side = 3, line = 0.8, col = "black", cex = 1, font = 4)
+                }
+
+
+                ssc_classes = data.frame(matrix(NA, nrow = pixelcount, ncol = 0))
+                for (i in model_elements) {
+                  ssc_class <- ssc@listData[[i]]@model[["class"]]
+                  ssc_classes = cbind(ssc_classes, ssc_class)
+                }
+
+                ## extract spectra names from ssc model:
+                first_element = model_elements[1]
+                ssc.coordinates = ssc@listData[[first_element]]@pixelData@listData
+                x_coords = ssc.coordinates[["x"]]
+                y_coords = ssc.coordinates[["y"]]
+                pixel_names = paste0("xy_", x_coords, "_", y_coords)
+
+                ## dataframe class table
+                ssc_classes2 = data.frame(pixel_names, x_coords, y_coords, ssc_classes)
+
+                ## rename class table
+                r_values = ssc@elementMetadata@listData[["r"]]
+                k_values = ssc@elementMetadata@listData[["k"]]
+                s_values = ssc@elementMetadata@listData[["s"]]
+                new_names = paste0("r=", r_values, "_k=", k_values, ", s=", s_values)
+                new_names_reversed <- rev(new_names)
+                colnames(ssc_classes2) = c("pixel names", "x", "y", new_names_reversed)
             }
 
-
-            new_s_value = s_to_remove
-
-            for (s in new_s_value) {
-              for (k in k_value) {
-                for (r in r_value) {
-                    print(image(ssc, model = list(s = s, k = k, r = r), key = TRUE, values = "class",
-                                main = paste("Spatial shrunken centroids (s =", s, ", k =", k, ", r =", r, ")"),
-                                strip = FALSE, col = colourvector, layout = c(1, 1), ylim = c(maximumy+2, minimumy-2)))
-
-                    print(image(ssc, model = list(s = s, k = k, r = r), key = TRUE, values = "probability",
-                                main = paste("Class Probability (s =", s, ", k =", k, ", r =", r, ")"),
-                                strip = FALSE, col = colourvector, layout = c(1, 1), ylim = c(maximumy+2, minimumy-2)))
-
-                    print(plot(ssc, model = list(s = s, k = k, r = r), key = TRUE,
-                               main = paste("Spatial shrunken centroids features (s =", s, ", k =", k, ", r =", r, ")"),
-                               col = colourvector, strip = TRUE, layout = c(1, 1)))
-
-                    plot(0, 0, type = "n", xlab = "", ylab = "", xlim = c(0, 10), ylim = c(0, 10), xaxt = "n", yaxt = "n")
-                    ## Add the text to the plot
-                    text(5, 5, "t-statistics plot can not be drawn.\nS (shrinkage parameter) is too small to result\n in meaningful segmentation.",
-                             cex = 1.5, adj = c(0.5, 0.5))
-
-                }
-              }
-            }
-
-            ssc_classes = data.frame(matrix(NA, nrow = pixelcount, ncol = 0))
-            for (iteration in 1:length(ssc@resultData@listData)){
-            ssc_class = ((ssc@resultData@listData)[[iteration]]\$class)
-            ssc_classes = cbind(ssc_classes, ssc_class) }
-
-            ## coordinates and topFeatures of results
-            s_values = ssc@modelData@listData[["s"]]
-            r_values = ssc@modelData@listData[["r"]]
-            k_values = ssc@modelData@listData[["k"]]
-            new_names = paste0("r=", r_values, ", s=", s_values, ", k=", k_values)
-
-            ssc.coordinates = coord(ssc)
-            x_coords = ssc.coordinates@listData[["x"]]
-            y_coords = ssc.coordinates@listData[["y"]]
-            pixel_names = paste0("xy_", x_coords, "_", y_coords)
-
-            ssc_classes2 = data.frame(pixel_names, x_coords, y_coords, ssc_classes)
-            colnames(ssc_classes2) = c("pixel names", "x", "y", new_names)
-
+            ### generate list of S4 objects of class DFrame
             ssc_toplabels =  topFeatures(ssc, n=$segm_cond.centroids_toplabels)
+
+#########################################################################################
+            ####output_dir <- "output_tabs" ### TO DO HERE CONTINUE
+
+            ## write toplabels as individual tabular files to output as galaxy collection
+
+            ####for (i in model_elements) {
+
+            ####  ## create names for all files
+            ####  tabular_name <- names(ssc_toplabels)[i]
+           ####   output_file <- file.path(output_dir, paste0(tabular_name, ".tabular"))
+
+            ####  ## convert the DFrames to regular data frames
+            ####  ssc_toplabels2 <- as.data.frame(ssc_toplabels[[i]])
+
+            ####  ## write tabular files
+            ####  write.table(ssc_toplabels2, file = output_file, sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+
+            ####}
 
             write.table(ssc_toplabels, file="$mzfeatures", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
             write.table(ssc_classes2, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
@@ -281,6 +443,7 @@ if (npeaks > 0 && NAcount==0)
         #if $svg_pixelimage:
             print("svg image")
             ## reverse y axis for svg output = correct order and nice svg image
+
 
             svg(file="svg_pixel_output.svg", width=maximumx, height=maximumy)
             par(mar=c(0,0,0,0))
@@ -311,9 +474,21 @@ if (npeaks > 0 && NAcount==0)
         <expand macro="reading_msidata"/>
             <conditional name="segm_cond">
                 <param name="segmentationtool" type="select" label="Select the tool for spatial clustering">
+                    <option value="pca" selected="True">pca</option>
                     <option value="kmeans">k-means</option>
                     <option value="centroids">spatial shrunken centroids</option>
                 </param>
+                <when value="pca">
+                    <param name="pca_ncomp" type="integer" value="2"
+                           label="The number of principal components to calculate"/>
+                    <!--param name="pca_method" type="select"
+                           label="The function used to calculate the singular value decomposition">
+                        <option value="irlba" selected="True">irlba</option>
+                        <option value="svd">svd</option>
+                    </param-->
+                    <param name="pca_scale" type="boolean" truevalue="TRUE" falsevalue="FALSE" label="Scaling of data before analysis"/>
+                    <param name="pca_center" type="boolean" truevalue="TRUE" falsevalue="FALSE" label="Centering of data before analysis"/>
+                </when>
                 <when value="kmeans">
                     <param name="kmeans_r" type="text" value="2"
                            label="The spatial neighborhood radius of nearby pixels to consider (r)" help="Multiple values are allowed (e.g. 1,2,3 or 2:5)">
@@ -323,7 +498,12 @@ if (npeaks > 0 && NAcount==0)
                            label="The number of clusters (k)" help="Multiple values are allowed (e.g. 1,2,3 or 2:5)">
                         <expand macro="sanitizer_multiple_digits"/>
                     </param>
-                    <param name="kmeans_toplabels" type="integer" value="500"
+                    <param name="kmeans_method" type="select" display="radio"
+                           label="The method to use to calculate the spatial smoothing kernels for the embedding. The 'gaussian' method refers to spatially-aware (SA) clustering, and 'adaptive' refers to spatially-aware structurally-adaptive (SASA) clustering">
+                        <option value="gaussian">gaussian</option>
+                        <option value="adaptive" selected="True">adaptive</option>
+                </param>
+                <param name="kmeans_toplabels" type="integer" value="500"
                        label="Number of toplabels (m/z) which should be written in tabular output"/>
                  </when>
 
@@ -341,7 +521,10 @@ if (npeaks > 0 && NAcount==0)
                            help="As s increases, fewer m/z features (m/z values) will be used in the spatial segmentation, and only the informative m/z features will be retained. Multiple values are allowed (e.g. 1,2,3 or 2:5)">
                         <expand macro="sanitizer_multiple_digits"/>
                     </param>
-
+                    <param name="centroids_method" type="select" display="radio" label="The method to use to calculate the spatial smoothing kernels for the embedding. The 'gaussian' method refers to spatially-aware (SA) weights, and 'adaptive' refers to spatially-aware structurally-adaptive (SASA) weights">
+                        <option value="gaussian">gaussian</option>
+                        <option value="adaptive" selected="True">adaptive</option>
+                    </param>
                 <param name="centroids_toplabels" type="integer" value="500"
                        label="Number of toplabels (m/z) which should be written in tabular output"/>
                 </when>
@@ -352,6 +535,7 @@ if (npeaks > 0 && NAcount==0)
             <param name="colour_type" type="select" label="Choose a colour scheme">
                 <option value="colourpalette" selected="True" >Colour palette</option>
                 <option value="manual_colour">Manual selection</option>
+                <option value="cardinal_default">Cardinal default colors</option>
             </param>
             <when value="manual_colour">
                <repeat name="colours" title="Colours for the plots" min="1" max="50">
@@ -374,7 +558,19 @@ if (npeaks > 0 && NAcount==0)
                 <option value="cm.colors">cm colors</option>
                 </param>
             </when>
+            <when value="cardinal_default">
+            </when>
             </conditional>
+
+            <!--repeat name="colours" title="Colours for the plots" min="1" max="50">
+                <param name="feature_color" type="color" label="Colours" value="#ff00ff" help="Numbers of colours should be the same as number of components">
+                  <sanitizer>
+                    <valid initial="string.letters,string.digits">
+                      <add value="#" />
+                    </valid>
+                  </sanitizer>
+                </param>
+            </repeat-->
             <param name="output_rdata" type="boolean" label="Results as .RData output"/>
             <param name="setseed" type="integer" value="1" label="set seed" help="Use same value to reproduce previous results"/>
     </inputs>
@@ -382,6 +578,9 @@ if (npeaks > 0 && NAcount==0)
         <data format="pdf" name="segmentationimages" from_work_dir="segmentationpdf.pdf" label = "${tool.name} on ${on_string}: results"/>
         <data format="tabular" name="mzfeatures" label="${tool.name} on ${on_string}: features"/>
         <data format="tabular" name="pixeloutput" label="${tool.name} on ${on_string}: pixels"/>
+        <!--collection name="output_collection" type="list" label="${tool.name} on ${on_string}: class features">
+            <discover_datasets pattern="(?P&lt;name&gt;.*\.tabular)" directory="output_tabs" visible="false" ext="tabular"/>
+        </collection-->
         <data format="rdata" name="segmentation_rdata" label="${tool.name} on ${on_string}: results.RData">
             <filter>output_rdata</filter>
         </data>
@@ -390,6 +589,27 @@ if (npeaks > 0 && NAcount==0)
         </data>
     </outputs>
     <tests>
+        <!--test>
+            <expand macro="infile_imzml"/>
+            <param name="segmentationtool" value="pca"/>
+            <repeat name="colours">
+                <param name="feature_color" value="#ff00ff"/>
+            </repeat>
+            <repeat name="colours">
+                <param name="feature_color" value="#0000FF"/>
+            </repeat>
+            <output name="segmentationimages" file="pca_imzml.pdf" compare="sim_size"/>
+            <output name="mzfeatures">
+                <assert_contents>
+                    <has_text text="300.1667" />
+                    <has_text text="300.25" />
+                    <has_text text="-4.234458e-04" />
+                    <has_text text="3.878545e-10" />
+                    <has_n_columns n="3" />
+                </assert_contents>
+            </output>
+            <output name="pixeloutput" file="scores_pca.tabular"/>
+        </test-->
         <test expect_num_outputs="4">
             <expand macro="infile_imzml"/>
             <param name="segmentationtool" value="kmeans"/>
@@ -451,11 +671,7 @@ if (npeaks > 0 && NAcount==0)
             <repeat name="colours">
                 <param name="feature_color" value="#B0171F"/>
             </repeat>
-            <output name="segmentationimages" ftype="pdf">
-                <assert_contents>
-                    <has_size value="1206464" delta="100"/>
-                </assert_contents>
-            </output>
+            <output name="segmentationimages" file="centroids_proc.pdf" compare="sim_size"/>
             <output name="pixeloutput" file="classes_proc.tabular"/>
             <output name="mzfeatures">
                 <assert_contents>
@@ -485,7 +701,7 @@ This tool provides three different Cardinal functions for unsupervised clusterin
 
 **Options**
 
-- PCA: principal component analysis
+- PCA: principal component analysis based on implicitly restarted Lanczos bi-diagonalization (IRLBA)
 - k-means: spatially-aware k-means clustering (adopted from `Alexandrov and Kobarg <https://doi.org/10.1093/bioinformatics/btr246>`_)
 - spatial shrunken centroids: Allows the number of segments to decrease according to the data. This allows selection of the number of clusters (more details in `Bemis et al. <https://doi.org/10.1074/mcp.O115.053918>`_)
 
