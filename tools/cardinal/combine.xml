@@ -1,11 +1,15 @@
-<tool id="cardinal_combine" name="MSI combine" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="22.05">
+<tool id="cardinal_combine" name="MSI combine" version="@VERSION@.0">
     <description>
         combine several mass spectrometry imaging datasets into one
     </description>
     <macros>
         <import>macros.xml</import>
     </macros>
-    <expand macro="requirements"/>
+    <expand macro="requirements">
+        <requirement type="package" version="3.3.5">r-ggplot2</requirement>
+        <requirement type="package" version="0.12">r-maldiquantforeign</requirement>
+        <requirement type="package" version="1.20">r-maldiquant</requirement>
+    </expand>
     <command detect_errors="exit_code">
     <![CDATA[
         #for $i, $infile in enumerate($infiles):
@@ -13,9 +17,9 @@
                 cp '${infile.extra_files_path}/imzml' infile_${i}.imzML &&
                 cp '${infile.extra_files_path}/ibd' infile_${i}.ibd &&
             #elif $infile.ext == 'analyze75'
-                cp '${infile.extra_files_path}/hdr' infile_${i}.hdr &&
-                cp '${infile.extra_files_path}/img' infile_${i}.img &&
-                cp '${infile.extra_files_path}/t2m' infile_${i}.t2m &&
+                ln -s '${infile.extra_files_path}/hdr' infile_${i}.hdr &&
+                ln -s '${infile.extra_files_path}/img' infile_${i}.img &&
+                ln -s '${infile.extra_files_path}/t2m' infile_${i}.t2m &&
             #else
                 ln -s '$infile' infile_${i}.RData &&
             #end if
@@ -82,15 +86,14 @@ all_files = $num_infiles
 
         #if $infile.ext == 'imzml'
             #if str($processed_cond.processed_file) == "processed":
-                msidata_$i <- readImzML('infile_${i}', resolution=$processed_cond.accuracy, units = "$processed_cond.units", attach.only=TRUE)
-                msidata_$i = collect(msidata_$i, as.matrix=TRUE) ##coercion to continuous
+                msidata_$i <- readImzML('infile_${i}', memory=FALSE, mass.range =c($processed_cond.min_massrange, $processed_cond.max_massrange), resolution=$processed_cond.accuracy, units = "$processed_cond.units")
                 centroided(msidata_$i) = $centroids
             #else
-                msidata_$i <- readImzML('infile_${i}', attach.only=TRUE)
+                msidata_$i <- readImzML('infile_${i}', memory=FALSE, as="MSImagingExperiment")
                 centroided(msidata_$i) = $centroids
             #end if
         #elif $infile.ext == 'analyze75'
-            msidata_$i = readAnalyze('infile_${i}', attach.only=TRUE)
+            msidata_$i = readAnalyze('infile_${i}', memory=FALSE, as="MSImagingExperiment")
             centroided(msidata_$i) = $centroids
         #else
             ## function to read RData files independent of filename
@@ -99,6 +102,13 @@ all_files = $num_infiles
             get(ls()[ls() != "fileName"])
             }
             msidata_$i = loadRData('infile_${i}.RData')
+            ## keep compatibility with old .RData files:
+            ##msidata_$i\$column1 = NULL
+            ##msidata_$i\$column2 = NULL
+            ##msidata_$i\$column3 = NULL
+            ##msidata_$i\$column4 = NULL
+            ##msidata_$i\$column5 = NULL
+            ##msidata_$i\$combined_sample = NULL
             msidata_$i <- as(msidata_$i, "MSImagingExperiment")
 
         #end if
@@ -127,7 +137,7 @@ all_files = $num_infiles
         colnames(msidata_coordinates)[3] = "pixel_index"
 
         annotation_df = merge(msidata_coordinates, input_annotation, by=c("x", "y"), all.x=TRUE)
-        annotation_df_sorted = annotation_df[order(annotation_df\$pixel_index),]
+        annotation_df_sorted = annotation_df[order(annotation_df\$pixel_index),]## orders pixel according to msidata 
         annotation_df_sorted\$pixel_index = NULL
 
         ## extract columnnames from (last) annotation tabular (for QC plot names)
@@ -160,13 +170,13 @@ all_files = $num_infiles
 
     #elif str( $combine_conditional.combine_method ) == 'automatic_combine':
 
-        ## use name of Galaxy input file as sample annotation
+        ## use name of Galaxy inputfile as sample annotation
         sample_name = character()
         #set escaped_element_identifier = re.sub('[^\w\-\s\[/]]', '_', str($infile.element_identifier))
 
         if (ncol(msidata_$i)>0 & nrow(msidata_$i) >0)
         {
-            sample_name = append(sample_name, rep(paste("$escaped_element_identifier"),ncol(msidata_$i)))
+           sample_name = append(sample_name, rep(paste("$escaped_element_identifier"),ncol(msidata_$i)))
         }
 
         ## Number of input files define grid which is row-wise filled with files
@@ -183,7 +193,7 @@ all_files = $num_infiles
          y_shifts = max(max_y) + $combine_conditional.shift_value ### when row is filled: y value increases to start a new row
         max_y = numeric()}
 
-    #end if
+        #end if
 
 ############################# 6) combination of files ##########################
 
@@ -363,11 +373,13 @@ print(combine_plot)
             </param>
             <when value="no_processed"/>
             <when value="processed">
-                <param name="accuracy" type="float" value="50" label="Mass accuracy to which the m/z values will be binned" help="This should be set to the native accuracy of the mass spectrometer, if known"/>
+                <param name="accuracy" type="float" value="50" label="Mass accuracy to which the m/z values will be binned" help="This is the width of the m/z bins when converting the data to continuous imzML (MSImagingExperiment). This should be set to the native accuracy of the mass spectrometer, if known. Otherwise it will be guessed from the data."/>
                 <param name="units" display="radio" type="select" label="Unit of the mass accuracy" help="either m/z or ppm">
                     <option value="mz" >mz</option>
                     <option value="ppm" selected="True" >ppm</option>
                 </param>
+                <param name="min_massrange" type="float" value="600" label="Minimum m/z value to which values will be binned" help="The minimum mass range to which the m/z features will be binned."/>
+                <param name="max_massrange" type="float" value="2500" label="Maximum m/z value to which values will be binned" help="The maximum mass range to which the m/z features will be binned."/>
             </when>
         </conditional>
         <conditional name="annotation_cond">
