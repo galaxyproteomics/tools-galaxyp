@@ -1,9 +1,10 @@
-<tool id="cardinal_classification" name="MSI classification" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="22.05">
+<tool id="cardinal_classification" name="MSI classification" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
     <description>spatial classification of mass spectrometry imaging data</description>
     <macros>
         <import>macros.xml</import>
     </macros>
     <expand macro="requirements"/>
+    <expand macro="creator"/>
     <command detect_errors="exit_code">
         <![CDATA[
 
@@ -23,6 +24,9 @@ library(Cardinal)
 library(gridExtra)
 library(ggplot2)
 library(scales)
+library(tibble)
+library(tidyr)
+library(matter)
 
 
 
@@ -33,6 +37,12 @@ msidata = as(msidata, "MSImagingExperiment")
 
 ## remove duplicated coordinates
 msidata <- msidata[,!duplicated(coord(msidata))]
+
+## ensure coordinates are numeric (not integer) for kdsearch
+coords = coord(msidata)
+coords\$x = as.numeric(coords\$x)
+coords\$y = as.numeric(coords\$y)
+coord(msidata) = coords
 
 @DATA_PROPERTIES_INRAM@
 
@@ -49,6 +59,8 @@ Title = "Prediction"
 #end if
 
 pdf("classificationpdf.pdf", fonts = "Times", pointsize = 12)
+matter::vizi_style(style="light")
+par(mar=c(5.1, 4.1, 4.1, 2.1))
 plot(0,type='n',axes=FALSE,ann=FALSE)
 
 
@@ -74,7 +86,6 @@ if (npeaks > 0 && NAcount==0){
     #if str( $type_cond.type_method) == "training":
         print("training")
 
-
         ## load y response (will be needed in every training scenario)
 
         y_tabular = read.delim("$type_cond.annotation_file", header = $type_cond.tabular_header, stringsAsFactors = FALSE)
@@ -92,40 +103,41 @@ if (npeaks > 0 && NAcount==0){
         merged_response = as.data.frame(merge(msidata_coordinates, y_input, by=c("x", "y"), all.x=TRUE))
         merged_response[is.na(merged_response)] = "NA"
         merged_response = merged_response[order(merged_response\$pixel_index),]
-        conditions = as.factor(merged_response[,4])
-        y_vector = conditions
+        condition = as.factor(merged_response[,4])
+        y_vector = condition
 
         ## colours selection:
 
-	    #if str($colour_conditional.colour_type) == "manual_colour"
-	        #set $color_string = ','.join(['"%s"' % $color.annotation_color for $color in $colour_conditional.colours])
-	        colourvector = c($color_string)
+        #if str($colour_conditional.colour_type) == "manual_colour"
+            #set $color_string = ','.join(['"%s"' % $color.annotation_color for $color in $colour_conditional.colours])
+            colourvector = c($color_string)
 
-	    #elif str($colour_conditional.colour_type) == "colourpalette"
-	        number_levels = (length(levels(conditions)))
-	        colourvector = noquote($colour_conditional.palettes)(number_levels)
+        #elif str($colour_conditional.colour_type) == "colourpalette"
+            number_levels = (length(levels(condition)))
+            colourvector = noquote($colour_conditional.palettes)(number_levels)
 
-	    #end if
+        #end if
 
 
         ## plot of y vector
 
-        position_df = as.data.frame(cbind(coord(msidata)[,1:2], conditions))
-        y_plot = ggplot(position_df, aes(x=x, y=y, fill=conditions))+
+        position_df = as.data.frame(cbind(coord(msidata)[,1:2], condition))
+
+        y_plot = ggplot(position_df, aes(x=x, y=y, fill=condition))+
            geom_tile() +
            coord_fixed()+
            ggtitle("Distribution of the conditions")+
-		   theme_bw()+
+           theme_bw()+
            theme(
-	       plot.background = element_blank(),
-	       panel.grid.major = element_blank(),
-	       panel.grid.minor = element_blank())+
+                       plot.background = element_blank(),
+                       panel.grid.major = element_blank(),
+                       panel.grid.minor = element_blank())+
            theme(text=element_text(family="ArialMT", face="bold", size=15))+
            theme(legend.position="bottom",legend.direction="vertical")+
            guides(fill=guide_legend(ncol=4,byrow=TRUE))+
            scale_discrete_manual(aesthetics = c("colour", "fill"), values = colourvector)
-        coord_labels = aggregate(cbind(x,y)~conditions, data=position_df, mean, na.rm=TRUE, na.action="na.pass")
-        ##coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$conditions)
+        coord_labels = aggregate(cbind(x,y)~condition, data=position_df, mean, na.rm=TRUE, na.action="na.pass")
+        ##coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$condition)
         print(y_plot)
 
         ## plot of folds
@@ -138,11 +150,11 @@ if (npeaks > 0 && NAcount==0){
                geom_tile() +
                coord_fixed()+
                ggtitle("Distribution of the fold variable")+
-	           theme_bw()+
+               theme_bw()+
                theme(
-	           plot.background = element_blank(),
-	           panel.grid.major = element_blank(),
-	           panel.grid.minor = element_blank())+
+                       plot.background = element_blank(),
+                       panel.grid.major = element_blank(),
+                       panel.grid.minor = element_blank())+
                theme(text=element_text(family="ArialMT", face="bold", size=15))+
                theme(legend.position="bottom",legend.direction="vertical")+
                guides(fill=guide_legend(ncol=4,byrow=TRUE))
@@ -165,74 +177,89 @@ if (npeaks > 0 && NAcount==0){
                 number_groups = length(levels(y_vector))
 
                 ## PLS-cvApply:
-                msidata.cv.pls <- crossValidate(msidata, .y = y_vector,  .fold = fold_vector, .fun = "PLS", ncomp = components)
+                cv_pls <- crossValidate(PLS, x = msidata, y = y_vector,  folds = fold_vector, ncomp = components)
+                print("crossvalidation for pls done")
+
 
                 ## remove msidata to clean up RAM space
                 rm(msidata)
                 gc()
 
-                ## create new summary table with cv results
-                results_list <- NULL
-                for (i in seq_along(components)) {
-                  ## extract accuracy, sensitivity, and specificity for the current i
-                  accuracy <- round(as.data.frame(msidata.cv.pls@resultData@listData[[i]][["accuracy"]]), digits=2)
-                  sensitivity <- round(as.data.frame(msidata.cv.pls@resultData@listData[[i]][["sensitivity"]]), digits=2)
-                  specificity <- round(as.data.frame(msidata.cv.pls@resultData@listData[[i]][["specificity"]]), digits=2)
 
-                  ## combine accuracy, sensitivity, and specificity into one data frame
-                  result_df <- cbind(folds = rownames(accuracy), ncomp = i, accuracy, sensitivity, specificity)
-                  colnames(result_df) <- c("folds", "ncomp", "accuracy", "sensitivity", "specificity")
-                  rownames(result_df) <- NULL
+                ### New table for precision and recall of cv results ###
 
-                  ## add column names with ncomp as first row to each dataframe
-                  col_names_row <- data.frame(folds = "folds", ncomp = paste0("ncomp", i), accuracy = "accuracy", sensitivity = "sensitivity", specificity = "specificity")
-                  result_df <- rbind(col_names_row, result_df)
+                prec_rec_table = as.data.frame(cv_pls\$average)
+                prec_rec_table <- prec_rec_table %>%
+                                    rownames_to_column(var = "ncomp")
 
-                  results_list[[i]] <- result_df
-                }
+                prec_rec_table\$ncomp <- as.numeric(sub("ncomp=", "", prec_rec_table\$ncomp))
 
-                ## combine all data frames in the list into one data frame
-                results_df <- do.call(rbind, results_list)
+                colnames(prec_rec_table) = c("ncomp", "Recall", "Precision")
 
-                summary_df <- results_df
-
-                ## new table and plot of accuracies over all components
-                summary.cv.pls = as.data.frame(summary(msidata.cv.pls))
                 plot(0,type='n',axes=FALSE,ann=FALSE)
-                summary.cv.pls.round <- round(summary.cv.pls, digits=2)
-                grid.table(summary.cv.pls.round, rows=NULL)
+                title(main=paste0("Average Precision and Recall"))
 
-                accuracy_plot = ggplot(summary.cv.pls, aes(x = ncomp, y = Accuracy)) +
-                  geom_point(color = "blue", size = 3) +   # Add points
-                  geom_line() +
-                  theme_bw()
-                print(accuracy_plot)
+                prec_rec_round <- round(prec_rec_table, digits=4)
 
-                ## print table with summary in pdf
-                par(opar)
-                plot(0,type='n',axes=FALSE,ann=FALSE)
-                title(main="Summary for the different components\n", adj=0.5)
                 ## 20 rows fits in one page:
-                if (nrow(summary_df)<=20){
-                    grid.table(summary_df, rows= NULL)
+                if (nrow(prec_rec_round)<=20){
+                    grid.table(prec_rec_round, rows= NULL)
                 }else{
-                    grid.table(summary_df[1:20,], rows= NULL)
+                    grid.table(prec_rec_round[1:20,], rows= NULL)
                     mincount = 21
                     maxcount = 40
-                    for (count20 in 1:(ceiling(nrow(summary_df)/20)-1)){
+                    for (count20 in 1:(ceiling(nrow(prec_rec_round)/20)-1)){
                         plot(0,type='n',axes=FALSE,ann=FALSE)
-                        if (maxcount <= nrow(summary_df)){
-                            grid.table(summary_df[mincount:maxcount,], rows= NULL)
+                        if (maxcount <= nrow(prec_rec_round)){
+                            grid.table(prec_rec_round[mincount:maxcount,], rows= NULL)
                             mincount = mincount+20
                             maxcount = maxcount+20
                         }else{### stop last page with last sample otherwise NA in table
-                            grid.table(summary_df[mincount:nrow(summary_df),], rows= NULL)}
+                            grid.table(prec_rec_round[mincount:nrow(prec_rec_round),], rows= NULL)}
                     }
                 }
 
+                prec_rec_long <- prec_rec_table %>%
+                  pivot_longer(cols = c(Recall, Precision), names_to = "Metric", values_to = "Score")
+
+                ###plot Precision and recall over components
+                components_plot = ggplot(prec_rec_long, aes(x = ncomp, y = Score, color = Metric)) +
+                  geom_point(size = 3) +
+                  geom_line() +
+                  scale_color_manual(values = c("#FFBA0A", "#0082CC")) +
+                  labs(title = "Precision and Recall over Components",
+                       x = "Number of Components (ncomp)",
+                       y = "Score")+
+                  theme_bw()
+
+                print(components_plot)
+
+                ### New plot for: Recall over precision ###
+
+                prec_rec_plot = ggplot(prec_rec_table, aes(x = Precision, y = Recall, label = ncomp)) +
+                  geom_point(size = 3, color = "#0082CC") +
+                  geom_text(vjust = -1, size = 3) +
+                  labs(title = "Precision vs. Recall",
+                       x = "Precision",
+                       y = "Recall") +
+                  theme_minimal() +
+                  theme(text = element_text(size = 14))
+
+                print(prec_rec_plot)
+
+                for (i in components) {
+                tryCatch({
+                    print(image(cv_pls, i = i, type = "response"))
+                }, error = function(e) {
+                    plot(0, type='n', axes=FALSE, ann=FALSE)
+                    text(0.5, 0.5, labels = paste("CV response image not available for ncomp =", i), cex=0.8)
+                })
+                            }
+
+
                 ## optional output as .RData
                 #if $output_rdata:
-                    save(msidata.cv.pls, file="$classification_rdata")
+                    save(cv_pls, file="$classification_rdata")
                 #end if
 
 
@@ -261,114 +288,172 @@ if (npeaks > 0 && NAcount==0){
                         }
                     )
 
-                ### pls analysis and coefficients plot
-                msidata.pls <- PLS(msidata, y = y_vector, ncomp = component, scale=$type_cond.method_cond.analysis_cond.pls_scale)
-                plot(msidata.pls, main="PLS coefficients per m/z", col=colourvector)
+                ### pls analysis
+                msidata.pls <- PLS(msidata, y = y_vector, ncomp = component,
+                                        method=$type_cond.method_cond.analysis_cond.pls_alg,
+                                        scale=$type_cond.method_cond.analysis_cond.pls_scale,
+                                        center=$type_cond.method_cond.analysis_cond.pls_center)
 
-
-                ## create new summary table
-                summary_df = as.data.frame(summary(msidata.pls))
-                colnames(summary_df) = c("Number of Components", "Accuracy", "Sensitivity", "Specificity")
-                summary_df = round(summary_df, digits = 2)
-                plot(0,type='n',axes=FALSE,ann=FALSE)
-                grid.table(summary_df, rows= NULL)
-
-                ## Yweights plot: represent the importance of each response variable in predicting each component
-
-                #if $type_cond.method_cond.analysis_cond.PLS_Yweights == "TRUE":
-                Yweights = as.data.frame(msidata.pls@resultData@listData[[1]][["Yweights"]])
-                Yweights = round(Yweights, digits = 4)
-                Yweights.class <- cbind("class" = rownames(Yweights), Yweights)
-
-                plot(0,type='n',axes=FALSE,ann=FALSE)
-                text(x = 0.95, y = 1, "Yweights", cex = 2, font = 2)
-                grid.table(Yweights.class, rows= NULL)
-
-                #end if
-
-                coefficient_plot = plot(msidata.pls, values="coefficients", lwd=2, main = "PLS coefficients per m/z")
-                print(coefficient_plot)
-
-                ## m/z and pixel information output
-                pls_classes = data.frame(msidata.pls@resultData@listData[[1]][["class"]])
-
-                ## pixel names and coordinates
-                x_coords = msidata_coordinates@listData[["x"]]
-                y_coords = msidata_coordinates@listData[["y"]]
-                pixel_names = paste0("xy_", x_coords, "_", y_coords)
 
                 ## remove msidata to clean up RAM space
                 rm(msidata)
                 gc()
 
-                pls_classes2 = data.frame(pixel_names, x_coords, y_coords, pls_classes, y_vector)
-                colnames(pls_classes2) = c("pixel_name", "x", "y","predicted_class", "annotated_class")
-                pls_classes2\$correct <- ifelse(pls_classes2\$predicted_class==pls_classes2\$annotated_class, T, F)
 
-                write.table(pls_classes2, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+                ### fit pls model with training data
+                fit.pls = Cardinal::fitted(msidata.pls, type="class")
 
-                correctness = round(sum(pls_classes2\$correct)/length(pls_classes2\$correct)*100,2)
+                ### calculate precision and recall values
+                prec_rec_table = matter::predscore(x = fit.pls, ref = y_vector)
+                prec_rec_table = as.data.frame(prec_rec_table)
+                prec_rec_table <- prec_rec_table %>%
+                                     rownames_to_column(var = "Condition")
 
-                ## replace topFeatures table with coefficients table
-                coefficients.df = as.data.frame(msidata.pls@resultData@listData[[1]][["coefficients"]])
-                row_names <- msidata.pls@featureData@mz
-                coefficients.df.rownames <- cbind("mz" = row_names, coefficients.df)
-                write.table(coefficients.df.rownames, file = "$coefficients", quote = FALSE, sep = "\t", row.names = FALSE)
+                plot(0,type='n',axes=FALSE,ann=FALSE)
+                title(main=paste0("PLS Precision and Recall on Training Set"))
+                grid.table(prec_rec_table, rows= NULL)
 
-                ## add loadings and weights table
-                loadings.df = as.data.frame(msidata.pls@resultData@listData[[1]][["loadings"]])
-                loadings.df <- cbind("mz" = row_names, loadings.df)
-                new_names <- paste0("loadings_", names(loadings.df)[-1])
-                names(loadings.df)[-1] <- new_names
 
-                weights.df = as.data.frame(msidata.pls@resultData@listData[[1]][["weights"]])
-                weights.df <- cbind("mz" = row_names, weights.df)
-                new_names <- paste0("weights_", names(weights.df)[-1])
-                names(weights.df)[-1] <- new_names
+                ### pixel table
+                pixel_table = as.data.frame(coord(msidata.pls))
+                pixel_table = cbind(pixel_names = paste0("xy_", pixel_table\$x, "_", pixel_table\$y), pixel_table)
 
-                ## combine loading and weights table
-                merged.load.wei = merge(loadings.df, weights.df, by = "mz")
-                write.table(merged.load.wei, file = "$loadings_weights", quote = FALSE, sep = "\t", row.names = FALSE)
 
-                ## image with predicted classes
-                prediction_df = as.data.frame(cbind(coord(msidata.pls)[,1:2], pls_classes))
-                colnames(prediction_df) = c("x", "y", "predicted_classes")
+                ### new code for correctness calculation and plot
+                correctness_table = data.frame(cbind(pixel_names = paste0("xy_", pixel_table\$x, "_", pixel_table\$y)), pixel_table\$x, pixel_table\$y, y_vector, fit.pls)
+                colnames(correctness_table) = c("pixel_names", "x", "y", "true_class", "predicted_class")
+                correctness_table\$correct <- ifelse(correctness_table\$predicted_class==correctness_table\$true_class, T, F)
+                correctness = round(sum(correctness_table\$correct)/length(correctness_table\$correct)*100,2)
 
-                prediction_plot = ggplot(prediction_df, aes(x=x, y=y, fill=predicted_classes))+
+                ### color selection for correctness_plot
+                #if str($correctness_plot_condition.correctness_plot_color) == "default"
+                    true_col = c("#f28e2b")
+                    false_col = c("#4e79a7")
+
+                #elif str($correctness_plot_condition.correctness_plot_color) == "custom"
+                    true_col = c("$true_color")
+                    false_col = c("$false_color")
+
+                #end if
+
+
+                ## correctness plot
+                correctness_plot = ggplot(correctness_table, aes(x=x, y=y, fill=correct))+
+                       geom_tile() +
+                       coord_fixed()+
+                       ggtitle(paste0("Correctness of classification: ", correctness, " %"))+
+                       scale_fill_manual(values = c("TRUE" = true_col, "FALSE" = false_col))+
+                       theme_bw()+
+                       theme(
+                       plot.background = element_blank(),
+                       panel.grid.major = element_blank(),
+                       panel.grid.minor = element_blank())+
+                       theme(text=element_text(family="ArialMT", face="bold", size=15))+
+                       theme(legend.position="bottom",legend.direction="vertical")+
+                       guides(fill=guide_legend(ncol=2,byrow=TRUE))
+                coord_labels = aggregate(cbind(x,y)~correct, data=correctness_table, mean, na.rm=TRUE, na.action="na.pass")
+
+
+                ### image with predicted classes
+                prediction_plot = ggplot(correctness_table, aes(x=x, y=y, fill=predicted_class))+
                        geom_tile() +
                        coord_fixed()+
                        ggtitle("Predicted condition for each pixel")+
-			        theme_bw()+
-		            theme(
-		            plot.background = element_blank(),
-		            panel.grid.major = element_blank(),
-		            panel.grid.minor = element_blank())+
+                    theme_bw()+
+                    theme(
+                    plot.background = element_blank(),
+                    panel.grid.major = element_blank(),
+                    panel.grid.minor = element_blank())+
                        theme(text=element_text(family="ArialMT", face="bold", size=15))+
                        theme(legend.position="bottom",legend.direction="vertical")+
                        guides(fill=guide_legend(ncol=4,byrow=TRUE))+
                        scale_discrete_manual(aesthetics = c("colour", "fill"), values = colourvector)
-                coord_labels = aggregate(cbind(x,y)~predicted_classes, data=prediction_df, mean, na.rm=TRUE, na.action="na.pass")
-                ##coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$predicted_classes)
+                coord_labels = aggregate(cbind(x,y)~predicted_class, data=correctness_table, mean, na.rm=TRUE, na.action="na.pass")
+
+                ### print plots in following order:
                 print(prediction_plot)
+                print(correctness_plot)
 
-	            ## correctness plot
-	            correctness_plot = ggplot(pls_classes2, aes(x=x, y=y, fill=correct))+
-                       geom_tile() +
-                       coord_fixed()+
-                       ggtitle(paste0("Correctness of classification: ", correctness, " %"))+
-                       scale_fill_manual(values = c("TRUE" = "orange","FALSE" = "darkblue"))+
-		                theme_bw()+
-                        theme(
-    		            plot.background = element_blank(),
-   		                panel.grid.major = element_blank(),
-  		                panel.grid.minor = element_blank())+
-                        theme(text=element_text(family="ArialMT", face="bold", size=15))+
-                        theme(legend.position="bottom",legend.direction="vertical")+
-                        guides(fill=guide_legend(ncol=2,byrow=TRUE))
-               coord_labels = aggregate(cbind(x,y)~correct, data=pls_classes2, mean, na.rm=TRUE, na.action="na.pass")
-               ##coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$predicted_classes)
-               print(correctness_plot)
 
+                ### explained cumulative variance
+                expl_cvar <- as.data.frame(msidata.pls\$cvar)
+                expl_cvar <- round(expl_cvar, digits=3)
+                expl_cvar <- expl_cvar %>%
+                                rownames_to_column(var = "ncomp")
+                colnames(expl_cvar)[2] = "explained_cumulative_variance"
+
+                plot(0,type='n',axes=FALSE,ann=FALSE)
+                title(main=paste0("Explained Cumulative Variance"))
+
+                ## 20 rows fits in one page:
+                if (nrow(expl_cvar)<=20){
+                    grid.table(expl_cvar, rows= NULL)
+                }else{
+                    grid.table(expl_cvar[1:20,], rows= NULL)
+                    mincount = 21
+                    maxcount = 40
+                    for (count20 in 1:(ceiling(nrow(expl_cvar)/20)-1)){
+                        plot(0,type='n',axes=FALSE,ann=FALSE)
+                        if (maxcount <= nrow(expl_cvar)){
+                            grid.table(expl_cvar[mincount:maxcount,], rows= NULL)
+                            mincount = mincount+20
+                            maxcount = maxcount+20
+                        }else{### stop last page with last sample otherwise NA in table
+                            grid.table(expl_cvar[mincount:nrow(expl_cvar),], rows= NULL)}
+                    }
+                }
+
+
+                ### cardinal plots
+                minimumy = min(coord(msidata.pls)[,2])
+                maximumy = max(coord(msidata.pls)[,2])
+                minimumx = min(coord(msidata.pls)[,1])
+                maximumx = max(coord(msidata.pls)[,1])
+
+                x_min <- floor(minimumx / 10) * 10
+                y_min <- floor(minimumy / 10) * 10
+                x_max <- ceiling(maximumx / 10) * 10
+                y_max <- ceiling(maximumy / 10) * 10
+
+
+                print(image(msidata.pls, type="response", scale=TRUE, ylim= c(y_max, y_min), xlim= c(x_min, x_max)))
+                title(main = "PLS Response")
+
+                print(image(msidata.pls, type="class", scale=TRUE, ylim= c(y_max, y_min), xlim= c(x_min, x_max)))
+                title(main=paste0("PLS Class"))
+
+                print(plot(msidata.pls, type="coefficients", linewidth=2, annPeaks="circle"))
+                title(main=paste0("PLS coefficients per m/z"))
+
+                print(plot(msidata.pls, type="scores", groups=msidata.pls\$class, linewidth=2))
+                title(main=paste0("PLS scores per m/z"))
+
+                print(plot(msidata.pls, type="vip", annPeaks="circle", linewidth=2))
+                title(main=paste0("PLS vip per m/z"))
+
+
+                ### pixel table output
+                write.table(correctness_table, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+
+                ### topFeatures table output
+                top_feat_table = as.data.frame(topFeatures(msidata.pls, n=$pls_toplabels))
+
+                write.table(top_feat_table, file="$topfeatures", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+
+                ### scores table output
+                scores_tab = data.frame(msidata.pls\$scores)
+                scores_tab <- scores_tab %>%
+                                rownames_to_column(var = "Spectrum")
+
+                write.table(scores_tab, file="$scoresoutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+
+                loadings_tab = as.data.frame(msidata.pls[["loadings"]])
+                weights_tab = as.data.frame(msidata.pls[["weights"]])
+                colnames(loadings_tab) = paste0("loadings_", colnames(loadings_tab))
+                colnames(weights_tab) = paste0("weights_", colnames(weights_tab))
+
+                write.table(cbind(mz = as.numeric(fData(msidata.pls)\$mz), as.data.frame(msidata.pls[["coefficients"]])), file="$coefficients", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+                write.table(cbind(mz = as.numeric(fData(msidata.pls)\$mz), loadings_tab, weights_tab), file="$loadings_weights", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
 
                 ### optional output as .RData
                 #if $output_rdata:
@@ -390,78 +475,88 @@ if (npeaks > 0 && NAcount==0){
                 number_groups = length(levels(y_vector))
 
                 ## OPLS-cvApply:
-                msidata.cv.opls <- crossValidate(msidata, .y = y_vector, .fold = fold_vector, .fun = "OPLS", ncomp = components)
+                cv_opls <- crossValidate(OPLS, x = msidata, y = y_vector,  folds = fold_vector, ncomp = components)
+                print("crossvalidation for opls done")
+
 
                 ## remove msidata to clean up RAM space
                 rm(msidata)
                 gc()
 
 
+                ### New table for precision and recall of cv results ###
+                prec_rec_table = as.data.frame(cv_opls\$average)
+                prec_rec_table <- prec_rec_table %>%
+                                    rownames_to_column(var = "ncomp")
 
-                ## new table with cv results to replace the old summary table
-                results_list <- NULL
-                for (i in seq_along(components)) {
-                  ## extract accuracy, sensitivity, and specificity for the current i
-                  accuracy <- round(as.data.frame(msidata.cv.opls@resultData@listData[[i]][["accuracy"]]), digits=2)
-                  sensitivity <- round(as.data.frame(msidata.cv.opls@resultData@listData[[i]][["sensitivity"]]), digits=2)
-                  specificity <- round(as.data.frame(msidata.cv.opls@resultData@listData[[i]][["specificity"]]), digits=2)
+                prec_rec_table\$ncomp <- as.numeric(sub("ncomp=", "", prec_rec_table\$ncomp))
 
-                  ## combine accuracy, sensitivity, and specificity into one data frame
-                  result_df <- cbind(folds = rownames(accuracy), ncomp = i, accuracy, sensitivity, specificity)
-                  colnames(result_df) <- c("folds", "ncomp", "accuracy", "sensitivity", "specificity")
-                  rownames(result_df) <- NULL
+                colnames(prec_rec_table) = c("ncomp", "Recall", "Precision")
 
-                  ## add column names with ncomp as first row to each dataframe
-                  col_names_row <- data.frame(folds = "folds", ncomp = paste0("ncomp", i), accuracy = "accuracy", sensitivity = "sensitivity", specificity = "specificity")
-                  result_df <- rbind(col_names_row, result_df)
-
-                  results_list[[i]] <- result_df
-                }
-
-                ## combine all data frames in the list into one data frame
-                results_df <- do.call(rbind, results_list)
-
-                summary_df <- results_df
-
-                ## new table and plot of accuracies over all components
-                summary.cv.opls = as.data.frame(summary(msidata.cv.opls))
-
-                ## table with values
                 plot(0,type='n',axes=FALSE,ann=FALSE)
-                summary.cv.opls.round <- round(summary.cv.opls, digits=2)
-                grid.table(summary.cv.opls.round, rows=NULL)
+                title(main=paste0("Average Precision and Recall"))
 
-                accuracy_plot = ggplot(summary.cv.opls, aes(x = ncomp, y = Accuracy)) +
-                  geom_point(color = "blue", size = 3) +   # Add points
-                  geom_line() +
-                  theme_bw()
-                print(accuracy_plot)
+                prec_rec_round <- round(prec_rec_table, digits=4)
 
-                ## print table with summary in pdf
-                par(opar)
-                plot(0,type='n',axes=FALSE,ann=FALSE)
-                title(main="Summary for the different components\n", adj=0.5)
                 ## 20 rows fits in one page:
-                if (nrow(summary_df)<=20){
-                    grid.table(summary_df, rows= NULL)
+                if (nrow(prec_rec_round)<=20){
+                    grid.table(prec_rec_round, rows= NULL)
                 }else{
-                    grid.table(summary_df[1:20,], rows= NULL)
+                    grid.table(prec_rec_round[1:20,], rows= NULL)
                     mincount = 21
                     maxcount = 40
-                    for (count20 in 1:(ceiling(nrow(summary_df)/20)-1)){
+                    for (count20 in 1:(ceiling(nrow(prec_rec_round)/20)-1)){
                         plot(0,type='n',axes=FALSE,ann=FALSE)
-                        if (maxcount <= nrow(summary_df)){
-                            grid.table(summary_df[mincount:maxcount,], rows= NULL)
+                        if (maxcount <= nrow(prec_rec_round)){
+                            grid.table(prec_rec_round[mincount:maxcount,], rows= NULL)
                             mincount = mincount+20
                             maxcount = maxcount+20
                         }else{### stop last page with last sample otherwise NA in table
-                            grid.table(summary_df[mincount:nrow(summary_df),], rows= NULL)}
+                            grid.table(prec_rec_round[mincount:nrow(prec_rec_round),], rows= NULL)}
                     }
                 }
 
+                prec_rec_long <- prec_rec_table %>%
+                  pivot_longer(cols = c(Recall, Precision), names_to = "Metric", values_to = "Score")
+
+                ###plot Precision and recall over components
+                components_plot = ggplot(prec_rec_long, aes(x = ncomp, y = Score, color = Metric)) +
+                  geom_point(size = 3) +
+                  geom_line() +
+                  scale_color_manual(values = c("#FFBA0A", "#0082CC")) +
+                  labs(title = "Precision and Recall over Components",
+                       x = "Number of Components (ncomp)",
+                       y = "Score")+
+                  theme_bw()
+
+                print(components_plot)
+
+                ### New plot for: Recall over precision ###
+
+                prec_rec_plot = ggplot(prec_rec_table, aes(x = Precision, y = Recall, label = ncomp)) +
+                  geom_point(size = 3, color = "#0082CC") +
+                  geom_text(vjust = -1, size = 3) +
+                  labs(title = "Precision vs. Recall",
+                       x = "Precision",
+                       y = "Recall") +
+                  theme_minimal() +
+                  theme(text = element_text(size = 14))
+
+                print(prec_rec_plot)
+
+                for (i in components) {
+                tryCatch({
+                    print(image(cv_opls, i = i, type = "response"))
+                }, error = function(e) {
+                    plot(0, type='n', axes=FALSE, ann=FALSE)
+                    text(0.5, 0.5, labels = paste("CV response image not available for ncomp =", i), cex=0.8)
+                })
+                            }
+
+
                 ## optional output as .RData
                 #if $output_rdata:
-                    save(msidata.cv.opls, file="$classification_rdata")
+                    save(cv_opls, file="$classification_rdata")
                 #end if
 
 
@@ -485,122 +580,179 @@ if (npeaks > 0 && NAcount==0){
                         error=function(cond) {
                         ## in case user used multiple inputs for component - this is only possible in cv apply
                             message("Error during OPLS training")
-                            message("Possible problems: Multiple values for component were selected - this is only possible in cvapply but not for OPLS analysis or component was set to 0 but minimum for component is 1)")
+                            message("Possible problems: Multiple values for component were selected - this is only possible in cvapply but not for PLS analysis or component was set to 0 but minimum for component is 1)")
                             stop(call.=FALSE)
                         }
                     )
 
-                ### opls analysis and coefficients plot
-                msidata.opls <- OPLS(msidata, y = y_vector, ncomp = component, scale=$type_cond.method_cond.opls_analysis_cond.opls_scale)
-                plot(msidata.opls, main="OPLS coefficients per m/z", col=colourvector)
+                ### opls analysis
+                msidata.opls <- OPLS(msidata, y = y_vector, ncomp = component,
+                                        scale=$type_cond.method_cond.opls_analysis_cond.opls_scale,
+                                        center=$type_cond.method_cond.opls_analysis_cond.opls_center)
 
-                ## create new summary table
-                summary_df = as.data.frame(summary(msidata.opls))
-                colnames(summary_df) = c("Number of Components", "Accuracy", "Sensitivity", "Specificity")
-                summary_df = round(summary_df, digits = 2)
-                plot(0,type='n',axes=FALSE,ann=FALSE)
-                grid.table(summary_df, rows= NULL)
-
-
-                #if $type_cond.method_cond.opls_analysis_cond.OPLS_Yweights == "TRUE":
-                ## Yweights plot: represent the importance of each response variable in predicting each component
-                Yweights = as.data.frame(msidata.opls@resultData@listData[[1]][["Yweights"]])
-                Yweights = round(Yweights, digits = 4)
-                Yweights.class <- cbind("class" = rownames(Yweights), Yweights)
-
-                plot(0,type='n',axes=FALSE,ann=FALSE)
-                text(x = 0.95, y = 1, "Yweights", cex = 2, font = 2)
-                grid.table(Yweights.class, rows= NULL)
-                #end if
-
-                coefficient_plot = plot(msidata.opls, values="coefficients", lwd=2, main = "OPLS coefficients per m/z")
-                print(coefficient_plot)
-
-                ## m/z and pixel information output
-                opls_classes = data.frame(msidata.opls@resultData@listData[[1]][["class"]])
-
-                ## pixel names and coordinates
-                x_coords = msidata_coordinates@listData[["x"]]
-                y_coords = msidata_coordinates@listData[["y"]]
-                pixel_names = paste0("xy_", x_coords, "_", y_coords)
-
-                opls_classes2 = data.frame(pixel_names, x_coords, y_coords, opls_classes, y_vector)
-                colnames(opls_classes2) = c("pixel names", "x", "y","predicted_class", "annotated_class")
-                opls_classes2\$correct <- ifelse(opls_classes2\$predicted_class == opls_classes2\$annotated_class, T, F)
-
-                write.table(opls_classes2, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
-
-                correctness = round(sum(opls_classes2\$correct)/length(opls_classes2\$correct)*100,2)
 
                 ## remove msidata to clean up RAM space
                 rm(msidata)
                 gc()
 
-                ## replace topFeatures table with coefficients table
-                coefficients.df = as.data.frame(msidata.opls@resultData@listData[[1]][["coefficients"]])
-                row_names <- msidata.opls@featureData@mz
-                coefficients.df.rownames <- cbind("mz" = row_names, coefficients.df)
-                write.table(coefficients.df.rownames, file = "$coefficients", quote = FALSE, sep = "\t", row.names = FALSE)
 
-                ## add loadings and weights table
-                loadings.df = as.data.frame(msidata.opls@resultData@listData[[1]][["loadings"]])
-                loadings.df <- cbind("mz" = row_names, loadings.df)
-                new_names <- paste0("loadings_", names(loadings.df)[-1])
-                names(loadings.df)[-1] <- new_names
+                ### fit opls model with training data
+                fit.opls = Cardinal::fitted(msidata.opls, type="class")
 
-                weights.df = as.data.frame(msidata.opls@resultData@listData[[1]][["weights"]])
-                weights.df <- cbind("mz" = row_names, weights.df)
-                new_names <- paste0("weights_", names(weights.df)[-1])
-                names(weights.df)[-1] <- new_names
+                ### calculate precision and recall values
+                prec_rec_table = matter::predscore(x = fit.opls, ref = y_vector)
+                prec_rec_table = as.data.frame(prec_rec_table)
+                prec_rec_table <- prec_rec_table %>%
+                                     rownames_to_column(var = "Condition")
 
-                ## combine loading and weights table
-                merged.load.wei = merge(loadings.df, weights.df, by = "mz")
-                write.table(merged.load.wei, file = "$loadings_weights", quote = FALSE, sep = "\t", row.names = FALSE)
+                plot(0,type='n',axes=FALSE,ann=FALSE)
+                title(main=paste0("OPLS Precision and Recall on Training Set"))
+                grid.table(prec_rec_table, rows= NULL)
 
-                ## image with predicted classes
-                prediction_df = as.data.frame(cbind(coord(msidata.opls)[,1:2], opls_classes))
-                colnames(prediction_df) = c("x", "y", "predicted_classes")
 
-                prediction_plot = ggplot(prediction_df, aes(x=x, y=y, fill=predicted_classes))+
+                ### pixel table
+                pixel_table = as.data.frame(coord(msidata.opls))
+                pixel_table = cbind(pixel_names = paste0("xy_", pixel_table\$x, "_", pixel_table\$y), pixel_table)
+
+
+                ### new code for correctness calculation and plot
+                correctness_table = data.frame(cbind(pixel_names = paste0("xy_", pixel_table\$x, "_", pixel_table\$y)), pixel_table\$x, pixel_table\$y, y_vector, fit.opls)
+                colnames(correctness_table) = c("pixel_names", "x", "y", "true_class", "predicted_class")
+                correctness_table\$correct <- ifelse(correctness_table\$predicted_class==correctness_table\$true_class, T, F)
+                correctness = round(sum(correctness_table\$correct)/length(correctness_table\$correct)*100,2)
+
+                ### color selection for correctness_plot
+                #if str($correctness_plot_condition.correctness_plot_color) == "default"
+                    true_col = c("#f28e2b")
+                    false_col = c("#4e79a7")
+
+                #elif str($correctness_plot_condition.correctness_plot_color) == "custom"
+                    true_col = c("$true_color")
+                    false_col = c("$false_color")
+
+                #end if
+
+                ## correctness plot
+                correctness_plot = ggplot(correctness_table, aes(x=x, y=y, fill=correct))+
+                       geom_tile() +
+                       coord_fixed()+
+                       ggtitle(paste0("Correctness of classification: ", correctness, " %"))+
+                       scale_fill_manual(values = c("TRUE" = true_col, "FALSE" = false_col))+
+                       theme_bw()+
+                       theme(
+                       plot.background = element_blank(),
+                          panel.grid.major = element_blank(),
+                         panel.grid.minor = element_blank())+
+                       theme(text=element_text(family="ArialMT", face="bold", size=15))+
+                       theme(legend.position="bottom",legend.direction="vertical")+
+                       guides(fill=guide_legend(ncol=2,byrow=TRUE))
+                coord_labels = aggregate(cbind(x,y)~correct, data=correctness_table, mean, na.rm=TRUE, na.action="na.pass")
+
+
+                ### image with predicted classes
+                prediction_plot = ggplot(correctness_table, aes(x=x, y=y, fill=predicted_class))+
                        geom_tile() +
                        coord_fixed()+
                        ggtitle("Predicted condition for each pixel")+
-			            theme_bw()+
-			            theme(
-		                plot.background = element_blank(),
-		                panel.grid.major = element_blank(),
-		                panel.grid.minor = element_blank())+
+                    theme_bw()+
+                    theme(
+                    plot.background = element_blank(),
+                    panel.grid.major = element_blank(),
+                    panel.grid.minor = element_blank())+
                        theme(text=element_text(family="ArialMT", face="bold", size=15))+
                        theme(legend.position="bottom",legend.direction="vertical")+
                        guides(fill=guide_legend(ncol=4,byrow=TRUE))+
                        scale_discrete_manual(aesthetics = c("colour", "fill"), values = colourvector)
-                coord_labels = aggregate(cbind(x,y)~predicted_classes, data=prediction_df, mean, na.rm=TRUE, na.action="na.pass")
-                ##coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$predicted_classes)
-                print(prediction_plot)
+                coord_labels = aggregate(cbind(x,y)~predicted_class, data=correctness_table, mean, na.rm=TRUE, na.action="na.pass")
 
-                ## correctness plot
-                 correctness_plot = ggplot(opls_classes2, aes(x=x, y=y, fill=correct))+
-                       geom_tile() +
-                       coord_fixed()+
-                       ggtitle(paste0("Correctness of classification: ", correctness, " %"))+
-                       scale_fill_manual(values = c("TRUE" = "orange","FALSE" = "darkblue"))+
-		                theme_bw()+
-                        theme(
-    		            plot.background = element_blank(),
-   		                panel.grid.major = element_blank(),
-  		                panel.grid.minor = element_blank())+
-                        theme(text=element_text(family="ArialMT", face="bold", size=15))+
-                        theme(legend.position="bottom",legend.direction="vertical")+
-                        guides(fill=guide_legend(ncol=2,byrow=TRUE))
-                coord_labels = aggregate(cbind(x,y)~correct, data=opls_classes2, mean, na.rm=TRUE, na.action="na.pass")
-                ##coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$predicted_classes)
+                ### print plots in following order:
+                print(prediction_plot)
                 print(correctness_plot)
 
 
-                 ## optional output as .RData
-                 #if $output_rdata:
+                ### explained cumulative variance
+                opls_ratio <- as.data.frame(msidata.opls\$ratio)
+                opls_ratio <- round(opls_ratio, digits=3)
+                opls_ratio <- opls_ratio %>%
+                                rownames_to_column(var = "ncomp")
+                colnames(opls_ratio)[2] = "ratio"
+
+                plot(0,type='n',axes=FALSE,ann=FALSE)
+                title(main=paste0("OPLS ratio"))
+
+                ## 20 rows fits in one page:
+                if (nrow(opls_ratio)<=20){
+                    grid.table(opls_ratio, rows= NULL)
+                }else{
+                    grid.table(opls_ratio[1:20,], rows= NULL)
+                    mincount = 21
+                    maxcount = 40
+                    for (count20 in 1:(ceiling(nrow(opls_ratio)/20)-1)){
+                        plot(0,type='n',axes=FALSE,ann=FALSE)
+                        if (maxcount <= nrow(opls_ratio)){
+                            grid.table(opls_ratio[mincount:maxcount,], rows= NULL)
+                            mincount = mincount+20
+                            maxcount = maxcount+20
+                        }else{### stop last page with last sample otherwise NA in table
+                            grid.table(opls_ratio[mincount:nrow(opls_ratio),], rows= NULL)}
+                    }
+                }
+
+
+                ### cardinal plots
+                minimumy = min(coord(msidata.opls)[,2])
+                maximumy = max(coord(msidata.opls)[,2])
+                minimumx = min(coord(msidata.opls)[,1])
+                maximumx = max(coord(msidata.opls)[,1])
+
+                x_min <- floor(minimumx / 10) * 10
+                y_min <- floor(minimumy / 10) * 10
+                x_max <- ceiling(maximumx / 10) * 10
+                y_max <- ceiling(maximumy / 10) * 10
+
+
+                print(image(msidata.opls, type="response", scale=TRUE, ylim= c(y_max, y_min), xlim= c(x_min, x_max)))
+                title(main = "OPLS Response")
+
+                print(image(msidata.opls, type="class", scale=TRUE, ylim= c(y_max, y_min), xlim= c(x_min, x_max)))
+                title(main=paste0("OPLS Class"))
+
+                print(plot(msidata.opls, type="coefficients", linewidth=2, annPeaks="circle"))
+                title(main=paste0("OPLS coefficients per m/z"))
+
+                print(plot(msidata.opls, type="scores", groups=msidata.opls\$class, linewidth=2))
+                title(main=paste0("OPLS scores per m/z"))
+
+
+                ### pixel table output
+                write.table(correctness_table, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+
+                ### topFeatures table output
+                top_feat_table = as.data.frame(topFeatures(msidata.opls, n=$opls_toplabels))
+
+                write.table(top_feat_table, file="$topfeatures", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+
+                ### scores table output
+                scores_tab = data.frame(msidata.opls\$scores)
+                scores_tab <- scores_tab %>%
+                                rownames_to_column(var = "Spectrum")
+
+                write.table(scores_tab, file="$scoresoutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+
+                opls_regression = msidata.opls[["regressions"]][[length(msidata.opls[["regressions"]])]]
+                loadings_tab = as.data.frame(opls_regression[["loadings"]])
+                weights_tab = as.data.frame(opls_regression[["weights"]])
+                colnames(loadings_tab) = paste0("loadings_", colnames(loadings_tab))
+                colnames(weights_tab) = paste0("weights_", colnames(weights_tab))
+
+                write.table(cbind(mz = as.numeric(fData(msidata.opls)\$mz), as.data.frame(opls_regression[["coefficients"]])), file="$coefficients", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+                write.table(cbind(mz = as.numeric(fData(msidata.opls)\$mz), loadings_tab, weights_tab), file="$loadings_weights", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+
+                ### optional output as .RData
+                #if $output_rdata:
                     save(msidata.opls, file="$classification_rdata")
-                 #end if
+                #end if
+
             #end if
 
 
@@ -616,131 +768,115 @@ if (npeaks > 0 && NAcount==0){
                 number_groups = length(levels(y_vector))
 
                 ## SSC-cvApply:
-                msidata.cv.ssc <- crossValidate(msidata, .y = y_vector,.fold = fold_vector,.fun = "spatialShrunkenCentroids", r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method = "$type_cond.method_cond.ssc_kernel_method")
+                cv_ssc <- crossValidate(spatialShrunkenCentroids, x=msidata, y = y_vector, folds = fold_vector, r = as.numeric(c($type_cond.method_cond.ssc_r)), s = as.numeric(c($type_cond.method_cond.ssc_s)))
+
 
 
                 ## remove msidata to clean up RAM space
                 rm(msidata)
                 gc()
 
-                ## new table and plot of accuracies over all components
-                summary.cv.ssc = as.data.frame(summary(msidata.cv.ssc))
-                summary.cv.ssc.round <- round(summary.cv.ssc, digits=2)
 
-                par(opar)
+                ### New table for precision and recall of cv results ###
+                prec_rec_table = as.data.frame(cv_ssc\$average)
+                prec_rec_round <- round(prec_rec_table, digits=4)
+
+                prec_rec_round <- prec_rec_round %>%
+                                      rownames_to_column(var = "model")
+                colnames(prec_rec_round) = c("model", "Recall", "Precision")
+
+                ### split r and s values in individual columns
+                prec_rec_round\$r <- gsub("r=", "", sapply(strsplit(prec_rec_round\$model, ","), `[`, 1))
+                prec_rec_round\$s <- as.numeric(gsub("s=", "", sapply(strsplit(prec_rec_round\$model, ","), "[", 2)))
+
+                # Remove the original 'model' column
+                prec_rec_round\$model <- NULL
+
                 plot(0,type='n',axes=FALSE,ann=FALSE)
-                title(main="Summary for the different parameters\n", adj=0.5)
+                title(main=paste0("Average Precision and Recall"))
+
                 ## 20 rows fits in one page:
-                if (nrow(summary.cv.ssc.round)<=20){
-                    grid.table(summary.cv.ssc.round, rows= NULL)
+                if (nrow(prec_rec_round)<=20){
+                  grid.table(prec_rec_round, rows= NULL)
                 }else{
-                    grid.table(summary.cv.ssc.round[1:20,], rows= NULL)
-                    mincount = 21
-                    maxcount = 40
-                    for (count20 in 1:(ceiling(nrow(summary.cv.ssc.round)/20)-1)){
-                        plot(0,type='n',axes=FALSE,ann=FALSE)
-                        if (maxcount <= nrow(summary.cv.ssc.round)){
-                            grid.table(summary.cv.ssc.round[mincount:maxcount,], rows= NULL)
-                            mincount = mincount+20
-                            maxcount = maxcount+20
-                        }else{### stop last page with last sample otherwise NA in table
-                            grid.table(summary.cv.ssc.round[mincount:nrow(summary.cv.ssc.round),], rows= NULL)}
-                    }
-                }
-
-                ## new accuracy plots
-                #if $type_cond.method_cond.ssc_analysis_cond.ssc_cv_accuracy_plot == "TRUE":
-                accuracy_plot = ggplot(summary.cv.ssc, aes(x = s, y = Accuracy)) +
-                  geom_point(color = "blue", size = 3) +   # Add points
-                  geom_line() +
-                  theme_bw() +
-                  facet_wrap(~ r)
-
-                print(accuracy_plot)
-
-                ## or as alternative accuracy plot for each r value on own page:
-                #elif $type_cond.method_cond.ssc_analysis_cond.ssc_cv_accuracy_plot == "FALSE":
-                unique_r_values <- unique(summary.cv.ssc\$r)
-
-                for (r_value in unique_r_values) {
-                  ## Create a subset for the current value of r
-                  plot_data <- subset(summary.cv.ssc, r == r_value)
-                  ## Create the accuracy plot for the current value of r
-                  accuracy_plot <- ggplot(plot_data, aes(x = s, y = Accuracy)) +
-                                     geom_point(color = "blue", size = 3) +   # Add points
-                                     geom_line() +
-                                     theme_bw() +
-                                     ggtitle(paste("Plot for r =", r_value)) +  # Add a title
-                                     theme(plot.title = element_text(hjust = 0.5))  # Center the title
-                  print(accuracy_plot)
-                }
-                #end if
-
-                ## table with cv values per fold group for each combination of r and s
-                r_s_df = as.data.frame(msidata.cv.ssc@modelData@listData)
-                r_s_df\$parameter = paste0("r=", r_s_df\$r, " and s=", r_s_df\$s)
-                iteration = seq_along(r_s_df\$parameter)
-
-                results_list <- NULL
-                for (i in iteration) {
-                    ## extract accuracy, sensitivity, and specificity for the current i
-                    accuracy <- round(as.data.frame(msidata.cv.ssc@resultData@listData[[i]][["accuracy"]]), digits=2)
-                    sensitivity <- round(as.data.frame(msidata.cv.ssc@resultData@listData[[i]][["sensitivity"]]), digits=2)
-                    specificity <- round(as.data.frame(msidata.cv.ssc@resultData@listData[[i]][["specificity"]]), digits=2)
-
-                    ## combine accuracy, sensitivity, and specificity into one data frame
-                    result_df <- cbind(folds = rownames(accuracy), parameter = r_s_df\$parameter[i], accuracy, sensitivity, specificity)
-                    colnames(result_df) <- c("folds", "parameter", "accuracy", "sensitivity", "specificity")
-                    rownames(result_df) <- NULL
-
-                    ## add column names as first row to each dataframe
-                    col_names_row <- data.frame(folds = "folds", parameter = "parameter", accuracy = "accuracy", sensitivity = "sensitivity", specificity = "specificity")
-                    result_df <- rbind(col_names_row, result_df)
-
-                    results_list[[i]] <- result_df
+                  grid.table(prec_rec_round[1:20,], rows= NULL)
+                  mincount = 21
+                  maxcount = 40
+                  for (count20 in 1:(ceiling(nrow(prec_rec_round)/20)-1)){
+                    plot(0,type='n',axes=FALSE,ann=FALSE)
+                    if (maxcount <= nrow(prec_rec_round)){
+                      grid.table(prec_rec_round[mincount:maxcount,], rows= NULL)
+                      mincount = mincount+20
+                      maxcount = maxcount+20
+                    }else{### stop last page with last sample otherwise NA in table
+                      grid.table(prec_rec_round[mincount:nrow(prec_rec_round),], rows= NULL)}
                   }
-
-                ## combine all data frames in the list into one data frame
-                results_df <- do.call(rbind, results_list)
-                summary_df <- results_df
-
-                par(opar)
-                plot(0,type='n',axes=FALSE,ann=FALSE)
-                title(main="More advanced folds output table: \n Summary for each fold\n", adj=0.5)
-                ## 20 rows fits in one page:
-                if (nrow(summary_df)<=20){
-                    grid.table(summary_df, rows= NULL)
-                }else{
-                    grid.table(summary_df[1:20,], rows= NULL)
-                    mincount = 21
-                    maxcount = 40
-                    for (count20 in 1:(ceiling(nrow(summary_df)/20)-1)){
-                        plot(0,type='n',axes=FALSE,ann=FALSE)
-                        if (maxcount <= nrow(summary_df)){
-                            grid.table(summary_df[mincount:maxcount,], rows= NULL)
-                            mincount = mincount+20
-                            maxcount = maxcount+20
-                        }else{### stop last page with last sample otherwise NA in table
-                            grid.table(summary_df[mincount:nrow(summary_df),], rows= NULL)}
-                    }
                 }
 
+                prec_rec_long <- prec_rec_round %>%
+                  pivot_longer(cols = c(Recall, Precision), names_to = "Metric", values_to = "Score")
 
-                ## new code to extract best r and s values
-                max_accuracy_index <- which.max(summary.cv.ssc\$Accuracy)
+                ###plot Precision and recall over components
+                centroids_plot = ggplot(prec_rec_long , aes(x = s, y = Score, color = r, shape = Metric)) +
+                  geom_point(size = 3) +
+                  geom_line() +
+                  labs(title = "Precision and Recall over Centroids",
+                       x = "s",
+                       y = "Score")+
+                  theme_bw()
+
+                print(centroids_plot)
+
+                ### New plot for: Recall over precision ###
+
+                prec_rec_plot = ggplot(prec_rec_round, aes(x = Precision, y = Recall, label = r, color = s)) +
+                  geom_point(size = 3) +            ###color = "#0082CC"
+                  geom_text(vjust = -1, size = 3) +
+                  labs(title = "Precision vs. Recall",
+                       x = "Precision",
+                       y = "Recall") +
+                  theme_minimal() +
+                  theme(text = element_text(size = 14))
+
+                print(prec_rec_plot)
+
+
+                ## extract r and s values with highest accuracy
+                best_metric <- "$type_cond.method_cond.ssc_analysis_cond.best_params_metric"
+                if (all(is.nan(prec_rec_round\$Precision))) {
+                    if (best_metric == "Precision") {
+                        warning("All Precision values are NaN; no best parameters written.")
+                        max_index <- integer(0)
+                    } else {
+                        max_index <- which.max(prec_rec_round\$Recall)
+                    }
+                } else {
+                    max_index <- which.max(prec_rec_round[[best_metric]])
+                }
+
+                if (length(max_index) > 0) {
+                    highest_accuracy_r <- prec_rec_round\$r[max_index]
+                    highest_accuracy_s <- prec_rec_round\$s[max_index]
+                } else {
+                    highest_accuracy_r <- NA
+                    highest_accuracy_s <- NA
+                }
+
+                print(max_index)
 
                 ## extract the corresponding values of "r" and "s"
-                highest_accuracy_r <- summary.cv.ssc\$r[max_accuracy_index]
-                highest_accuracy_s <- summary.cv.ssc\$s[max_accuracy_index]
+                highest_accuracy_r <- prec_rec_round\$r[max_index]
+                highest_accuracy_s <- prec_rec_round\$s[max_index]
 
-		        #if $type_cond.method_cond.ssc_analysis_cond.write_best_params:
-                	write.table(highest_accuracy_r, file="$best_r", quote = FALSE, row.names = FALSE, col.names=FALSE, sep = "\t")
-                	write.table(highest_accuracy_s, file="$best_s", quote = FALSE, row.names = FALSE, col.names=FALSE, sep = "\t")
+                #if $type_cond.method_cond.ssc_analysis_cond.write_best_params:
+                    write.table(highest_accuracy_r, file="$best_r", quote = FALSE, row.names = FALSE, col.names=FALSE, sep = "\t")
+                    write.table(highest_accuracy_s, file="$best_s", quote = FALSE, row.names = FALSE, col.names=FALSE, sep = "\t")
                 #end if
+
 
                 ## optional output as .RData
                 #if $output_rdata:
-                    save(msidata.cv.ssc, file="$classification_rdata")
+                    save(cv_ssc, file="$classification_rdata")
                 #end if
 
             ######################## SSC -analysis ###########################
@@ -751,14 +887,14 @@ if (npeaks > 0 && NAcount==0){
                 number_groups = length(levels(y_vector))
 
                 ## SSC analysis and plot
-                msidata.ssc <- spatialShrunkenCentroids(msidata, y = y_vector, r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s), method = "$type_cond.method_cond.ssc_kernel_method")
-                print(plot(msidata.ssc, values = "statistic", model = list(r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s)), col=colourvector, lwd=2))
+                msidata.ssc <- spatialShrunkenCentroids(msidata, y = y_vector, r = as.numeric(c($type_cond.method_cond.ssc_r)), s = as.numeric(c($type_cond.method_cond.ssc_s)), weights = "$type_cond.method_cond.ssc_kernel_method")
+
 
                 ### stop if multiple values for r and s were used as input
                 tryCatch(
                         {
 
-                        if (length(names(msidata.ssc@resultData))>1)
+                        if (length(msidata.ssc\$s)>1 || length(msidata.ssc\$r) > 1)
                             {
                             stop(call.=FALSE)
                             }
@@ -771,21 +907,6 @@ if (npeaks > 0 && NAcount==0){
                         }
                     )
 
-                summary_df = as.data.frame(summary(msidata.ssc))
-                summary_df = round(summary_df, digits=3)
-                colnames(summary_df) = c("Radius r", "Shrinkage s", "Features/Class", "Accuracy", "Sensitivity", "Specificity")
-                plot(0,type='n',axes=FALSE,ann=FALSE)
-                grid.table(summary_df, rows= NULL)
-
-                ## image of the best m/z
-                minimumy = min(coord(msidata)[,2])
-                maximumy = max(coord(msidata)[,2])
-                print(image(msidata, mz = topFeatures(msidata.ssc)[1,1], normalize.image = "linear", contrast.enhance = "histogram",smooth.image="gaussian", ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy), main="best m/z heatmap"))
-
-                ## m/z and pixel information output
-                x_coords = msidata_coordinates@listData[["x"]]
-                y_coords = msidata_coordinates@listData[["y"]]
-                pixel_names = paste0("xy_", x_coords, "_", y_coords)
 
 
                 ## remove msidata to clean up RAM space
@@ -793,49 +914,118 @@ if (npeaks > 0 && NAcount==0){
                 gc()
 
 
-                ## toplabel (m/z features output)
-                ssc_toplabels = topFeatures(msidata.ssc, n=$type_cond.method_cond.ssc_toplabels)
-                ssc_toplabels@listData[["centers"]] = round (ssc_toplabels@listData[["centers"]], digits = 6)
-                ssc_toplabels@listData[["statistic"]] = round (ssc_toplabels@listData[["statistic"]], digits = 6)
-                write.table(ssc_toplabels, file="$mzfeatures", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
 
-                print(image(msidata.ssc, model=list(r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s)), ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy), col=colourvector, values="class", layout=c(1,1), main="Class Prediction"))
-                print(image(msidata.ssc, model=list(r = c($type_cond.method_cond.ssc_r), s = c($type_cond.method_cond.ssc_s)), ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy), col=colourvector, values="probability", layout=c(1,1), main="Class Probabilities"))
+                ### fit opls model with training data
+                fit.ssc = Cardinal::fitted(msidata.ssc, type="class")
 
+                ### calculate precision and recall values
+                prec_rec_table = matter::predscore(x = fit.ssc, ref = y_vector)
+                prec_rec_table = as.data.frame(prec_rec_table)
+                prec_rec_table <- prec_rec_table %>%
+                                     rownames_to_column(var = "Condition")
 
-                ## pixel output with correctness
-                ssc_classes = data.frame(msidata.ssc@resultData@listData[[1]][["class"]])
-                colnames(ssc_classes) = "predicted_class"
-                ssc_classes\$predicted_class = ifelse(is.na(ssc_classes\$predicted_class), "NA", as.character(ssc_classes\$predicted_class))
-                ssc_probabilities = data.frame(msidata.ssc@resultData@listData[[1]][["probability"]])
+                plot(0,type='n',axes=FALSE,ann=FALSE)
+                title(main=paste0("SSC Precision and Recall on Training Set"))
+                grid.table(prec_rec_table, rows= NULL)
 
 
-                ssc_classes2 = data.frame(pixel_names, x_coords, y_coords, ssc_classes, ssc_probabilities, y_vector)
-                colnames(ssc_classes2) = c("pixel_names", "x", "y","predicted_classes", levels(msidata.ssc@resultData@listData[[1]][["class"]]), "annotated_class")
-                ssc_classes2\$correct<- ifelse(ssc_classes2\$predicted_classes==ssc_classes2\$annotated_class, T, F)
-	            correctness = round(sum(ssc_classes2\$correct, na.rm = TRUE)/length(ssc_classes2\$correct)*100,2)
+                ### pixel table
+                pixel_table = as.data.frame(coord(msidata.ssc))
+                pixel_table = cbind(pixel_names = paste0("xy_", pixel_table\$x, "_", pixel_table\$y), pixel_table)
 
-                write.table(ssc_classes2, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
 
-	            correctness_plot = ggplot(ssc_classes2, aes(x=x, y=y, fill=correct))+
+                ### new code for correctness calculation and plot
+                correctness_table = data.frame(cbind(pixel_names = paste0("xy_", pixel_table\$x, "_", pixel_table\$y)), pixel_table\$x, pixel_table\$y, y_vector, fit.ssc)
+                colnames(correctness_table) = c("pixel_names", "x", "y", "true_class", "predicted_class")
+                correctness_table\$correct <- ifelse(correctness_table\$predicted_class==correctness_table\$true_class, T, F)
+                correctness = round(sum(correctness_table\$correct)/length(correctness_table\$correct)*100,2)
+
+                ### color selection for correctness_plot
+                #if str($correctness_plot_condition.correctness_plot_color) == "default"
+                    true_col = c("#f28e2b")
+                    false_col = c("#4e79a7")
+
+                #elif str($correctness_plot_condition.correctness_plot_color) == "custom"
+                    true_col = c("$true_color")
+                    false_col = c("$false_color")
+
+                #end if
+
+                ## correctness plot
+                correctness_plot = ggplot(correctness_table, aes(x=x, y=y, fill=correct))+
                        geom_tile() +
                        coord_fixed()+
                        ggtitle(paste0("Correctness of classification: ", correctness, " %"))+
-                       scale_fill_manual(values = c("TRUE" = "orange","FALSE" = "darkblue"))+
-		                theme_bw()+
-                        theme(
-    		            plot.background = element_blank(),
-   		                panel.grid.major = element_blank(),
-  		                panel.grid.minor = element_blank())+
-                        theme(text=element_text(family="ArialMT", face="bold", size=15))+
-                        theme(legend.position="bottom",legend.direction="vertical")+
-                        guides(fill=guide_legend(ncol=2,byrow=TRUE))
-                coord_labels = aggregate(cbind(x,y)~correct, data=ssc_classes2, mean, na.rm=TRUE, na.action="na.pass")
-                ##coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$predicted_classes)
+                       scale_fill_manual(values = c("TRUE" = true_col, "FALSE" = false_col))+
+                       theme_bw()+
+                       theme(
+                       plot.background = element_blank(),
+                          panel.grid.major = element_blank(),
+                         panel.grid.minor = element_blank())+
+                       theme(text=element_text(family="ArialMT", face="bold", size=15))+
+                       theme(legend.position="bottom",legend.direction="vertical")+
+                       guides(fill=guide_legend(ncol=2,byrow=TRUE))
+                coord_labels = aggregate(cbind(x,y)~correct, data=correctness_table, mean, na.rm=TRUE, na.action="na.pass")
+
+
+                ### image with predicted classes
+                prediction_plot = ggplot(correctness_table, aes(x=x, y=y, fill=predicted_class))+
+                       geom_tile() +
+                       coord_fixed()+
+                       ggtitle("Predicted condition for each pixel")+
+                    theme_bw()+
+                    theme(
+                    plot.background = element_blank(),
+                    panel.grid.major = element_blank(),
+                    panel.grid.minor = element_blank())+
+                       theme(text=element_text(family="ArialMT", face="bold", size=15))+
+                       theme(legend.position="bottom",legend.direction="vertical")+
+                       guides(fill=guide_legend(ncol=4,byrow=TRUE))+
+                       scale_discrete_manual(aesthetics = c("colour", "fill"), values = colourvector)
+                coord_labels = aggregate(cbind(x,y)~predicted_class, data=correctness_table, mean, na.rm=TRUE, na.action="na.pass")
+
+                ### print plots in following order:
+                print(prediction_plot)
                 print(correctness_plot)
 
 
-                ## optional output as .RData
+                ### cardinal plots
+
+                minimumy = min(coord(msidata.ssc)[,2])
+                maximumy = max(coord(msidata.ssc)[,2])
+                minimumx = min(coord(msidata.ssc)[,1])
+                maximumx = max(coord(msidata.ssc)[,1])
+
+                x_min <- floor(minimumx / 10) * 10
+                y_min <- floor(minimumy / 10) * 10
+                x_max <- ceiling(maximumx / 10) * 10
+                y_max <- ceiling(maximumy / 10) * 10
+
+
+                print(image(msidata.ssc, type="probability", scale=TRUE, ylim= c(y_max, y_min), xlim= c(x_min, x_max)))
+                title(main = "SSC Probability")
+
+                print(image(msidata.ssc, type="class", scale=TRUE, ylim= c(y_max, y_min), xlim= c(x_min, x_max)))
+                title(main=paste0("SSC Class"))
+
+                print(plot(msidata.ssc, type="statistic", linewidth=2, annPeaks="circle"))
+                title(main=paste0("SSC statistics per m/z"))
+
+                print(plot(msidata.ssc, type="centers", groups=msidata.opls\$class, linewidth=2))
+                title(main=paste0("SSC centers per m/z"))
+
+
+                ### pixel table output
+                write.table(correctness_table, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+
+                ### topFeatures table output
+                top_feat_table = as.data.frame(topFeatures(msidata.ssc, n=$ssc_toplabels))
+                top_feat_table\$centers = round (top_feat_table\$centers, digits = 6)
+                top_feat_table\$statistic = round (top_feat_table\$statistic, digits = 6)
+
+                write.table(top_feat_table, file="$topfeatures", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+
+              ## optional output as .RData
                 #if $output_rdata:
                     save(msidata.ssc, file="$classification_rdata")
                 #end if
@@ -850,178 +1040,188 @@ if (npeaks > 0 && NAcount==0){
     #elif str($type_cond.type_method) == "prediction":
         print("prediction")
 
+        ## load classifier model
         training_data = loadRData("$type_cond.training_result")
+
 
         #if str($type_cond.new_y_values_cond.new_y_values) == "new_response":
             print("new response")
 
             new_y_tabular = read.delim("$type_cond.new_y_values_cond.new_response_file", header = $type_cond.new_y_values_cond.new_tabular_header, stringsAsFactors = FALSE)
             new_y_input = new_y_tabular[,c($type_cond.new_y_values_cond.column_new_x, $type_cond.new_y_values_cond.column_new_y, $type_cond.new_y_values_cond.column_new_response)]
-            colnames(new_y_input)[1:2] = c("x", "y")
+            colnames(new_y_input) = c("x", "y", "true_class")
 
             ## merge with coordinate information of msidata
             msidata_coordinates = cbind(coord(msidata)[,1:2], c(1:ncol(msidata)))
-            colnames(msidata_coordinates)[3] = "pixel_index"
+            colnames(msidata_coordinates)= c("x", "y", "pixel_index")
+
             merged_response = as.data.frame(merge(msidata_coordinates, new_y_input, by=c("x", "y"), all.x=TRUE))
             merged_response[is.na(merged_response)] = "NA"
             merged_response = merged_response[order(merged_response\$pixel_index),]
             new_y_vector = as.factor(merged_response[,4])
 
-            prediction = predict(training_data, msidata, newy = new_y_vector)
 
-            ##numbers of levels for colour selection
+            ## colours selection:
             number_levels = length(levels(new_y_vector))
 
-	        ##new summary table
+            #if str($colour_conditional.colour_type) == "manual_colour"
+            #set $color_string = ','.join(['"%s"' % $color.annotation_color for $color in $colour_conditional.colours])
+                colourvector = c($color_string)
 
-	        ##if SSC classification, summary table has more results:
-	        #if str($type_cond.classification_type) == "SSC_classifier":
-            print("SSC classification summary")
-
-            summary_df = as.data.frame(summary(prediction))
-            summary_df = round(summary_df, digits=3)
-            colnames(summary_df) = c("Radius r", "Shrinkage s", "Features/Class", "Accuracy", "Sensitivity", "Specificity")
-            plot(0,type='n',axes=FALSE,ann=FALSE)
-            grid.table(summary_df, rows= NULL)
-
-	        ## else PLS or OPLS classifier:
-            #else
-            print("PLS/OPLS classifier")
-            summary_df = as.data.frame(summary(prediction))
-            colnames(summary_df) = c("Component", "Accuracy", "Sensitivity", "Specificity")
-            summary_df = round(summary_df, digits = 2)
-            plot(0,type='n',axes=FALSE,ann=FALSE)
-            grid.table(summary_df, rows= NULL)
+            #elif str($colour_conditional.colour_type) == "colourpalette"
+            colourvector = noquote($colour_conditional.palettes)(number_levels)
 
             #end if
 
 
+            ### plot of new y vector
+
+            y_plot = ggplot(merged_response, aes(x=x, y=y, fill=true_class))+
+               geom_tile() +
+               coord_fixed()+
+               ggtitle("Distribution of the conditions")+
+               theme_bw()+
+               theme(
+               plot.background = element_blank(),
+               panel.grid.major = element_blank(),
+               panel.grid.minor = element_blank())+
+               theme(text=element_text(family="ArialMT", face="bold", size=15))+
+               theme(legend.position="bottom",legend.direction="vertical")+
+               guides(fill=guide_legend(ncol=4,byrow=TRUE))+
+               scale_discrete_manual(aesthetics = c("colour", "fill"), values = colourvector)
+            coord_labels = aggregate(cbind(x,y)~true_class, data=merged_response, mean, na.rm=TRUE, na.action="na.pass")
+            ##coord_labels\$file_number = gsub( "_.*$", "", coord_labels\$true_class)
+            print(y_plot)
+
+            ### prediction of response probability
+            pred_response = predict(training_data, msidata, type="response")
+
+            ### predicted classes for precision and recall
+            predicted_class = predict(training_data, msidata, type="class")
+
+            ### prediction table
+            pred_response_table = cbind(coord(msidata), predicted_class, pred_response)
+
+                        ### Precision and Recall table
+            prec_rec_table = matter::predscore(x = predicted_class, ref = new_y_vector)
+            prec_rec_table = as.data.frame(prec_rec_table)
+            prec_rec_table <- prec_rec_table %>%
+              rownames_to_column(var = "Condition")
+
+            plot(0,type='n',axes=FALSE,ann=FALSE)
+            title(main=paste0("Classification Precision and Recall on New MSI Data"))
+            grid.table(prec_rec_table, rows= NULL)
+
+
+            ### new code for correctness calculation and plot
+            correctness_table = cbind(pred_response_table, new_y_vector)
+            correctness_table\$correct <- ifelse(correctness_table\$predicted_class==correctness_table\$new_y_vector, T, F)
+            correctness = round(sum(correctness_table\$correct)/length(correctness_table\$correct)*100,2)
+
+            ### color selection for correctness_plot
+            #if str($correctness_plot_condition.correctness_plot_color) == "default"
+                true_col = c("#f28e2b")
+                false_col = c("#4e79a7")
+
+            #elif str($correctness_plot_condition.correctness_plot_color) == "custom"
+                true_col = c("$true_color")
+                false_col = c("$false_color")
+
+            #end if
+
+            ## correctness plot
+            correctness_plot = ggplot(correctness_table, aes(x=x, y=y, fill=correct))+
+                   geom_tile() +
+                   coord_fixed()+
+                   ggtitle(paste0("Correctness of classification: ", correctness, " %"))+
+                   scale_fill_manual(values = c("TRUE" = true_col, "FALSE" = false_col))+
+                   theme_bw()+
+                   theme(
+                   plot.background = element_blank(),
+                   panel.grid.major = element_blank(),
+                   panel.grid.minor = element_blank())+
+                   theme(text=element_text(family="ArialMT", face="bold", size=15))+
+                   theme(legend.position="bottom",legend.direction="vertical")+
+                   guides(fill=guide_legend(ncol=2,byrow=TRUE))
+            coord_labels = aggregate(cbind(x,y)~correct, data=correctness_table, mean, na.rm=TRUE, na.action="na.pass")
+
+
+            ### image with predicted classes
+            prediction_plot = ggplot(correctness_table, aes(x=x, y=y, fill=predicted_class))+
+                   geom_tile() +
+                   coord_fixed()+
+                   ggtitle("Predicted condition for each pixel")+
+                theme_bw()+
+                theme(
+                plot.background = element_blank(),
+                panel.grid.major = element_blank(),
+                panel.grid.minor = element_blank())+
+                   theme(text=element_text(family="ArialMT", face="bold", size=15))+
+                   theme(legend.position="bottom",legend.direction="vertical")+
+                   guides(fill=guide_legend(ncol=4,byrow=TRUE))+
+                   scale_discrete_manual(aesthetics = c("colour", "fill"), values = colourvector)
+            coord_labels = aggregate(cbind(x,y)~predicted_class, data=correctness_table, mean, na.rm=TRUE, na.action="na.pass")
+
+            ### print plots in following order:
+            print(prediction_plot)
+            print(correctness_plot)
+
+            ### print correctness_table
+            write.table(correctness_table, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+
+
         ##else for prediction without a new annotation (no calculation of accuracy):
         #else
-            prediction = predict(training_data, msidata)
-            number_levels = length(levels(training_data@resultData@listData[[1]][["class"]]))
-        #end if
 
-        ## colours selection:
+            ### prediction of response probability
+            pred_response = predict(training_data, msidata, type="response")
 
-	    #if str($colour_conditional.colour_type) == "manual_colour"
-	    #set $color_string = ','.join(['"%s"' % $color.annotation_color for $color in $colour_conditional.colours])
-	        colourvector = c($color_string)
+            ### predicted classes for precision and recall
+            predicted_class = predict(training_data, msidata, type="class")
 
-	    #elif str($colour_conditional.colour_type) == "colourpalette"
-	    colourvector = noquote($colour_conditional.palettes)(number_levels)
+            pred_response_table = cbind(coord(msidata), predicted_class, pred_response)
 
-	    #end if
+            ## colours selection:
+            number_levels = length(levels(predicted_class))
+            print(number_levels)
 
-        ## m/z and pixel information output
-        predicted_classes = data.frame(prediction@resultData@listData[[1]][["class"]])
-        msidata_coordinates = cbind(coord(msidata)[,1:2], c(1:ncol(msidata)))
-        colnames(msidata_coordinates)[3] = "pixel_index"
-        x_coords = msidata_coordinates@listData[["x"]]
-        y_coords = msidata_coordinates@listData[["y"]]
-        pixel_names = paste0("xy_", x_coords, "_", y_coords)
-        predicted_classes2 = data.frame(pixel_names, x_coords, y_coords, predicted_classes)
-        colnames(predicted_classes2) = c("pixel names", "x", "y","predicted condition")
+            #if str($colour_conditional.colour_type) == "manual_colour"
+            #set $color_string = ','.join(['"%s"' % $color.annotation_color for $color in $colour_conditional.colours])
+                colourvector = c($color_string)
 
-        ##topFeatures only available for SSC; for PLS and OPLS coefficients loading and weights are provided
+            #elif str($colour_conditional.colour_type) == "colourpalette"
+            colourvector = noquote($colour_conditional.palettes)(number_levels)
 
-        #if str($type_cond.classification_type) == "SSC_classifier":
-        predicted_toplabels = topFeatures(prediction, n=$type_cond.classification_type_cond.predicted_toplabels)
-        predicted_toplabels <- as.data.frame(predicted_toplabels)
-        predicted_toplabels[,6:7] <-round(predicted_toplabels[,6:7], digits = 5)
-        write.table(predicted_toplabels, file="$mzfeatures", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
+            #end if
 
-        #else
-	    ## if PLS or OPLS classifier, coefficients, loadings, and weights instead of topFeatures
-	    coefficients.df = as.data.frame(prediction@resultData@listData[[1]][["coefficients"]])
-        row_names <- prediction@featureData@mz
-        coefficients.df <- cbind("mz" = row_names, coefficients.df)
-        write.table(coefficients.df, file = "$coefficients", quote = FALSE, sep = "\t", row.names = FALSE)
 
-        ## add loadings and weights table
-        loadings.df = as.data.frame(prediction@resultData@listData[[1]][["loadings"]])
-        loadings.df <- cbind("mz" = row_names, loadings.df)
-        new_names <- paste0("loadings_", names(loadings.df)[-1])
-        names(loadings.df)[-1] <- new_names
+            ### image with predicted classes
+            prediction_plot = ggplot(pred_response_table, aes(x=x, y=y, fill=predicted_class))+
+                   geom_tile() +
+                   coord_fixed()+
+                   ggtitle("Predicted condition for each pixel")+
+                theme_bw()+
+                theme(
+                plot.background = element_blank(),
+                panel.grid.major = element_blank(),
+                panel.grid.minor = element_blank())+
+                   theme(text=element_text(family="ArialMT", face="bold", size=15))+
+                   theme(legend.position="bottom",legend.direction="vertical")+
+                   guides(fill=guide_legend(ncol=4,byrow=TRUE))+
+                   scale_discrete_manual(aesthetics = c("colour", "fill"), values = colourvector)
+            coord_labels = aggregate(cbind(x,y)~predicted_class, data=pred_response_table, mean, na.rm=TRUE, na.action="na.pass")
 
-        weights.df = as.data.frame(prediction@resultData@listData[[1]][["weights"]])
-        weights.df <- cbind("mz" = row_names, weights.df)
-        new_names <- paste0("weights_", names(weights.df)[-1])
-        names(weights.df)[-1] <- new_names
+            print(prediction_plot)
 
-        ## combine loading and weights table
-        merged.load.wei = merge(loadings.df, weights.df, by = "mz")
-        write.table(merged.load.wei, file = "$loadings_weights", quote = FALSE, sep = "\t", row.names = FALSE)
+            ### write output with prediction results
+            write.table(pred_response_table, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
 
-        #end if
-
-        ##predicted classes
-        prediction_df = as.data.frame(cbind(coord(prediction)[,1:2], predicted_classes))
-        colnames(prediction_df) = c("x", "y", "predicted_classes")
-
-        #if str($type_cond.classification_type) == "SSC_classifier":
-            ## this seems to work only for SSC, therefore overwrite tables
-            predicted_probabilities = data.frame(prediction@resultData@listData[[1]][["probability"]])
-            predicted_classes2 = data.frame(pixel_names, x_coords, y_coords, predicted_classes, predicted_probabilities)
-            colnames(predicted_classes2) = c("pixel names", "x", "y","predicted condition", levels(prediction@resultData@listData[[1]][["class"]]))
-            ## also image modes are specific to SSC
-            print(predicted_classes2[1:5,])
-            print(image(prediction, values="class", layout=c(1,1), main="Class Prediction", ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy), col=colourvector))
-            print(image(prediction, values="probability", layout=c(1,1), main="Class Probabilities",ylim= c(maximumy+0.2*maximumy,minimumy-0.2*minimumy), col=colourvector))
-
-	    #else
-            prediction_plot = ggplot(prediction_df, aes(x=x, y=y, fill=predicted_classes))+
-        	geom_tile()+
-        	coord_fixed()+
-        	ggtitle("Predicted condition for each spectrum")+
-        	theme_bw()+
-        	theme(
-        	plot.background = element_blank(),
-        	panel.grid.major = element_blank(),
-        	panel.grid.minor = element_blank())+
-        	theme(text=element_text(family="ArialMT", face="bold", size=15))+
-        	theme(legend.position="bottom", legend.direction="vertical")+
-        	guides(fill=guide_legend(ncol=4, byrow=TRUE))+
-        	scale_discrete_manual(aesthetics = c("colour", "fill"), values = colourvector)
-        	coord_labels = aggregate(cbind(x,y)~predicted_classes, data=prediction_df, mean, na.rm=TRUE, na.action="na.pass")
-        	##coord_labels\$file_number = gsub( "_.*§", "", coord_labels\$predicted_classes)
-        	print(prediction_plot)
-        #end if
-
-        #if str($type_cond.new_y_values_cond.new_y_values) == "new_response":
-        ## image with right and wrong classes:
-	    comparison_df = as.data.frame(cbind(prediction_df, new_y_vector))
-	    colnames(comparison_df) = c("x", "y", "predicted_class", "annotated_class")
-	    comparison_df\$predicted_class = ifelse(is.na(comparison_df\$predicted_class), "NA", as.character(comparison_df\$predicted_class))
-        comparison_df\$correct <- ifelse(comparison_df\$predicted_class==comparison_df\$annotated_class, T, F)
-	    correctness = round(sum(comparison_df\$correct, na.rm = TRUE)/length(comparison_df\$correct)*100,2)
-
-	    correctness_plot = ggplot(comparison_df, aes(x=x, y=y, fill=correct))+
-                       geom_tile()+
-                       scale_fill_manual(values = c("TRUE" = "orange","FALSE" = "darkblue"))+
-                       coord_fixed()+
-                       ggtitle(paste0("Correctness of classification: ", correctness, " %"))+
-                       theme_bw()+
-                       theme(text=element_text(family="ArialMT", face="bold", size=15))+
-                       theme(legend.position="bottom",legend.direction="vertical")+
-                       guides(fill=guide_legend(ncol=2,byrow=TRUE))
-        print(correctness_plot)
-        #end if
-
-        ## pixel output
-        #if str($type_cond.new_y_values_cond.new_y_values) == "new_response":
-            print("new response output")
-            write.table(comparison_df, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
-
-        #else
-            write.table(predicted_classes2, file="$pixeloutput", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
 
         #end if
 
         ## optional output as .RData
         #if $output_rdata:
-            msidata = prediction
-            save(msidata, file="$classification_rdata")
+            save(pred_response_table, file="$classification_rdata")
         #end if
 
     #end if
@@ -1042,127 +1242,147 @@ if (npeaks > 0 && NAcount==0){
         <expand macro="reading_msidata"/>
         <conditional name="type_cond">
             <param name="type_method" type="select" label="Analysis step to perform">
-                <option value="training" selected="True">training</option>
+                <option value="training" selected="true">training</option>
                 <option value="prediction">prediction</option>
             </param>
             <when value="training">
-
-                <param name="annotation_file" type="data" format="tabular" label="Load tabular file with pixel coordinates and their classes"
-                help="Three or four columns: x values, y values, response values, optionally fold values"/>
+                <param name="annotation_file" type="data" format="tabular" label="Load tabular file with pixel coordinates and their classes" help="Three or four columns: x values, y values, response values, optionally fold values"/>
                 <param name="column_x" data_ref="annotation_file" label="Column with x values" type="data_column"/>
                 <param name="column_y" data_ref="annotation_file" label="Column with y values" type="data_column"/>
                 <param name="column_response" data_ref="annotation_file" label="Column with response (condition) values" type="data_column" help="This is the condition (pixel group) which will be classified"/>
                 <param name="column_fold" data_ref="annotation_file" optional="True" label="Column with fold values - only neccessary for cvapply" type="data_column" help="Each fold must contain pixels of all response groups and is used for cross validation"/>
                 <param name="tabular_header" type="boolean" label="Tabular files contain a header line" truevalue="TRUE" falsevalue="FALSE"/>
-
                 <conditional name="method_cond">
                     <param name="class_method" type="select" label="Select the method for classification">
-                        <option value="PLS" selected="True">PLS-DA</option>
+                        <option value="PLS" selected="true">PLS-DA</option>
                         <option value="OPLS">OPLS-DA</option>
                         <option value="spatialShrunkenCentroids">spatial shrunken centroids</option>
                     </param>
                     <when value="PLS">
-
                         <conditional name="analysis_cond">
                             <param name="PLS_method" type="select" label="Crossvalidation or analysis">
-                                <option value="cvapply" selected="True">cvApply</option>
+                                <option value="cvapply" selected="true">cvApply</option>
                                 <option value="PLS_analysis">PLS-DA analysis</option>
                             </param>
                             <when value="cvapply">
-                                <param name="plscv_comp" type="text" value="1:2"
-                                       label="The number of PLS-DA components" help="For cvapply multiple values are allowed (e.g. 1,2,3 or 2:5). Mininum is 1.">
-                                <expand macro="sanitizer_multiple_digits"/>
+                                <param name="plscv_comp" type="text" value="1:2" label="The number of PLS-DA components" help="For cvapply multiple values are allowed (e.g. 1,2,3 or 2:5). Mininum is 1.">
+                                    <expand macro="sanitizer_multiple_digits"/>
                                 </param>
                             </when>
                             <when value="PLS_analysis">
-                                <param name="pls_comp" type="integer" value="5"
-                                       label="The optimal number of PLS-DA components as indicated by cross-validations (minimum is 1)" help="Run cvApply first to optain optimal number of PLS-DA components"/>
+                                <param name="pls_comp" type="integer" value="5" label="The optimal number of PLS-DA components as indicated by cross-validations (minimum is 1)" help="Run cvApply first to optain optimal number of PLS-DA components"/>
                                 <param name="pls_scale" type="boolean" label="Data scaling" truevalue="TRUE" falsevalue="FALSE"/>
-                                <param name="PLS_Yweights" type="boolean" label="Y weights" help="Y weights represent the coefficients associated with the response variables and are used to model the relationship between predictors and responses in the context of classification. They represent the importance of each response variable in predicting each component. They can be useful if you have multiple response variables."/>
-                                <!--param name="pls_toplabels" type="integer" value="100
-                                   label="Number of toplabels (m/z features) which should be written in tabular output"/-->
+                                <param name="pls_center" type="boolean" label="Data centering" truevalue="TRUE" falsevalue="FALSE"/>
+                                <param name="pls_alg" type="select" label="PLS method">
+                                    <option value="pls_nipals" selected="true">nipals</option>
+                                    <option value="pls_simpls">simpls</option>
+                                    <option value="pls_kernel1">kernel1</option>
+                                    <option value="pls_kernel2">kernel2</option>
+                                </param>
+                                <param name="pls_toplabels" type="integer" value="100" label="Number of toplabels (m/z features) which should be written in tabular output"/>
+                                <conditional name="correctness_plot_condition">
+                                    <param name="correctness_plot_color" type="select" label="Choose a color scheme for the correctness plot">
+                                        <option value="default">Default Colors</option>
+                                        <option value="custom">Custom Colors</option>
+                                    </param>
+                                    <when value="default"/>
+                                    <when value="custom">
+                                        <param name="true_color" type="color" label="Correct color" value="#f28e2b" help="Color for correctly predicted pixels"/>
+                                        <param name="false_color" type="color" label="False color" value="#4e79a7" help="Color for incorrectly predicted pixels"/>
+                                    </when>
+                                </conditional>
                             </when>
                         </conditional>
                     </when>
-
                     <when value="OPLS">
-
                         <conditional name="opls_analysis_cond">
                             <param name="opls_method" type="select" label="Analysis step to perform">
-                                <option value="opls_cvapply" selected="True">cvApply</option>
+                                <option value="opls_cvapply" selected="true">cvApply</option>
                                 <option value="opls_analysis">OPLS-DA analysis</option>
                             </param>
-
                             <when value="opls_cvapply">
-                                <param name="opls_cvcomp" type="text" value="1:2"
-                                       label="The number of OPLS-DA components" help="For cvapply multiple values are allowed (e.g. 1,2,3 or 2:5). Minimum is 1.">
-                                <expand macro="sanitizer_multiple_digits"/>
+                                <param name="opls_cvcomp" type="text" value="1:2" label="The number of OPLS-DA components" help="For cvapply multiple values are allowed (e.g. 1,2,3 or 2:5). Minimum is 1.">
+                                    <expand macro="sanitizer_multiple_digits"/>
                                 </param>
-                                <!--param name="xnew_cv" type="boolean" truevalue="TRUE" falsevalue="FALSE" label="Keep new matrix"/-->
                             </when>
-
                             <when value="opls_analysis">
-                                <param name="opls_comp" type="integer" value="5"
-                                       label="The optimal number of OPLS-DA components as indicated by cross-validations (minimum is 1)" help="Run cvApply first to optain optimal number of OPLS-DA components"/>
-                                <!--param name="xnew" type="boolean" truevalue="TRUE" falsevalue="FALSE" label="Keep new matrix"/-->
+                                <param name="opls_comp" type="integer" value="5" label="The optimal number of OPLS-DA components as indicated by cross-validations (minimum is 1)" help="Run cvApply first to optain optimal number of OPLS-DA components"/>
                                 <param name="opls_scale" type="boolean" truevalue="TRUE" falsevalue="FALSE" label="Data scaling"/>
-                                <param name="OPLS_Yweights" type="boolean" label="Y weights" help="Y weights represent the coefficients associated with the response variables and are used to model the relationship between predictors and responses in the context of classification. They represent the importance of each response variable in predicting each component. They can be useful if you have multiple response variables."/>
-                                <!--param name="opls_toplabels" type="integer" value="100"
-                                   label="Number of toplabels (m/z features) which should be written in tabular output"/-->
+                                <param name="opls_center" type="boolean" truevalue="TRUE" falsevalue="FALSE" label="Data centering"/>
+                                <param name="opls_toplabels" type="integer" value="100" label="Number of toplabels (m/z features) which should be written in tabular output"/>
+                                <conditional name="correctness_plot_condition">
+                                    <param name="correctness_plot_color" type="select" label="Choose a color scheme for the correctness plot">
+                                        <option value="default">Default Colors</option>
+                                        <option value="custom">Custom Colors</option>
+                                    </param>
+                                    <when value="default"/>
+                                    <when value="custom">
+                                        <param name="true_color" type="color" label="Correct color" value="#f28e2b" help="Color for correctly predicted pixels"/>
+                                        <param name="false_color" type="color" label="False color" value="#4e79a7" help="Color for incorrectly predicted pixels"/>
+                                    </when>
+                                </conditional>
                             </when>
                         </conditional>
                     </when>
-
                     <when value="spatialShrunkenCentroids">
                         <conditional name="ssc_analysis_cond">
                             <param name="ssc_method" type="select" label="Analysis step to perform">
-                                <option value="ssc_cvapply" selected="True">cvApply</option>
+                                <option value="ssc_cvapply" selected="true">cvApply</option>
                                 <option value="ssc_analysis">spatial shrunken centroids analysis</option>
                             </param>
                             <when value="ssc_cvapply">
-                                  <param name="write_best_params" type="boolean" label="Write out best r and s values" help="Can be used to generate automatic classification workflow"/>
-                                  <param name="ssc_cv_accuracy_plot" type="boolean" label="Plot CV accuracy plots on one page (=Yes) or individual pages (=No)"/>
+                                <param name="write_best_params" type="boolean" label="Write out best r and s values" help="Can be used to generate automatic classification workflow"/>
+                                <param name="ssc_cv_accuracy_plot" type="boolean" label="Plot CV accuracy plots on one page (=Yes) or individual pages (=No)"/>
+                                <param name="best_params_metric" type="select" display="radio" label="Metric for selecting best parameters" help="When 'Precision' is selected but all values are NaN, no file will be written. Choose 'Recall' to always select the parameters with highest recall.">
+                                    <option value="Precision" selected="true">Precision</option>
+                                    <option value="Recall">Recall</option>
+                                </param>
                             </when>
                             <when value="ssc_analysis">
-                                <param name="ssc_toplabels" type="integer" value="100"
-                                   label="Number of toplabels (m/z features) which should be written in tabular output"/>
+                                <param name="ssc_toplabels" type="integer" value="100" label="Number of toplabels (m/z features) which should be written in tabular output"/>
+                                <conditional name="correctness_plot_condition">
+                                    <param name="correctness_plot_color" type="select" label="Choose a color scheme for the correctness plot">
+                                        <option value="default">Default Colors</option>
+                                        <option value="custom">Custom Colors</option>
+                                    </param>
+                                    <when value="default"/>
+                                    <when value="custom">
+                                        <param name="true_color" type="color" label="Correct color" value="#f28e2b" help="Color for correctly predicted pixels"/>
+                                        <param name="false_color" type="color" label="False color" value="#4e79a7" help="Color for incorrectly predicted pixels"/>
+                                    </when>
+                                </conditional>
                             </when>
                         </conditional>
-                        <param name="ssc_r" type="text" value="2"
-                               label="The spatial neighborhood radius of nearby pixels to consider (r)" help="For cvapply multiple values are allowed (e.g. 0,1,2,3 or 2:5)">
-                        <expand macro="sanitizer_multiple_digits"/>
+                        <param name="ssc_r" type="text" value="2" label="The spatial neighborhood radius of nearby pixels to consider (r)" help="For cvapply multiple values are allowed (e.g. 0,1,2,3 or 2:5)">
+                            <expand macro="sanitizer_multiple_digits"/>
                         </param>
-                        <param name="ssc_s" type="text" value="2"
-                               label="The sparsity thresholding parameter by which to shrink the t-statistics (s)." help="For cvapply multiple values are allowed (e.g. 0,1,2 or 2:5)">
-                        <expand macro="sanitizer_multiple_digits"/>
+                        <param name="ssc_s" type="text" value="2" label="The sparsity thresholding parameter by which to shrink the t-statistics (s)." help="For cvapply multiple values are allowed (e.g. 0,1,2 or 2:5)">
+                            <expand macro="sanitizer_multiple_digits"/>
                         </param>
-                        <param name="ssc_kernel_method" type="select" display="radio" label = "The method to use to calculate the spatial smoothing kernels for the embedding. The 'gaussian' method refers to spatially-aware (SA) weights, and 'adaptive' refers to spatially-aware structurally-adaptive (SASA) weights">
+                        <param name="ssc_kernel_method" type="select" display="radio" label="The method to use to calculate the spatial smoothing kernels for the embedding. The 'gaussian' method refers to spatially-aware (SA) weights, and 'adaptive' refers to spatially-aware structurally-adaptive (SASA) weights">
                             <option value="gaussian">gaussian</option>
-                            <option value="adaptive" selected="True">adaptive</option>
+                            <option value="adaptive" selected="true">adaptive</option>
                         </param>
                     </when>
                 </conditional>
-
             </when>
-
             <when value="prediction">
                 <param name="training_result" type="data" format="rdata" label="Result from previous classification training"/>
                 <conditional name="classification_type_cond">
                     <param name="classification_type" type="select" label="Which classification method was used">
-                	    <option value="PLS_classifier" selected="True" >PLS classifier</option>
-                	    <option value="OPLS_classifier">OPLS classifier</option>
-                	    <option value="SSC_classifier">SSC classifier</option>
+                        <option value="PLS_classifier" selected="true">PLS classifier</option>
+                        <option value="OPLS_classifier">OPLS classifier</option>
+                        <option value="SSC_classifier">SSC classifier</option>
                     </param>
                     <when value="PLS_classifier"/>
                     <when value="OPLS_classifier"/>
                     <when value="SSC_classifier">
-                        <param name="predicted_toplabels" type="integer" value="100"
-                                   label="Number of toplabels (m/z features) which should be written in tabular output"/>
+                        <param name="predicted_toplabels" type="integer" value="100" label="Number of toplabels (m/z features) which should be written in tabular output"/>
                     </when>
                 </conditional>
                 <conditional name="new_y_values_cond">
                     <param name="new_y_values" type="select" label="Load annotations (optional, but allows accuracy calculations)">
-                        <option value="no_new_response" selected="True">no</option>
+                        <option value="no_new_response" selected="true">no</option>
                         <option value="new_response">use annotations</option>
                     </param>
                     <when value="no_new_response"/>
@@ -1172,61 +1392,69 @@ if (npeaks > 0 && NAcount==0){
                         <param name="column_new_y" data_ref="new_response_file" label="Column with y values" type="data_column"/>
                         <param name="column_new_response" data_ref="new_response_file" label="Column with new response values" type="data_column"/>
                         <param name="new_tabular_header" type="boolean" label="Tabular files contain a header line" truevalue="TRUE" falsevalue="FALSE"/>
+                        <conditional name="correctness_plot_condition">
+                            <param name="correctness_plot_color" type="select" label="Choose a color scheme for the correctness plot">
+                                <option value="default">Default Colors</option>
+                                <option value="custom">Custom Colors</option>
+                            </param>
+                            <when value="default"/>
+                            <when value="custom">
+                                <param name="true_color" type="color" label="Correct color" value="#f28e2b" help="Color for correctly predicted pixels"/>
+                                <param name="false_color" type="color" label="False color" value="#4e79a7" help="Color for incorrectly predicted pixels"/>
+                            </when>
+                        </conditional>
                     </when>
                 </conditional>
             </when>
         </conditional>
         <conditional name="colour_conditional">
-	    <param name="colour_type" type="select" label="Choose a colour scheme">
-	        <option value="colourpalette" selected="True" >Colour palette</option>
-	        <option value="manual_colour">Manual selection</option>
-	    </param>
-	    <when value="manual_colour">
-	       <repeat name="colours" title="Colours for the plots" min="1" max="50">
-	       <param name="annotation_color" type="color" label="Colours" value="#ff00ff" help="Numbers of colours should be the same as number of components">
-	       <sanitizer>
-	           <valid initial="string.letters,string.digits">
-	           <add value="#" />
-	           </valid>
-	       </sanitizer>
-	       </param>
-	       </repeat>
-	    </when>
-	    <when value="colourpalette">
-	        <param name="palettes" type="select" display="radio" label="Select a colourpalette">
-		    <option value="hue_pal()" selected="True">hue</option>
-		    <option value="rainbow">rainbow</option>
-		    <option value="heat.colors">heat colors</option>
-		    <option value="terrain.colors">terrain colors</option>
-		    <option value="topo.colors">topo colors</option>
-		    <option value="cm.colors">cm colors</option>
-	        </param>
-	    </when>
+            <param name="colour_type" type="select" label="Choose a colour scheme">
+                <option value="colourpalette" selected="true">Colour palette</option>
+                <option value="manual_colour">Manual selection</option>
+            </param>
+            <when value="manual_colour">
+                <repeat name="colours" title="Colours for the plots" min="1" max="50">
+                    <param name="annotation_color" type="color" label="Colours" value="#ff00ff" help="Numbers of colours should be the same as number of components"/>
+                </repeat>
+            </when>
+            <when value="colourpalette">
+                <param name="palettes" type="select" display="radio" label="Select a colourpalette">
+                    <option value="hue_pal()" selected="true">hue</option>
+                    <option value="rainbow">rainbow</option>
+                    <option value="heat.colors">heat colors</option>
+                    <option value="terrain.colors">terrain colors</option>
+                    <option value="topo.colors">topo colors</option>
+                    <option value="cm.colors">cm colors</option>
+                </param>
+            </when>
         </conditional>
         <param name="output_rdata" type="boolean" label="Results as .RData output" help="Can be used to generate a classification prediction on new data"/>
     </inputs>
     <outputs>
-        <data format="pdf" name="classification_images" from_work_dir="classificationpdf.pdf" label = "${tool.name} on ${on_string}: results"/>
-        <data format="tabular" name="mzfeatures" label="${tool.name} on ${on_string}: features">
-            <filter>type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'spatialShrunkenCentroids' and type_cond['method_cond']['ssc_analysis_cond']['ssc_method'] == 'ssc_analysis' or type_cond['type_method'] == 'prediction' and type_cond['classification_type_cond']['classification_type'] == 'SSC_classifier'</filter>
-        </data>
+        <data format="pdf" name="classification_images" from_work_dir="classificationpdf.pdf" label="${tool.name} on ${on_string}: results"/>
         <data format="tabular" name="pixeloutput" label="${tool.name} on ${on_string}: pixels">
             <filter>type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'PLS' and type_cond['method_cond']['analysis_cond']['PLS_method'] == 'PLS_analysis' or type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'OPLS' and type_cond['method_cond']['opls_analysis_cond']['opls_method'] == 'opls_analysis' or type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'spatialShrunkenCentroids' and type_cond['method_cond']['ssc_analysis_cond']['ssc_method'] == 'ssc_analysis' or type_cond['type_method'] == 'prediction'</filter>
         </data>
         <data format="tabular" name="coefficients" label="${tool.name} on ${on_string}: coefficients">
-            <filter>type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'PLS' and type_cond['method_cond']['analysis_cond']['PLS_method'] == 'PLS_analysis' or type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'OPLS' and type_cond['method_cond']['opls_analysis_cond']['opls_method'] == 'opls_analysis' or type_cond['type_method'] == 'prediction' and type_cond['classification_type_cond']['classification_type'] == 'PLS_classifier' or type_cond['type_method'] == 'prediction' and type_cond['classification_type_cond']['classification_type'] == 'OPLS_classifier'</filter>
+            <filter>type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'PLS' and type_cond['method_cond']['analysis_cond']['PLS_method'] == 'PLS_analysis' or type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'OPLS' and type_cond['method_cond']['opls_analysis_cond']['opls_method'] == 'opls_analysis'</filter>
         </data>
         <data format="tabular" name="loadings_weights" label="${tool.name} on ${on_string}: loadings and weights">
-            <filter>type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'PLS' and type_cond['method_cond']['analysis_cond']['PLS_method'] == 'PLS_analysis' or type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'OPLS' and type_cond['method_cond']['opls_analysis_cond']['opls_method'] == 'opls_analysis' or type_cond['type_method'] == 'prediction' and type_cond['classification_type_cond']['classification_type'] == 'PLS_classifier' or type_cond['type_method'] == 'prediction' and type_cond['classification_type_cond']['classification_type'] == 'OPLS_classifier'</filter>
+            <filter>type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'PLS' and type_cond['method_cond']['analysis_cond']['PLS_method'] == 'PLS_analysis' or type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'OPLS' and type_cond['method_cond']['opls_analysis_cond']['opls_method'] == 'opls_analysis'</filter>
+        </data>
+        <data format="tabular" name="topfeatures" label="${tool.name} on ${on_string}: topFeatures">
+            <filter>type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'PLS' and type_cond['method_cond']['analysis_cond']['PLS_method'] == 'PLS_analysis' or type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'OPLS' and type_cond['method_cond']['opls_analysis_cond']['opls_method'] == 'opls_analysis'</filter>
+        </data>
+        <data format="tabular" name="scoresoutput" label="${tool.name} on ${on_string}: component scores">
+            <filter>type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'PLS' and type_cond['method_cond']['analysis_cond']['PLS_method'] == 'PLS_analysis' or type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'OPLS' and type_cond['method_cond']['opls_analysis_cond']['opls_method'] == 'opls_analysis'</filter>
         </data>
         <data format="txt" name="best_r" label="${tool.name} on ${on_string}:best r">
-        <filter>type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'spatialShrunkenCentroids' and type_cond['method_cond']['ssc_analysis_cond']['ssc_method'] == 'ssc_cvapply' and type_cond['method_cond']['ssc_analysis_cond']['write_best_params']</filter>
+            <filter>type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'spatialShrunkenCentroids' and type_cond['method_cond']['ssc_analysis_cond']['ssc_method'] == 'ssc_cvapply' and type_cond['method_cond']['ssc_analysis_cond']['write_best_params']</filter>
         </data>
         <data format="txt" name="best_s" label="${tool.name} on ${on_string}:best s">
-        <filter>type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'spatialShrunkenCentroids' and type_cond['method_cond']['ssc_analysis_cond']['ssc_method'] == 'ssc_cvapply' and type_cond['method_cond']['ssc_analysis_cond']['write_best_params']</filter>
+            <filter>type_cond['type_method'] == 'training' and type_cond['method_cond']['class_method'] == 'spatialShrunkenCentroids' and type_cond['method_cond']['ssc_analysis_cond']['ssc_method'] == 'ssc_cvapply' and type_cond['method_cond']['ssc_analysis_cond']['write_best_params']</filter>
         </data>
         <data format="rdata" name="classification_rdata" label="${tool.name} on ${on_string}: results.RData">
-        <filter>output_rdata</filter>
+            <filter>output_rdata</filter>
         </data>
     </outputs>
     <tests>
@@ -1234,7 +1462,7 @@ if (npeaks > 0 && NAcount==0){
             <param name="infile" value="testfile_squares.rdata" ftype="rdata"/>
             <conditional name="type_cond">
                 <param name="type_method" value="training"/>
-                <param name="annotation_file" value= "pixel_annotation_file1.tabular" ftype="tabular"/>
+                <param name="annotation_file" value="pixel_annotation_file1.tabular" ftype="tabular"/>
                 <param name="column_x" value="1"/>
                 <param name="column_y" value="2"/>
                 <param name="column_response" value="4"/>
@@ -1250,12 +1478,11 @@ if (npeaks > 0 && NAcount==0){
             </conditional>
             <output name="classification_images" file="test1.pdf" compare="sim_size" delta="2000"/>
         </test>
-
-        <test expect_num_outputs="5">
+        <test expect_num_outputs="7">
             <param name="infile" value="testfile_squares.rdata" ftype="rdata"/>
             <conditional name="type_cond">
                 <param name="type_method" value="training"/>
-                <param name="annotation_file" value= "pixel_annotation_file1.tabular" ftype="tabular"/>
+                <param name="annotation_file" value="pixel_annotation_file1.tabular" ftype="tabular"/>
                 <param name="column_x" value="1"/>
                 <param name="column_y" value="2"/>
                 <param name="column_response" value="4"/>
@@ -1266,36 +1493,21 @@ if (npeaks > 0 && NAcount==0){
                         <param name="PLS_method" value="PLS_analysis"/>
                         <param name="pls_comp" value="2"/>
                         <param name="pls_scale" value="TRUE"/>
-                        <param name="PLS_Yweights" value="TRUE"/>
-                        <!--param name="pls_toplabels" value="100"/-->
                     </conditional>
                 </conditional>
             </conditional>
             <param name="output_rdata" value="True"/>
-            <output name="coefficients">
-                <assert_contents>
-                    <has_text text="900.004699707031"/>
-                    <has_text text="962.870727539062"/>
-                    <has_text text="999.606872558594"/>
-                </assert_contents>
-            </output>
-            <output name="loadings_weights">
-                <assert_contents>
-                    <has_text text="900.076354980469"/>
-                    <has_text text="950.495910644531"/>
-                    <has_text text="989.024536132812"/>
-                </assert_contents>
-            </output>
             <output name="pixeloutput" file="pixels_test2.tabular"/>
+            <output name="coefficients" file="coefficients_test2.tabular"/>
+            <output name="loadings_weights" file="loadings_and_weights_test2.tabular"/>
             <output name="classification_images" file="test2.pdf" compare="sim_size"/>
             <output name="classification_rdata" file="test2.rdata" compare="sim_size"/>
         </test>
-
         <test expect_num_outputs="1">
             <param name="infile" value="testfile_squares.rdata" ftype="rdata"/>
             <conditional name="type_cond">
                 <param name="type_method" value="training"/>
-                <param name="annotation_file" value= "random_factors.tabular" ftype="tabular"/>
+                <param name="annotation_file" value="random_factors.tabular" ftype="tabular"/>
                 <param name="column_x" value="1"/>
                 <param name="column_y" value="2"/>
                 <param name="column_response" value="4"/>
@@ -1311,12 +1523,11 @@ if (npeaks > 0 && NAcount==0){
             </conditional>
             <output name="classification_images" file="test3.pdf" compare="sim_size"/>
         </test>
-
-        <test expect_num_outputs="5">
+        <test expect_num_outputs="7">
             <param name="infile" value="testfile_squares.rdata" ftype="rdata"/>
             <conditional name="type_cond">
                 <param name="type_method" value="training"/>
-                <param name="annotation_file" value= "random_factors.tabular" ftype="tabular"/>
+                <param name="annotation_file" value="random_factors.tabular" ftype="tabular"/>
                 <param name="column_x" value="1"/>
                 <param name="column_y" value="2"/>
                 <param name="column_response" value="4"/>
@@ -1327,35 +1538,21 @@ if (npeaks > 0 && NAcount==0){
                         <param name="opls_method" value="opls_analysis"/>
                         <param name="opls_comp" value="3"/>
                         <param name="opls_scale" value="FALSE"/>
-                        <param name="PLS_Yweights" value="FALSE"/>
                     </conditional>
                 </conditional>
             </conditional>
             <param name="output_rdata" value="True"/>
             <output name="pixeloutput" file="pixels_test4.tabular"/>
-            <output name="coefficients">
-                <assert_contents>
-                    <has_text text="900.148010253906"/>
-                    <has_text text="974.132446289062"/>
-                    <has_text text="999.908935546875"/>
-                </assert_contents>
-            </output>
-            <output name="loadings_weights">
-                <assert_contents>
-                    <has_text text="901.581848144531"/>
-                    <has_text text="939.189086914062"/>
-                    <has_text text="984.185363769531"/>
-                </assert_contents>
-            </output>
+            <output name="coefficients" file="coefficients_test4.tabular"/>
+            <output name="loadings_weights" file="loadings_and_weights_test4.tabular"/>
             <output name="classification_images" file="test4.pdf" compare="sim_size"/>
             <output name="classification_rdata" file="test4.rdata" compare="sim_size"/>
         </test>
-
         <test expect_num_outputs="3">
             <param name="infile" value="testfile_squares.rdata" ftype="rdata"/>
             <conditional name="type_cond">
                 <param name="type_method" value="training"/>
-                <param name="annotation_file" value= "pixel_annotation_file1.tabular" ftype="tabular"/>
+                <param name="annotation_file" value="pixel_annotation_file1.tabular" ftype="tabular"/>
                 <param name="column_x" value="1"/>
                 <param name="column_y" value="2"/>
                 <param name="column_response" value="3"/>
@@ -1365,23 +1562,23 @@ if (npeaks > 0 && NAcount==0){
                     <param name="class_method" value="spatialShrunkenCentroids"/>
                     <conditional name="ssc_analysis_cond">
                         <param name="ssc_method" value="ssc_cvapply"/>
-                        <param name="ssc_r" value="1:2"/>
-                        <param name="ssc_s" value="2:3"/>
-                        <param name="ssc_kernel_method" value="adaptive"/>
                         <param name="write_best_params" value="TRUE"/>
+                        <param name="best_params_metric" value="Recall"/>
                     </conditional>
+                    <param name="ssc_r" value="1:2"/>
+                    <param name="ssc_s" value="2:3"/>
+                    <param name="ssc_kernel_method" value="adaptive"/>
                 </conditional>
             </conditional>
             <output name="classification_images" file="test5.pdf" compare="sim_size"/>
             <output name="best_r" file="best_r_test5.txt"/>
             <output name="best_s" file="best_s_test5.txt"/>
         </test>
-
-        <test expect_num_outputs="4">
+        <test expect_num_outputs="3">
             <param name="infile" value="testfile_squares.rdata" ftype="rdata"/>
             <conditional name="type_cond">
                 <param name="type_method" value="training"/>
-                <param name="annotation_file" value= "random_factors.tabular" ftype="tabular"/>
+                <param name="annotation_file" value="random_factors.tabular" ftype="tabular"/>
                 <param name="column_x" value="1"/>
                 <param name="column_y" value="2"/>
                 <param name="column_response" value="4"/>
@@ -1390,41 +1587,52 @@ if (npeaks > 0 && NAcount==0){
                     <conditional name="ssc_analysis_cond">
                         <param name="ssc_method" value="ssc_analysis"/>
                         <param name="ssc_toplabels" value="20"/>
-                     </conditional>
+                    </conditional>
                     <param name="ssc_r" value="2"/>
                     <param name="ssc_s" value="2"/>
                     <param name="ssc_kernel_method" value="adaptive"/>
                 </conditional>
             </conditional>
             <param name="output_rdata" value="True"/>
-            <output name="mzfeatures" file="features_test6.tabular"/>
             <output name="pixeloutput" file="pixels_test6.tabular"/>
             <output name="classification_images" file="test6.pdf" compare="sim_size"/>
             <output name="classification_rdata" file="test6.rdata" compare="sim_size" delta="15000"/>
         </test>
-
-        <test expect_num_outputs="5">
+        <test expect_num_outputs="3">
             <param name="infile" value="testfile_squares.rdata" ftype="rdata"/>
             <conditional name="type_cond">
                 <param name="type_method" value="prediction"/>
-                <param name="type_method" value="prediction"/>
                 <param name="training_result" value="test2.rdata" ftype="rdata"/>
-                <param name="classification_type" value="PLS_classifier"/>
+                <conditional name="classification_type_cond">
+                    <param name="classification_type" value="PLS_classifier"/>
+                </conditional>
                 <conditional name="new_y_values_cond">
                     <param name="new_y_values" value="new_response"/>
-                        <param name="new_response_file" value="pixel_annotation_file1.tabular" ftype="tabular"/>
-                        <param name="column_new_x" value="1"/>
-                        <param name="column_new_y" value="2"/>
-                        <param name="column_new_response" value="4"/>
-                        <param name="new_tabular_header" value="False"/>
+                    <param name="new_response_file" value="pixel_annotation_file1.tabular" ftype="tabular"/>
+                    <param name="column_new_x" value="1"/>
+                    <param name="column_new_y" value="2"/>
+                    <param name="column_new_response" value="4"/>
+                    <param name="new_tabular_header" value="False"/>
                 </conditional>
             </conditional>
             <param name="output_rdata" value="True"/>
-            <output name="coefficients" file="coefficients_test7.tabular"/>
-            <output name="loadings_weights" file="loadings_and_weights_test7.tabular"/>
-            <output name="pixeloutput" file="pixels_test7.tabular"/>
+            <output name="pixeloutput" ftype="tabular">
+                <assert_contents>
+                    <has_n_columns n="8"/>
+                    <has_n_lines n="25"/>
+                    <has_line_matching expression="x\ty\tpredicted_class\tA\tB\tC\tnew_y_vector\tcorrect"/>
+                    <has_line_matching expression="1\t1\tA\t0\.7295.*\t0\.5309.*\t-0\.1487.*\tA\tTRUE"/>
+                    <has_line_matching expression="2\t1\tA\t0\.5536.*\t0\.4108.*\t-0\.0705.*\tA\tTRUE"/>
+                    <has_line_matching expression="2\t2\tA\t0\.4272.*\t0\.3674.*\t0\.2142.*\tB\tFALSE"/>
+                    <has_line_matching expression="1\t3\tC\t-0\.0731.*\t0\.1415.*\t1\.0531.*\tC\tTRUE"/>
+                    <has_line_matching expression="10\t1\tA\t0\.5445.*\t0\.4158.*\t-0\.0069.*\tA\tTRUE"/>
+                    <has_line_matching expression="10\t2\tA\t0\.4796.*\t0\.3830.*\t0\.0830.*\tB\tFALSE"/>
+                    <has_line_matching expression="10\t3\tC\t-0\.0329.*\t0\.0924.*\t0\.6269.*\tC\tTRUE"/>
+                    <has_line_matching expression="13\t3\tC\t-0\.0274.*\t0\.1318.*\t0\.8145.*\tC\tTRUE"/>
+                </assert_contents>
+            </output>
             <output name="classification_images" file="test7.pdf" compare="sim_size"/>
-            <output name="classification_rdata" file="test7.rdata" compare="sim_size" />
+            <output name="classification_rdata" file="test7.rdata" compare="sim_size"/>
         </test>
     </tests>
     <help>
@@ -1494,4 +1702,3 @@ This tool provides three different Cardinal functions for supervised classificat
     </help>
     <expand macro="citations"/>
 </tool>
-

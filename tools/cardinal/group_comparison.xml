@@ -1,13 +1,10 @@
-<tool id="cardinal_group_comparison" name="MSI group comparison" version="3.8.0">
+<tool id="cardinal_group_comparison" name="MSI group comparison" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
     <description>performs two group comparisons of  mass spectrometry imaging data</description>
     <macros>
         <import>macros.xml</import>
     </macros>
-    <requirements>
-        <requirement type="package" version="3.8.0">bioconductor-cardinal</requirement>
-        <requirement type="package" version="2.3">r-gridextra</requirement>
-        <requirement type="package" version="4.0.0">r-ggplot2</requirement>
-    </requirements>
+    <expand macro="requirements"/>
+    <expand macro="creator"/>
     <command detect_errors="exit_code">
         <![CDATA[
 
@@ -25,13 +22,15 @@
 library(Cardinal)
 library(gridExtra)
 library(ggplot2)
+#if str($contrast_test) == "TRUE":
+library(emmeans)
+#end if
 
 
 @READING_MSIDATA_FULLY_COMPATIBLE@
 
-##msidata = as(msidata, "MSImagingExperiment")
-
 ## remove duplicated coordinates
+msidata = as(msidata, "MSImagingExperiment")
 msidata <- msidata[,!duplicated(coord(msidata))]
 
 @DATA_PROPERTIES_INRAM@
@@ -62,9 +61,6 @@ if (npeaks > 0 && NAcount==0){
 ##### II load annotation table and merge with imzML #####
     ## load annotation tabular
     annotation = read.delim("$annotation_file", header = $tabular_header, stringsAsFactors = FALSE)
-
-    #####annot = annotation[,c($annotation_file.column_x, $annotation_file.column_y, $annotation_file.column_group, $annotation_file.column_condition)]
-    #####colnames(annot)[1:4] = c("x", "y", "sample", "condition")
 
     #if str($column_random) == "None":
 
@@ -199,12 +195,20 @@ if (npeaks > 0 && NAcount==0){
         #if str($column_random) == "None":
             print("test without random effect selected")
             ## perform meansTest without random effect
+            #if str($contrast_test) == "TRUE":
+            mt_res <- meansTest(msidata, fixed= ~condition, samples=msidata\$sample_id, use_lmer=TRUE)
+            #else
             mt_res <- meansTest(msidata, fixed= ~condition, samples=msidata\$sample_id)
+            #end if
 
         #else
             print("test with random effect selected")
             ## perform meansTest with random effect
+            #if str($contrast_test) == "TRUE":
+            mt_res <- meansTest(msidata, fixed= ~condition, random = ~1|random, samples=msidata\$sample_id, use_lmer=TRUE)
+            #else
             mt_res <- meansTest(msidata, fixed= ~condition, random = ~1|random, samples=msidata\$sample_id)
+            #end if
 
         #end if
 
@@ -223,13 +227,21 @@ if (npeaks > 0 && NAcount==0){
             print("test without random effect selected")
 
             ## perform meansTest with spatialDGMM
+            #if str($contrast_test) == "TRUE":
+            mt_res <- meansTest(dgmm, fixed = ~condition, use_lmer=TRUE)
+            #else
             mt_res <- meansTest(dgmm, fixed = ~condition)
+            #end if
 
         #else
             print("means test with random effect selected")
             ## perform meansTest with random effect
 
+            #if str($contrast_test) == "TRUE":
+            mt_res <- meansTest(dgmm, fixed = ~condition, random = ~1|random, use_lmer=TRUE)
+            #else
             mt_res <- meansTest(dgmm, fixed = ~condition, random = ~1|random)
+            #end if
             print("random effect test done")
 
         #end if
@@ -239,7 +251,7 @@ if (npeaks > 0 && NAcount==0){
     ## filter top ranked features and filter by fdr
     mt_top <- topFeatures(mt_res)
 
-    if (any(mt_top\$fdr < $fdr_filter)) {
+    if (any(mt_top\$fdr < $fdr_filter, na.rm=TRUE)) {
       mt_top_fdr <- subset(mt_top, fdr < $fdr_filter)
     } else {
         plot.new()
@@ -251,25 +263,22 @@ if (npeaks > 0 && NAcount==0){
     ## write results tabular file
     write.table(mt_top, file="$mt_results", quote=FALSE, row.names=FALSE, col.names=TRUE, sep="\t")
 
+    #if str($contrast_test) == "TRUE":
+    ## perform post-hoc contrast testing with emmeans
+    print("performing contrastTest")
+    ct_res <- contrastTest(mt_res, specs=~condition, method="$contrast_method", emm_adjust="$emm_adjust")
+    ct_top <- topFeatures(ct_res)
+    write.table(ct_top, file="$contrast_results", quote=FALSE, row.names=FALSE, col.names=TRUE, sep="\t")
+    #end if
+
     #if str($boxplots) == "TRUE":
         interesting_features = sort(mt_top_fdr\$i)
-        print(plot(mt_res, i = interesting_features, layout=c(1,1), ylab="Intensity", fill=TRUE))
+        print(plot(mt_res, i = interesting_features, ylab="Intensity", fill=TRUE))
     #end if
         dev.off()
 
-##### IV customize color selection ##### TO DO customize color selection for user later
-        ## colours selection:
-
-	    ###if str($colour_conditional.colour_type) == "manual_colour"
-	        ##set $color_string = ','.join(['"%s"' % $color.annotation_color for $color in $colour_conditional.colours])
-	        ##colourvector = c($color_string)
-
-	    ###elif str($colour_conditional.colour_type) == "colourpalette"
-	        ##number_levels = (length(levels(conditions)))
-	        ##colourvector = noquote($colour_conditional.palettes)(number_levels)
-
-	    ###end if
-
+##### IV customize color selection #####
+    ## colours selection:
 
     ## optional output of groupComparison as .RData
     #if str($output_rdata) == "TRUE":
@@ -292,7 +301,7 @@ if (npeaks > 0 && NAcount==0){
         <expand macro="reading_msidata"/>
         <conditional name="type_cond">
             <param name="type_method" type="select" label="Should the group comparison be performed on the samples means or with spatial DGMM?">
-                <option value="meansTest" selected="True">meansTest with sample means</option>
+                <option value="meansTest" selected="true">meansTest with sample means</option>
                 <option value="spatialDGMM_meansTest">meansTest with spatialDGMM</option>
             </param>
             <when value="meansTest">
@@ -311,18 +320,32 @@ if (npeaks > 0 && NAcount==0){
         <param name="fdr_filter" type="float" value="0.05" label="Fdr cutoff - if boxplots are generated then only for features with lower fdr values"/>
         <param name="boxplots" type="boolean" label="Generate boxplots and results table for all m/z features? (If 'No' only fdr filtered m/z features will be plotted and summarizes in a tabular table.)" truevalue="TRUE" falsevalue="FALSE"/>
         <param name="output_rdata" type="boolean" label="Results as .RData output" help="Output of the means test model." truevalue="TRUE" falsevalue="FALSE"/>
+        <param name="contrast_test" type="boolean" label="Perform post-hoc contrast testing?" help="Performs post-hoc pairwise (or treatment-vs-control) contrasts on the meansTest results using emmeans. Requires models fit with lmer (use_lmer=TRUE), so likelihood ratio tests are not performed; use contrastTest for post-hoc comparisons instead." truevalue="TRUE" falsevalue="FALSE"/>
+        <param name="contrast_method" type="select" label="Contrast method" help="The type of contrasts to compute">
+            <option value="pairwise" selected="true">pairwise - all pairwise comparisons</option>
+            <option value="trt.vs.ctrl">treatment vs control - compare each level to the first</option>
+        </param>
+        <param name="emm_adjust" type="select" label="P-value adjustment method" help="Multiple comparison adjustment for the contrast p-values">
+            <option value="none">none</option>
+            <option value="tukey" selected="true">tukey</option>
+            <option value="bonferroni">bonferroni</option>
+            <option value="fdr">fdr (Benjamini-Hochberg)</option>
+        </param>
     </inputs>
     <outputs>
-        <data format="pdf" name="groupComparison_images" from_work_dir="Group_Comparison.pdf" label = "${tool.name} on ${on_string}: results"/>
+        <data format="pdf" name="groupComparison_images" from_work_dir="Group_Comparison.pdf" label="${tool.name} on ${on_string}: results"/>
         <data format="tabular" name="mt_results" label="${tool.name} on ${on_string}: results for all features"/>
         <data format="rdata" name="groupComparison_rdata" label="${tool.name} on ${on_string}: results.RData">
             <filter>output_rdata</filter>
+        </data>
+        <data format="tabular" name="contrast_results" label="${tool.name} on ${on_string}: contrast results">
+            <filter>contrast_test</filter>
         </data>
     </outputs>
     <tests>
         <test expect_num_outputs="2">
             <param name="infile" value="" ftype="imzml">
-                <composite_data value="Combat_40pixel.imzML" />
+                <composite_data value="Combat_40pixel.imzML"/>
                 <composite_data value="Combat_40pixel.ibd"/>
             </param>
             <conditional name="type_cond">
@@ -340,7 +363,7 @@ if (npeaks > 0 && NAcount==0){
         </test>
         <test expect_num_outputs="3">
             <param name="infile" value="" ftype="imzml">
-                <composite_data value="Combat_40pixel.imzML" />
+                <composite_data value="Combat_40pixel.imzML"/>
                 <composite_data value="Combat_40pixel.ibd"/>
             </param>
             <conditional name="type_cond">
@@ -360,7 +383,7 @@ if (npeaks > 0 && NAcount==0){
         </test>
         <test expect_num_outputs="2">
             <param name="infile" value="" ftype="imzml">
-                <composite_data value="Combat_40pixel.imzML" />
+                <composite_data value="Combat_40pixel.imzML"/>
                 <composite_data value="Combat_40pixel.ibd"/>
             </param>
             <conditional name="type_cond">
@@ -378,7 +401,7 @@ if (npeaks > 0 && NAcount==0){
         </test>
         <test expect_num_outputs="3">
             <param name="infile" value="" ftype="imzml">
-                <composite_data value="Combat_40pixel.imzML" />
+                <composite_data value="Combat_40pixel.imzML"/>
                 <composite_data value="Combat_40pixel.ibd"/>
             </param>
             <conditional name="type_cond">
@@ -400,7 +423,7 @@ if (npeaks > 0 && NAcount==0){
         </test>
         <test expect_num_outputs="2">
             <param name="infile" value="" ftype="imzml">
-                <composite_data value="Combat_40pixel.imzML" />
+                <composite_data value="Combat_40pixel.imzML"/>
                 <composite_data value="Combat_40pixel.ibd"/>
             </param>
             <conditional name="type_cond">
@@ -418,6 +441,27 @@ if (npeaks > 0 && NAcount==0){
             <param name="fdr_filter" value="0.001"/>
             <output name="groupComparison_images" file="groupcomparison_test5.pdf" compare="sim_size"/>
             <output name="mt_results" file="groupcomparison_test5.tabular"/>
+        </test>
+        <test expect_num_outputs="3">
+            <param name="infile" value="" ftype="imzml">
+                <composite_data value="Combat_40pixel.imzML"/>
+                <composite_data value="Combat_40pixel.ibd"/>
+            </param>
+            <conditional name="type_cond">
+                <param name="type_method" value="meansTest"/>
+            </conditional>
+            <param name="annotation_file" value="annotation_40pixel_groupcomparison.tabular" ftype="tabular"/>
+            <param name="column_x" value="1"/>
+            <param name="column_y" value="2"/>
+            <param name="column_group" value="3"/>
+            <param name="column_condition" value="4"/>
+            <param name="tabular_header" value="TRUE"/>
+            <param name="contrast_test" value="TRUE"/>
+            <param name="contrast_method" value="pairwise"/>
+            <param name="emm_adjust" value="tukey"/>
+            <output name="groupComparison_images" file="groupcomparison_test6.pdf" compare="sim_size"/>
+            <output name="mt_results" file="groupcomparison_test6.tabular"/>
+            <output name="contrast_results" file="groupcomparison_test6_contrast.tabular"/>
         </test>
     </tests>
     <help>
@@ -461,6 +505,7 @@ This tool performs hypothesis testing for mass spectrometry imaging data. Group 
 
 - means Test: fitting linear mixed models to means of sample groups provided by the user.
 - means Test with spatial DGMM: fitting linear mixed models to segmentation results based on spatial DGMM (uses the segment means instead of the sample means).
+- Post-hoc contrast testing: When enabled, the models are fit with use_lmer=TRUE (using lmerTest::lmer) and post-hoc contrasts are computed with emmeans. This provides pairwise or treatment-vs-control comparisons between condition levels, with optional p-value adjustment (Tukey, Bonferroni, FDR). Note: when use_lmer=TRUE, likelihood ratio tests are not performed by meansTest; use the contrastTest results for post-hoc comparisons instead.
 
 
 **Tips**
@@ -476,6 +521,7 @@ This tool performs hypothesis testing for mass spectrometry imaging data. Group 
 - Pdf with boxplots of fdr filtered features boxplots and metadata overview plots.
 - Tabular file with results of the linear mixed model for the m/z features (statistics, p value, fdr).
 - Optional: RData output to explore the results more deeply with the Cardinal package in R.
+- Optional: Tabular file with post-hoc contrast results (contrast estimates, p values, adjusted p values) when contrast testing is enabled.
 
         ]]>
     </help>
