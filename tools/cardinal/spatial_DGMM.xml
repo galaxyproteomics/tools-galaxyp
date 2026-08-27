@@ -70,19 +70,21 @@ if (npeaks > 0)
     ## set seed to make analysis reproducible
     set.seed($setseed)
 
+    #if str($sample_groups.group) == 'single_group':
+        dgmm_groups <- as.factor(rep("$infile.display_name", ncol(msidata)))
+    #else
+        dgmm_groups <- msidata\$annotation
+    #end if
+    dgmm_neighbors <- findNeighbors(coord(msidata), r = c($r), groups = dgmm_groups, metric = "$metric", p = $p)
+
 
     ## single ion segmentation
     dgmm <- spatialDGMM(msidata, 
             r = c($r),
             k = c($k), 
-            #if str($sample_groups.group) == 'single_group':                           
-                groups = as.factor(rep("$infile.display_name", ncol(msidata))),
-            #else
-                groups = msidata\$annotation,                
-            #end if
+            groups = dgmm_groups,
+            neighbors = dgmm_neighbors,
             weights = "$method",
-            metric = "$metric",
-            p = $p,
             annealing = $annealing,
             niter = $iter_max,
             tol = $tol)
@@ -91,6 +93,17 @@ if (npeaks > 0)
     ## Results images
 
     mz_length = length(fData(dgmm)\$mz)
+    dgmm_summary <- data.frame(
+        r = rep(dgmm\$r, mz_length),
+        k = rep(dgmm\$k, mz_length),
+        "Classes/group" = vapply(dgmm\$class, function(classes) {
+            round(mean(tapply(as.vector(classes), dgmm\$group, function(x) length(unique(x)))), digits = 2)
+        }, numeric(1)),
+        "m/z" = fData(dgmm)\$mz,
+        Feature = seq_len(mz_length),
+        check.names = FALSE
+    )
+    write.table(dgmm_summary, file="$dgmm_summary", quote = FALSE, row.names = FALSE, col.names = TRUE, sep = "\t")
 
     for (dgmm_repeat in 1:mz_length){
         print(image(dgmm, type="class", i=dgmm_repeat))}
@@ -136,6 +149,9 @@ if (npeaks > 0)
     
 }else{
     print("Inputfile has no intensities > 0")
+    dgmm_summary <- data.frame(r = numeric(), k = numeric(), "Classes/group" = numeric(), "m/z" = numeric(), Feature = integer(), check.names = FALSE)
+    write.table(dgmm_summary, file="$dgmm_summary", quote = FALSE, row.names = FALSE, col.names = TRUE, sep = "\t")
+    dev.off()
 }
 
     ]]></configfile>
@@ -166,6 +182,7 @@ if (npeaks > 0)
             <option value="maximum" selected="true">chebyshev (maximum)</option>
             <option value="manhattan">manhattan</option>
             <option value="euclidean">euclidean</option>
+            <option value="radial">radial</option>
             <option value="minkowski">minkowski</option>
         </param>
         <param name="annealing" type="boolean" label="annealing" help="Should simulated annealing be used during the optimization process to improve parameter estimates?" truevalue="TRUE" falsevalue="FALSE"/>
@@ -174,11 +191,12 @@ if (npeaks > 0)
         <param name="tol" type="float" value="0.05" label="tolerance" help="The tolerance convergence criterion for the EM-algorithm. Corresponds to the change in log-likelihood."/>
         <param name="setseed" type="integer" value="1" label="set seed" help="Use same value to reproduce previous results"/>
         <param name="output_estimates" type="boolean" label="Generate estimates results"/>
-        <param name="output_probability" type="boolean" label="Generate class results"/>
+        <param name="output_probability" type="boolean" label="Generate class assignment results"/>
         <param name="output_plots" type="boolean" label="Generate plots results"/>
         <param name="output_rdata" type="boolean" label="Results as .RData output"/>
     </inputs>
     <outputs>
+        <data format="tabular" name="dgmm_summary" label="${tool.name} on ${on_string}: summary"/>
         <data format="pdf" name="file_info" from_work_dir="single_ion_segmentation.pdf" label="${tool.name} on ${on_string}: file_info"/>
         <data format="rdata" name="dgmm_rdata" label="${tool.name} on ${on_string}: dgmm.RData">
             <filter>output_rdata</filter>
@@ -187,17 +205,17 @@ if (npeaks > 0)
             <filter>output_estimates</filter>
             <discover_datasets pattern="__designation_and_ext__" directory="DGMM_estimates" format="tabular"/>
         </collection>
-        <collection name="probability_output" type="list" label="${tool.name} logs: ${on_string}: class">
+        <collection name="probability_output" type="list" label="${tool.name} logs: ${on_string}: class assignments">
             <filter>output_probability</filter>
             <discover_datasets pattern="__designation_and_ext__" directory="DGMM_probability" format="tabular"/>
         </collection>
         <collection name="plots_output" type="list" label="${tool.name} logs: ${on_string}: plots">
             <filter>output_plots</filter>
-            <discover_datasets pattern="__designation_and_ext__" directory="DGMM_plots" format="tabular"/>
+            <discover_datasets pattern="__designation_and_ext__" directory="DGMM_plots" format="png"/>
         </collection>
     </outputs>
     <tests>
-        <test expect_num_outputs="1">
+        <test expect_num_outputs="2">
             <param name="infile" value="" ftype="imzml">
                 <composite_data value="spatial_DGMM_input.imzML"/>
                 <composite_data value="spatial_DGMM_input.ibd"/>
@@ -205,10 +223,17 @@ if (npeaks > 0)
             <param name="r" value="1"/>
             <param name="k" value="6"/>
             <param name="method" value="adaptive"/>
+            <param name="metric" value="radial"/>
             <param name="annealing" value="TRUE"/>
             <output name="file_info" file="dgmm_test1.pdf" compare="sim_size"/>
+            <output name="dgmm_summary">
+                <assert_contents>
+                    <has_text text="Classes/group"/>
+                    <has_n_lines n="11"/>
+                </assert_contents>
+            </output>
         </test>
-        <test expect_num_outputs="3">
+        <test expect_num_outputs="4">
             <param name="infile" value="" ftype="imzml">
                 <composite_data value="spatial_DGMM_input.imzML"/>
                 <composite_data value="spatial_DGMM_input.ibd"/>
@@ -227,6 +252,12 @@ if (npeaks > 0)
             <param name="output_plots" value="True"/>
             <param name="output_rdata" value="True"/>
             <output name="file_info" file="dgmm_test2.pdf" compare="sim_size"/>
+            <output name="dgmm_summary">
+                <assert_contents>
+                    <has_text text="Classes/group"/>
+                    <has_n_lines n="11"/>
+                </assert_contents>
+            </output>
             <output name="dgmm_rdata" file="dgmm_test2.RData" compare="sim_size"/>
         </test>
     </tests>
@@ -259,7 +290,7 @@ spatial smoothing. Simulated annealing is used in the EM-algorithm to avoid loca
 - Tabular file summarizing spatial DGMM performance for each feature
 - (optional) Tabular files for each spatial DGMM run and feature with
 
-    - probabilities (The probability of class membership for each Gaussian component) and classes (The predicted Gaussian component)
+    - classes (The predicted Gaussian component)
     - estimates (A list giving the parameter estimates for the means and variances for each Gaussian component)
 - (optional) Visualization of features density plots 
 - (optional) .RData file which contains the segmentation results and can be used for further exploration in R using the Cardinal package
