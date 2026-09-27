@@ -1,9 +1,10 @@
-<tool id="cardinal_filtering" name="MSI filtering" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="22.05">
+<tool id="cardinal_filtering" name="MSI filtering" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
     <description>tool for filtering mass spectrometry imaging data</description>
     <macros>
         <import>macros.xml</import>
     </macros>
     <expand macro="requirements"/>
+    <expand macro="creator"/>
     <expand macro="print_version"/>
     <command detect_errors="exit_code">
     <![CDATA[
@@ -11,15 +12,14 @@
         @INPUT_LINKING@
         cat '${MSI_subsetting}' &&
         Rscript '${MSI_subsetting}' &&
+        test -s ./out.imzML && test -s ./out.ibd &&
         mkdir $outfile_imzml.files_path &&
-        mv ./out.imzML "${os.path.join($outfile_imzml.files_path, 'imzml')}" | true &&
-        mv ./out.ibd "${os.path.join($outfile_imzml.files_path, 'ibd')}" | true &&
+        mv ./out.imzML "${os.path.join($outfile_imzml.files_path, 'imzml')}" &&
+        mv ./out.ibd "${os.path.join($outfile_imzml.files_path, 'ibd')}" &&
         echo "imzML file:" > $outfile_imzml &&
         ls -l "$outfile_imzml.files_path" >> $outfile_imzml
     ]]>
     </command>
-
-
     <configfiles>
         <configfile name="MSI_subsetting"><![CDATA[
 
@@ -34,6 +34,11 @@ library(gridExtra)
 
 
 @READING_MSIDATA_FULLY_COMPATIBLE@
+
+msidata = as(msidata, "MSImagingExperiment")
+
+## remove duplicated coordinates
+msidata <- msidata[,!duplicated(coord(msidata))]
 
 
 ########################### QC numbers ########################
@@ -391,8 +396,8 @@ if (ncol(msidata)>0 & nrow(msidata) >0)
             ## make sure that coordinates are integers
             coord(msidata)\$y = as.integer(coord(msidata)\$y)
             coord(msidata)\$x = as.integer(coord(msidata)\$x)
-            msidata = as(msidata, "MSContinuousImagingExperiment")
-        writeImzML(msidata, "out")}
+            msidata = as(msidata, "MSImagingExperiment")
+        writeImzML(msidata, "out.imzML", bundle=FALSE)}
 
 
 }else{
@@ -406,29 +411,27 @@ if (ncol(msidata)>0 & nrow(msidata) >0)
         <expand macro="reading_msidata"/>
         <conditional name="pixels_cond">
             <param name="pixel_filtering" type="select" label="Select pixel filtering option">
-                <option value="none" selected="True">none</option>
+                <option value="none" selected="true">none</option>
                 <option value="two_columns">coordinates from tabular file</option>
                 <option value="pixel_range">ranges for x and y (manually)</option>
             </param>
             <when value="none"/>
             <when value="two_columns">
-                <param name="annotation_file" type="data" format="tabular" label="Tabular file with pixel coordinates"
-                help="Tabular file with two columns: x values and y values"/>
+                <param name="annotation_file" type="data" format="tabular" label="Tabular file with pixel coordinates" help="Tabular file with two columns: x values and y values"/>
                 <param name="column_x" data_ref="annotation_file" label="Column with x values" type="data_column"/>
                 <param name="column_y" data_ref="annotation_file" label="Column with y values" type="data_column"/>
                 <param name="tabular_header" type="boolean" label="Tabular file contains a header line" truevalue="TRUE" falsevalue="FALSE"/>
-            </when> 
+            </when>
             <when value="pixel_range">
                 <param name="min_x_range" type="integer" value="0" label="Minimum value for x"/>
                 <param name="max_x_range" type="integer" value="100" label="Maximum value for x"/>
                 <param name="min_y_range" type="integer" value="0" label="Minimum value for y"/>
                 <param name="max_y_range" type="integer" value="100" label="Maximum value for y"/>
-            </when> 
+            </when>
         </conditional>
-
         <conditional name="features_cond">
             <param name="features_filtering" type="select" label="Select m/z feature filtering option">
-                <option value="none" selected="True">none</option>
+                <option value="none" selected="true">none</option>
                 <option value="features_list">keep m/z (tabular file)</option>
                 <option value="features_range">m/z range (manually)</option>
                 <option value="remove_features">remove m/z (tabular file)</option>
@@ -436,73 +439,82 @@ if (ncol(msidata)>0 & nrow(msidata) >0)
             <when value="none"/>
             <when value="features_list">
                 <expand macro="reading_1_column_mz_tabular" label="Tabular file with m/z features to keep"/>
-            </when> 
+            </when>
             <when value="features_range">
                 <param name="min_mz" type="float" value="1" label="Minimum value for m/z"/>
                 <param name="max_mz" type="float" value="100" label="Maximum value for m/z"/>
-            </when> 
+            </when>
             <when value="remove_features">
                 <expand macro="reading_1_column_mz_tabular" label="Tabular file with m/z features to remove"/>
                 <param name="removal_plusminus" type="float" value="20" label="Window in which all m/z will be removed" help="This value is the half window size, it will be added and substracted from the given input value"/>
-                <param name="units_removal" type="select" display="radio" optional  ="False" label="units">
-                        <option value="ppm" selected="True">ppm</option>
-                        <option value="Da">Da</option>
+                <param name="units_removal" type="select" display="radio" optional="False" label="units">
+                    <option value="ppm" selected="true">ppm</option>
+                    <option value="Da">Da</option>
                 </param>
             </when>
         </conditional>
     </inputs>
-
     <outputs>
         <data format="imzml" name="outfile_imzml" label="${tool.name} on ${on_string}: imzML"/>
-        <data format="pdf" name="QC_overview" from_work_dir="filtertool_QC.pdf" label = "${tool.name} on ${on_string}: QC"/>
+        <data format="pdf" name="QC_overview" from_work_dir="filtertool_QC.pdf" label="${tool.name} on ${on_string}: QC"/>
     </outputs>
     <tests>
-        <test>
+        <test expect_num_outputs="2">
             <expand macro="infile_imzml"/>
-            <param name="pixel_filtering" value="pixel_range"/>
-            <param name="min_x_range" value="1"/>
-            <param name="max_x_range" value="20"/>
-            <param name="min_y_range" value="2"/>
-            <param name="max_y_range" value="2"/>
-            <param name="features_filtering" value="features_range"/>
-            <param name="min_mz" value="350"/>
-            <param name="max_mz" value="500"/>
+            <conditional name="pixels_cond">
+                <param name="pixel_filtering" value="pixel_range"/>
+                <param name="min_x_range" value="1"/>
+                <param name="max_x_range" value="20"/>
+                <param name="min_y_range" value="2"/>
+                <param name="max_y_range" value="2"/>
+            </conditional>
+            <conditional name="features_cond">
+                <param name="features_filtering" value="features_range"/>
+                <param name="min_mz" value="350"/>
+                <param name="max_mz" value="500"/>
+            </conditional>
             <output name="QC_overview" file="imzml_filtered3.pdf" compare="sim_size"/>
             <output name="outfile_imzml" ftype="imzml" file="out3.imzml.txt" compare="sim_size">
                 <extra_files type="file" file="out3.imzml" name="imzml" lines_diff="6"/>
                 <extra_files type="file" file="out3.ibd" name="ibd" compare="sim_size"/>
             </output>
         </test>
-        <test>
+        <test expect_num_outputs="2">
             <expand macro="infile_imzml"/>
-            <param name="pixel_filtering" value="two_columns"/>
-            <param name="annotation_file" ftype="tabular" value="inputpixels_2column.tabular"/>
-            <param name="column_x" value="1"/>
-            <param name="column_y" value="3"/>
+            <conditional name="pixels_cond">
+                <param name="pixel_filtering" value="two_columns"/>
+                <param name="annotation_file" ftype="tabular" value="inputpixels_2column.tabular"/>
+                <param name="column_x" value="1"/>
+                <param name="column_y" value="3"/>
+            </conditional>
             <output name="QC_overview" file="imzml_filtered4.pdf" compare="sim_size"/>
             <output name="outfile_imzml" ftype="imzml" file="out4.imzml.txt" compare="sim_size">
                 <extra_files type="file" file="out4.imzml" name="imzml" lines_diff="6"/>
                 <extra_files type="file" file="out4.ibd" name="ibd" compare="sim_size"/>
             </output>
         </test>
-        <test>
+        <test expect_num_outputs="2">
             <expand macro="infile_imzml"/>
-            <param name="pixel_filtering" value="pixel_range"/>
-            <param name="min_x_range" value="0"/>
-            <param name="max_x_range" value="10"/>
-            <param name="min_y_range" value="2"/>
-            <param name="max_y_range" value="20"/>
-            <param name="features_filtering" value="features_list"/>
-            <param name="mz_tabular" ftype="tabular" value = "featuresofinterest5.tabular"/>
-            <param name="feature_column" value="1"/>
-            <param name="feature_header" value="0"/>
+            <conditional name="pixels_cond">
+                <param name="pixel_filtering" value="pixel_range"/>
+                <param name="min_x_range" value="0"/>
+                <param name="max_x_range" value="10"/>
+                <param name="min_y_range" value="2"/>
+                <param name="max_y_range" value="20"/>
+            </conditional>
+            <conditional name="features_cond">
+                <param name="features_filtering" value="features_list"/>
+                <param name="mz_tabular" ftype="tabular" value="featuresofinterest5.tabular"/>
+                <param name="feature_column" value="1"/>
+                <param name="feature_header" value="0"/>
+            </conditional>
             <output name="QC_overview" file="imzml_filtered5.pdf" compare="sim_size"/>
             <output name="outfile_imzml" ftype="imzml" file="out5.imzml.txt" compare="sim_size">
                 <extra_files type="file" file="out5.imzml" name="imzml" lines_diff="6"/>
                 <extra_files type="file" file="out5.ibd" name="ibd" compare="sim_size"/>
             </output>
         </test>
-        <test>
+        <test expect_num_outputs="2">
             <expand macro="infile_analyze75"/>
             <output name="QC_overview" file="analyze75_filtered2.pdf" compare="sim_size"/>
             <output name="outfile_imzml" ftype="imzml" file="out6.imzml.txt" compare="sim_size">
@@ -510,31 +522,33 @@ if (ncol(msidata)>0 & nrow(msidata) >0)
                 <extra_files type="file" file="out6.ibd" name="ibd" compare="sim_size"/>
             </output>
         </test>
-        <test>
+        <test expect_num_outputs="2">
             <param name="infile" value="preprocessed.RData" ftype="rdata"/>
-            <output name="QC_overview" file="rdata_notfiltered.pdf" compare="sim_size" />
+            <output name="QC_overview" file="rdata_notfiltered.pdf" compare="sim_size"/>
             <output name="outfile_imzml" ftype="imzml" file="out7.imzml.txt" compare="sim_size">
                 <extra_files type="file" file="out7.imzml" name="imzml" lines_diff="6"/>
                 <extra_files type="file" file="out7.ibd" name="ibd" compare="sim_size"/>
             </output>
         </test>
-        <test>
+        <test expect_num_outputs="2">
             <expand macro="processed_infile_imzml"/>
             <conditional name="processed_cond">
                 <param name="processed_file" value="processed"/>
-                <param name="accuracy" value="200"/>
-                <param name="units" value="ppm"/>
             </conditional>
-            <param name="pixel_filtering" value="two_columns"/>
-            <param name="annotation_file" ftype="tabular" value="inputpixels_2column.tabular"/>
-            <param name="column_x" value="1"/>
-            <param name="column_y" value="3"/>
-            <param name="features_filtering" value="remove_features"/>
-            <param name="mz_tabular" ftype="tabular" value = "featuresofinterest5.tabular"/>
-            <param name="feature_column" value="1"/>
-            <param name="feature_header" value="0"/>
-            <param name="removal_plusminus" value="100"/>
-            <param name="units_removal" value="ppm"/>
+            <conditional name="pixels_cond">
+                <param name="pixel_filtering" value="two_columns"/>
+                <param name="annotation_file" ftype="tabular" value="inputpixels_2column.tabular"/>
+                <param name="column_x" value="1"/>
+                <param name="column_y" value="3"/>
+            </conditional>
+            <conditional name="features_cond">
+                <param name="features_filtering" value="remove_features"/>
+                <param name="mz_tabular" ftype="tabular" value="featuresofinterest5.tabular"/>
+                <param name="feature_column" value="1"/>
+                <param name="feature_header" value="0"/>
+                <param name="removal_plusminus" value="100"/>
+                <param name="units_removal" value="ppm"/>
+            </conditional>
             <output name="QC_overview" file="imzml_filtered8.pdf" compare="sim_size"/>
             <output name="outfile_imzml" ftype="imzml" file="out8.imzml.txt" compare="sim_size">
                 <extra_files type="file" file="out8.imzml" name="imzml" lines_diff="6"/>
