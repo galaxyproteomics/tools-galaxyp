@@ -4,6 +4,7 @@ import cv2
 import geojson
 import numpy as np
 import pandas as pd
+from roi_plot import filled_coordinates, plot_bounds, polygon_arrays, render_roi_image
 
 
 def collect_coords(input_coords, feature_index, coord_index=0):
@@ -58,28 +59,23 @@ def split_qupath_roi(in_roi):
             if cell_type in cell_types:
                 coords_by_cell_type[cell_type].append(feature_coords)
 
-    for cell_type, coords_list in coords_by_cell_type.items():
-        if coords_list:
-            img = np.ones((dim_plt[1], dim_plt[0], 3), dtype="uint8") * 255
+    polygons_by_cell_type = {
+        cell_type: polygon_arrays(coords_list)
+        for cell_type, coords_list in coords_by_cell_type.items()
+    }
+    all_polygons = [pts for polygons in polygons_by_cell_type.values() for pts in polygons]
+    bounds = plot_bounds(all_polygons, *dim_plt) if args.img and all_polygons else None
+
+    for cell_type, polygons in polygons_by_cell_type.items():
+        if polygons:
 
             all_coords = []
-            for feature in coords_list:
-                for polygon in feature:
-                    # Multiple sub_polygons in LMD data
-                    for sub_poly in polygon if isinstance(polygon[0][0], list) else [polygon]:
-                        pts = np.array(sub_poly, dtype=np.float32).reshape(-1, 2)
-                        pts = pts.astype(np.int32)
-
-                        # Get filled pixel coordinates
-                        if args.fill:
-                            temp_img = np.ones((dim_plt[1], dim_plt[0]), dtype="uint8") * 255
-                            cv2.fillPoly(temp_img, [pts], color=0)
-                            filled_coords = np.column_stack(np.where(temp_img == 0))
-                            all_coords.extend(filled_coords[:, [1, 0]])  # Swap columns to get (x, y)
-                            cv2.fillPoly(img, [pts], color=0)
-                        else:
-                            cv2.polylines(img, [pts], isClosed=True, color=(0, 0, 0), thickness=1)
-                            all_coords.extend(pts)
+            for pts in polygons:
+                # Get filled pixel coordinates
+                if args.fill:
+                    all_coords.extend(filled_coordinates(pts, *dim_plt))
+                else:
+                    all_coords.extend(pts)
 
             all_coords = np.array(all_coords)
             coords_df = pd.DataFrame(all_coords, columns=['x', 'y'], dtype=int)
@@ -87,14 +83,14 @@ def split_qupath_roi(in_roi):
 
             # Generate image for visualization if --img is specified
             if args.img:
-                cv2.imwrite("{}_{}.png".format(tma_name, cell_type), img)
+                cv2.imwrite("{}_{}.png".format(tma_name, cell_type), render_roi_image(polygons, bounds, args.fill))
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Split ROI coordinates of QuPath TMA annotation by cell type (classification)")
     parser.add_argument("--qupath_roi", default=False, help="Input QuPath annotation (GeoJSON file)")
     parser.add_argument("--fill", action="store_true", required=False, help="Fill pixels in ROIs (order of coordinates will be lost)")
-    parser.add_argument('--version', action='version', version='%(prog)s 0.3.2')
+    parser.add_argument('--version', action='version', version='%(prog)s 0.3.3')
     parser.add_argument("--all", action="store_true", required=False, help="Extracts all ROIs")
     parser.add_argument("--img", action="store_true", required=False, help="Generates image of ROIs")
     args = parser.parse_args()
