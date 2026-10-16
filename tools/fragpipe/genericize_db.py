@@ -11,7 +11,7 @@ output_db_file = sys.argv[2]
 
 
 def sub_header(line):
-    return re.sub(r'^>(?!sp\||tr\||db\||AP_|NP_|YP_|XP_|WP_|ENSP|UniRef|nxp|generic)', '>generic|', line)
+    return re.sub(r'^>(?!(?:contam_)?(?:sp\||tr\||db\||AP_|NP_|YP_|XP_|WP_|ENSP|UniRef|nxp|generic))(contam_)?', '>\\1generic|', line)
 
 
 with open(input_db_file) as in_file, open(output_db_file, 'w') as out_file:
