@@ -4,11 +4,11 @@ from pathlib import Path
 from shapely.geometry import Polygon
 
 
-COLORS = ("green", "red", "blue", "black")
+COLORS = ("black", "green", "red", "blue")
 
 
 def color_for_name(input_name, color_mappings):
-    """Match mapping text against the input dataset name, ignoring case."""
+    """Match mapping text against the dataset name or collection identifier, ignoring case."""
     selected_color = None
     for match_text, color in color_mappings:
         match_text = match_text.strip()
@@ -20,10 +20,10 @@ def color_for_name(input_name, color_mappings):
             if selected_color is not None and selected_color != color:
                 raise ValueError(f"Conflicting color mappings match '{input_name}'")
             selected_color = color
-    return selected_color or "green"
+    return selected_color or "black"
 
 
-def tabular_to_text(input_file, text_file, color="green"):
+def tabular_to_text(input_file, text_file, color="black"):
     """
     Converts tabular coordinate data from Galaxy into a formatted text file which is readable for the LMD.
 
@@ -71,13 +71,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Convert tabular coordinate data into a formatted text file")
     parser.add_argument('--input', type=str, required=True, help='Path to the input tabular file')
     parser.add_argument('--output', type=str, required=True, help='Path to the output text file')
-    parser.add_argument('--input-name', help='Galaxy dataset name; defaults to the input filename')
+    parser.add_argument('--input-name', help='Galaxy dataset name or collection element identifier (defaults to the input filename)')
     parser.add_argument('--color-map', nargs=2, action='append', default=[], metavar=('TEXT', 'COLOR'),
-                        help='Color to use when TEXT occurs in the input name (may be repeated up to four times)')
+                        help='Color to use when TEXT occurs in the input name (may be repeated without a limit)')
     args = parser.parse_args()
 
-    if len(args.color_map) > 4:
-        parser.error('At most four color mappings are allowed')
     try:
         color = color_for_name(args.input_name or Path(args.input).name, args.color_map)
     except ValueError as exc:
