@@ -1,7 +1,7 @@
 <macros>
     <import>msfragger_macros.xml</import>
-    <token name="@TOOL_VERSION@">23.0</token>
-    <token name="@VERSION_SUFFIX@">5</token>
+    <token name="@TOOL_VERSION@">24.0</token>
+    <token name="@VERSION_SUFFIX@">0</token>
     <token name="@TOOL_PROFILE@">25.1</token>
 
     <!--
@@ -16,6 +16,7 @@
             <requirement type="package" version="@TOOL_VERSION@">fragpipe</requirement>
         </requirements>
     </xml>
+
     <xml name="required_files">
         <required_files>
             <include path="fragpipe"/>
@@ -23,6 +24,7 @@
             <include path="genericize_db.py"/>
             <include path="workflows/Basic-Search.workflow"/>
             <include path="workflows/DIA_SpecLib_Quant.workflow"/>
+            <include path="workflows/DIA_DIA-Umpire_SpecLib_Quant.workflow"/>
             <include path="workflows/LFQ-MBR.workflow"/>
             <include path="workflows/Nonspecific-HLA.workflow"/>
             <include path="workflows/Open.workflow"/>
@@ -54,11 +56,11 @@
       Prepares enviroment variables for FragPipe.
     -->
     <token name="@PREPARE_ENVIRONMENT@"><![CDATA[
-        env_location="\$(dirname \$(which philosopher))/.." &&
-        cp -r \${env_location}/share/fragpipe*/ fragpipe_local/ &&
+        env_location="\$(dirname "\$(which philosopher)")/.." &&
+        cp -r "\${env_location}"/share/fragpipe*/ fragpipe_local/ &&
         mkdir .cache .config tmp &&
-        export XDG_CONFIG_HOME=\$(pwd)/.config &&
-        export XDG_CACHE_HOME=\$(pwd)/.cache &&
+        export XDG_CONFIG_HOME="\$(pwd)/.config" &&
+        export XDG_CACHE_HOME="\$(pwd)/.cache" &&
         export JAVA_OPTS="\$JAVA_OPTS -Djava.io.tmpdir=\$(pwd)/tmp" &&
         export LD_LIBRARY_PATH="\$LD_LIBRARY_PATH:/usr/local/lib" &&
     ]]></token>
@@ -71,7 +73,7 @@
       Annotation files are copied into the scan directory for TMT workflows.
     -->
     <token name="@LINK_SAMPLES@"><![CDATA[
-        CWD=\$(pwd | sed 's@/@\\/@g') &&
+        CWD="\$(pwd | sed 's@/@\\/@g')" &&
 
         mkdir -p scans &&
         #if $wf.workflow_name == "TMT10" or $wf.workflow_name == "TMT11"
@@ -84,7 +86,7 @@
             #set $i_name = $ln_name($sf)
 
             ## speclib library does not follow links
-            #if $wf.workflow_name == "DIA_SpecLib_Quant"
+            #if $wf.workflow_name == "DIA_SpecLib_Quant" or $wf.workflow_name == "DIA_DIA-Umpire_Speclib_Quant"
                 cp '$sf' 'scans/${i_name}' &&
             #else
                 ln -s '$sf' 'scans/${i_name}' &&
@@ -116,11 +118,11 @@
             philosopher database --custom genericized_db.fas --prefix rev_
             #if str($database_options) == 'decoy_and_contam'
                 --contam
+                --contamprefix
             #end if
-            --contamprefix &&
-            ln -s *-decoys-*.fas final_db.fas &&
+            && ln -s *-decoys-*.fas final_db.fas &&
         #else
-            ln -s genericized_db.fas final_db.fas &&
+            && ln -s genericized_db.fas final_db.fas &&
         #end if
     ]]></token>
 
@@ -141,19 +143,19 @@
         ## For example, the entries sample1/psm.tsv and sample2/psm.tsv would be combined to concat_psm.tsv, a single psm.tsv header as its first line.
         for f in psm.tsv ion.tsv peptide.tsv protein.tsv; do
             n=0;
-            for i in \$(find * -name \${f}); do
-                d=\${i%/*};
+            while read i; do
+                d="\${i%/*}";
                 if [[ \$n == 0 ]]; then
-                    awk 'NR==1{printf("Experiment\t%s\n",\$0);}' \$i > concat_\${f};
+                    awk 'NR==1{printf("Experiment\t%s\n",\$0);}' "\$i" > "concat_\${f}";
                 fi;
-                awk 'NR>1{printf("'"\${d}"'\t%s\n",\$0);}' \$i >> concat_\${f}; t=\$(echo \${i} | tr '/' '.');
+                awk 'NR>1{printf("'"\${d}"'\t%s\n",\$0);}' "\$i" >> "concat_\${f}"; t="\$(echo "\${i}" | tr '/' '.')";
                 if [[ \${i} == \${t} ]]; then
-                    mv \${i} 1.\${i};
+                    mv "\${i}" "1.\${i}";
                 else
-                    mv \${i} \${t};
+                    mv "\${i}" "\${t}";
                 fi;
                 n=\$((n+1));
-            done;
+            done < <(find * -name "\${f}");
         done
     ]]></token>
 
@@ -172,6 +174,7 @@
 
         <!-- Database may be split into chunks for performance benefits -->
         <param name="num_slices" type="integer" label="Split database" value="1" help="The number of chunks in which to split the database."/>
+
     </xml>
 
     <!--
@@ -194,6 +197,7 @@
                 <option value="TMT10">TMT10</option>
                 <option value="TMT11">TMT11</option>
                 <option value="DIA_SpecLib_Quant">DIA_SpecLib_Quant</option>
+                <option value="DIA_DIA-Umpire_SpecLib_Quant">DIA_DIA-Umpire_SpecLib_Quant</option>
             </param>
 
             <when value="Basic-Search">
@@ -286,7 +290,8 @@
                   nonparam="true"
                   expectscore="true"
                   ppm="true"
-                  combined_pepxml="false"/>
+                  combined_pepxml="false"
+                  prot_level_summary="false"/>
                 <expand macro="label_free_quantification" yes="true" no="false"/>
                 <expand macro="ptm_shepherd" yes="false" no="true"/>
                 <expand macro="isobaric_quantification" yes="false" no="true"/>
@@ -312,12 +317,39 @@
                   ppm="true"
                   combined_pepxml="false"
                   protp_minprob="0.5"
-                  perc_minprob="0.7"/>
+                  perc_minprob="0.7"
+                  prot_level_summary="false"/>
                 <expand macro="label_free_quantification" yes="false" no="true"/>
                 <expand macro="ptm_shepherd" yes="false" no="true" c="true" z="true"/>
                 <expand macro="isobaric_quantification" yes="false" no="true"/>
                 <expand macro="diann_quantification" yes="true" no="false"/>
                 <expand macro="dia_pseuedo_ms2"/>
+            </when>
+
+            <when value="DIA_DIA-Umpire_SpecLib_Quant">
+                <section name="msfragger" expanded="false" title="MSFragger Options">
+                    <expand macro="msfragger_dia_diaumpire_speclib_quant"/>
+                </section>
+                <expand macro="validation"
+                  pep="false"
+                  perc="false"
+                  boost="true"
+                  no="false"
+                  masswidth="5"
+                  clevel="0"
+                  accmass="true"
+                  decoyprobs="true"
+                  nonparam="true"
+                  expectscore="true"
+                  ppm="true"
+                  combined_pepxml="false"
+                  protp_minprob="0.5"
+                  perc_minprob="0.7"/>
+                <expand macro="label_free_quantification" yes="false" no="true"/>
+                <expand macro="ptm_shepherd" yes="false" no="true" c="true" z="true"/>
+                <expand macro="isobaric_quantification" yes="false" no="true"/>
+                <expand macro="diann_quantification" yes="true" no="false"/>
+                <expand macro="dia_pseuedo_ms2" diaumpire_yes="true"/>
             </when>
 
             <when value="TMT10">
@@ -350,7 +382,8 @@
           expectscore="true"
           ppm="true"
           combined_pepxml="false"
-          protp_minprob="0.5"/>
+          protp_minprob="0.5"
+          prot_level_summary="false"/>
         <expand macro="isobaric_quantification" yes="true" no="false" plex="@PLEX@" level="2" ref_tag="Bridge" mod_tag="none"/>
         <expand macro="label_free_quantification" yes="false" no="true"/>
         <expand macro="ptm_shepherd" yes="false" no="true" token_unimod="false" token_common="true"/>
@@ -371,9 +404,7 @@
             #set $prefix = $wf.msfragger
 
             @MSFRAGGER_PARAM_DICT@
-            #if len($vmods) > 0
-              #set $msfragger_dict['table.var-mods'] = '; '.join([$re.sub('^(.*,)(\d)$','\\1true,\\2',m) for m in $vmods])
-            #end if
+            #set $msfragger_dict['table.var-mods'] = '; '.join([$re.sub('^(.*,)(\d)$','\\1true,\\2',m) for m in $vmods])
 
             #set $fmod_items = [
                 ("add_Cterm_peptide", "C-Term Peptide"),
@@ -431,12 +462,6 @@
             @DIANN_QUANTIFICATION@
             @DIA_PSEUDO_MS2@
 
-            ## These values are specifically set by the GUI when running DIA_SpecLib_Quant
-            #if $wf.workflow_name == "DIA_SpecLib_Quant"
-                #set $wfdict["ptmshepherd.annotate_assigned_mods"] = "false"
-                #set $wfdict["ptmshepherd.use_msfragger_localization"] = "true"
-            #end if
-
             #for $k in sorted($wfdict.keys())
               #set $kv = $k + '=' + str($wfdict[$k])
 $kv
@@ -485,9 +510,8 @@ $kv
         #set $wfdict['msbooster.find-best-im-model'] = $prfx.find_best_im_model
     ]]></token>
 
-
     <!-- Philosopher Report (phi-report) options -->
-    <xml name="phi_report">
+    <xml name="phi_report" token_prot_level_summary="true">
         <conditional name="phi_report">
             <param name="run_phi_report" type="select" label="Generate Philosopher Reports">
                 <option value="true" selected="true">Yes</option>
@@ -497,6 +521,7 @@ $kv
               <section name="phi_report_opts" expanded="false" title="FDR Filter and Report">
                   <param name="dont_use_prot_proph_file" type="boolean" truevalue="true" falsevalue="false" checked="false"/>
                   <param name="print_decoys" type="boolean" truevalue="true" falsevalue="false" checked="false"/>
+                  <param name="prot_level_summary" type="boolean" truevalue="true" falsevalue="false" checked="@PROT_LEVEL_SUMMARY@"/>
               </section>
             </when>
             <when value="false"/>
@@ -511,6 +536,7 @@ $kv
           #set $prfx = $wf.validation.validation_tab.phi_report.phi_report_opts
           #set $wfdict['phi-report.print-decoys'] = $prfx.print_decoys
           #set $wfdict['phi-report.dont-use-prot-proph-file'] = $prfx.dont_use_prot_proph_file
+          #set $wfdict['phi-report.prot-level-summary'] = $prfx.prot_level_summary
         #else
           #set $wfdict['phi-report.run-report'] = 'false'
         #end if
@@ -591,7 +617,7 @@ $kv
     ]]></token>
 
     <!-- Validation options. Includes PeptideProphet, Percolator, MSBooster, ProteinProphet, and CrystalC -->
-    <xml name="validation" token_expand="false" token_pep="false" token_perc="false" token_boost="false" token_no="true" token_masswidth="5" token_clevel="0" token_accmass="true" token_decoyprobs="true" token_nonparam="true" token_expectscore="true" token_ppm="true" token_combined_pepxml="false" token_protp_minprob="0.05" token_perc_minprob="0.5">
+    <xml name="validation" token_expand="false" token_pep="false" token_perc="false" token_boost="false" token_no="true" token_masswidth="5" token_clevel="0" token_accmass="true" token_decoyprobs="true" token_nonparam="true" token_expectscore="true" token_ppm="true" token_combined_pepxml="false" token_protp_minprob="0.05" token_perc_minprob="0.5" token_prot_level_summary="true">
         <section name="validation" expanded="@EXPAND@" title="Validation">
             <conditional name="validation_tab">
                 <param name="run_validation" type="select" label="Run Validation">
@@ -621,7 +647,7 @@ $kv
                         </when>
                     </conditional>
                     <expand macro="protein_prophet" protp_minprob="@PROTP_MINPROB@"/>
-                    <expand macro="phi_report"/>
+                    <expand macro="phi_report" prot_level_summary="@PROT_LEVEL_SUMMARY@"/>
                 </when>
                 <when value="false">
                 </when>
@@ -690,6 +716,7 @@ $kv
                             <option value="psms" selected="true">PSMs</option>
                             <option value="scans" selected="false">MS2 scans</option>
                         </param>
+                        <param name="annotate_assigned_mods" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Include variable/fixed mods in PTM profile"/>
                         <param name="varmod_masses" type="select" optional="true" label="Custom mass shifts" help="ptmshepherd.varmod_masses">
                             <option value="Failed_Carbamidomethylation\:-57.021464">Failed_Carbamidomethylation:-57.021464</option>
                         </param>
@@ -712,6 +739,7 @@ $kv
                         </conditional>
                     </section>
                     <section name="ptm_localization" expanded="false" title="PTM Localization">
+                        <param name="use_msfragger_localization" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Use MSFragger localization"/>
                         <param name="nions" type="select" multiple="true" optional="true" label="Use specified N-term ions" help="(default: a,b for CID, c for ETD)">
                             <option value="a" selected="@A@">a</option>
                             <option value="b" selected="@B@">b</option>
@@ -769,6 +797,7 @@ $kv
             #if $cxt.spectra_ppmtol != ''
                 #set $wfdict['ptmshepherd.spectra_ppmtol'] = $cxt.spectra_ppmtol
             #end if
+            #set $wfdict['ptmshepherd.annotate_assigned_mods'] = $cxt.annotate_assigned_mods
             #if $cxt.normalization != 'None'
                 #if $cxt.normalization == "psms"
                     #set $wfdict['ptmshepherd.normalization-psms'] = 'true'
@@ -808,6 +837,7 @@ $kv
                 #set $wfdict['ptmshepherd.annotation_file'] = $cxt.annotation.annotation_file
             #end if
             #set $cxt = $prfx.ptm_localization
+            #set $wfdict['ptmshepherd.use_msfragger_localization'] = $cxt.use_msfragger_localization
             #if $cxt.nions is not None
                 #set $wfdict['ptmshepherd.iontype_a'] = str('a' in $cxt.nions).lower()
                 #set $wfdict['ptmshepherd.iontype_b'] = str('b' in $cxt.nions).lower()
@@ -851,6 +881,11 @@ $kv
                         <param name="normalization" type="select" optional="true" label="Normalize" help="ionquant.normalization">
                             <option value="0">No</option>
                             <option value="1">Yes</option>
+                        </param>
+                        <param name="intensitymode" type="select" optional="true" label="Intensity Mode" help="ionquant.intensitymode">
+                            <option value="0">Apex</option>
+                            <option value="1">Area</option>
+                            <option value="2" selected="true">Auto</option>
                         </param>
                         <section name="feature_detection" expanded="false" title="Feature detection">
                             <param name="mztol" type="integer" value="" optional="true" label="m/z tolerance in ppm" help="ionquant.mztol (default 10)"/>
@@ -953,6 +988,7 @@ $kv
             #if $cxt.normalization != 'None'
                 #set $wfdict['ionquant.normalization'] = $cxt.normalization
             #end if
+            #set $wfdict['ionquant.intensitymode'] = $cxt.intensitymode
             #set $cxt = $prfx.ionquant.feature_detection
             #if $cxt.mztol != ''
                 #set $wfdict['ionquant.mztol'] = $cxt.mztol
@@ -1160,10 +1196,6 @@ $kv
                             <option value="false">No - use MS2 reference intensity</option>
                         </param>
                         <param name="tolerance" type="integer" optional="true" label="Tolerance"/>
-                        <param name="top3_pep" type="select" optional="true" label="use top 3 most intense peptide ions as part of the reference sample abundance estimation">
-                            <option value="true">Yes</option>
-                            <option value="false">No</option>
-                        </param>
                         <param name="print_RefInt" type="select" optional="true" label="print individual reference sample abundance estimates for each multiplex in the final reports">
                             <option value="false">No</option>
                             <option value="true">Yes</option>
@@ -1259,22 +1291,54 @@ $kv
             #if $cxt.tolerance != ''
                 #set $wfdict['tmtintegrator.tolerance'] = $cxt.tolerance
             #end if
-            #if $cxt.top3_pep != 'None'
-                #set $wfdict['tmtintegrator.top3_pep'] = $cxt.top3_pep
-            #end if
             #if $cxt.print_RefInt != 'None'
                 #set $wfdict['tmtintegrator.print_RefInt'] = $cxt.print_RefInt
             #end if
         #end if
     ]]></token>
 
-    <xml name="dia_pseuedo_ms2" token_expand="false" token_yes="false" token_no="true">
+    <xml name="dia_pseuedo_ms2" token_expand="false" token_diaumpire_yes="false" token_diaumpire_no="true" token_diatracer_yes="false" token_diatracer_no="true">
         <section name="dia_pseudo" expanded="@EXPAND@" title="DIA Pseudo MS2">
+            <conditional name="diaumpire">
+                <param name="diaumpire_step" type="select" label="Run DIA-Umpire SE (signal extraction) for non-timsTOF data">
+                    <option value="default">Use workflow defaults</option>
+                    <option value="yes" selected="@DIAUMPIRE_YES@">yes</option>
+                    <option value="no" selected="@DIAUMPIRE_NO@">no</option>
+                </param>
+                <when value="default"/>
+                <when value="no"/>
+                <when value="yes">
+                    <section name="main_options" expanded="true" title="Main options">
+                        <param name="ms1_ppm" type="integer" value="10" label="MS1 ppm"/>
+                        <param name="ms2_ppm" type="integer" value="20" label="MS2 ppm"/>
+                        <param name="max_missed_scans" type="integer" value="1" label="Max missed scans"/>
+                        <param name="remove_background" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Remove background"/>
+                        <param name="mass_defect_filter" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Mass defect filter"/>
+                    </section>
+                    <section name="advanced_options" expanded="true" title="Advanced options">
+                        <param name="rp_max" type="integer" value="25" label="RP max"/>
+                        <param name="rf_max" type="integer" value="500" label="RF max"/>
+                        <param name="rt_overlap" type="float" value="0.3" label="RT overlap"/>
+                        <param name="corr_threshold" type="float" value="0.0" label="Corr threshold"/>
+                        <param name="delta_apex" type="float" value="0.2" label="Delta apex"/>
+                        <param name="mass_defect_offset" type="float" value="0.1" label="Mass defect offset"/>
+                        <param name="isotope_pattern" type="float" value="0.3" label="Isotope pattern"/>
+                        <param name="ms1_sn" type="float" value="1.1" label="MS1 SN"/>
+                        <param name="ms2_sn" type="float" value="1.1" label="MS2 SN"/>
+                        <param name="q1" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Q1"/>
+                        <param name="q2" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Q2"/>
+                        <param name="q3" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Q3"/>
+                        <param name="boost_complementary_ions" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Boost complementary ions"/>
+                        <param name="adjust_fragment_intensity" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Adjust fragment intensity"/>
+                        <param name="export_precursor_peak" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Export precursor peak"/>
+                    </section>
+                </when>
+            </conditional>
             <conditional name="diatracer">
                 <param name="diatracer_step" type="select" label="Run diaTracer">
                     <option value="default">Use workflow defaults</option>
-                    <option value="yes" selected="@YES@">yes</option>
-                    <option value="no" selected="@NO@">no</option>
+                    <option value="yes" selected="@DIATRACER_YES@">yes</option>
+                    <option value="no" selected="@DIATRACER_NO@">no</option>
                 </param>
                 <when value="default"/>
                 <when value="no"/>
@@ -1292,6 +1356,36 @@ $kv
         </section>
     </xml>
     <token name="@DIA_PSEUDO_MS2@"><![CDATA[
+#set $prfx = $wf.dia_pseudo.diaumpire
+
+#if $prfx.diaumpire_step == 'no'
+  #set $wfdict['diaumpire.run-diaumpire'] = 'false'
+#elif $prfx.diaumpire_step == 'yes'
+  #set $wfdict['diaumpire.run-diaumpire'] = 'true'
+  #set $cxt = $prfx.main_options
+  #set $wfdict['diaumpire.SE.MS1PPM'] = $cxt.ms1_ppm
+  #set $wfdict['diaumpire.SE.MS2PPM'] = $cxt.ms2_ppm
+  #set $wfdict['diaumpire.SE.NoMissedScan'] = $cxt.max_missed_scans
+  #set $wfdict['diaumpire.SE.EstimateBG'] = $cxt.remove_background
+  #set $wfdict['diaumpire.SE.MassDefectFilter'] = $cxt.mass_defect_filter
+  #set $cxt = $prfx.advanced_options
+  #set $wfdict['diaumpire.RFmax'] = $cxt.rf_max
+  #set $wfdict['diaumpire.RPmax'] = $cxt.rp_max
+  #set $wfdict['diaumpire.RTOverlap'] = $cxt.rt_overlap
+  #set $wfdict['diaumpire.CorrThreshold'] = $cxt.corr_threshold
+  #set $wfdict['diaumpire.DeltaApex'] = $cxt.delta_apex
+  #set $wfdict['diaumpire.SE.MassDefectOffset'] = $cxt.mass_defect_offset
+  #set $wfdict['diaumpire.SE.IsoPattern'] = $cxt.isotope_pattern
+  #set $wfdict['diaumpire.SE.SN'] = $cxt.ms1_sn
+  #set $wfdict['diaumpire.SE.MS2SN'] = $cxt.ms2_sn
+  #set $wfdict['diaumpire.Q1'] = $cxt.q1
+  #set $wfdict['diaumpire.Q2'] = $cxt.q2
+  #set $wfdict['diaumpire.Q3'] = $cxt.q3
+  #set $wfdict['diaumpire.BoostComplementaryIon'] = $cxt.boost_complementary_ions
+  #set $wfdict['diaumpire.AdjustFragIntensity'] = $cxt.adjust_fragment_intensity
+  #set $wfdict['diaumpire.ExportPrecursorPeak'] = $cxt.export_precursor_peak
+#end if
+
 #set $prfx = $wf.dia_pseudo.diatracer
 #if $prfx.diatracer_step == 'no'
   #set $wfdict['diatracer.run-diatracer'] = 'false'
@@ -1322,7 +1416,6 @@ $kv
                         <param name="qvalue" type="float" value="0.01" min="0.0" max="1.0" optional="true" label="Precursor FDR" help="default 0.01"/>
                         <param name="generate_msstats" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Generate MSStats input"/>
                         <param name="unrelated_runs" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Unrelated runs"/>
-                        <param name="use_predicted_spectra" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Replace library spectra with predicted"/>
                         <param name="library" type="data" format="csv,tsv,xls,txt,binary" optional="true" label="Spectral Library"/>
                         <param name="quantification_strategy" type="select" optional="true" label="Quantification strategy" help="default: Robust LC (high precision)">
                             <option value="0">Any LC (high accuracy)</option>
@@ -1330,6 +1423,13 @@ $kv
                             <option value="2">Robust LC (high accuracy)</option>
                             <option value="3">Robust LC (high precision)</option>
                         </param>
+                        <param name="gene_level_report" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Gene level report"/>
+                        <param name="mbr" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Match between runs"/>
+                        <param name="modified_peptide_level_report" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Modified peptide level report"/>
+                        <param name="peptide_level_report" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Peptide level report"/>
+                        <param name="protein_level_report" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Protein level report"/>
+                        <param name="redo_protein_inference" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Redo protein inference"/>
+                        <param name="site_level_report" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Site level report"/>
                     </section>
                 </when>
             </conditional>
@@ -1342,12 +1442,16 @@ $kv
 #elif $prfx.diann_quantification_step == 'yes'
   #set $wfdict['diann.run-dia-nn'] = 'true'
   #set $cxt = $prfx.options
-  #if $cxt.qvalue != ''
-    #set $wfdict['diann.q-value'] = $cxt.qvalue
-  #end if
+  #set $wfdict['diann.q-value'] = $cxt.qvalue
   #set $wfdict['diann.generate-msstats'] = $cxt.generate_msstats
   #set $wfdict['diann.unrelated-runs'] = $cxt.unrelated_runs
-  #set $wfdict['diann.use-predicted-spectra'] = $cxt.use_predicted_spectra
+  #set $wfdict['diann.gene-level-report'] = $cxt.gene_level_report
+  #set $wfdict['diann.mbr'] = $cxt.mbr
+  #set $wfdict['diann.modified-peptide-level-report'] = $cxt.modified_peptide_level_report
+  #set $wfdict['diann.peptide-level-report'] = $cxt.peptide_level_report
+  #set $wfdict['diann.protein-level-report'] = $cxt.protein_level_report
+  #set $wfdict['diann.redo-protein-inference'] = $cxt.redo_protein_inference
+  #set $wfdict['diann.site-level-report'] = $cxt.site_level_report
   #if $cxt.quantification_strategy != ''
     #set $wfdict['diann.quantification-strategy'] = $cxt.quantification_strategy
   #end if
