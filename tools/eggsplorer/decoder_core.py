@@ -21,6 +21,7 @@ import argparse
 import ast
 import csv
 import hashlib
+import importlib.machinery
 import importlib.util
 import json
 import random
@@ -28,7 +29,7 @@ import re
 import sys
 from pathlib import Path
 
-DECODER_PATH = Path(__file__).resolve().parent / "third_party" / "kegg_decoder" / "KEGG_decoder.py"
+DECODER_PATH = Path(__file__).resolve().parent / "third_party" / "kegg_decoder" / "KEGG_decoder.py.orig"
 MAP_PATH = DECODER_PATH.with_name("function_map.json")
 _KO_RE = re.compile(r"^K\d{5}$")
 MODES = ("union", "consensus", "eggnog", "kofam")
@@ -39,9 +40,11 @@ MODES = ("union", "consensus", "eggnog", "kofam")
 # --------------------------------------------------------------------------
 
 def _load_decoder(path: Path = DECODER_PATH):
-    spec = importlib.util.spec_from_file_location("kegg_decoder_vendored", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)  # top level holds only function definitions
+    # the upstream file is kept byte-for-byte as *.py.orig, so loaders and linters
+    # that only look at *.py files leave it alone
+    loader = importlib.machinery.SourceFileLoader("kegg_decoder_vendored", str(path))
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+    loader.exec_module(module)  # top level holds only function definitions
     return module
 
 

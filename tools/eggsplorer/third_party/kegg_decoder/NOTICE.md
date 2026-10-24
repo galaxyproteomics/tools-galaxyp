@@ -1,19 +1,20 @@
 # KEGG-Decoder (vendored, unmodified)
 
-- File: `KEGG_decoder.py`, KEGG-Decoder V.1.3
+- File: `KEGG_decoder.py.orig` (upstream `KEGG_decoder.py`), KEGG-Decoder V.1.3
 - Upstream: https://github.com/bjtully/BioData/blob/master/KEGGDecoder/KEGG_decoder.py
 - Licence: MIT, Copyright (c) 2019 Benjamin Tully (see `LICENSE` in this folder)
 - Retrieved: 2026-10-22
 - SHA256: fdc4bbc14d0dd457c5d4841a09c0c7e868c057a509f0428b10818777216b617c
 
-The file is kept byte-for-byte identical to upstream. Only its scoring
+The file is kept byte-for-byte identical to upstream; only its name gets the
+`.orig` suffix so that Python linters do not check third-party code. Only its scoring
 functions are used, through `decoder_core.py`; its `main()`, plotting and
 clustering code are never executed, so pandas, seaborn, matplotlib and scipy
 are not needed for this part.
 
 `function_map.json` is generated from this file by `decoder_core.py`
 (sensitivity analysis of the scoring functions) and is keyed to the SHA256
-above; it is rebuilt automatically if `KEGG_decoder.py` is replaced.
+above; it is rebuilt automatically if `KEGG_decoder.py.orig` is replaced.
 
 Issues found in V1.3 by that analysis (scores in the default mode keep them
 so results match the published tool; `--corrected` fixes or flags them):
