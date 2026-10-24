@@ -14,7 +14,6 @@ import csv
 import datetime as dt
 import html
 import json
-
 import re
 import sys
 from collections import Counter, defaultdict
@@ -24,8 +23,8 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 import decoder_core as dc  # noqa: E402
-import refdata as rd  # noqa: E402
 import go_core  # noqa: E402
+import refdata as rd  # noqa: E402
 
 TOOL_VERSION = "1.1.0"
 PLOTLY_CDN = "https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.35.2/plotly.min.js"
