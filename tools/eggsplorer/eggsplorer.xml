@@ -1,0 +1,222 @@
+<tool id="eggsplorer" name="Eggsplorer" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@" license="MIT">
+    <description>interactive HTML report of eggNOG-mapper functional annotations</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <edam_topics>
+        <edam_topic>topic_0085</edam_topic>
+        <edam_topic>topic_0092</edam_topic>
+        <edam_topic>topic_3301</edam_topic>
+    </edam_topics>
+    <edam_operations>
+        <edam_operation>operation_0337</edam_operation>
+    </edam_operations>
+    <expand macro="requirements"/>
+    <version_command>python '$__tool_directory__/eggsplorer.py' --version</version_command>
+    <command detect_errors="exit_code"><![CDATA[
+python '$__tool_directory__/eggsplorer.py'
+    --input '$annotations'
+    #if str($sample_name).strip():
+        --name '$sample_name'
+    #else:
+        --name '$annotations.element_identifier'
+    #end if
+    --output '$report'
+    #if $kofam_cond.use_kofam == 'yes':
+        --kofam '$kofam_cond.kofam'
+        --mode '$kofam_cond.mode'
+    #end if
+    #if str($filters.max_evalue):
+        --max-evalue $filters.max_evalue
+    #end if
+    #if str($filters.min_score):
+        --min-score $filters.min_score
+    #end if
+    --top-n $top_n
+    --lang '$lang'
+    --plotly inline
+    #if $output_tables:
+        --tables tables
+    #end if
+    ]]></command>
+    <inputs>
+        <param name="annotations" type="data" format="tabular,txt" label="eggNOG-mapper annotations"
+            help="The 'annotations' output of eggNOG-mapper (*.emapper.annotations)."/>
+        <param name="sample_name" type="text" value="" optional="true" label="Sample name"
+            help="Shown as the report title. Leave empty to use the dataset name.">
+            <sanitizer invalid_char="">
+                <valid initial="string.ascii_letters,string.digits">
+                    <add value="_"/><add value="-"/><add value="."/><add value=" "/>
+                </valid>
+            </sanitizer>
+        </param>
+        <conditional name="kofam_cond">
+            <param name="use_kofam" type="select" label="Add KofamScan KO assignments as a second source?"
+                help="KofamScan assigns KOs with profile HMMs and adaptive thresholds, independently of eggNOG orthology.">
+                <option value="no" selected="true">No</option>
+                <option value="yes">Yes</option>
+            </param>
+            <when value="no"/>
+            <when value="yes">
+                <param name="kofam" type="data" format="tabular,txt" label="KofamScan output"
+                    help="detail-tsv (hits above threshold are marked with *) or mapper format. Gene IDs must match the eggNOG input."/>
+                <param name="mode" type="select" label="How to combine eggNOG and KofamScan">
+                    <option value="union" selected="true">Union: gene–KO pairs from either tool</option>
+                    <option value="consensus">Consensus: only pairs both tools agree on</option>
+                    <option value="eggnog">eggNOG only (KofamScan used for labels)</option>
+                    <option value="kofam">KofamScan only</option>
+                </param>
+            </when>
+        </conditional>
+        <section name="filters" title="Hit quality filters" expanded="false">
+            <param name="max_evalue" type="float" value="" optional="true" min="0" label="Maximum e-value of the seed ortholog"
+                help="Leave empty to keep all hits. Example: 1e-10."/>
+            <param name="min_score" type="float" value="" optional="true" min="0" label="Minimum bit score of the seed ortholog"
+                help="Leave empty to keep all hits."/>
+        </section>
+        <param name="top_n" type="integer" value="25" min="5" max="100" label="Number of items in 'top' charts"/>
+        <param name="lang" type="select" label="Report language">
+            <option value="en" selected="true">English</option>
+            <option value="bg">Bulgarian</option>
+        </param>
+        <param name="output_tables" type="boolean" checked="false" label="Also output summary tables"
+            help="COG counts, top GO terms, KEGG pathways and modules, EC, TC transporter families, CAZy families and substrates, Pfam and metabolic function scores as tabular datasets."/>
+    </inputs>
+    <outputs>
+        <data name="report" format="html" label="${tool.name} on ${on_string}"/>
+        <collection name="tables" type="list" label="${tool.name} on ${on_string}: tables">
+            <filter>output_tables</filter>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.tsv" directory="tables" format="tabular" sort_by="filename"/>
+        </collection>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <param name="annotations" value="synthetic.emapper.annotations"/>
+            <param name="sample_name" value="Synthetic test"/>
+            <output name="report">
+                <assert_contents>
+                    <has_text text="Synthetic test"/>
+                    <has_text text="report-data"/>
+                    <has_text text="plotly.js v2.35.2"/>
+                    <has_text text="&quot;proteins&quot;:300"/>
+                    <not_has_text text="cdnjs.cloudflare.com/ajax/libs/plotly"/>
+                    <not_has_text text="fonts.googleapis.com"/>
+                    <has_text text="font-family:'IBM Plex Sans'"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="2">
+            <param name="annotations" value="synthetic.emapper.annotations"/>
+            <conditional name="kofam_cond">
+                <param name="use_kofam" value="yes"/>
+                <param name="kofam" value="synthetic.kofam.tsv"/>
+                <param name="mode" value="consensus"/>
+            </conditional>
+            <section name="filters">
+                <param name="max_evalue" value="1e-10"/>
+            </section>
+            <param name="lang" value="bg"/>
+            <param name="output_tables" value="true"/>
+            <output name="report">
+                <assert_contents>
+                    <has_text text="Функционален профил"/>
+                    <has_text text="&quot;mode&quot;:&quot;consensus&quot;"/>
+                </assert_contents>
+            </output>
+            <output_collection name="tables" type="list" count="10">
+                <element name="cog_categories">
+                    <assert_contents>
+                        <has_n_lines n="27"/>
+                    </assert_contents>
+                </element>
+                <element name="metabolic_functions">
+                    <assert_contents>
+                        <has_line_matching expression="^function\tscore\tscore_corrected\tgenes\tkos_found\tgaps$"/>
+                        <has_n_lines n="179"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+    </tests>
+    <help><![CDATA[
+**What it does**
+
+**Eggsplorer** turns the annotations table of **eggNOG-mapper** into one self-contained, interactive HTML report.
+The report needs no internet connection: the plotting library is embedded and no database is queried.
+
+Sections:
+
+- **Overview**: number of proteins, share with a functional annotation, coverage of every eggNOG-mapper column.
+- **Level of annotation transfer**: ``max_annot_lvl`` and the narrowest orthologous group, which show from which
+  taxonomic level annotations were transferred.
+- **COG functional categories** as a radar chart with a table, grouped into the four COG super-categories.
+- **Most frequent GO terms**: top 20 per ontology (biological process, molecular function, cellular component),
+  after mapping to current GO terms, propagating to parents and hiding very general or redundant terms.
+  This is a frequency profile, not an enrichment test. GO data (CC BY 4.0) is bundled with the tool.
+- **Cell overview**: the components found in the genome drawn where they act in the cell (respiratory chain, uptake systems,
+  secretion and export, the largest transporter families, motility, metabolic function groups) on a fixed template;
+  the envelope is diderm when BamA is found with lipid A synthesis (LpxA, LpxC, LpxD) or LptD, and a cell wall is drawn
+  only with peptidoglycan synthesis. NDH-1 counts both the nuo and the cyanobacterial ndh complex; b6f, the Rnf complex,
+  SusCD (Bacteroidetes) and ESX (type VII secretion, Actinobacteria) are drawn when present. A component is drawn when its completeness is at
+  least 0.50 and not all of its genes belong to a better-scoring component (one gene can carry several KOs); the
+  others are listed under the drawing. Tiles for alternative systems (phototrophy, carbon fixation and C1,
+  hydrogenases) name the systems found; methanogenesis is drawn only with methyl-coenzyme M reductase.
+- **Metabolic function completeness**: the functions with at least one step present, scored with the definitions of
+  Graham et al. (2018) from a bundled, unmodified copy of its scoring code. Scores are corrected for known
+  issues of the original definitions (alcohol dehydrogenases never counted in mixed-acid fermentation, functions without defined KOs,
+  scores capped at 0.99, Sec-SRP counted only when SecDF is present, fused nuoCD not counted). Clicking a function lists the supporting genes, copy numbers, found KOs and the missing steps
+  that would raise the score.
+- **Element cycles**: nitrogen, sulfur, carbon fixation, C1 and hydrogen steps as diagrams with fixed layout, each arrow
+  coloured by the completeness of its genes. The sulfur diagram separates dissimilatory sulfate reduction (outer arrows)
+  from assimilation (inner arrows: sat or cysDN, cysH, cysJI or sir; KEGG module M00176) and sends TsdA/DoxDA to
+  tetrathionate and Sox to sulfate. DNRA needs NrfA; NirBD/NirA and NasA/NarB alone are drawn as assimilation. A step
+  without its catalytic subunit is drawn pale; the CBB cycle needs RuBisCO and phosphoribulokinase, the serine pathway malyl-CoA lyase, the RuMP pathway Hps and Phi,
+  and methanogenesis methyl-coenzyme M reductase. Steps that rest on the same proteins (also across diagrams, such as
+  ammonia and methane monooxygenase) are drawn dashed and listed under the diagrams.
+- **Transporters**: Sankey diagram from TC class to subclass and family, and a table of families with names.
+- **Enzymes**: Sankey diagram from EC class to subclass and sub-subclass with ENZYME names (bundled, CC BY 4.0),
+  the most frequent enzymes, and CAZy classes and families with their main activity and a link to the CAZy family page.
+- **Carbohydrate-active enzymes by substrate**: degradative CAZy families grouped by the glycans they act on
+  (substrates per family from dbCAN-sub, Zheng et al. 2023), separating families whose main activity is that
+  substrate from families that can also act on it.
+- **Pfam domains** and the most frequent domain combinations.
+- **Genes**: searchable table of all proteins.
+
+-----
+
+**Inputs**
+
+- *eggNOG-mapper annotations* (``*.emapper.annotations``).
+- Optional *KofamScan* output (``-f detail-tsv`` or ``-f mapper``) as a second, HMM-based source of KO assignments.
+  Gene identifiers must match those of the eggNOG-mapper input.
+
+**Outputs**
+
+- HTML report.
+- Optional collection of tabular summary tables.
+
+-----
+
+**Notes**
+
+- No KEGG data is bundled: KEGG appears only as KO identifiers that link to the KEGG website. Genes per KEGG pathway
+  and module (identifiers only) are available in the optional tables.
+- KO assignments by eggNOG-mapper are inferred through orthology. Use the quality filters or KofamScan
+  (consensus mode) for higher confidence.
+- **For Galaxy administrators**: Galaxy sanitises HTML outputs by default, which removes the report's JavaScript.
+  Add this tool to ``sanitize_allowlist_file`` so the report works inside Galaxy. Users can always download
+  the report and open it in a browser.
+
+**Citation**
+
+Eggsplorer: paper submitted.
+
+If you use the metabolic function scores, please cite KEGG-Decoder (Graham, Heidelberg and Tully 2018, ISME J 12:1861–1866)
+together with eggNOG-mapper and KEGG.
+    ]]></help>
+    <expand macro="citations"/>
+    <creator>
+        <person givenName="Vesselin" familyName="Baev" email="baev@uni-plovdiv.bg"/>
+        <organization name="University of Plovdiv Paisii Hilendarski"/>
+    </creator>
+</tool>
