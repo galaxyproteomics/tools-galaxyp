@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 
-VERSION=3.2
+# single source of truth: the version the wrappers declare
+VERSION=$(grep -oP '<token name="@TOOL_VERSION@">\K[^<]+' macros.xml)
+[ -n "$VERSION" ] || { echo "cannot read @TOOL_VERSION@ from macros.xml" >&2; exit 1; }
+# OpenMS switched from release/<version> branches to v<version> tags in 3.6.0
+GITTAG="${GITTAG:-v$VERSION.0}"
 FILETYPES="aux/filetypes.txt"
-CONDAPKG="https://anaconda.org/bioconda/openms/3.2.0/download/linux-64/openms-3.2.0-haddbca4_5.tar.bz2"
 
 if [ -z "$tmp" ]; then
     tmp=$(mktemp -d)
@@ -46,7 +49,7 @@ if [[ ! -d $OPENMSGIT ]]; then
         GIT_DIR=$(mktemp -d --dry-run)
         GIT_EXTRA_OPTS="--separate-git-dir=$GIT_DIR"
     fi
-    git clone -b release/$VERSION.0 --depth 1 --recurse-submodules=THIRDPARTY --shallow-submodules $GIT_EXTRA_OPTS https://github.com/OpenMS/OpenMS.git $OPENMSGIT
+    git clone -b $GITTAG --depth 1 --recurse-submodules=THIRDPARTY --shallow-submodules $GIT_EXTRA_OPTS https://github.com/OpenMS/OpenMS.git $OPENMSGIT
     ## save some space by just keeping the needed binaries
     find $OPENMSGIT/THIRDPARTY/ -type f -not \( -name maracluster -o -name spectrast \) -delete
     find $OPENMSGIT/THIRDPARTY/ -empty -type d -delete
@@ -56,7 +59,7 @@ if [[ ! -d $OPENMSGIT ]]; then
 else
     echo "Update OpenMS $VERSION sources"
     cd $OPENMSGIT
-    git pull origin release/$VERSION.0
+    git pull origin $GITTAG
     cd -
 fi
 
@@ -70,16 +73,26 @@ else
 # chmod -R u-w $OPENMSENV 
 fi
 ###############################################################################
-## get the 
-## - conda package (for easy access and listing of the OpenMS binaries), 
+## get the list of OpenMS binaries: link the ones of the conda package rather
+## than downloading and unpacking it (a .tar.bz2 for <= 3.5, a .conda since 3.6,
+## and the build string changes with every rebuild). Reading conda-meta also
+## excludes the third-party binaries in the same prefix, which block on stdin
+## when handed -write_ctd.
 ###############################################################################
-echo "Download OpenMS $VERSION package $CONDAPKG"
-
-if [[ ! -d $OPENMSPKG ]]; then
-    mkdir $OPENMSPKG
-    wget -q -P $OPENMSPKG/ "$CONDAPKG"
-    tar -xf $OPENMSPKG/"$(basename $CONDAPKG)" -C $OPENMSPKG/
-    rm $OPENMSPKG/"$(basename $CONDAPKG)"
+echo "Link OpenMS $VERSION binaries from the conda env"
+if [[ ! -d $OPENMSPKG/bin ]]; then
+    mkdir -p $OPENMSPKG/bin
+    ENVPREFIX=$(conda run -n "$OPENMSENV" python3 -c 'import sys; print(sys.prefix)')
+    python3 - "$ENVPREFIX" "$OPENMSPKG/bin" <<'PY'
+import glob, json, os, sys
+prefix, dest = sys.argv[1], sys.argv[2]
+meta = sorted(glob.glob(os.path.join(prefix, "conda-meta", "openms-*.json")))
+if not meta:
+    sys.exit("no openms package in %s" % prefix)
+for entry in json.load(open(meta[-1]))["files"]:
+    if entry.startswith("bin/"):
+        os.symlink(os.path.join(prefix, entry), os.path.join(dest, os.path.basename(entry)))
+PY
 fi
 
 ###############################################################################

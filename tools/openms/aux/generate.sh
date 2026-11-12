@@ -2,13 +2,17 @@
 
 # set -x
 
-VERSION=3.2
+# single source of truth: the version the wrappers declare
+VERSION=$(grep -oP '<token name="@TOOL_VERSION@">\K[^<]+' macros.xml)
+[ -n "$VERSION" ] || { echo "cannot read @TOOL_VERSION@ from macros.xml" >&2; exit 1; }
 FILETYPES="aux/filetypes.txt"
 PROFILE="23.0"
 ## FILETYPES_RE=$(grep -v "^#" $FILETYPES | grep -v "^$" | cut -f 1 -d" " | tr '\n' '|' | sed 's/|$//'| sed 's/|/\\|/g')
 
 # export tmp=$(mktemp -d)
-export tmp="/tmp/openms-stuff/"
+# override for hosts where /tmp is small
+# export tmp="/tmp/openms-stuff/"
+export tmp="${tmp:-/tmp/openms-stuff/}"
 # export CTDCONVERTER="$tmp/CTDConverter"
 ###############################################################################
 ## reset old data
@@ -58,7 +62,7 @@ fi
 >&2 echo "generate tool xml from ctd files"
 find . -maxdepth 0 -name "[A-Z]*xml" -delete
 source $(dirname $(which conda))/../etc/profile.d/conda.sh
-conda activate OpenMS$VERSION-env
+conda activate "${OPENMSENV:-OpenMS$VERSION-env}"
 CTDConverter galaxy -i ctd/*ctd -o ./ -s aux/tools_blacklist.txt -f "$FILETYPES" \
 	-m macros.xml -p aux/hardcoded_params.json \
 	--test-macros macros_autotest.xml --test-macros-prefix autotest_  --test-macros aux/macros_test.xml --test-macros-prefix manutest_ \

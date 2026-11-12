@@ -10,7 +10,7 @@ later round does not re-litigate it.
 |---|---|---|---|---|---|---|
 | 0 | 2026-11-12 | pin upstream, snapshot 3.2+3.6 CTDs | 135 | n/a | n/a | **snapshots done** (`ctd-snapshots/3.2`, `/3.6`, provenance committed); the planemo baseline is still open — planemo is not installed here |
 | 1 | 2026-11-12 | tool set: 7 deprecations, blacklist dir-output tools | 128 | n/a | n/a | wrappers moved to `deprecated/tools/openms/3.2/`, `MascotAdapterOnline` restored, 4 tools blacklisted; the 15 additions happen on regeneration |
-| 2 | todo | params/formats: `filetypes.txt`, `hardcoded_params.json` | todo | n/a | todo | full worklist auto-generated in `ctd-diff-3.2-3.6.md` §Action list |
+| 2 | wip | params/formats: `filetypes.txt`, `hardcoded_params.json`; make the generator version-agnostic | 128 | n/a | todo | generator scripts patched (version from `macros.xml`, `v<version>` tag, binaries from conda-meta); the aux/* worklist is prepared but only takes effect on regeneration |
 | 3 | todo | autotest failures by root cause | todo | todo | todo | 2-strike rule applies |
 | 4 | todo | manual tests, `.ini` migration, reference refresh | todo | todo | todo | every refreshed reference needs a note below |
 | 5 | todo | full run vs. round-0 baseline | todo | 0 expected | todo | |
@@ -83,6 +83,17 @@ Still open in round 0: the `planemo test --all` baseline of the 3.2 state.
   `PercolatorAdapter:percolator_executable` required->optional,
   `ProteomicsLFQ:out` required->optional, `...:EMGScoring:init_mom` bool->string,
   `OpenSwathWorkflow:use_ion_mobility_scores` bool->string).
+
+## Round 2 — generator scripts (done, verification pending)
+
+The pipeline no longer hardcodes anything that changed with 3.6:
+
+| was | now |
+|---|---|
+| `VERSION=3.2` in `test-data.sh` *and* `aux/generate.sh` | both read `@TOOL_VERSION@` from `macros.xml` — bumping the suite is a one-line change |
+| `git clone -b release/$VERSION.0` | `-b ${GITTAG:-v$VERSION.0}` (OpenMS 3.6.0 dropped `release/*` branches for tags) |
+| `wget` the openms `.tar.bz2` conda package and `ls $OPENMSPKG/bin` | symlink the binaries listed in `conda-meta/openms-*.json` of the env — no download, no build-string hardcoding (3.6 ships `.conda`), and no third-party binary that blocks on stdin |
+| `export tmp="/tmp/openms-stuff/"` | `export tmp="${tmp:-/tmp/openms-stuff/}"` |
 
 ## WIP notes
 
