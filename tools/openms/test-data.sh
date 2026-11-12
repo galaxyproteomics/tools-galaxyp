@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 
-set -x
-head -n 10 macros.xml
-
 VERSION=3.2
 FILETYPES="aux/filetypes.txt"
 CONDAPKG="https://anaconda.org/bioconda/openms/3.2.0/download/linux-64/openms-3.2.0-haddbca4_5.tar.bz2"
@@ -269,7 +266,6 @@ cd - || exit
 
 echo "Write test macros to $autotests"
 echo "<macros>" > "$autotests"
-head -n 10 macros.xml
 for i in $(ls ctd/*ctd)
 do
     b=$(basename "$i" .ctd)
@@ -277,7 +273,6 @@ do
     wc -l "$autotests"
 done
 echo "</macros>" >> "$autotests"
-head -n 10 macros.xml
 
 # tests for tools using output_prefix parameters can not be auto generated
 # hence we output the tests for manual curation in macros_test.xml
@@ -316,4 +311,3 @@ if [[ "$created" == "yes" ]]; then
     conda env remove -n "$OPENMSENV"
 fi
 
-head -n 10 macros.xml
