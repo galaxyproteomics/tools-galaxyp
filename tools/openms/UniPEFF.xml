@@ -1,0 +1,660 @@
+<!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
+<!--Proposed Tool Section: [File Converter]-->
+<tool id="UniPEFF" name="UniPEFF" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="23.0">
+  <description>Convert a UniProtKB XML protein database to PEFF 1.0 with rich annotations</description>
+  <macros>
+    <token name="@EXECUTABLE@">UniPEFF</token>
+    <import>macros.xml</import>
+  </macros>
+  <expand macro="requirements"/>
+  <expand macro="stdio"/>
+  <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
+@EXT_FOO@
+#import re
+
+## Preprocessing
+mkdir in &&
+cp '$in' 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)' &&
+mkdir out &&
+#if $ptmlist:
+  mkdir ptmlist &&
+  cp '$ptmlist' 'ptmlist/${re.sub("[^\w\-_]", "_", $ptmlist.element_identifier)}.$gxy2omsext($ptmlist.ext)' &&
+#end if
+#if $psimod_obo:
+  mkdir psimod_obo &&
+  cp '$psimod_obo' 'psimod_obo/${re.sub("[^\w\-_]", "_", $psimod_obo.element_identifier)}.$gxy2omsext($psimod_obo.ext)' &&
+#end if
+#if $unimod_obo:
+  mkdir unimod_obo &&
+  cp '$unimod_obo' 'unimod_obo/${re.sub("[^\w\-_]", "_", $unimod_obo.element_identifier)}.$gxy2omsext($unimod_obo.ext)' &&
+#end if
+
+## Main program call
+
+set -o pipefail &&
+@EXECUTABLE@ -write_ctd ./ &&
+python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
+@EXECUTABLE@ -ini @EXECUTABLE@.ctd
+-in
+'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
+-out
+'out/output.${gxy2omsext("txt")}'
+#if $ptmlist:
+  -ptmlist
+  'ptmlist/${re.sub("[^\w\-_]", "_", $ptmlist.element_identifier)}.$gxy2omsext($ptmlist.ext)'
+#end if
+#if $psimod_obo:
+  -psimod_obo
+  'psimod_obo/${re.sub("[^\w\-_]", "_", $psimod_obo.element_identifier)}.$gxy2omsext($psimod_obo.ext)'
+#end if
+#if $unimod_obo:
+  -unimod_obo
+  'unimod_obo/${re.sub("[^\w\-_]", "_", $unimod_obo.element_identifier)}.$gxy2omsext($unimod_obo.ext)'
+#end if
+
+## Postprocessing
+&& mv 'out/output.${gxy2omsext("txt")}' '$out'
+#if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
+  && mv '@EXECUTABLE@.ctd' '$ctd_out'
+#end if]]></command>
+  <configfiles>
+    <inputs name="args_json" data_style="paths"/>
+    <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
+  </configfiles>
+  <inputs>
+    <param argument="-in" type="data" format="xml" label="Input UniProtKB XML file (plain or gzip; gzip is auto-detected)" help=" select xml data sets(s)"/>
+    <param argument="-ptmlist" type="data" format="txt" optional="true" label="UniProt ptmlist.txt; defaults to the bundled snapshot" help=" select txt data sets(s)"/>
+    <param argument="-psimod_obo" type="data" format="obo" optional="true" label="PSI-MOD.obo for canonical modification names; defaults to the bundled OpenMS PSI-MOD.obo" help=" select obo data sets(s)"/>
+    <param argument="-unimod_obo" type="data" format="obo" optional="true" label="Optional unimod.obo for canonical Unimod names; if absent, names fall back to the UniProt ptmlist IDs" help=" select obo data sets(s)"/>
+    <param argument="-prefix" type="text" optional="true" value="" label="Force a single PEFF prefix for every entry" help="(e.g. 'sp'); if empty, sp/tr is derived from the UniProt dataset">
+      <expand macro="list_string_san" name="prefix"/>
+    </param>
+    <param argument="-dbversion" type="text" value="unknown" label="Value for the mandatory '# DbVersion=' PEFF header line" help="">
+      <expand macro="list_string_san" name="dbversion"/>
+    </param>
+    <param argument="-annotation_identifiers" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Emit PEFF Option B: assign a global sequential id: prefix to every annotation tuple, referenced by \DisulfideBond" help="By default only the \DisulfideBond tuples and the half-cystines they reference get ids: of K bonds, bond k (counting from 0) labels its half-cystines 2k and 2k+1 and is itself labeled 2K+k"/>
+    <param argument="-omit_molecular_processing" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Skip the \Processed annotations (initiator methionine, signal/transit peptide, propeptide, chain)" help=""/>
+    <param argument="-omit_amino_acid_modifications" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Skip \ModResPsi / \ModResUnimod / \ModRes and \DisulfideBond; ptmlist is not read" help=""/>
+    <param argument="-omit_sequence_variations" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Skip \VariantSimple and \VariantComplex annotations" help=""/>
+    <param argument="-omit_isoforms" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Skip the additional PEFF entries for UniProt isoforms (alternative products whose sequences are reconstructed from splice-variant features)" help=""/>
+    <expand macro="adv_opts_macro">
+      <param argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
+      <param argument="-test" type="hidden" value="False" label="Enables the test mode (needed for internal use only)" help="" optional="true">
+        <expand macro="list_string_san" name="test"/>
+      </param>
+    </expand>
+    <param name="OPTIONAL_OUTPUTS" type="select" optional="true" multiple="true" label="Optional outputs">
+      <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+    </param>
+  </inputs>
+  <outputs>
+    <data name="out" label="${tool.name} on ${on_string}: out" format="txt"/>
+    <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
+      <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+  </outputs>
+  <tests>
+    <!-- TOPP_UniPEFF_1 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="UniPEFF_1_input.xml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/UniPEFF_1_output.tmp.peff" compare="sim_size" delta_frac="0.7" ftype="txt"/>
+      <param name="ptmlist" value="UniPEFF_1_ptmlist.txt" ftype="txt"/>
+      <param name="psimod_obo" value="UniPEFF_1_psi-mod.obo"/>
+      <param name="unimod_obo" value="UniPEFF_1_unimod.obo"/>
+      <param name="prefix" value=""/>
+      <param name="dbversion" value="unknown"/>
+      <param name="annotation_identifiers" value="false"/>
+      <param name="omit_molecular_processing" value="false"/>
+      <param name="omit_amino_acid_modifications" value="false"/>
+      <param name="omit_sequence_variations" value="false"/>
+      <param name="omit_isoforms" value="false"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_UniPEFF_2 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="UniPEFF_1_input.xml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/UniPEFF_2_output.tmp.peff" compare="sim_size" delta_frac="0.7" ftype="txt"/>
+      <param name="ptmlist" value="UniPEFF_1_ptmlist.txt" ftype="txt"/>
+      <param name="psimod_obo" value="UniPEFF_1_psi-mod.obo"/>
+      <param name="unimod_obo" value="UniPEFF_1_unimod.obo"/>
+      <param name="prefix" value=""/>
+      <param name="dbversion" value="unknown"/>
+      <param name="annotation_identifiers" value="true"/>
+      <param name="omit_molecular_processing" value="false"/>
+      <param name="omit_amino_acid_modifications" value="false"/>
+      <param name="omit_sequence_variations" value="false"/>
+      <param name="omit_isoforms" value="false"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_UniPEFF_3 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="UniPEFF_1_input.xml.gz"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/UniPEFF_3_output.tmp.peff" compare="sim_size" delta_frac="0.7" ftype="txt"/>
+      <param name="ptmlist" value="UniPEFF_1_ptmlist.txt" ftype="txt"/>
+      <param name="psimod_obo" value="UniPEFF_1_psi-mod.obo"/>
+      <param name="unimod_obo" value="UniPEFF_1_unimod.obo"/>
+      <param name="prefix" value=""/>
+      <param name="dbversion" value="unknown"/>
+      <param name="annotation_identifiers" value="false"/>
+      <param name="omit_molecular_processing" value="false"/>
+      <param name="omit_amino_acid_modifications" value="false"/>
+      <param name="omit_sequence_variations" value="false"/>
+      <param name="omit_isoforms" value="false"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_UniPEFF_4 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="UniPEFF_1_input.xml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/UniPEFF_4_output.tmp.peff" compare="sim_size" delta_frac="0.7" ftype="txt"/>
+      <param name="ptmlist" value="UniPEFF_1_ptmlist.txt" ftype="txt"/>
+      <param name="psimod_obo" value="UniPEFF_1_psi-mod.obo"/>
+      <param name="unimod_obo" value="UniPEFF_1_unimod.obo"/>
+      <param name="prefix" value="custom"/>
+      <param name="dbversion" value="unknown"/>
+      <param name="annotation_identifiers" value="false"/>
+      <param name="omit_molecular_processing" value="false"/>
+      <param name="omit_amino_acid_modifications" value="false"/>
+      <param name="omit_sequence_variations" value="false"/>
+      <param name="omit_isoforms" value="false"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_UniPEFF_5 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="UniPEFF_1_input.xml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/UniPEFF_5_output.tmp.peff" compare="sim_size" delta_frac="0.7" ftype="txt"/>
+      <param name="ptmlist" value="UniPEFF_1_ptmlist.txt" ftype="txt"/>
+      <param name="psimod_obo" value="UniPEFF_1_psi-mod.obo"/>
+      <param name="unimod_obo" value="UniPEFF_1_unimod.obo"/>
+      <param name="prefix" value=""/>
+      <param name="dbversion" value="unknown"/>
+      <param name="annotation_identifiers" value="false"/>
+      <param name="omit_molecular_processing" value="true"/>
+      <param name="omit_amino_acid_modifications" value="false"/>
+      <param name="omit_sequence_variations" value="false"/>
+      <param name="omit_isoforms" value="false"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_UniPEFF_6 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="UniPEFF_1_input.xml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/UniPEFF_6_output.tmp.peff" compare="sim_size" delta_frac="0.7" ftype="txt"/>
+      <param name="prefix" value=""/>
+      <param name="dbversion" value="unknown"/>
+      <param name="annotation_identifiers" value="false"/>
+      <param name="omit_molecular_processing" value="false"/>
+      <param name="omit_amino_acid_modifications" value="true"/>
+      <param name="omit_sequence_variations" value="false"/>
+      <param name="omit_isoforms" value="false"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_UniPEFF_7 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="UniPEFF_1_input.xml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/UniPEFF_7_output.tmp.peff" compare="sim_size" delta_frac="0.7" ftype="txt"/>
+      <param name="ptmlist" value="UniPEFF_1_ptmlist.txt" ftype="txt"/>
+      <param name="psimod_obo" value="UniPEFF_1_psi-mod.obo"/>
+      <param name="unimod_obo" value="UniPEFF_1_unimod.obo"/>
+      <param name="prefix" value=""/>
+      <param name="dbversion" value="unknown"/>
+      <param name="annotation_identifiers" value="false"/>
+      <param name="omit_molecular_processing" value="false"/>
+      <param name="omit_amino_acid_modifications" value="false"/>
+      <param name="omit_sequence_variations" value="true"/>
+      <param name="omit_isoforms" value="false"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_UniPEFF_8_reject_gz -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="UniPEFF_1_input.xml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/UniPEFF_8_should_not_be_written.peff.gz" compare="sim_size" delta_frac="0.7" ftype="txt"/>
+      <param name="ptmlist" value="UniPEFF_1_ptmlist.txt" ftype="txt"/>
+      <param name="psimod_obo" value="UniPEFF_1_psi-mod.obo"/>
+      <param name="unimod_obo" value="UniPEFF_1_unimod.obo"/>
+      <param name="prefix" value=""/>
+      <param name="dbversion" value="unknown"/>
+      <param name="annotation_identifiers" value="false"/>
+      <param name="omit_molecular_processing" value="false"/>
+      <param name="omit_amino_acid_modifications" value="false"/>
+      <param name="omit_sequence_variations" value="false"/>
+      <param name="omit_isoforms" value="false"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_UniPEFF_12 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="UniPEFF_4_input_location_sequence.xml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/UniPEFF_12_output.tmp.peff" compare="sim_size" delta_frac="0.7" ftype="txt"/>
+      <param name="ptmlist" value="UniPEFF_1_ptmlist.txt" ftype="txt"/>
+      <param name="psimod_obo" value="UniPEFF_1_psi-mod.obo"/>
+      <param name="unimod_obo" value="UniPEFF_1_unimod.obo"/>
+      <param name="prefix" value=""/>
+      <param name="dbversion" value="unknown"/>
+      <param name="annotation_identifiers" value="false"/>
+      <param name="omit_molecular_processing" value="false"/>
+      <param name="omit_amino_acid_modifications" value="false"/>
+      <param name="omit_sequence_variations" value="false"/>
+      <param name="omit_isoforms" value="false"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_UniPEFF_12_summary -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="UniPEFF_4_input_location_sequence.xml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/UniPEFF_12_summary.tmp.peff" compare="sim_size" delta_frac="0.7" ftype="txt"/>
+      <param name="ptmlist" value="UniPEFF_1_ptmlist.txt" ftype="txt"/>
+      <param name="psimod_obo" value="UniPEFF_1_psi-mod.obo"/>
+      <param name="unimod_obo" value="UniPEFF_1_unimod.obo"/>
+      <param name="prefix" value=""/>
+      <param name="dbversion" value="unknown"/>
+      <param name="annotation_identifiers" value="false"/>
+      <param name="omit_molecular_processing" value="false"/>
+      <param name="omit_amino_acid_modifications" value="false"/>
+      <param name="omit_sequence_variations" value="false"/>
+      <param name="omit_isoforms" value="false"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_UniPEFF_9 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="UniPEFF_2_input_compact.xml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/UniPEFF_9_output.tmp.peff" compare="sim_size" delta_frac="0.7" ftype="txt"/>
+      <param name="ptmlist" value="UniPEFF_1_ptmlist.txt" ftype="txt"/>
+      <param name="psimod_obo" value="UniPEFF_1_psi-mod.obo"/>
+      <param name="unimod_obo" value="UniPEFF_1_unimod.obo"/>
+      <param name="prefix" value=""/>
+      <param name="dbversion" value="unknown"/>
+      <param name="annotation_identifiers" value="false"/>
+      <param name="omit_molecular_processing" value="false"/>
+      <param name="omit_amino_acid_modifications" value="false"/>
+      <param name="omit_sequence_variations" value="false"/>
+      <param name="omit_isoforms" value="false"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_UniPEFF_10 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="UniPEFF_3_input_disulfide_bounds.xml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/UniPEFF_10_output.tmp.peff" compare="sim_size" delta_frac="0.7" ftype="txt"/>
+      <param name="ptmlist" value="UniPEFF_1_ptmlist.txt" ftype="txt"/>
+      <param name="psimod_obo" value="UniPEFF_1_psi-mod.obo"/>
+      <param name="unimod_obo" value="UniPEFF_1_unimod.obo"/>
+      <param name="prefix" value=""/>
+      <param name="dbversion" value="unknown"/>
+      <param name="annotation_identifiers" value="false"/>
+      <param name="omit_molecular_processing" value="false"/>
+      <param name="omit_amino_acid_modifications" value="false"/>
+      <param name="omit_sequence_variations" value="false"/>
+      <param name="omit_isoforms" value="false"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_UniPEFF_11 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="UniPEFF_3_input_disulfide_bounds.xml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/UniPEFF_11_output.tmp.peff" compare="sim_size" delta_frac="0.7" ftype="txt"/>
+      <param name="ptmlist" value="UniPEFF_1_ptmlist.txt" ftype="txt"/>
+      <param name="psimod_obo" value="UniPEFF_1_psi-mod.obo"/>
+      <param name="unimod_obo" value="UniPEFF_1_unimod.obo"/>
+      <param name="prefix" value=""/>
+      <param name="dbversion" value="unknown"/>
+      <param name="annotation_identifiers" value="true"/>
+      <param name="omit_molecular_processing" value="false"/>
+      <param name="omit_amino_acid_modifications" value="false"/>
+      <param name="omit_sequence_variations" value="false"/>
+      <param name="omit_isoforms" value="false"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_UniPEFF_13 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="UniPEFF_1_input.xml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/UniPEFF_13_output.tmp.peff" compare="sim_size" delta_frac="0.7" ftype="txt"/>
+      <param name="ptmlist" value="UniPEFF_1_ptmlist.txt" ftype="txt"/>
+      <param name="psimod_obo" value="UniPEFF_1_psi-mod.obo"/>
+      <param name="unimod_obo" value="UniPEFF_1_unimod.obo"/>
+      <param name="prefix" value=""/>
+      <param name="dbversion" value="unknown"/>
+      <param name="annotation_identifiers" value="false"/>
+      <param name="omit_molecular_processing" value="false"/>
+      <param name="omit_amino_acid_modifications" value="false"/>
+      <param name="omit_sequence_variations" value="false"/>
+      <param name="omit_isoforms" value="true"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_UniPEFF_14 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="UniPEFF_3_input_isoforms.xml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/UniPEFF_14_output.tmp.peff" compare="sim_size" delta_frac="0.7" ftype="txt"/>
+      <param name="ptmlist" value="UniPEFF_1_ptmlist.txt" ftype="txt"/>
+      <param name="psimod_obo" value="UniPEFF_1_psi-mod.obo"/>
+      <param name="unimod_obo" value="UniPEFF_1_unimod.obo"/>
+      <param name="prefix" value=""/>
+      <param name="dbversion" value="unknown"/>
+      <param name="annotation_identifiers" value="false"/>
+      <param name="omit_molecular_processing" value="false"/>
+      <param name="omit_amino_acid_modifications" value="false"/>
+      <param name="omit_sequence_variations" value="false"/>
+      <param name="omit_isoforms" value="false"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_UniPEFF_15 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="UniPEFF_5_input_isoform_features.xml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/UniPEFF_15_output.tmp.peff" compare="sim_size" delta_frac="0.7" ftype="txt"/>
+      <param name="ptmlist" value="UniPEFF_1_ptmlist.txt" ftype="txt"/>
+      <param name="psimod_obo" value="UniPEFF_1_psi-mod.obo"/>
+      <param name="unimod_obo" value="UniPEFF_1_unimod.obo"/>
+      <param name="prefix" value=""/>
+      <param name="dbversion" value="unknown"/>
+      <param name="annotation_identifiers" value="false"/>
+      <param name="omit_molecular_processing" value="false"/>
+      <param name="omit_amino_acid_modifications" value="false"/>
+      <param name="omit_sequence_variations" value="false"/>
+      <param name="omit_isoforms" value="false"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_UniPEFF_16 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="UniPEFF_5_input_isoform_features.xml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/UniPEFF_16_output.tmp.peff" compare="sim_size" delta_frac="0.7" ftype="txt"/>
+      <param name="ptmlist" value="UniPEFF_1_ptmlist.txt" ftype="txt"/>
+      <param name="psimod_obo" value="UniPEFF_1_psi-mod.obo"/>
+      <param name="unimod_obo" value="UniPEFF_1_unimod.obo"/>
+      <param name="prefix" value=""/>
+      <param name="dbversion" value="unknown"/>
+      <param name="annotation_identifiers" value="true"/>
+      <param name="omit_molecular_processing" value="false"/>
+      <param name="omit_amino_acid_modifications" value="false"/>
+      <param name="omit_sequence_variations" value="false"/>
+      <param name="omit_isoforms" value="false"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_UniPEFF_17 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="UniPEFF_5_input_isoform_features.xml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/UniPEFF_17_output.tmp.peff" compare="sim_size" delta_frac="0.7" ftype="txt"/>
+      <param name="ptmlist" value="UniPEFF_1_ptmlist.txt" ftype="txt"/>
+      <param name="psimod_obo" value="UniPEFF_1_psi-mod.obo"/>
+      <param name="unimod_obo" value="UniPEFF_1_unimod.obo"/>
+      <param name="prefix" value=""/>
+      <param name="dbversion" value="unknown"/>
+      <param name="annotation_identifiers" value="false"/>
+      <param name="omit_molecular_processing" value="false"/>
+      <param name="omit_amino_acid_modifications" value="false"/>
+      <param name="omit_sequence_variations" value="false"/>
+      <param name="omit_isoforms" value="true"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_UniPEFF_15_summary_applied -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="UniPEFF_5_input_isoform_features.xml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/UniPEFF_15_summary_applied.tmp.peff" compare="sim_size" delta_frac="0.7" ftype="txt"/>
+      <param name="ptmlist" value="UniPEFF_1_ptmlist.txt" ftype="txt"/>
+      <param name="psimod_obo" value="UniPEFF_1_psi-mod.obo"/>
+      <param name="unimod_obo" value="UniPEFF_1_unimod.obo"/>
+      <param name="prefix" value=""/>
+      <param name="dbversion" value="unknown"/>
+      <param name="annotation_identifiers" value="false"/>
+      <param name="omit_molecular_processing" value="false"/>
+      <param name="omit_amino_acid_modifications" value="false"/>
+      <param name="omit_sequence_variations" value="false"/>
+      <param name="omit_isoforms" value="false"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_UniPEFF_15_summary_skipped -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="UniPEFF_5_input_isoform_features.xml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/UniPEFF_15_summary_skipped.tmp.peff" compare="sim_size" delta_frac="0.7" ftype="txt"/>
+      <param name="ptmlist" value="UniPEFF_1_ptmlist.txt" ftype="txt"/>
+      <param name="psimod_obo" value="UniPEFF_1_psi-mod.obo"/>
+      <param name="unimod_obo" value="UniPEFF_1_unimod.obo"/>
+      <param name="prefix" value=""/>
+      <param name="dbversion" value="unknown"/>
+      <param name="annotation_identifiers" value="false"/>
+      <param name="omit_molecular_processing" value="false"/>
+      <param name="omit_amino_acid_modifications" value="false"/>
+      <param name="omit_sequence_variations" value="false"/>
+      <param name="omit_isoforms" value="false"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+  </tests>
+  <help><![CDATA[Convert a UniProtKB XML protein database to PEFF 1.0 with rich annotations.
+
+
+For more information, visit http://www.openms.de/doxygen/release/3.6.0/html/TOPP_UniPEFF.html]]></help>
+  <expand macro="references"/>
+</tool>

@@ -91,10 +91,9 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="iBAQ">iBAQ</option>
       <expand macro="list_string_san" name="method"/>
     </param>
-    <param argument="-best_charge_and_fraction" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Distinguish between fraction and charge states of a peptide" help="For peptides, abundances will be reported separately for each fraction and charge;. for proteins, abundances will be computed based only on the most prevalent charge observed of each peptide (over all fractions).. By default, abundances are summed over all charge states"/>
+    <param argument="-best_charge" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Distinguish between fraction and charge states in detailed peptide output" help="For protein quantification, select one charge per modified peptide globally: maximize the number of (fraction group, label) assays with a positive abundance, then break ties by total abundance; retain that charge's values in every assay.. By default, protein abundances are summed over all charge states. How the retained values of several fractions are combined is governed by 'fractions:aggregate', not by this flag"/>
     <param argument="-greedy_group_resolution" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Pre-process identifications with greedy resolution of shared peptides based on the protein group probabilities" help="(Only works with an idXML file given as protein_groups parameter)"/>
-    <param argument="-ratios" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Add the log2 ratios of the abundance values to the output" help="Format: log_2(x_0/x_0) &lt;sep&gt; log_2(x_1/x_0) &lt;sep&gt; log_2(x_2/x_0) "/>
-    <param argument="-ratiosSILAC" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Add the log2 ratios for a triple SILAC experiment to the output" help="Only applicable to consensus maps of exactly three sub-maps. Format: log_2(heavy/light) &lt;sep&gt; log_2(heavy/middle) &lt;sep&gt; log_2(middle/light)"/>
+    <param argument="-file_and_channel_level_output" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Output protein abundances with detailed file+channel level headers (similar to detailed peptide output)" help="When enabled, protein output will show abundance_filename_channel columns instead of assay columns.. Note that peptide selection and aggregation are then applied per file, not per assay: 'top:N' requires N peptides in that single file (much stricter than the assay-level rule for fractionated data, where all cells of a quantified protein can end up 0), and the cells only decompose the assay-level value for 'top:N' 0 with 'top:aggregate' sum"/>
     <section name="top" title="Additional options for custom quantification using top N peptides" help="" expanded="false">
       <param name="N" argument="-top:N" type="integer" min="0" value="3" label="Calculate protein abundance from this number of proteotypic peptides (most abundant first; '0' for all)" help=""/>
       <param name="aggregate" argument="-top:aggregate" type="select" label="Aggregation method used to compute protein abundances from peptide abundances" help="">
@@ -106,9 +105,16 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       </param>
       <param name="include_all" argument="-top:include_all" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Include results for proteins with fewer proteotypic peptides than indicated by 'N' (no effect if 'N' is 0 or 1)" help=""/>
     </section>
+    <section name="fractions" title="Options for combining the fractions of a fraction group" help="" expanded="false">
+      <param name="aggregate" argument="-fractions:aggregate" type="select" label="How the fractions of one fraction group are combined into that group's (fraction group, label) assay values" help="- sum - add up every fraction, i.e. treat them as the parts of one separated sample that they are.. - best - keep a single fraction per peptide and fraction group and discard the others. The fraction is chosen ONCE per peptide, ranked by the number of labels in which it has a positive abundance and then by the total of those abundances (an exact tie keeps the lowest fraction number), and ALL of its labels are then taken from it. The choice is deliberately not made per label: taking one channel from one fraction and another channel from a different fraction would mix physical aliquots and destroy the reporter-ion ratios that isobaric quantification consists of.. Only the assay values are affected. Per-(file, channel) quantities are per fraction by definition and always report every file">
+        <option value="sum" selected="true">sum</option>
+        <option value="best">best</option>
+        <expand macro="list_string_san" name="aggregate"/>
+      </param>
+    </section>
     <section name="consensus" title="Additional options for consensus maps (and identification results comprising multiple runs)" help="" expanded="false">
-      <param name="normalize" argument="-consensus:normalize" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Scale peptide abundances so that medians of all samples are equal" help=""/>
-      <param name="fix_peptides" argument="-consensus:fix_peptides" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Use the same peptides for protein quantification across all samples" help="With 'N 0',all peptides that occur in every sample are considered.. Otherwise ('N'), the N peptides that occur in the most samples (independently of each other) are selected,. breaking ties by total abundance (there is no guarantee that the best co-ocurring peptides are chosen!)"/>
+      <param name="normalize" argument="-consensus:normalize" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Scale peptide abundances so that the median of each (fraction group, label) assay matches the overall median" help="Abundances of zero count as 'not detected' and are left out of the medians; an assay without any positive abundance takes no part in the normalization"/>
+      <param name="fix_peptides" argument="-consensus:fix_peptides" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Use the same peptides for protein quantification across all (fraction group, label) assays" help="With 'N 0',all peptides that occur in every assay are considered.. Otherwise ('N'), the N peptides that occur in the most assays (independently of each other) are selected,. breaking ties by total abundance (there is no guarantee that the best co-ocurring peptides are chosen!).. A peptide counts as occurring in an assay only where its abundance is positive: an abundance stored as zero means 'not detected' (e.g. an isobaric reporter below 'min_reporter_intensity'), not a measurement of absence"/>
     </section>
     <section name="format" title="Output formatting options" help="" expanded="false">
       <param name="separator" argument="-format:separator" type="text" optional="true" value="" label="Character(s) used to separate fields; by default, the 'tab' character is used" help="">
@@ -162,17 +168,19 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="test" value="true"/>
       </section>
       <param name="in" value="ProteinQuantifier_input.featureXML"/>
-      <output name="out" value="ProteinQuantifier_1_output1.txt" compare="sim_size" delta_frac="0.7" ftype="csv"/>
-      <output name="peptide_out" value="ProteinQuantifier_1_output2.txt" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_1_output1.tmp.csv" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <output name="peptide_out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_1_output2.tmp.csv" compare="sim_size" delta_frac="0.7" ftype="csv"/>
       <param name="method" value="top"/>
-      <param name="best_charge_and_fraction" value="false"/>
+      <param name="best_charge" value="false"/>
       <param name="greedy_group_resolution" value="false"/>
-      <param name="ratios" value="false"/>
-      <param name="ratiosSILAC" value="false"/>
+      <param name="file_and_channel_level_output" value="false"/>
       <section name="top">
         <param name="N" value="3"/>
         <param name="aggregate" value="median"/>
         <param name="include_all" value="false"/>
+      </section>
+      <section name="fractions">
+        <param name="aggregate" value="sum"/>
       </section>
       <section name="consensus">
         <param name="normalize" value="false"/>
@@ -200,17 +208,19 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="test" value="true"/>
       </section>
       <param name="in" value="ProteinQuantifier_input.featureXML"/>
-      <output name="out" value="ProteinQuantifier_2_output1.txt" compare="sim_size" delta_frac="0.7" ftype="csv"/>
-      <output name="peptide_out" value="ProteinQuantifier_2_output2.txt" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_2_output1.tmp.csv" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <output name="peptide_out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_2_output2.tmp.csv" compare="sim_size" delta_frac="0.7" ftype="csv"/>
       <param name="method" value="top"/>
-      <param name="best_charge_and_fraction" value="true"/>
+      <param name="best_charge" value="true"/>
       <param name="greedy_group_resolution" value="false"/>
-      <param name="ratios" value="false"/>
-      <param name="ratiosSILAC" value="false"/>
+      <param name="file_and_channel_level_output" value="false"/>
       <section name="top">
         <param name="N" value="2"/>
         <param name="aggregate" value="sum"/>
         <param name="include_all" value="true"/>
+      </section>
+      <section name="fractions">
+        <param name="aggregate" value="sum"/>
       </section>
       <section name="consensus">
         <param name="normalize" value="false"/>
@@ -238,17 +248,19 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="test" value="true"/>
       </section>
       <param name="in" value="ProteinQuantifier_3_input.featureXML"/>
-      <output name="out" value="ProteinQuantifier_3_output1.txt" compare="sim_size" delta_frac="0.7" ftype="csv"/>
-      <output name="peptide_out" value="ProteinQuantifier_3_output2.txt" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_3_output1.tmp.csv" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <output name="peptide_out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_3_output2.tmp.csv" compare="sim_size" delta_frac="0.7" ftype="csv"/>
       <param name="method" value="top"/>
-      <param name="best_charge_and_fraction" value="false"/>
+      <param name="best_charge" value="false"/>
       <param name="greedy_group_resolution" value="false"/>
-      <param name="ratios" value="false"/>
-      <param name="ratiosSILAC" value="false"/>
+      <param name="file_and_channel_level_output" value="false"/>
       <section name="top">
         <param name="N" value="2"/>
         <param name="aggregate" value="mean"/>
         <param name="include_all" value="true"/>
+      </section>
+      <section name="fractions">
+        <param name="aggregate" value="sum"/>
       </section>
       <section name="consensus">
         <param name="normalize" value="false"/>
@@ -276,16 +288,18 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="test" value="true"/>
       </section>
       <param name="in" value="ProteinQuantifier_input.consensusXML"/>
-      <output name="out" value="ProteinQuantifier_4_output.txt" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_4_output.tmp.csv" compare="sim_size" delta_frac="0.7" ftype="csv"/>
       <param name="method" value="top"/>
-      <param name="best_charge_and_fraction" value="false"/>
+      <param name="best_charge" value="false"/>
       <param name="greedy_group_resolution" value="false"/>
-      <param name="ratios" value="false"/>
-      <param name="ratiosSILAC" value="false"/>
+      <param name="file_and_channel_level_output" value="false"/>
       <section name="top">
         <param name="N" value="0"/>
         <param name="aggregate" value="sum"/>
         <param name="include_all" value="false"/>
+      </section>
+      <section name="fractions">
+        <param name="aggregate" value="sum"/>
       </section>
       <section name="consensus">
         <param name="normalize" value="false"/>
@@ -313,16 +327,18 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="test" value="true"/>
       </section>
       <param name="in" value="ProteinQuantifier_input.consensusXML"/>
-      <output name="out" value="ProteinQuantifier_5_output.txt" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_5_output.tmp.csv" compare="sim_size" delta_frac="0.7" ftype="csv"/>
       <param name="method" value="top"/>
-      <param name="best_charge_and_fraction" value="false"/>
+      <param name="best_charge" value="false"/>
       <param name="greedy_group_resolution" value="false"/>
-      <param name="ratios" value="false"/>
-      <param name="ratiosSILAC" value="false"/>
+      <param name="file_and_channel_level_output" value="false"/>
       <section name="top">
         <param name="N" value="3"/>
         <param name="aggregate" value="sum"/>
         <param name="include_all" value="false"/>
+      </section>
+      <section name="fractions">
+        <param name="aggregate" value="sum"/>
       </section>
       <section name="consensus">
         <param name="normalize" value="false"/>
@@ -350,16 +366,18 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="test" value="true"/>
       </section>
       <param name="in" value="ProteinQuantifier_input.consensusXML"/>
-      <output name="out" value="ProteinQuantifier_6_output.txt" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_6_output.tmp.csv" compare="sim_size" delta_frac="0.7" ftype="csv"/>
       <param name="method" value="top"/>
-      <param name="best_charge_and_fraction" value="false"/>
+      <param name="best_charge" value="false"/>
       <param name="greedy_group_resolution" value="false"/>
-      <param name="ratios" value="false"/>
-      <param name="ratiosSILAC" value="false"/>
+      <param name="file_and_channel_level_output" value="false"/>
       <section name="top">
         <param name="N" value="3"/>
         <param name="aggregate" value="sum"/>
         <param name="include_all" value="true"/>
+      </section>
+      <section name="fractions">
+        <param name="aggregate" value="sum"/>
       </section>
       <section name="consensus">
         <param name="normalize" value="false"/>
@@ -387,16 +405,18 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="test" value="true"/>
       </section>
       <param name="in" value="ProteinQuantifier_input.consensusXML"/>
-      <output name="out" value="ProteinQuantifier_7_output.txt" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_7_output.tmp.csv" compare="sim_size" delta_frac="0.7" ftype="csv"/>
       <param name="method" value="top"/>
-      <param name="best_charge_and_fraction" value="false"/>
+      <param name="best_charge" value="false"/>
       <param name="greedy_group_resolution" value="false"/>
-      <param name="ratios" value="false"/>
-      <param name="ratiosSILAC" value="false"/>
+      <param name="file_and_channel_level_output" value="false"/>
       <section name="top">
         <param name="N" value="0"/>
         <param name="aggregate" value="sum"/>
         <param name="include_all" value="false"/>
+      </section>
+      <section name="fractions">
+        <param name="aggregate" value="sum"/>
       </section>
       <section name="consensus">
         <param name="normalize" value="false"/>
@@ -424,16 +444,18 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="test" value="true"/>
       </section>
       <param name="in" value="ProteinQuantifier_input.consensusXML"/>
-      <output name="out" value="ProteinQuantifier_8_output.txt" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_8_output.tmp.csv" compare="sim_size" delta_frac="0.7" ftype="csv"/>
       <param name="method" value="top"/>
-      <param name="best_charge_and_fraction" value="false"/>
+      <param name="best_charge" value="false"/>
       <param name="greedy_group_resolution" value="false"/>
-      <param name="ratios" value="false"/>
-      <param name="ratiosSILAC" value="false"/>
+      <param name="file_and_channel_level_output" value="false"/>
       <section name="top">
         <param name="N" value="3"/>
         <param name="aggregate" value="sum"/>
         <param name="include_all" value="false"/>
+      </section>
+      <section name="fractions">
+        <param name="aggregate" value="sum"/>
       </section>
       <section name="consensus">
         <param name="normalize" value="false"/>
@@ -461,17 +483,19 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="test" value="true"/>
       </section>
       <param name="in" value="ProteinQuantifier_input.consensusXML"/>
-      <output name="out" value="ProteinQuantifier_9_output.txt" compare="sim_size" delta_frac="0.7" ftype="csv"/>
-      <output name="mztab" value="ProteinQuantifier_9_output_mztab.mzTab" compare="sim_size" delta_frac="0.7" ftype="mztab"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_9_output.tmp.csv" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <output name="mztab" value="${TESTS_TEMP_DIR}/ProteinQuantifier_9_output_mztab.tmp.mzTab" compare="sim_size" delta_frac="0.7" ftype="mztab"/>
       <param name="method" value="top"/>
-      <param name="best_charge_and_fraction" value="false"/>
+      <param name="best_charge" value="false"/>
       <param name="greedy_group_resolution" value="false"/>
-      <param name="ratios" value="false"/>
-      <param name="ratiosSILAC" value="false"/>
+      <param name="file_and_channel_level_output" value="false"/>
       <section name="top">
         <param name="N" value="3"/>
         <param name="aggregate" value="sum"/>
         <param name="include_all" value="true"/>
+      </section>
+      <section name="fractions">
+        <param name="aggregate" value="sum"/>
       </section>
       <section name="consensus">
         <param name="normalize" value="false"/>
@@ -492,80 +516,6 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
       </assert_stdout>
     </test>
-    <!-- TOPP_ProteinQuantifier_12 -->
-    <test expect_num_outputs="2">
-      <section name="adv_opts">
-        <param name="force" value="false"/>
-        <param name="test" value="true"/>
-      </section>
-      <param name="in" value="ProteinQuantifier_input.consensusXML"/>
-      <output name="out" value="ProteinQuantifier_12_output.txt" compare="sim_size" delta_frac="0.7" ftype="csv"/>
-      <param name="method" value="top"/>
-      <param name="best_charge_and_fraction" value="false"/>
-      <param name="greedy_group_resolution" value="false"/>
-      <param name="ratios" value="true"/>
-      <param name="ratiosSILAC" value="false"/>
-      <section name="top">
-        <param name="N" value="3"/>
-        <param name="aggregate" value="sum"/>
-        <param name="include_all" value="true"/>
-      </section>
-      <section name="consensus">
-        <param name="normalize" value="false"/>
-        <param name="fix_peptides" value="true"/>
-      </section>
-      <section name="format">
-        <param name="separator" value=""/>
-        <param name="quoting" value="double"/>
-        <param name="replacement" value="_"/>
-      </section>
-      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG,out_FLAG"/>
-      <output name="ctd_out" ftype="xml">
-        <assert_contents>
-          <is_valid_xml/>
-        </assert_contents>
-      </output>
-      <assert_stdout>
-        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
-      </assert_stdout>
-    </test>
-    <!-- TOPP_ProteinQuantifier_13 -->
-    <test expect_num_outputs="2">
-      <section name="adv_opts">
-        <param name="force" value="false"/>
-        <param name="test" value="true"/>
-      </section>
-      <param name="in" value="ProteinQuantifier_input.consensusXML"/>
-      <output name="out" value="ProteinQuantifier_13_output.txt" compare="sim_size" delta_frac="0.7" ftype="csv"/>
-      <param name="method" value="top"/>
-      <param name="best_charge_and_fraction" value="false"/>
-      <param name="greedy_group_resolution" value="false"/>
-      <param name="ratios" value="false"/>
-      <param name="ratiosSILAC" value="true"/>
-      <section name="top">
-        <param name="N" value="3"/>
-        <param name="aggregate" value="sum"/>
-        <param name="include_all" value="true"/>
-      </section>
-      <section name="consensus">
-        <param name="normalize" value="false"/>
-        <param name="fix_peptides" value="true"/>
-      </section>
-      <section name="format">
-        <param name="separator" value=""/>
-        <param name="quoting" value="double"/>
-        <param name="replacement" value="_"/>
-      </section>
-      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG,out_FLAG"/>
-      <output name="ctd_out" ftype="xml">
-        <assert_contents>
-          <is_valid_xml/>
-        </assert_contents>
-      </output>
-      <assert_stdout>
-        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
-      </assert_stdout>
-    </test>
     <!-- TOPP_ProteinQuantifier_14 -->
     <test expect_num_outputs="3">
       <section name="adv_opts">
@@ -573,17 +523,19 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="test" value="true"/>
       </section>
       <param name="in" value="ProteinQuantifier_input.idXML"/>
-      <output name="out" value="ProteinQuantifier_14_output1.txt" compare="sim_size" delta_frac="0.7" ftype="csv"/>
-      <output name="peptide_out" value="ProteinQuantifier_14_output2.txt" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_14_output1.tmp.csv" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <output name="peptide_out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_14_output2.tmp.csv" compare="sim_size" delta_frac="0.7" ftype="csv"/>
       <param name="method" value="top"/>
-      <param name="best_charge_and_fraction" value="false"/>
+      <param name="best_charge" value="false"/>
       <param name="greedy_group_resolution" value="false"/>
-      <param name="ratios" value="false"/>
-      <param name="ratiosSILAC" value="false"/>
+      <param name="file_and_channel_level_output" value="false"/>
       <section name="top">
         <param name="N" value="0"/>
         <param name="aggregate" value="sum"/>
         <param name="include_all" value="false"/>
+      </section>
+      <section name="fractions">
+        <param name="aggregate" value="sum"/>
       </section>
       <section name="consensus">
         <param name="normalize" value="false"/>
@@ -611,16 +563,18 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="test" value="true"/>
       </section>
       <param name="in" value="ProteinQuantifier_input.consensusXML"/>
-      <output name="out" value="ProteinQuantifier_15_output.txt" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_15_output.tmp.csv" compare="sim_size" delta_frac="0.7" ftype="csv"/>
       <param name="method" value="iBAQ"/>
-      <param name="best_charge_and_fraction" value="false"/>
+      <param name="best_charge" value="false"/>
       <param name="greedy_group_resolution" value="false"/>
-      <param name="ratios" value="false"/>
-      <param name="ratiosSILAC" value="false"/>
+      <param name="file_and_channel_level_output" value="false"/>
       <section name="top">
         <param name="N" value="3"/>
         <param name="aggregate" value="median"/>
         <param name="include_all" value="false"/>
+      </section>
+      <section name="fractions">
+        <param name="aggregate" value="sum"/>
       </section>
       <section name="consensus">
         <param name="normalize" value="false"/>
@@ -649,16 +603,417 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       </section>
       <param name="in" value="ProteinQuantifier_16_input.consensusXML"/>
       <param name="design" value="ProteinQuantifier_16_input.tsv" ftype="tabular"/>
-      <output name="out" value="ProteinQuantifier_16_output.txt" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_16_output.tmp" compare="sim_size" delta_frac="0.7" ftype="csv"/>
       <param name="method" value="top"/>
-      <param name="best_charge_and_fraction" value="false"/>
+      <param name="best_charge" value="false"/>
       <param name="greedy_group_resolution" value="false"/>
-      <param name="ratios" value="false"/>
-      <param name="ratiosSILAC" value="false"/>
+      <param name="file_and_channel_level_output" value="false"/>
       <section name="top">
         <param name="N" value="3"/>
         <param name="aggregate" value="median"/>
         <param name="include_all" value="true"/>
+      </section>
+      <section name="fractions">
+        <param name="aggregate" value="sum"/>
+      </section>
+      <section name="consensus">
+        <param name="normalize" value="false"/>
+        <param name="fix_peptides" value="false"/>
+      </section>
+      <section name="format">
+        <param name="separator" value=""/>
+        <param name="quoting" value="double"/>
+        <param name="replacement" value="_"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG,out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_ProteinQuantifier_17 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="ProteinQuantifier_16_input.consensusXML"/>
+      <param name="design" value="ProteinQuantifier_16_input.tsv" ftype="tabular"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_17_output.tmp" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <param name="method" value="top"/>
+      <param name="best_charge" value="true"/>
+      <param name="greedy_group_resolution" value="false"/>
+      <param name="file_and_channel_level_output" value="true"/>
+      <section name="top">
+        <param name="N" value="3"/>
+        <param name="aggregate" value="median"/>
+        <param name="include_all" value="true"/>
+      </section>
+      <section name="fractions">
+        <param name="aggregate" value="sum"/>
+      </section>
+      <section name="consensus">
+        <param name="normalize" value="false"/>
+        <param name="fix_peptides" value="false"/>
+      </section>
+      <section name="format">
+        <param name="separator" value=""/>
+        <param name="quoting" value="double"/>
+        <param name="replacement" value="_"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG,out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_ProteinQuantifier_18_qpx -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="ProteinQuantifier_input.consensusXML"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_18_output.tmp.csv" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <param name="method" value="top"/>
+      <param name="best_charge" value="false"/>
+      <param name="greedy_group_resolution" value="false"/>
+      <param name="file_and_channel_level_output" value="false"/>
+      <section name="top">
+        <param name="N" value="0"/>
+        <param name="aggregate" value="sum"/>
+        <param name="include_all" value="false"/>
+      </section>
+      <section name="fractions">
+        <param name="aggregate" value="sum"/>
+      </section>
+      <section name="consensus">
+        <param name="normalize" value="false"/>
+        <param name="fix_peptides" value="false"/>
+      </section>
+      <section name="format">
+        <param name="separator" value=""/>
+        <param name="quoting" value="double"/>
+        <param name="replacement" value="_"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG,out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_ProteinQuantifier_19_qpx -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="ProteinQuantifier_16_input.consensusXML"/>
+      <param name="design" value="ProteinQuantifier_16_input.tsv" ftype="tabular"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_19_output.tmp" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <param name="method" value="top"/>
+      <param name="best_charge" value="false"/>
+      <param name="greedy_group_resolution" value="false"/>
+      <param name="file_and_channel_level_output" value="false"/>
+      <section name="top">
+        <param name="N" value="3"/>
+        <param name="aggregate" value="median"/>
+        <param name="include_all" value="true"/>
+      </section>
+      <section name="fractions">
+        <param name="aggregate" value="sum"/>
+      </section>
+      <section name="consensus">
+        <param name="normalize" value="false"/>
+        <param name="fix_peptides" value="false"/>
+      </section>
+      <section name="format">
+        <param name="separator" value=""/>
+        <param name="quoting" value="double"/>
+        <param name="replacement" value="_"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG,out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_ProteinQuantifier_23 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="ProteinQuantifier_23_input.consensusXML"/>
+      <param name="design" value="ProteinQuantifier_23_input.tsv" ftype="tabular"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_23_output.tmp" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <param name="method" value="top"/>
+      <param name="best_charge" value="false"/>
+      <param name="greedy_group_resolution" value="false"/>
+      <param name="file_and_channel_level_output" value="true"/>
+      <section name="top">
+        <param name="N" value="2"/>
+        <param name="aggregate" value="mean"/>
+        <param name="include_all" value="false"/>
+      </section>
+      <section name="fractions">
+        <param name="aggregate" value="sum"/>
+      </section>
+      <section name="consensus">
+        <param name="normalize" value="false"/>
+        <param name="fix_peptides" value="false"/>
+      </section>
+      <section name="format">
+        <param name="separator" value=""/>
+        <param name="quoting" value="double"/>
+        <param name="replacement" value="_"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG,out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_ProteinQuantifier_24 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="ProteinQuantifier_23_input.consensusXML"/>
+      <param name="design" value="ProteinQuantifier_23_input.tsv" ftype="tabular"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_24_output.tmp" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <param name="method" value="iBAQ"/>
+      <param name="best_charge" value="false"/>
+      <param name="greedy_group_resolution" value="false"/>
+      <param name="file_and_channel_level_output" value="true"/>
+      <section name="top">
+        <param name="N" value="3"/>
+        <param name="aggregate" value="median"/>
+        <param name="include_all" value="false"/>
+      </section>
+      <section name="fractions">
+        <param name="aggregate" value="sum"/>
+      </section>
+      <section name="consensus">
+        <param name="normalize" value="false"/>
+        <param name="fix_peptides" value="false"/>
+      </section>
+      <section name="format">
+        <param name="separator" value=""/>
+        <param name="quoting" value="double"/>
+        <param name="replacement" value="_"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG,out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_ProteinQuantifier_25 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="ProteinQuantifier_25_input.consensusXML"/>
+      <param name="design" value="ProteinQuantifier_25_input.tsv" ftype="tabular"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_25_output.tmp" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <param name="method" value="top"/>
+      <param name="best_charge" value="false"/>
+      <param name="greedy_group_resolution" value="false"/>
+      <param name="file_and_channel_level_output" value="true"/>
+      <section name="top">
+        <param name="N" value="0"/>
+        <param name="aggregate" value="sum"/>
+        <param name="include_all" value="false"/>
+      </section>
+      <section name="fractions">
+        <param name="aggregate" value="sum"/>
+      </section>
+      <section name="consensus">
+        <param name="normalize" value="false"/>
+        <param name="fix_peptides" value="false"/>
+      </section>
+      <section name="format">
+        <param name="separator" value=""/>
+        <param name="quoting" value="double"/>
+        <param name="replacement" value="_"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG,out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_ProteinQuantifier_26 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="ProteinQuantifier_25_input.consensusXML"/>
+      <param name="design" value="ProteinQuantifier_25_input.tsv" ftype="tabular"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_26_output.tmp" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <param name="method" value="top"/>
+      <param name="best_charge" value="false"/>
+      <param name="greedy_group_resolution" value="false"/>
+      <param name="file_and_channel_level_output" value="false"/>
+      <section name="top">
+        <param name="N" value="0"/>
+        <param name="aggregate" value="sum"/>
+        <param name="include_all" value="false"/>
+      </section>
+      <section name="fractions">
+        <param name="aggregate" value="sum"/>
+      </section>
+      <section name="consensus">
+        <param name="normalize" value="false"/>
+        <param name="fix_peptides" value="false"/>
+      </section>
+      <section name="format">
+        <param name="separator" value=""/>
+        <param name="quoting" value="double"/>
+        <param name="replacement" value="_"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG,out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_ProteinQuantifier_27 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="ProteinQuantifier_25_input.consensusXML"/>
+      <param name="design" value="ProteinQuantifier_25_input.tsv" ftype="tabular"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_27_output.tmp" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <param name="method" value="top"/>
+      <param name="best_charge" value="false"/>
+      <param name="greedy_group_resolution" value="false"/>
+      <param name="file_and_channel_level_output" value="true"/>
+      <section name="top">
+        <param name="N" value="3"/>
+        <param name="aggregate" value="median"/>
+        <param name="include_all" value="false"/>
+      </section>
+      <section name="fractions">
+        <param name="aggregate" value="sum"/>
+      </section>
+      <section name="consensus">
+        <param name="normalize" value="false"/>
+        <param name="fix_peptides" value="false"/>
+      </section>
+      <section name="format">
+        <param name="separator" value=""/>
+        <param name="quoting" value="double"/>
+        <param name="replacement" value="_"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG,out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_ProteinQuantifier_28 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="ProteinQuantifier_25_input.consensusXML"/>
+      <param name="design" value="ProteinQuantifier_25_input.tsv" ftype="tabular"/>
+      <output name="peptide_out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_28_output.tmp" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <param name="method" value="top"/>
+      <param name="best_charge" value="true"/>
+      <param name="greedy_group_resolution" value="false"/>
+      <param name="file_and_channel_level_output" value="false"/>
+      <section name="top">
+        <param name="N" value="0"/>
+        <param name="aggregate" value="sum"/>
+        <param name="include_all" value="false"/>
+      </section>
+      <section name="fractions">
+        <param name="aggregate" value="sum"/>
+      </section>
+      <section name="consensus">
+        <param name="normalize" value="false"/>
+        <param name="fix_peptides" value="false"/>
+      </section>
+      <section name="format">
+        <param name="separator" value=""/>
+        <param name="quoting" value="double"/>
+        <param name="replacement" value="_"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG,peptide_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_ProteinQuantifier_29 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="ProteinQuantifier_25_input.consensusXML"/>
+      <param name="design" value="ProteinQuantifier_25_input.tsv" ftype="tabular"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/ProteinQuantifier_29_output.tmp" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <param name="method" value="top"/>
+      <param name="best_charge" value="false"/>
+      <param name="greedy_group_resolution" value="false"/>
+      <param name="file_and_channel_level_output" value="false"/>
+      <section name="top">
+        <param name="N" value="0"/>
+        <param name="aggregate" value="sum"/>
+        <param name="include_all" value="false"/>
+      </section>
+      <section name="fractions">
+        <param name="aggregate" value="best"/>
       </section>
       <section name="consensus">
         <param name="normalize" value="false"/>
@@ -683,6 +1038,6 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
   <help><![CDATA[Compute peptide and protein abundances
 
 
-For more information, visit https://openms.de/doxygen/release/3.2.0/html/TOPP_ProteinQuantifier.html]]></help>
+For more information, visit http://www.openms.de/doxygen/release/3.6.0/html/TOPP_ProteinQuantifier.html]]></help>
   <expand macro="references"/>
 </tool>

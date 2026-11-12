@@ -16,6 +16,12 @@
 mkdir in &&
 cp '$in' 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)' &&
 mkdir out &&
+## advanced options
+  #if $OpenSwathWorkflow.tr:
+    mkdir OpenSwathWorkflow.tr &&
+    cp '$OpenSwathWorkflow.tr' 'OpenSwathWorkflow.tr/${re.sub("[^\w\-_]", "_", $OpenSwathWorkflow.tr.element_identifier)}.$gxy2omsext($OpenSwathWorkflow.tr.ext)' &&
+  #end if
+
 
 ## Main program call
 
@@ -27,6 +33,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
 -out
 'out/output.${out_type}'
+## advanced options
+  #if $OpenSwathWorkflow.tr:
+    -OpenSwathWorkflow:tr
+    'OpenSwathWorkflow.tr/${re.sub("[^\w\-_]", "_", $OpenSwathWorkflow.tr.element_identifier)}.$gxy2omsext($OpenSwathWorkflow.tr.ext)'
+  #end if
+
 
 ## Postprocessing
 && mv 'out/output.${out_type}' '$out'
@@ -38,7 +50,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
     <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true, "RawToMzML": {"NET_executable": "mono", "ThermoRaw_executable": "ThermoRawFileParser.exe"}}]]></configfile>
   </configfiles>
   <inputs>
-    <param argument="-in" type="data" format="consensusxml,dta,dta2d,edta,featurexml,kroenik,mgf,ms2,mzdata,mzml,mzxml,peplist,sqlite,tabular,thermo.raw" label="Input file to convert" help=" select consensusxml,dta,dta2d,edta,featurexml,kroenik,mgf,ms2,mzdata,mzml,mzxml,peplist,sqlite,tabular,thermo.raw data sets(s)"/>
+    <param argument="-in" type="data" format="consensusxml,dta,dta2d,edta,featurexml,kroenik,mgf,ms2,msp,mzdata,mzml,mzxml,peplist,sqlite,sqmass,tabular,thermo.raw" label="Input file to convert" help=" select consensusxml,dta,dta2d,edta,featurexml,kroenik,mgf,ms2,msp,mzdata,mzml,mzxml,peplist,sqlite,sqmass,tabular,thermo.raw data sets(s)"/>
     <param argument="-out_type" type="select" label="Output file type -- default: determined from file extension or content" help="Note: that not all conversion paths work or make sense">
       <option value="consensusXML">consensusxml</option>
       <option value="csv">csv</option>
@@ -46,17 +58,28 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="edta">edta</option>
       <option value="featureXML">featurexml</option>
       <option value="mgf">mgf</option>
+      <option value="msp">msp</option>
       <option value="mzData">mzdata</option>
       <option value="mzML">mzml</option>
       <option value="mzXML">mzxml</option>
       <option value="oms">sqlite (oms)</option>
+      <option value="sqMass">sqmass</option>
+      <option value="xic">xml (xic)</option>
       <validator type="expression" message="A value needs to be selected">value != "select a value"</validator>
       <expand macro="list_string_san" name="out_type"/>
     </param>
-    <section name="RawToMzML" title="Options for converting raw files to mzML (uses ThermoRawFileParser)" help="" expanded="false">
+    <section name="RawToMzML" title="Options for converting Thermo raw files" help="" expanded="false">
       <param name="no_peak_picking" argument="-RawToMzML:no_peak_picking" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Disables vendor peak picking for raw files" help=""/>
-      <param name="no_zlib_compression" argument="-RawToMzML:no_zlib_compression" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Disables zlib compression for raw file conversion" help="Enables compatibility with some tools that do not support compressed input files, e.g. X!Tandem"/>
+      <param name="no_zlib_compression" argument="-RawToMzML:no_zlib_compression" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Disables zlib compression for raw file conversion" help="Enables compatibility with some tools that do not support compressed input files, e.g. X!Tandem (external reader only)"/>
       <param name="include_noise" argument="-RawToMzML:include_noise" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Include noise data in mzML output" help=""/>
+      <param name="reader" argument="-RawToMzML:reader" type="select" label="Reader for Thermo .raw files" help="'external' uses ThermoRawFileParser (external .NET process, mzML output only; the default on windows); 'inprocess' uses the built-in ThermoRawFile (in-process, supports any output format; requires WITH_THERMO_RAW build and a .NET 8 runtime; the default on linux and mac)">
+        <option value="external" selected="true">external</option>
+        <expand macro="list_string_san" name="reader"/>
+      </param>
+    </section>
+    <section name="OpenSwathWorkflow" title="Options for loading OpenSWATH transition libraries used for chromatogram metadata" help="" expanded="false">
+      <param name="tr" argument="-OpenSwathWorkflow:tr" type="data" format="osw,pqp,tabular,traml" optional="true" label="Transition library (PQP, TSV, or TraML) providing precursor/transition metadata" help="Required when converting sqMass to CHROMPARQUET (.xic); XICs without associated metadata are not meaningful select osw,pqp,tabular,traml data sets(s)"/>
+      <param name="legacy_traml_id" argument="-OpenSwathWorkflow:legacy_traml_id" type="boolean" truevalue="true" falsevalue="false" checked="false" label="When loading PQP libraries: use legacy TraML IDs (TRAML_ID) instead of numeric IDs" help=""/>
     </section>
     <expand macro="adv_opts_macro">
       <param argument="-UID_postprocessing" type="select" label="unique ID post-processing for output data" help="'none' keeps current IDs even if invalid.. 'ensure' keeps current IDs but reassigns invalid ones.. 'reassign' assigns new unique IDs">
@@ -72,6 +95,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <param argument="-convert_to_chromatograms" type="boolean" truevalue="true" falsevalue="false" checked="false" label="[mzML output only] Assumes that the provided spectra represent data in SRM mode or targeted MS1 mode and converts them to chromatogram data" help=""/>
       <param argument="-write_scan_index" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Append an index when writing mzML or mzXML files" help="Some external tools might rely on it"/>
       <param argument="-lossy_compression" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Use numpress compression to achieve optimally small file size using linear compression for m/z domain and slof for intensity and float data arrays (attention: may cause small loss of precision; only for mzML data)" help=""/>
+      <param argument="-zstd_compression" type="boolean" truevalue="true" falsevalue="false" checked="false" label="[mzML output only] Compress binary data arrays with Zstandard (zstd) instead of zlib (lossless; can be combined with 'lossy_compression')" help="Attention: not all external tools can read zstd-compressed mzML files yet"/>
       <param argument="-lossy_mass_accuracy" type="float" value="-1.0" label="Desired (absolute) m/z accuracy for lossy compression" help="(e.g. use 0.0001 for a mass accuracy of 0.2 ppm at 500 m/z, default uses -1.0 for maximal accuracy)"/>
       <param argument="-process_lowmemory" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Whether to process the file on the fly without loading the whole file into memory first (only for conversions of mzXML/mzML to mzML)" help="Note: this flag will prevent conversion from spectra to chromatograms"/>
       <param argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
@@ -91,10 +115,13 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <when input="out_type" value="edta" format="edta"/>
         <when input="out_type" value="featureXML" format="featurexml"/>
         <when input="out_type" value="mgf" format="mgf"/>
+        <when input="out_type" value="msp" format="msp"/>
         <when input="out_type" value="mzData" format="mzdata"/>
         <when input="out_type" value="mzML" format="mzml"/>
         <when input="out_type" value="mzXML" format="mzxml"/>
         <when input="out_type" value="oms" format="sqlite"/>
+        <when input="out_type" value="sqMass" format="sqmass"/>
+        <when input="out_type" value="xic" format="xml"/>
       </change_format>
     </data>
     <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
@@ -113,18 +140,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileConverter_1_input.mzData"/>
-      <output name="out" value="FileConverter_1_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_1.tmp.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
       <param name="out_type" value="mzML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -147,18 +179,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileConverter_2_input.someInputDTA2D"/>
-      <output name="out" value="FileConverter_2_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_2.tmp.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
       <param name="out_type" value="mzML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -181,18 +218,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileConverter_3_input.featureXML"/>
-      <output name="out" value="FileConverter_3_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_3.tmp.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
       <param name="out_type" value="mzML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -215,18 +257,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileConverter_4_input.mzXML"/>
-      <output name="out" value="FileConverter_4_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_4.tmp.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
       <param name="out_type" value="mzML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -249,18 +296,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileConverter_5_input.mzML"/>
-      <output name="out" value="FileConverter_5_output.mzXML" compare="sim_size" delta_frac="0.7" ftype="mzxml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_5.tmp.mzXML" compare="sim_size" delta_frac="0.7" ftype="mzxml"/>
       <param name="out_type" value="mzXML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -283,18 +335,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileConverter_6_input.mzML"/>
-      <output name="out" value="FileConverter_6_output.mzXML" compare="sim_size" delta_frac="0.7" ftype="mzxml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_6.tmp.mzXML" compare="sim_size" delta_frac="0.7" ftype="mzxml"/>
       <param name="out_type" value="mzXML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -317,18 +374,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileConverter_7_input.consensusXML"/>
-      <output name="out" value="FileConverter_7_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_7.tmp.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
       <param name="out_type" value="featureXML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -351,18 +413,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileConverter_8_input.mzML"/>
-      <output name="out" value="FileConverter_8_output.mzData" compare="sim_size" delta_frac="0.7" ftype="mzdata"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_8.tmp.mzData" compare="sim_size" delta_frac="0.7" ftype="mzdata"/>
       <param name="out_type" value="mzData"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -385,18 +452,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileConverter_9_input.consensusXML"/>
-      <output name="out" value="FileConverter_9_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_9.tmp.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
       <param name="out_type" value="featureXML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -419,18 +491,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileConverter_10_input.edta" ftype="edta"/>
-      <output name="out" value="FileConverter_10_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_10.tmp.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
       <param name="out_type" value="featureXML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -453,18 +530,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileConverter_11_input.peplist"/>
-      <output name="out" value="FileConverter_11_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_11.tmp.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
       <param name="out_type" value="featureXML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -487,18 +569,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileConverter_12_input.peptides.tsv" ftype="tabular"/>
-      <output name="out" value="FileConverter_12_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_12.tmp.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
       <param name="out_type" value="featureXML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -521,18 +608,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileConverter_13_input.peptides.kroenik"/>
-      <output name="out" value="FileConverter_13_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_13.tmp.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
       <param name="out_type" value="featureXML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -555,18 +647,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileConverter_9_output.featureXML"/>
-      <output name="out" value="FileConverter_14_output.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_14.tmp.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
       <param name="out_type" value="consensusXML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -589,18 +686,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileConverter_10_input.edta" ftype="edta"/>
-      <output name="out" value="FileConverter_15_output.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_15.tmp.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
       <param name="out_type" value="consensusXML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -623,18 +725,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileConverter_16_input.edta" ftype="edta"/>
-      <output name="out" value="FileConverter_16_output.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_16.tmp.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
       <param name="out_type" value="consensusXML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -657,18 +764,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileConverter_17_input.consensusXML"/>
-      <output name="out" value="FileConverter_17_output.ibspectra.csv" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_17.csv" compare="sim_size" delta_frac="0.7" ftype="csv"/>
       <param name="out_type" value="csv"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -691,18 +803,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileConverter_17_input.consensusXML"/>
-      <output name="out" value="FileConverter_17_output.ibspectra.csv" compare="sim_size" delta_frac="0.7" ftype="csv"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_18.tmp.ibspectra.csv" compare="sim_size" delta_frac="0.7" ftype="csv"/>
       <param name="out_type" value="csv"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -725,18 +842,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="true"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileFilter_1_input.mzML"/>
-      <output name="out" value="FileConverter_19_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_19.tmp.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
       <param name="out_type" value="mzML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -759,18 +881,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileConverter_20_input.featureXML"/>
-      <output name="out" value="FileConverter_20_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_20.tmp.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
       <param name="out_type" value="featureXML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -793,18 +920,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="true"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileConverter_4_input.mzXML"/>
-      <output name="out" value="FileConverter_4_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_21.tmp.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
       <param name="out_type" value="mzML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -827,18 +959,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileConverter_23_input.mzML"/>
-      <output name="out" value="FileConverter_23_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_23.tmp.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
       <param name="out_type" value="mzML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -861,18 +998,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="true"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="0.0001"/>
         <param name="process_lowmemory" value="true"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileFilter_1_input.mzML"/>
-      <output name="out" value="FileConverter_24_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_24.tmp.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
       <param name="out_type" value="mzML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -895,18 +1037,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="true"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="true"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileFilter_1_input.mzML"/>
-      <output name="out" value="FileConverter_25_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_25.tmp.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
       <param name="out_type" value="mzML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -929,18 +1076,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileFilter_1_input.mzML"/>
-      <output name="out" value="FileConverter_26_output.mzXML" compare="sim_size" delta_frac="0.7" ftype="mzxml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_26.tmp.mzXML" compare="sim_size" delta_frac="0.7" ftype="mzxml"/>
       <param name="out_type" value="mzXML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -963,18 +1115,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileConverter_26_output.mzXML"/>
-      <output name="out" value="FileConverter_26-2_output.mzXML" compare="sim_size" delta_frac="0.7" ftype="mzxml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_26-2.tmp.mzXML" compare="sim_size" delta_frac="0.7" ftype="mzxml"/>
       <param name="out_type" value="mzXML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -997,18 +1154,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="true"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileConverter_27_input.mzML"/>
-      <output name="out" value="FileConverter_27_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_27.tmp.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
       <param name="out_type" value="mzML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -1031,18 +1193,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="true"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="FileConverter_28_input.mzML"/>
-      <output name="out" value="FileConverter_28_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_28.tmp.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
       <param name="out_type" value="mzML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -1065,18 +1232,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="true"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="1e-05"/>
         <param name="process_lowmemory" value="true"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
       <param name="in" value="OpenSwathWorkflow_17_input.mzML"/>
-      <output name="out" value="FileConverter_29_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_29.tmp.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
       <param name="out_type" value="mzML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -1099,18 +1271,568 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileConverter_29_output.mzML"/>
-      <output name="out" value="FileConverter_29.back.tmp.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="${TESTS_TEMP_DIR}/FileConverter_29.tmp.mzML"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_29.back.tmp.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
       <param name="out_type" value="mzML"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_FileConverter_30 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="UID_postprocessing" value="ensure"/>
+        <param name="TIC_DTA2D" value="false"/>
+        <param name="MGF_compact" value="false"/>
+        <param name="force_MaxQuant_compatibility" value="false"/>
+        <param name="force_TPP_compatibility" value="false"/>
+        <param name="convert_to_chromatograms" value="false"/>
+        <param name="write_scan_index" value="true"/>
+        <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
+        <param name="lossy_mass_accuracy" value="-1.0"/>
+        <param name="process_lowmemory" value="false"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="${DATA_DIR_CLASS_TESTS}/MSPGenericFile_input.msp"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_30.tmp.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="out_type" value="mzML"/>
+      <section name="RawToMzML">
+        <param name="no_peak_picking" value="false"/>
+        <param name="no_zlib_compression" value="false"/>
+        <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_FileConverter_31 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="UID_postprocessing" value="ensure"/>
+        <param name="TIC_DTA2D" value="false"/>
+        <param name="MGF_compact" value="false"/>
+        <param name="force_MaxQuant_compatibility" value="false"/>
+        <param name="force_TPP_compatibility" value="false"/>
+        <param name="convert_to_chromatograms" value="false"/>
+        <param name="write_scan_index" value="true"/>
+        <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
+        <param name="lossy_mass_accuracy" value="-1.0"/>
+        <param name="process_lowmemory" value="false"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="${DATA_DIR_CLASS_TESTS}/MSPGenericFile_input.msp"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_31.tmp.msp" compare="sim_size" delta_frac="0.7" ftype="msp"/>
+      <param name="out_type" value="msp"/>
+      <section name="RawToMzML">
+        <param name="no_peak_picking" value="false"/>
+        <param name="no_zlib_compression" value="false"/>
+        <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_FileConverter_32 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="UID_postprocessing" value="ensure"/>
+        <param name="TIC_DTA2D" value="false"/>
+        <param name="MGF_compact" value="false"/>
+        <param name="force_MaxQuant_compatibility" value="false"/>
+        <param name="force_TPP_compatibility" value="false"/>
+        <param name="convert_to_chromatograms" value="false"/>
+        <param name="write_scan_index" value="true"/>
+        <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
+        <param name="lossy_mass_accuracy" value="-1.0"/>
+        <param name="process_lowmemory" value="false"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="FileConverter_9_output.featureparquet"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_32.tmp.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <param name="out_type" value="featureXML"/>
+      <section name="RawToMzML">
+        <param name="no_peak_picking" value="false"/>
+        <param name="no_zlib_compression" value="false"/>
+        <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_FileConverter_33 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="UID_postprocessing" value="ensure"/>
+        <param name="TIC_DTA2D" value="false"/>
+        <param name="MGF_compact" value="false"/>
+        <param name="force_MaxQuant_compatibility" value="false"/>
+        <param name="force_TPP_compatibility" value="false"/>
+        <param name="convert_to_chromatograms" value="false"/>
+        <param name="write_scan_index" value="true"/>
+        <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
+        <param name="lossy_mass_accuracy" value="-1.0"/>
+        <param name="process_lowmemory" value="false"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="FileConverter_14_output.consensusparquet"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_33.tmp.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
+      <param name="out_type" value="consensusXML"/>
+      <section name="RawToMzML">
+        <param name="no_peak_picking" value="false"/>
+        <param name="no_zlib_compression" value="false"/>
+        <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_FileConverter_34 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="UID_postprocessing" value="ensure"/>
+        <param name="TIC_DTA2D" value="false"/>
+        <param name="MGF_compact" value="false"/>
+        <param name="force_MaxQuant_compatibility" value="false"/>
+        <param name="force_TPP_compatibility" value="false"/>
+        <param name="convert_to_chromatograms" value="false"/>
+        <param name="write_scan_index" value="true"/>
+        <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
+        <param name="lossy_mass_accuracy" value="-1.0"/>
+        <param name="process_lowmemory" value="false"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="FileConverter_9_output.featureparquet"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_34.tmp.consensusparquet" compare="sim_size" delta_frac="0.7"/>
+      <param name="out_type" value="consensusparquet"/>
+      <section name="RawToMzML">
+        <param name="no_peak_picking" value="false"/>
+        <param name="no_zlib_compression" value="false"/>
+        <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_FileConverter_34_back -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="UID_postprocessing" value="ensure"/>
+        <param name="TIC_DTA2D" value="false"/>
+        <param name="MGF_compact" value="false"/>
+        <param name="force_MaxQuant_compatibility" value="false"/>
+        <param name="force_TPP_compatibility" value="false"/>
+        <param name="convert_to_chromatograms" value="false"/>
+        <param name="write_scan_index" value="true"/>
+        <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
+        <param name="lossy_mass_accuracy" value="-1.0"/>
+        <param name="process_lowmemory" value="false"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="${TESTS_TEMP_DIR}/FileConverter_34.tmp.consensusparquet"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_34.back.tmp.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
+      <param name="out_type" value="consensusXML"/>
+      <section name="RawToMzML">
+        <param name="no_peak_picking" value="false"/>
+        <param name="no_zlib_compression" value="false"/>
+        <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_FileConverter_35 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="UID_postprocessing" value="ensure"/>
+        <param name="TIC_DTA2D" value="false"/>
+        <param name="MGF_compact" value="false"/>
+        <param name="force_MaxQuant_compatibility" value="false"/>
+        <param name="force_TPP_compatibility" value="false"/>
+        <param name="convert_to_chromatograms" value="false"/>
+        <param name="write_scan_index" value="true"/>
+        <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
+        <param name="lossy_mass_accuracy" value="-1.0"/>
+        <param name="process_lowmemory" value="false"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="FileConverter_9_output.featureXML"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_35.tmp.consensusparquet" compare="sim_size" delta_frac="0.7"/>
+      <param name="out_type" value="consensusparquet"/>
+      <section name="RawToMzML">
+        <param name="no_peak_picking" value="false"/>
+        <param name="no_zlib_compression" value="false"/>
+        <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_FileConverter_35_back -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="UID_postprocessing" value="ensure"/>
+        <param name="TIC_DTA2D" value="false"/>
+        <param name="MGF_compact" value="false"/>
+        <param name="force_MaxQuant_compatibility" value="false"/>
+        <param name="force_TPP_compatibility" value="false"/>
+        <param name="convert_to_chromatograms" value="false"/>
+        <param name="write_scan_index" value="true"/>
+        <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
+        <param name="lossy_mass_accuracy" value="-1.0"/>
+        <param name="process_lowmemory" value="false"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="${TESTS_TEMP_DIR}/FileConverter_35.tmp.consensusparquet"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_35.back.tmp.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
+      <param name="out_type" value="consensusXML"/>
+      <section name="RawToMzML">
+        <param name="no_peak_picking" value="false"/>
+        <param name="no_zlib_compression" value="false"/>
+        <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_FileConverter_36 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="UID_postprocessing" value="ensure"/>
+        <param name="TIC_DTA2D" value="false"/>
+        <param name="MGF_compact" value="false"/>
+        <param name="force_MaxQuant_compatibility" value="false"/>
+        <param name="force_TPP_compatibility" value="false"/>
+        <param name="convert_to_chromatograms" value="false"/>
+        <param name="write_scan_index" value="true"/>
+        <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
+        <param name="lossy_mass_accuracy" value="-1.0"/>
+        <param name="process_lowmemory" value="false"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="FileConverter_9_output.featureparquet"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_36.tmp.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
+      <param name="out_type" value="consensusXML"/>
+      <section name="RawToMzML">
+        <param name="no_peak_picking" value="false"/>
+        <param name="no_zlib_compression" value="false"/>
+        <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_FileConverter_37 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="UID_postprocessing" value="ensure"/>
+        <param name="TIC_DTA2D" value="false"/>
+        <param name="MGF_compact" value="false"/>
+        <param name="force_MaxQuant_compatibility" value="false"/>
+        <param name="force_TPP_compatibility" value="false"/>
+        <param name="convert_to_chromatograms" value="false"/>
+        <param name="write_scan_index" value="true"/>
+        <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
+        <param name="lossy_mass_accuracy" value="-1.0"/>
+        <param name="process_lowmemory" value="false"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="FileFilter_44_input.mzML"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_37.tmp.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
+      <param name="out_type" value="consensusXML"/>
+      <section name="RawToMzML">
+        <param name="no_peak_picking" value="false"/>
+        <param name="no_zlib_compression" value="false"/>
+        <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_FileConverter_38 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="UID_postprocessing" value="ensure"/>
+        <param name="TIC_DTA2D" value="false"/>
+        <param name="MGF_compact" value="false"/>
+        <param name="force_MaxQuant_compatibility" value="false"/>
+        <param name="force_TPP_compatibility" value="false"/>
+        <param name="convert_to_chromatograms" value="false"/>
+        <param name="write_scan_index" value="true"/>
+        <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
+        <param name="lossy_mass_accuracy" value="-1.0"/>
+        <param name="process_lowmemory" value="true"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="FileFilter_1_input.mzML"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_38.tmp.mzML.gz" compare="sim_size" delta_frac="0.7"/>
+      <param name="out_type" value="mzML"/>
+      <section name="RawToMzML">
+        <param name="no_peak_picking" value="false"/>
+        <param name="no_zlib_compression" value="false"/>
+        <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_FileConverter_39 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="UID_postprocessing" value="ensure"/>
+        <param name="TIC_DTA2D" value="false"/>
+        <param name="MGF_compact" value="false"/>
+        <param name="force_MaxQuant_compatibility" value="false"/>
+        <param name="force_TPP_compatibility" value="false"/>
+        <param name="convert_to_chromatograms" value="false"/>
+        <param name="write_scan_index" value="true"/>
+        <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
+        <param name="lossy_mass_accuracy" value="-1.0"/>
+        <param name="process_lowmemory" value="false"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="FileFilter_1_input.mzML"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_39.tmp.mgf.gz" compare="sim_size" delta_frac="0.7"/>
+      <section name="RawToMzML">
+        <param name="no_peak_picking" value="false"/>
+        <param name="no_zlib_compression" value="false"/>
+        <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_FileConverter_nonascii -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="UID_postprocessing" value="ensure"/>
+        <param name="TIC_DTA2D" value="false"/>
+        <param name="MGF_compact" value="false"/>
+        <param name="force_MaxQuant_compatibility" value="false"/>
+        <param name="force_TPP_compatibility" value="false"/>
+        <param name="convert_to_chromatograms" value="false"/>
+        <param name="write_scan_index" value="true"/>
+        <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
+        <param name="lossy_mass_accuracy" value="-1.0"/>
+        <param name="process_lowmemory" value="false"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="${TESTS_TEMP_DIR}/FileConverter_äö_in.mzData"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_äö_out.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="out_type" value="mzML"/>
+      <section name="RawToMzML">
+        <param name="no_peak_picking" value="false"/>
+        <param name="no_zlib_compression" value="false"/>
+        <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_FileConverter_RAW_1 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="UID_postprocessing" value="ensure"/>
+        <param name="TIC_DTA2D" value="false"/>
+        <param name="MGF_compact" value="false"/>
+        <param name="force_MaxQuant_compatibility" value="false"/>
+        <param name="force_TPP_compatibility" value="false"/>
+        <param name="convert_to_chromatograms" value="false"/>
+        <param name="write_scan_index" value="true"/>
+        <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
+        <param name="lossy_mass_accuracy" value="-1.0"/>
+        <param name="process_lowmemory" value="false"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="${THERMO_RAW_TEST_DATA}"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FileConverter_RAW_1.tmp.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="out_type" value="mzML"/>
+      <section name="RawToMzML">
+        <param name="no_peak_picking" value="false"/>
+        <param name="no_zlib_compression" value="false"/>
+        <param name="include_noise" value="false"/>
+        <param name="reader" value="inprocess"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -1133,18 +1855,23 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="IDFileConverter_32_output.tmp.mzml"/>
-      <output name="out" value="IDFileConverter_32_output.mgf" compare="sim_size" delta_frac="0.7" ftype="mgf"/>
+      <param name="in" value="${TESTS_TEMP_DIR}/IDFileConverter_32_output.tmp.mzml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/IDFileConverter_32_output_mgf.tmp.mgf" compare="sim_size" delta_frac="0.7" ftype="mgf"/>
       <param name="out_type" value="mgf"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -1167,18 +1894,179 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="IDFileConverter_33_output.tmp.mzml"/>
-      <output name="out" value="IDFileConverter_33_output.mgf" compare="sim_size" delta_frac="0.7" ftype="mgf"/>
+      <param name="in" value="${TESTS_TEMP_DIR}/IDFileConverter_33_output.tmp.mzml"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/IDFileConverter_33_output_mgf.tmp.mgf" compare="sim_size" delta_frac="0.7" ftype="mgf"/>
       <param name="out_type" value="mgf"/>
       <section name="RawToMzML">
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_FeatureLinkerUnlabeled_parquet_prep1 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="UID_postprocessing" value="ensure"/>
+        <param name="TIC_DTA2D" value="false"/>
+        <param name="MGF_compact" value="false"/>
+        <param name="force_MaxQuant_compatibility" value="false"/>
+        <param name="force_TPP_compatibility" value="false"/>
+        <param name="convert_to_chromatograms" value="false"/>
+        <param name="write_scan_index" value="true"/>
+        <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
+        <param name="lossy_mass_accuracy" value="-1.0"/>
+        <param name="process_lowmemory" value="false"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="MapAlignerPoseClustering_1_input1.featureXML"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FLU_parquet_in1.featureparquet" compare="sim_size" delta_frac="0.7"/>
+      <param name="out_type" value="featureparquet"/>
+      <section name="RawToMzML">
+        <param name="no_peak_picking" value="false"/>
+        <param name="no_zlib_compression" value="false"/>
+        <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_FeatureLinkerUnlabeled_parquet_prep2 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="UID_postprocessing" value="ensure"/>
+        <param name="TIC_DTA2D" value="false"/>
+        <param name="MGF_compact" value="false"/>
+        <param name="force_MaxQuant_compatibility" value="false"/>
+        <param name="force_TPP_compatibility" value="false"/>
+        <param name="convert_to_chromatograms" value="false"/>
+        <param name="write_scan_index" value="true"/>
+        <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
+        <param name="lossy_mass_accuracy" value="-1.0"/>
+        <param name="process_lowmemory" value="false"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="MapAlignerPoseClustering_1_input2.featureXML"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FLU_parquet_in2.featureparquet" compare="sim_size" delta_frac="0.7"/>
+      <param name="out_type" value="featureparquet"/>
+      <section name="RawToMzML">
+        <param name="no_peak_picking" value="false"/>
+        <param name="no_zlib_compression" value="false"/>
+        <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_FeatureLinkerUnlabeled_parquet_prep3 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="UID_postprocessing" value="ensure"/>
+        <param name="TIC_DTA2D" value="false"/>
+        <param name="MGF_compact" value="false"/>
+        <param name="force_MaxQuant_compatibility" value="false"/>
+        <param name="force_TPP_compatibility" value="false"/>
+        <param name="convert_to_chromatograms" value="false"/>
+        <param name="write_scan_index" value="true"/>
+        <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
+        <param name="lossy_mass_accuracy" value="-1.0"/>
+        <param name="process_lowmemory" value="false"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="MapAlignerPoseClustering_1_input3.featureXML"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FLU_parquet_in3.featureparquet" compare="sim_size" delta_frac="0.7"/>
+      <param name="out_type" value="featureparquet"/>
+      <section name="RawToMzML">
+        <param name="no_peak_picking" value="false"/>
+        <param name="no_zlib_compression" value="false"/>
+        <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_FeatureLinkerUnlabeled_parquet_back -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="UID_postprocessing" value="ensure"/>
+        <param name="TIC_DTA2D" value="false"/>
+        <param name="MGF_compact" value="false"/>
+        <param name="force_MaxQuant_compatibility" value="false"/>
+        <param name="force_TPP_compatibility" value="false"/>
+        <param name="convert_to_chromatograms" value="false"/>
+        <param name="write_scan_index" value="true"/>
+        <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
+        <param name="lossy_mass_accuracy" value="-1.0"/>
+        <param name="process_lowmemory" value="false"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="${TESTS_TEMP_DIR}/FLU_parquet_out.consensusparquet"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/FLU_parquet_out.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
+      <param name="out_type" value="consensusXML"/>
+      <section name="RawToMzML">
+        <param name="no_peak_picking" value="false"/>
+        <param name="no_zlib_compression" value="false"/>
+        <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -1201,6 +2089,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
@@ -1213,40 +2102,10 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
       </section>
-      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
-      <output name="ctd_out" ftype="xml">
-        <assert_contents>
-          <is_valid_xml/>
-        </assert_contents>
-      </output>
-      <assert_stdout>
-        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
-      </assert_stdout>
-    </test>
-    <!-- TOPP_THERMORAWFILEPARSER_1 -->
-    <test expect_num_outputs="2">
-      <section name="adv_opts">
-        <param name="UID_postprocessing" value="ensure"/>
-        <param name="TIC_DTA2D" value="false"/>
-        <param name="MGF_compact" value="false"/>
-        <param name="force_MaxQuant_compatibility" value="false"/>
-        <param name="force_TPP_compatibility" value="false"/>
-        <param name="convert_to_chromatograms" value="false"/>
-        <param name="write_scan_index" value="true"/>
-        <param name="lossy_compression" value="false"/>
-        <param name="lossy_mass_accuracy" value="-1.0"/>
-        <param name="process_lowmemory" value="false"/>
-        <param name="force" value="false"/>
-        <param name="test" value="true"/>
-      </section>
-      <param name="in" value="ginkgotoxin-ms-switching.raw"/>
-      <output name="out" value="ginkgotoxin-ms-switching_out.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
-      <param name="out_type" value="mzML"/>
-      <section name="RawToMzML">
-        <param name="no_peak_picking" value="false"/>
-        <param name="no_zlib_compression" value="false"/>
-        <param name="include_noise" value="false"/>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -1269,6 +2128,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="convert_to_chromatograms" value="false"/>
         <param name="write_scan_index" value="true"/>
         <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <param name="lossy_mass_accuracy" value="-1.0"/>
         <param name="process_lowmemory" value="false"/>
         <param name="force" value="false"/>
@@ -1281,6 +2141,10 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_peak_picking" value="false"/>
         <param name="no_zlib_compression" value="false"/>
         <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
       </section>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
@@ -1301,6 +2165,6 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
   <help><![CDATA[Converts between different MS file formats.
 
 
-For more information, visit https://openms.de/doxygen/release/3.2.0/html/TOPP_FileConverter.html]]></help>
+For more information, visit http://www.openms.de/doxygen/release/3.6.0/html/TOPP_FileConverter.html]]></help>
   <expand macro="references"/>
 </tool>

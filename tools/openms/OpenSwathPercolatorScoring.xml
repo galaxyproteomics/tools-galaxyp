@@ -1,0 +1,131 @@
+<!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
+<!--Proposed Tool Section: [Targeted Experiments and OpenSWATH]-->
+<tool id="OpenSwathPercolatorScoring" name="OpenSwathPercolatorScoring" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="23.0">
+  <description>Rescore OpenSWATH OSW / OSWPQ results with in-process Percolator</description>
+  <macros>
+    <token name="@EXECUTABLE@">OpenSwathPercolatorScoring</token>
+    <import>macros.xml</import>
+  </macros>
+  <expand macro="requirements"/>
+  <expand macro="stdio"/>
+  <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
+@EXT_FOO@
+#import re
+
+## Preprocessing
+mkdir in &&
+cp '$in' 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)' &&
+#if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir out &&
+#end if
+
+## Main program call
+
+set -o pipefail &&
+@EXECUTABLE@ -write_ctd ./ &&
+python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
+@EXECUTABLE@ -ini @EXECUTABLE@.ctd
+-in
+'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
+#if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  -out
+  'out/output.${gxy2omsext("osw")}'
+#end if
+#if len(str($OPTIONAL_OUTPUTS).split(',')) == 0
+  | tee '$stdout'
+#end if
+
+## Postprocessing
+#if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  && mv 'out/output.${gxy2omsext("osw")}' '$out'
+#end if
+#if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
+  && mv '@EXECUTABLE@.ctd' '$ctd_out'
+#end if]]></command>
+  <configfiles>
+    <inputs name="args_json" data_style="paths"/>
+    <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
+  </configfiles>
+  <inputs>
+    <param argument="-in" type="data" format="osw" label="Input OpenSWATH result file (.osw) or OSWPQ parquet archive/directory (.oswpq)" help=" select osw data sets(s)"/>
+    <param argument="-level" type="select" multiple="true" optional="false" label="One or more scoring levels to run sequentially" help="Use 'ms2 transition' or 'ms1ms2 transition' to derive peak-group and transition scores from an unscored input">
+      <option value="ms1">ms1</option>
+      <option value="ms2">ms2</option>
+      <option value="ms1ms2" selected="true">ms1ms2</option>
+      <option value="transition">transition</option>
+      <expand macro="list_string_san" name="level"/>
+    </param>
+    <section name="transition" title="" help="" expanded="false">
+      <param name="peakgroup_max_rank" argument="-transition:peakgroup_max_rank" type="integer" min="1" value="1" label="Transition scoring: maximum MS2 peak-group rank retained for transition rescoring" help=""/>
+      <param name="peakgroup_max_pep" argument="-transition:peakgroup_max_pep" type="float" min="0.0" max="1.0" value="0.7" label="Transition scoring: maximum MS2 peak-group PEP retained for transition rescoring" help=""/>
+      <param name="max_isotope_overlap" argument="-transition:max_isotope_overlap" type="float" min="0.0" value="0.5" label="Transition scoring: maximum transition isotope-overlap score retained for rescoring" help=""/>
+      <param name="min_log_sn" argument="-transition:min_log_sn" type="float" value="0.0" label="Transition scoring: minimum log signal-to-noise score retained for rescoring" help=""/>
+    </section>
+    <section name="percolator" title="" help="" expanded="false">
+      <param name="c_pos" argument="-percolator:c_pos" type="float" min="0.0" value="0.1" label="Positive regularization constant (C+)" help=""/>
+      <param name="c_neg" argument="-percolator:c_neg" type="float" min="0.0" value="0.0" label="Negative regularization constant (C-)" help="0 = auto-select"/>
+      <param name="test_fdr" argument="-percolator:test_fdr" type="float" min="0.0" max="1.0" value="0.01" label="Test FDR threshold for SVM direction selection" help=""/>
+      <param name="train_fdr" argument="-percolator:train_fdr" type="float" min="0.0" max="1.0" value="0.01" label="Training FDR for SVM iterations" help=""/>
+      <param name="num_iterations" argument="-percolator:num_iterations" type="integer" min="1" value="10" label="Number of SVM training iterations" help=""/>
+      <param name="initial_direction" argument="-percolator:initial_direction" type="text" optional="true" value="" label="Feature name to use as the initial scoring direction" help="Prefix with '-' if LOWER values are more target-like (e.g. 'COMET:lnExpect' means higher is better; '-COMET:lnExpect' means lower is better). Leave empty (default) to let Percolator auto-select by testing every feature in both directions and picking the one that separates the most targets at train_fdr">
+        <expand macro="list_string_san" name="initial_direction"/>
+      </param>
+      <param name="pep_method" argument="-percolator:pep_method" type="select" label="Posterior error probability estimator: 'logistic_regression' (target-decoy competition + isotonic fit; legacy name, not actually logistic regression), 'isotonic' (target-q → pep monotone regression), or 'nonparametric' (kernel smoothing)" help="">
+        <option value="logistic_regression" selected="true">logistic_regression</option>
+        <option value="isotonic">isotonic</option>
+        <option value="nonparametric">nonparametric</option>
+        <expand macro="list_string_san" name="pep_method"/>
+      </param>
+      <param name="seed" argument="-percolator:seed" type="integer" value="1" label="Random seed for CV splitting" help=""/>
+      <param name="target_decoy_metavalue" argument="-percolator:target_decoy_metavalue" type="text" value="target_decoy" label="Meta-value on PeptideHit indicating target/decoy ('target'/'decoy')" help="">
+        <expand macro="list_string_san" name="target_decoy_metavalue"/>
+      </param>
+      <param name="normalizer" argument="-percolator:normalizer" type="select" label="Feature normalizer: 'stdv' (zero-mean, unit-stdv, default), 'uni' (min/max), or 'none' (no normalization)" help="">
+        <option value="stdv" selected="true">stdv</option>
+        <option value="uni">uni</option>
+        <option value="none">none</option>
+        <expand macro="list_string_san" name="normalizer"/>
+      </param>
+      <param name="train_best_positive" argument="-percolator:train_best_positive" type="boolean" truevalue="true" falsevalue="false" checked="true" label="During TRAINING, use only the best PSM per spectrum as a positive example" help="Affects the SVM (weights change). Orthogonal to post_processing_tdc. Default is 'true' because typical OpenMS inputs are multi-hit-per-spectrum (Comet/MSGF+/Sage top-N, OSW peak groups). Inert on one-hit-per-spectrum inputs. Note: the upstream percolator binary defaults this to off — PercolatorAdapter preserves the CLI contract by mirroring its flag state when writing this param"/>
+      <param name="post_processing_tdc" argument="-percolator:post_processing_tdc" type="boolean" truevalue="true" falsevalue="false" checked="true" label="AFTER training, before PEP/q-value calculation, apply Target-Decoy Competition: keep only the highest-scoring PSM per (scan, mass, charge) and drop the rest from the score set" help="Does NOT touch the SVM — only the score distribution used for FDR. Default is 'true' because without TDC on multi-hit input, q-values count every candidate as an independent 'chance' and drift optimistic. Inert on one-hit-per-spectrum inputs. Note: the upstream percolator binary defaults this to off — PercolatorAdapter preserves the CLI contract by mirroring its flag state when writing this param"/>
+      <param name="nested_xval_bins" argument="-percolator:nested_xval_bins" type="integer" min="1" value="1" label="Number of nested CV bins for grid search of Cpos/Cneg" help="Upstream default for cross validation is 3; 1 disables nested search"/>
+      <param name="subset_max_train" argument="-percolator:subset_max_train" type="integer" min="0" value="100000" label="Cap on the training set size (0 = use all)" help="Default 100000 bounds training time on very large inputs (&gt;1M PSMs) at negligible quality loss. Sampling is reservoir-based, keyed by (scan, exp_mass) so all PSMs sharing a spectrum travel together; the trained model is then applied to ALL input rows via a second scoring pass (matches upstream Caller.cpp behavior). Inert when the input size is at or below the cap. Note: upstream percolator binary defaults this to 0 — PercolatorAdapter preserves the CLI contract by passing its own int option (CLI default 0) through to this param"/>
+      <param name="report_as_main_score" argument="-percolator:report_as_main_score" type="select" label="Which Percolator output to stamp as the main PeptideHit score after rescoring" help="'none' (default) leaves hit.getScore() and the PeptideIdentification score_type untouched — callers who want the original search score preserved (or who run their own post-processing like PercolatorAdapter) rely on this. 'q-value' sets main score to the PSM-level q-value and marks higher_score_better=false. 'pep' sets main score to the PEP and marks higher_score_better=false. 'svm' sets main score to the SVM discriminant and marks higher_score_better=true. All three Percolator outputs remain accessible as percolator_{score,q_value,pep} meta values regardless of this setting">
+        <option value="none" selected="true">none</option>
+        <option value="q-value">q-value</option>
+        <option value="pep">pep</option>
+        <option value="svm">svm</option>
+        <expand macro="list_string_san" name="report_as_main_score"/>
+      </param>
+      <param name="num_threads" argument="-percolator:num_threads" type="integer" min="1" max="3" value="3" label="Number of OpenMP threads for cross-validation (one per CV fold; max useful = 3)" help="Matches upstream's default"/>
+      <param name="use_pi0" argument="-percolator:use_pi0" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Enable pi0 correction when computing q-values and PEPs (default)" help="When true, pi0 is estimated per CV fold via bootstrap spline fit on the target score distribution using decoys as the null. When false, pi0 is fixed at 1.0 (pure target-decoy FDR, no bootstrap estimation). Affects both Scores::calcQvals and Scores::calcPep. Upstream percolator has no CLI flag for this; the in-library Scores(bool usePi0) constructor is the only toggle, matched here"/>
+    </section>
+    <expand macro="adv_opts_macro">
+      <param argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
+      <param argument="-test" type="hidden" value="False" label="Enables the test mode (needed for internal use only)" help="" optional="true">
+        <expand macro="list_string_san" name="test"/>
+      </param>
+    </expand>
+    <param name="OPTIONAL_OUTPUTS" type="select" optional="true" multiple="true" label="Optional outputs">
+      <option value="out_FLAG">out (Optional output path)</option>
+      <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+    </param>
+  </inputs>
+  <outputs>
+    <data name="out" label="${tool.name} on ${on_string}: out" format="osw">
+      <filter>OPTIONAL_OUTPUTS is not None and "out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+    <data name="stdout" format="txt" label="${tool.name} on ${on_string}: stdout">
+      <filter>OPTIONAL_OUTPUTS is None</filter>
+    </data>
+    <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
+      <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+  </outputs>
+  <tests/>
+  <help><![CDATA[Rescore OpenSWATH OSW / OSWPQ results with in-process Percolator.
+
+
+For more information, visit http://www.openms.de/doxygen/release/3.6.0/html/TOPP_OpenSwathPercolatorScoring.html]]></help>
+  <expand macro="references"/>
+</tool>

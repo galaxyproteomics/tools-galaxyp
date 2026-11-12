@@ -1,0 +1,200 @@
+<!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
+<!--Proposed Tool Section: [Spectrum processing: Centroiding]-->
+<tool id="PeakPickerIM" name="PeakPickerIM" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="23.0">
+  <description>Applies PeakPickerIM to an mzML or Bruker .d file</description>
+  <macros>
+    <token name="@EXECUTABLE@">PeakPickerIM</token>
+    <import>macros.xml</import>
+  </macros>
+  <expand macro="requirements"/>
+  <expand macro="stdio"/>
+  <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
+@EXT_FOO@
+#import re
+
+## Preprocessing
+mkdir in &&
+cp '$in' 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)' &&
+mkdir out &&
+
+## Main program call
+
+set -o pipefail &&
+@EXECUTABLE@ -write_ctd ./ &&
+python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
+@EXECUTABLE@ -ini @EXECUTABLE@.ctd
+-in
+'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
+-out
+'out/output.${gxy2omsext("mzml")}'
+
+## Postprocessing
+&& mv 'out/output.${gxy2omsext("mzml")}' '$out'
+#if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
+  && mv '@EXECUTABLE@.ctd' '$ctd_out'
+#end if]]></command>
+  <configfiles>
+    <inputs name="args_json" data_style="paths"/>
+    <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
+  </configfiles>
+  <inputs>
+    <param argument="-in" type="data" format="mzml" label="Input file (mzML or Bruker .d)" help=" select mzml data sets(s)"/>
+    <section name="algorithm" title="Algorithm parameters for PeakPickerIM (organized into pickIMTraces, pickIMCluster, pickIMElutionProfiles)" help="" expanded="false">
+      <section name="pickIMTraces" title="" help="" expanded="false">
+        <param name="sum_tolerance_mz" argument="-algorithm:pickIMTraces:sum_tolerance_mz" type="float" value="1.0" label="Tolerance for summing adjacent m/z peaks (ppm)" help=""/>
+        <param name="sum_tolerance_im" argument="-algorithm:pickIMTraces:sum_tolerance_im" type="float" value="0.0006" label="Tolerance for summing adjacent ion mobility peaks (in 1/K0 units)" help="For CCS data, use larger values (e.g., 1.0)"/>
+        <param name="gauss_ppm_tolerance" argument="-algorithm:pickIMTraces:gauss_ppm_tolerance" type="float" value="5.0" label="Gaussian smoothing m/z tolerance in ppm" help=""/>
+        <param name="sgolay_frame_length" argument="-algorithm:pickIMTraces:sgolay_frame_length" type="integer" value="5" label="Savitzky-Golay smoothing frame length" help=""/>
+        <param name="sgolay_polynomial_order" argument="-algorithm:pickIMTraces:sgolay_polynomial_order" type="integer" value="3" label="Savitzky-Golay smoothing polynomial orde" help=""/>
+      </section>
+      <section name="pickIMCluster" title="" help="" expanded="false">
+        <param name="ppm_tolerance_cluster" argument="-algorithm:pickIMCluster:ppm_tolerance_cluster" type="float" value="50.0" label="m/z tolerance in ppm for clustering" help=""/>
+        <param name="im_tolerance_cluster" argument="-algorithm:pickIMCluster:im_tolerance_cluster" type="float" value="0.1" label="Ion mobility tolerance for clustering (in 1/K0 units)" help="For CCS data, use larger values (e.g., 10-20)"/>
+      </section>
+      <section name="pickIMElutionProfiles" title="" help="" expanded="false">
+        <param name="ppm_tolerance_elution" argument="-algorithm:pickIMElutionProfiles:ppm_tolerance_elution" type="float" value="50.0" label="Mass trace m/z tolerance in ppm" help=""/>
+      </section>
+    </section>
+    <expand macro="adv_opts_macro">
+      <param argument="-processOption" type="select" label="Whether to load all data and process them in-memory or process on-the-fly (lowmemory) without loading the whole file into memory first" help="">
+        <option value="inmemory" selected="true">inmemory</option>
+        <option value="lowmemory">lowmemory</option>
+        <expand macro="list_string_san" name="processOption"/>
+      </param>
+      <param argument="-method" type="select" label="Method to pick peaks in IM dimension" help="">
+        <option value="mobilogram" selected="true">mobilogram</option>
+        <option value="cluster">cluster</option>
+        <option value="traces">traces</option>
+        <expand macro="list_string_san" name="method"/>
+      </param>
+      <param argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
+      <param argument="-test" type="hidden" value="False" label="Enables the test mode (needed for internal use only)" help="" optional="true">
+        <expand macro="list_string_san" name="test"/>
+      </param>
+    </expand>
+    <param name="OPTIONAL_OUTPUTS" type="select" optional="true" multiple="true" label="Optional outputs">
+      <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+    </param>
+  </inputs>
+  <outputs>
+    <data name="out" label="${tool.name} on ${on_string}: out" format="mzml"/>
+    <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
+      <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+  </outputs>
+  <tests>
+    <!-- TOPP_PeakPickerIM_1 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="processOption" value="inmemory"/>
+        <param name="method" value="mobilogram"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="PeakPickerIM_input_1.mzML"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/PeakPickerIM_1.tmp.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <section name="algorithm">
+        <section name="pickIMTraces">
+          <param name="sum_tolerance_mz" value="1.0"/>
+          <param name="sum_tolerance_im" value="0.0006"/>
+          <param name="gauss_ppm_tolerance" value="5.0"/>
+          <param name="sgolay_frame_length" value="5"/>
+          <param name="sgolay_polynomial_order" value="3"/>
+        </section>
+        <section name="pickIMCluster">
+          <param name="ppm_tolerance_cluster" value="50.0"/>
+          <param name="im_tolerance_cluster" value="0.1"/>
+        </section>
+        <section name="pickIMElutionProfiles">
+          <param name="ppm_tolerance_elution" value="50.0"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_PeakPickerIM_2 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="processOption" value="inmemory"/>
+        <param name="method" value="cluster"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="PeakPickerIM_input_1.mzML"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/PeakPickerIM_2.tmp.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <section name="algorithm">
+        <section name="pickIMTraces">
+          <param name="sum_tolerance_mz" value="1.0"/>
+          <param name="sum_tolerance_im" value="0.0006"/>
+          <param name="gauss_ppm_tolerance" value="5.0"/>
+          <param name="sgolay_frame_length" value="5"/>
+          <param name="sgolay_polynomial_order" value="3"/>
+        </section>
+        <section name="pickIMCluster">
+          <param name="ppm_tolerance_cluster" value="50.0"/>
+          <param name="im_tolerance_cluster" value="0.1"/>
+        </section>
+        <section name="pickIMElutionProfiles">
+          <param name="ppm_tolerance_elution" value="50.0"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_PeakPickerIM_3 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="processOption" value="inmemory"/>
+        <param name="method" value="traces"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="PeakPickerIM_input_1.mzML"/>
+      <output name="out" value="${TESTS_TEMP_DIR}/PeakPickerIM_3.tmp.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <section name="algorithm">
+        <section name="pickIMTraces">
+          <param name="sum_tolerance_mz" value="1.0"/>
+          <param name="sum_tolerance_im" value="0.0006"/>
+          <param name="gauss_ppm_tolerance" value="5.0"/>
+          <param name="sgolay_frame_length" value="5"/>
+          <param name="sgolay_polynomial_order" value="3"/>
+        </section>
+        <section name="pickIMCluster">
+          <param name="ppm_tolerance_cluster" value="50.0"/>
+          <param name="im_tolerance_cluster" value="0.1"/>
+        </section>
+        <section name="pickIMElutionProfiles">
+          <param name="ppm_tolerance_elution" value="50.0"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+  </tests>
+  <help><![CDATA[Applies PeakPickerIM to an mzML or Bruker .d file
+
+
+For more information, visit http://www.openms.de/doxygen/release/3.6.0/html/TOPP_PeakPickerIM.html]]></help>
+  <expand macro="references"/>
+</tool>
