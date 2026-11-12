@@ -18,11 +18,6 @@ if [[ "$?" -ne "0" ]]; then >&2 echo 'Digestor failed'; >&2 echo -e "stderr:\n$(
 EICExtractor -test -in spectra.mzML -pos FileConverter_10_input.edta -out EICExtractor.csv > EICExtractor.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'EICExtractor failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
-#TODO ERPairFinder
-
-FeatureFinderIsotopeWavelet -test -in FeatureFinderCentroided_1_input.mzML -out  FeatureFinderIsotopeWavelet.featureXML > FeatureFinderIsotopeWavelet.stdout 2> stderr
-if [[ "$?" -ne "0" ]]; then >&2 echo 'FeatureFinderIsotopeWavelet failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
-
 
 # TODO? deprecated IDDecoyProbability
 
@@ -99,23 +94,11 @@ if [[ "$?" -ne "0" ]]; then >&2 echo 'SequenceCoverageCalculator failed'; >&2 ec
 
 # TODO SpecLibCreator
 
-SpectraFilterBernNorm -test -in  SpectraFilterSqrtMower_1_input.mzML -out  SpectraFilterBernNorm.mzML > SpectraFilterBernNorm.stdout 2> stderr
-if [[ "$?" -ne "0" ]]; then >&2 echo 'SpectraFilterBernNorm failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
-
-SpectraFilterMarkerMower -test -in  SpectraFilterSqrtMower_1_input.mzML -out  SpectraFilterMarkerMower.mzML > SpectraFilterMarkerMower.stdout 2> stderr
-if [[ "$?" -ne "0" ]]; then >&2 echo 'SpectraFilterMarkerMower failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
-
 SpectraFilterNLargest -test -in  SpectraFilterSqrtMower_1_input.mzML -out  SpectraFilterNLargest.mzML > SpectraFilterNLargest.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'SpectraFilterNLargest failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
 SpectraFilterNormalizer -test -in  SpectraFilterSqrtMower_1_input.mzML -out  SpectraFilterNormalizer.mzML > SpectraFilterNormalizer.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'SpectraFilterNormalizer failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
-
-SpectraFilterParentPeakMower -test -in  SpectraFilterSqrtMower_1_input.mzML -out  SpectraFilterParentPeakMower.mzML > SpectraFilterParentPeakMower.stdout 2> stderr
-if [[ "$?" -ne "0" ]]; then >&2 echo 'SpectraFilterParentPeakMower failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
-
-SpectraFilterScaler -test -in  SpectraFilterSqrtMower_1_input.mzML -out  SpectraFilterScaler.mzML > SpectraFilterScaler.stdout 2> stderr
-if [[ "$?" -ne "0" ]]; then >&2 echo 'SpectraFilterScaler failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
 SpectraFilterThresholdMower -test -in  SpectraFilterSqrtMower_1_input.mzML -out  SpectraFilterThresholdMower.mzML > SpectraFilterThresholdMower.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'SpectraFilterThresholdMower failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
