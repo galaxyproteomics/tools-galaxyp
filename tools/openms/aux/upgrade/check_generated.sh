@@ -21,7 +21,10 @@ note() { printf '%s\n' "$*"; }
 warn() { printf 'WARN: %s\n' "$*" >&2; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; failures=$((failures + 1)); }
 
-mapfile -t TOOLS < <(ls -1 *.xml | grep -v '^macros\.xml$')
+# the wrappers are the only files that carry a tool definition; the macros files
+# are shared includes (macros_discarded_auto.xml is an intentionally malformed
+# fragment file, see the discard step in test-data.sh)
+mapfile -t TOOLS < <(ls -1 *.xml | grep -v '^macros')
 
 case "${1:-}" in
 --freeze)
@@ -73,11 +76,21 @@ fi
 # 3. version / profile consistency: macros.xml, generator and wrappers must agree,
 #    and the help URLs must point at the documentation of that same version
 VERSION=$(grep -oP '<token name="@TOOL_VERSION@">\K[^<]+' macros.xml | head -1)
-GEN_VERSION=$(grep -oP '^VERSION=\K\S+' aux/generate.sh | head -1)
-TD_VERSION=$(grep -oP '^VERSION=\K\S+' test-data.sh | head -1)
+# the scripts read the version from macros.xml (single source of truth); a hard
+# coded version is also accepted but must agree with macros.xml
+GEN_VERSION=$(grep -oP '^VERSION=\K.*' aux/generate.sh | head -1)
+TD_VERSION=$(grep -oP '^VERSION=\K.*' test-data.sh | head -1)
+for _v in GEN_VERSION TD_VERSION; do
+    case "${!_v}" in
+        *'macros.xml'*) printf -v "$_v" '%s' "$VERSION";;
+    esac
+done
 GEN_PROFILE=$(grep -oP '^PROFILE="\K[^"]+' aux/generate.sh | head -1)
 note "version: macros.xml=${VERSION:-?} generate.sh=${GEN_VERSION:-?} test-data.sh=${TD_VERSION:-?}"
-[ "$VERSION" = "$GEN_VERSION" ] && [ "$VERSION" = "$TD_VERSION" ] \
+agrees() { # $1 = the assignment found in the script
+    [ "$1" = "$VERSION" ] || case "$1" in *macros.xml*) return 0;; *) return 1;; esac
+}
+agrees "$GEN_VERSION" && agrees "$TD_VERSION" \
     || fail "OpenMS version differs between macros.xml ($VERSION), aux/generate.sh ($GEN_VERSION) and test-data.sh ($TD_VERSION)"
 
 profiles=$(grep -hoP '^<tool [^>]*profile="\K[^"]+' "${TOOLS[@]}" | sort -u)

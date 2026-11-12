@@ -35,7 +35,8 @@ mkdir -p "$DEST"
 mapfile -t BINS < <(python3 - "$PREFIX" <<'PY'
 import glob, json, os, sys
 prefix = sys.argv[1]
-meta = sorted(glob.glob(os.path.join(prefix, "conda-meta", "openms-*.json")))
+meta = [p for p in glob.glob(os.path.join(prefix, "conda-meta", "*.json"))
+        if json.load(open(p)).get("name") == "openms"]
 if meta:
     pkg = json.load(open(meta[-1]))
     for entry in pkg["files"]:
