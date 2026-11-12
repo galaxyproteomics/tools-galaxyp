@@ -14,7 +14,9 @@ fi
 
 export OPENMSGIT="$tmp/OpenMS$VERSION.0-git"
 export OPENMSPKG="$tmp/OpenMS$VERSION-pkg/"
-export OPENMSENV="OpenMS$VERSION-env"
+# reuse an existing environment if one is given
+# export OPENMSENV=openms36
+export OPENMSENV="${OPENMSENV:-OpenMS$VERSION-env}"
 
 
 if [ -z "$CTDCONVERTER" ]; then
