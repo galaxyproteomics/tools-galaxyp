@@ -118,3 +118,35 @@ The pipeline no longer hardcodes anything that changed with 3.6:
 * `get_tests.py` `SKIP_LIST` still references removed tools
   (`TOPP_SiriusAdapter_*`), and `test-data.sh` carries commented `TOFCalibration`
   symlinks plus a `SiriusAdapter` sed hack.
+
+## Round 1.5 (3.6 regeneration) — closed
+
+Generation now runs end to end against the 3.6.0 CTDs: 152 CTDs -> 141 wrappers
+(11 blacklisted) + the hand-maintained `MascotAdapterOnline`. Three casualties of
+the jump 3.2 -> 3.6 needed a decision, all recorded here:
+
+* **D7 (CTDConverter, MapAligners)**: 3.6 added `in_spectra_files`/`out_spectra_files`
+  to `MapAligner{Identification,PoseClustering,TreeGuided}`. `get_corresponding_input()`
+  pairs a *list* output with the single input list of the same arity; with two input
+  lists the pairing for `-trafo_out` (one trafoXML per `-in`) is ambiguous, the function
+  returns `None`, `create_command()` then concatenates `None` and CTDConverter dies
+  (`TypeError ... NoneType ... to str`) instead of degrading. Decision: blacklist
+  `-trafo_out` for those three tools (spectra in/out kept) and file the proper fix
+  upstream (skip hardcoded/blacklisted params when pairing) — better than patching
+  the fork locally, which would make the pipeline unreproducible for others.
+* **D8 (formats)**: CTDConverter crashes with `KeyError: 'xic'` when an output has
+  several formats of which one is unmapped (`o2g[choice]` in `create_inputs`).
+  `aux/filetypes.txt` now maps the 3.6 formats that have an obvious Galaxy type:
+  `faa->fasta`, `prot.xml->protxml`, `traml->traml` (case variant), `xic->xml`,
+  `xim->xml`. Appended at the end of the file because the Galaxy->CTD direction is
+  first-wins (`xml` must stay `xml`, `fasta` must stay `fasta`). Still unmapped and
+  therefore silently degraded: `peff` (UniPEFF `out` falls back to `txt`),
+  `idparquet`/`featureparquet`/`consensusparquet`, `oswpq`, `fid`, `msalign`,
+  `feature`, `cachedMzML` — Galaxy has no datatype for them.
+* **23 wrappers without `<test>`** (13 of them new in 3.6) are covered by the global
+  `.lint_skip: TestsMissing`; giving them real tests stays deferred (item 4).
+
+Verification for this round: `aux/upgrade/check_generated.sh` -> *all static checks
+passed* (one WARN: host paths), `xmllint` clean on all 142 wrappers, all `ftype=`/`format=`
+values are Galaxy datatypes, no `type="output-dir"` parameter survived
+(`aux/strip_output_dirs.py`).
