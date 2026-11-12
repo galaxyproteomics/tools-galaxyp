@@ -9,7 +9,7 @@ later round does not re-litigate it.
 | round | date | scope | wrappers | F (fail, not allowlisted) | gate | notes |
 |---|---|---|---|---|---|---|
 | 0 | 2026-11-12 | pin upstream, snapshot 3.2+3.6 CTDs | 135 | n/a | n/a | **snapshots done** (`ctd-snapshots/3.2`, `/3.6`, provenance committed); the planemo baseline is still open — planemo is not installed here |
-| 1 | todo | tool set: 7 deprecations, 17 additions, blacklist dir-output tools | todo | n/a | todo | confirmed by the snapshot diff, see below |
+| 1 | 2026-11-12 | tool set: 7 deprecations, blacklist dir-output tools | 128 | n/a | n/a | wrappers moved to `deprecated/tools/openms/3.2/`, `MascotAdapterOnline` restored, 4 tools blacklisted; the 15 additions happen on regeneration |
 | 2 | todo | params/formats: `filetypes.txt`, `hardcoded_params.json` | todo | n/a | todo | full worklist auto-generated in `ctd-diff-3.2-3.6.md` §Action list |
 | 3 | todo | autotest failures by root cause | todo | todo | todo | 2-strike rule applies |
 | 4 | todo | manual tests, `.ini` migration, reference refresh | todo | todo | todo | every refreshed reference needs a note below |
@@ -22,6 +22,7 @@ later round does not re-litigate it.
 | D1 | `MascotAdapterOnline` | **restored to `tools/openms/`** (was moved to `deprecated/` in `b5c3d845`), normalised to `profile="23.0"` + docs 3.2.0 | it is *not* removed: `MascotAdapter` went away in 3.4.0, `MascotAdapterOnline` exists through 3.6.0 (`src/topp/executables.cmake`). It stays in `aux/tools_blacklist.txt` (broken upstream, #4412) and is therefore **not regenerated** — the file is hand-maintained until round 3 re-evaluates un-blacklisting it. |
 | D2 | `ParquetConverter`, `ParquetDiff`, `*-out_qpx` | blacklist / do not wrap | their outputs are *directories* of parquet files; Galaxy datasets are single files. Needs collection-in/collection-out support before it can be wrapped. |
 | D3 | `Decharger`, `MetaboliteAdductDecharger`, `MaRaClusterAdapter`, `FLASHDeconv`, `IDDecoyProbability`, `ProteomicsLFQ` | keep blacklisted | pre-existing reasons in `aux/tools_blacklist.txt`, unrelated to the version jump. |
+| D6 | layout of `deprecated/` | one subdirectory per archived suite state (`3.1/`, `3.2/`), each with its own `macros.xml` + `fill_ctd.py` | a wrapper's `<requirement>` pin must match the suite it was generated from. The 7 wrappers dropped in this upgrade are 3.2-generated, the 15 older ones are 3.1-generated; one shared `macros.xml` would have made one of the two groups install the wrong OpenMS. `<import>` resolves relative to the importing file, so this needs no edit to any wrapper. |
 | D5 | nested/stale `hardcoded_params.json` entries | prune in round 2 | `ctd_diff.py` lists 18 entries whose parameter no longer exists in 3.6 (`xml_out`, `separator`, `algorithm:tryptic_only`, `comet_version`, `sirius_executable`, ...). Pruning them cannot change any wrapper, so it is a pure cleanup commit. |
 | D4 | `FileConverter` raw path | open | 3.6 moved raw handling into `RawToMzML:*` and added `-RawToMzML:reader` (`inprocess` default on Linux). The hardcoded `RawToMzML:NET_executable=mono` / `ThermoRaw_executable=ThermoRawFileParser.exe` are ignored unless `reader=external`, and `mono` is no longer a recipe dependency. Decide in round 2. |
 
@@ -43,10 +44,16 @@ later round does not re-litigate it.
 
 Still open in round 0: the `planemo test --all` baseline of the 3.2 state.
 
-## Round 1 — tool set (pending, confirmed by the diff)
+## Round 1 — tool set (done)
 
-* **deprecate** (removed upstream): `IDMassAccuracy`, `MascotAdapter`, `OpenPepXLLF`,
-  `SpecLibCreator`, `SpecLibSearcher`, `TriqlerConverter`, `XTandemAdapter`.
+* **deprecated** (removed upstream, moved to `deprecated/tools/openms/3.2/`):
+  `IDMassAccuracy`, `MascotAdapter`, `OpenPepXLLF`, `SpecLibCreator`,
+  `SpecLibSearcher`, `TriqlerConverter`, `XTandemAdapter` — 135 -> 128 wrappers.
+* **blacklisted** for directory outputs (D2): `ParquetConverter`, `ParquetDiff`
+  (parquet directories), `OpenSwathExport`, `OpenSwathPeakMapExtractor` (their
+  only output is `out_dir`). Their `out_qpx`/`out_parquet`/`out_mod_analysis_dir`
+  parameters are blacklisted in `aux/hardcoded_params.json` as well, so that
+  `ProSE` etc. remain wrappable with just the file outputs.
 * **new tools, not wrapped yet**: `DIAuditor`, `FeatureFinderLFQ`, `INIUpdater`,
   `IsobaricWorkflow`, `MS1LabeledWorkflow`, `OpenNuXL`, `OpenSwathExport`,
   `OpenSwathInfer`, `OpenSwathPeakMapExtractor`, `OpenSwathPercolatorScoring`,
