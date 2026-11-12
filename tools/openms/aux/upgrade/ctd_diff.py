@@ -86,11 +86,32 @@ def load_hardcoded(path):
         data = json.load(handle)
     index = {}
     for pname, spec in data.items():
+        if not isinstance(spec, (list, dict)):   # "\#" comment keys
+            continue
         specs = spec if isinstance(spec, list) else [spec]
         for one in specs:
+            if not isinstance(one, dict):
+                continue
             for tool in one.get("tools") or [None]:
                 index.setdefault(tool, {}).setdefault(pname, []).append(one)
     return index
+
+
+def spec_for(hardcoded, tool, name):
+    """The hardcoded_params.json spec(s) that would match this CTD param."""
+    short = name.rsplit(":", 1)[-1]
+    for key in (tool, None):
+        entry = hardcoded.get(key) or {}
+        for candidate in (short, name):
+            if candidate in entry:
+                return entry[candidate]
+    return None
+
+
+def is_ignored(hardcoded, tool, name):
+    """True for params CTDConverter drops anyway (hardcoded value == "@")."""
+    specs = spec_for(hardcoded, tool, name)
+    return bool(specs) and any(spec.get("value") == "@" for spec in specs)
 
 
 def load_filetypes(path):
@@ -173,28 +194,95 @@ def diff_tool(old_params, new_params, tool, hardcoded, filetypes, with_desc):
         if fields:
             changes.append((name, o, n, fields))
 
-    # probable renames: same type, similar name, appearing exactly here
-    renames = []
-    for gone in list(removed):
-        best = None
+    # probable renames: same type, similar name, paired one-to-one greedily so
+    # that a batch of moves across subtrees does not produce swapped pairs
+    candidates = []
+    for gone in removed:
         for came in added:
             if old_params[gone]["type"] != new_params[came]["type"]:
                 continue
             if gone.rsplit(":", 1)[-1] == came.rsplit(":", 1)[-1]:
                 continue
             ratio = difflib.SequenceMatcher(None, gone, came).ratio()
-            if ratio >= 0.75 and (best is None or ratio > best[1]):
-                best = (came, ratio)
-        if best:
-            renames.append((gone, best[0], best[1]))
+            if ratio >= 0.75:
+                candidates.append((ratio, gone, came))
+    renames = []
+    for ratio, gone, came in sorted(candidates, reverse=True):
+        if gone in removed and came in added:
+            renames.append((gone, came, ratio))
             removed.remove(gone)
-            added.remove(best[0])
+            added.remove(came)
+    renames.sort()
     return {"removed": removed, "added": added, "changed": changes, "renames": renames}
 
 
 # --------------------------------------------------------------------------
 # reporting
 # --------------------------------------------------------------------------
+def render_actions(old_snap, new_snap, diffs, hardcoded, filetypes):
+    """Aggregate the deltas into the concrete edits only a human can decide."""
+    formats = {}
+    struct = {}
+    renames = []
+    for tool, d in sorted(diffs.items()):
+        for name, o, n, fields in d["changed"]:
+            if "formats" in fields and filetypes is not None:
+                for fmt in ctd_formats(n["formats"]):
+                    if fmt not in filetypes:
+                        formats.setdefault(fmt, set()).add(tool)
+            structural = sorted(set(fields) & {"type", "required", "advanced"})
+            if structural:
+                struct.setdefault(tool, []).append("%s (%s)" % (name, ", ".join(structural)))
+        for name in d["added"]:
+            if filetypes is not None:
+                for fmt in ctd_formats(new_snap[tool]["params"][name]["formats"]):
+                    if fmt not in filetypes:
+                        formats.setdefault(fmt, set()).add(tool)
+        renames += [(tool, gone, came) for gone, came, _r in d["renames"]]
+
+    short = {t: {p.rsplit(":", 1)[-1] for p in s["params"]} for t, s in new_snap.items()}
+    everywhere = set().union(*short.values()) if short else set()
+    stale = []
+    for key, entry in hardcoded.items():
+        for pname, specs in entry.items():
+            if any(spec.get("value") == "@" for spec in specs):
+                continue          # dropping a blacklist entry for a vanished param is harmless
+            base = pname.rsplit(":", 1)[-1]
+            if key is None and base not in everywhere:
+                stale.append((pname, "all tools"))
+            elif key is None:
+                continue
+            elif key not in short:
+                stale.append((pname, key + " (no such tool any more)"))
+            elif base not in short[key]:
+                stale.append((pname, key))
+
+    out = ["## Action list", ""]
+    if formats:
+        out += ["### `aux/filetypes.txt` — Galaxy has no extension for these formats", ""]
+        for fmt in sorted(formats):
+            out.append("- `%s`: %s" % (fmt, ", ".join(sorted(formats[fmt]))))
+        out.append("")
+    if stale:
+        out += ["### `aux/hardcoded_params.json` — entries whose parameter vanished", ""]
+        for pname, where in sorted(stale):
+            out.append("- `%s` (%s)" % (pname, where))
+        out.append("")
+    if renames:
+        out += ["### renamed parameters — check `.ini` fixtures, `test-data.sh` seds and hardcoded entries", ""]
+        for tool, gone, came in renames:
+            out.append("- `%s`: `%s` -> `%s`" % (tool, gone, came))
+        out.append("")
+    if struct:
+        out += ["### type/required/advanced changed — the generator handles it, verify the wrapper diff", ""]
+        for tool in sorted(struct):
+            out.append("- `%s`: %s" % (tool, "; ".join(struct[tool])))
+        out.append("")
+    if not (formats or stale or renames or struct):
+        out += ["nothing to do for the hand-maintained files.", ""]
+    return out
+
+
 def render_md(old_snap, new_snap, diffs, old_ver, new_ver, hardcoded, filetypes):
     lines = [f"# CTD diff: {old_ver} -> {new_ver}", ""]
 
@@ -209,10 +297,19 @@ def render_md(old_snap, new_snap, diffs, old_ver, new_ver, hardcoded, filetypes)
               "| tool | + | - | ~ | rename | flags |",
               "|---|---|---|---|---|---|"]
     flagged = []
+    slim = {}
+    ignored_total = 0
     for tool in sorted(diffs):
         d = diffs[tool]
+        keep = lambda name: not is_ignored(hardcoded, tool, name)
+        d = {"added": [n for n in d["added"] if keep(n)],
+             "removed": [n for n in d["removed"] if keep(n)],
+             "changed": [x for x in d["changed"] if keep(x[0])],
+             "renames": d["renames"]}
+        ignored_total += len(diffs[tool]["changed"]) - len(d["changed"])
         if not any(d[k] for k in ("removed", "added", "changed", "renames")):
             continue
+        slim[tool] = d
         flags = set()
         for name in d["added"]:
             flags.update(classify(tool, name, "added", {}, new_snap[tool]["params"][name],
@@ -233,10 +330,15 @@ def render_md(old_snap, new_snap, diffs, old_ver, new_ver, hardcoded, filetypes)
             len(d["renames"]), ", ".join(sorted(set(short))) or "-"))
         flagged.append(tool)
     lines.append("")
+    if ignored_total:
+        lines.append(f"({ignored_total} parameter change(s) ignored: they are blacklisted in "
+                     "`aux/hardcoded_params.json` and never reach the wrapper.)")
+        lines.append("")
+    lines += render_actions(old_snap, new_snap, slim, hardcoded, filetypes)
 
     lines += ["## Per tool", ""]
     for tool in flagged:
-        d = diffs[tool]
+        d = slim[tool]
         lines.append(f"### `{tool}`")
         lines.append("")
         for gone, came, ratio in d["renames"]:
@@ -328,7 +430,10 @@ def main(argv=None):
                     "removed": d["removed"],
                     "renamed": [{"from": g, "to": c, "similarity": round(r, 3)}
                                 for g, c, r in d["renames"]],
-                    "changed": [{"param": n, "fields": f} for n, _o, _n, f in d["changed"]],
+                    "changed": [{"param": name, "fields": f,
+                                 "old": {k: o[k] for k in f},
+                                 "new": {k: nn[k] for k in f}} for name, o, nn, f in d["changed"]
+                                if not is_ignored(hardcoded, tool, name)],
                 }
                 for tool, d in diffs.items()
             },

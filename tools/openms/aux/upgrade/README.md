@@ -35,14 +35,21 @@ the loop feel circular.
 ```sh
 cd tools/openms
 
+# the two environments the loop needs (conda env *prefixes* work too)
+conda create -y -p ~/envs/openms32 -c conda-forge -c bioconda openms=3.2.0
+conda create -y -p ~/envs/openms36 -c conda-forge -c bioconda openms=3.6.0
+# planemo is not part of the images, install it once:
+python -m pip install --user planemo
+
 # round 0, while the old version is still installed
-aux/upgrade/snapshot_ctds.sh 3.2 openms32
+aux/upgrade/snapshot_ctds.sh 3.2 ~/envs/openms32
 aux/upgrade/run_tests.sh --all --update
 
 # after switching the generator to the new version (needs a 3.6 env)
-aux/upgrade/snapshot_ctds.sh 3.6 openms36
+aux/upgrade/snapshot_ctds.sh 3.6 ~/envs/openms36
 python3 aux/upgrade/ctd_diff.py aux/upgrade/ctd-snapshots/3.2 \
-        aux/upgrade/ctd-snapshots/3.6 > aux/upgrade/ctd-diff-3.2-3.6.md
+        aux/upgrade/ctd-snapshots/3.6 --json aux/upgrade/ctd-diff-3.2-3.6.json \
+        > aux/upgrade/ctd-diff-3.2-3.6.md
 
 # every round
 aux/upgrade/check_generated.sh          # static gate (fast, pre-commit)
@@ -52,6 +59,11 @@ python3 aux/upgrade/manifest.py report --gate
 # only when the aux/* inputs changed materially (slow: needs conda + OpenMS env)
 aux/upgrade/check_generated.sh --regen
 ```
+
+The CTD snapshots are read from the `openms` conda package's file list, not from
+`bin/`: the same prefix also holds third-party binaries that block on stdin when
+handed `-write_ctd`. `.ctd` files are git-ignored, `provenance.txt` is not, so a
+diff stays reproducible.
 
 `ctd_diff.py` is the highest-value piece: it turns "the regenerated XML diff is
 huge" into a per-tool list of renamed/added/removed parameters with hints at the
