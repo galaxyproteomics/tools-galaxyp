@@ -95,6 +95,63 @@ The pipeline no longer hardcodes anything that changed with 3.6:
 | `wget` the openms `.tar.bz2` conda package and `ls $OPENMSPKG/bin` | symlink the binaries listed in `conda-meta/openms-*.json` of the env — no download, no build-string hardcoding (3.6 ships `.conda`), and no third-party binary that blocks on stdin |
 | `export tmp="/tmp/openms-stuff/"` | `export tmp="${tmp:-/tmp/openms-stuff/}"` |
 
+## Round 3 — functional tests (in progress)
+
+Local execution is possible after all: `planemo test` with a prebuilt mull
+environment (`planemo 0.75.48`, python 3.12, environment
+`mulled-v1-e5fb30be…` under the fake `HOME`), driven by
+`/workspace/.openms-tests/run-suite.sh` with
+`--no_dependency_resolution --job_config_file /workspace/.openms-tests/job_conf.xml`.
+Results land in `/workspace/.openms-tests/results/`, summarised by
+`/workspace/.openms-tests/summarize.py`.
+
+### The first real blocker: `${TESTS_TEMP_DIR}`
+
+OpenMS 3.6 moved the intermediate test outputs into `${TESTS_TEMP_DIR}`
+(`src/tests/topp/CMakeLists.txt: set(TESTS_TEMP_DIR "${PROJECT_BINARY_DIR}/tmp_path")`,
+1783 `add_test` lines) and compares them with FuzzyDiff to the committed
+reference in `${DATA_DIR_TOPP}`. `get_tests.py` stripped `${TOPP_BIN_PATH}/`,
+`${DATA_DIR_TOPP}/` and `${TMP_RIP_PATH}/` but not the new variable, and
+`diff_pairs` is keyed by *basename*, so `fix_tmp_files()` never matched: 2137
+references in 87 wrappers pointed at intermediates which cannot exist
+(**687 dangling references**, and `prepare_test_data.sh` wrote the wrong names).
+Fixed in `fe285644`; the regenerated wrappers (`634145f7`) have **0** dangling
+references.
+
+### Where the fixtures come from
+
+`test-data/` is generated, never committed (only 3 files are tracked). The
+generators `prepare_test_data.sh` (822 invocations) and
+`prepare_test_data_manual.sh` have to be executed after the wrapper generation;
+that never happened before, which is why every `${TESTS_TEMP_DIR}` reference
+looked "missing".  The first full run left **126** failing invocations, triaged
+in `/workspace/.openms-tests/results/testdata-failures-triage.md`:
+
+| n | cause | disposition |
+|---|---|---|
+| 26 | `\${CMAKE_COMMAND} -E copy …` / `-DINPUT_FILE=… -P …` pseudo-tests | filtered like `WRITEINI`/`DIFF` (`bde0158d`) |
+| 47 | chained tests (`set_tests_properties(… DEPENDS …)`): test B consumes test A's `${TESTS_TEMP_DIR}` output | `get_tests.py` skips them (`chained_inputs()`), `test-data.sh` drops the same lines — Galaxy tests cannot express the dependency |
+| ? | fixtures generated at build time (e.g. `.idparquet`) | `missing_inputs()` skips tests whose inputs are absent from `test-data/` at generation time |
+| 9 | host-path third-party binaries | negative tests are `WILL_FAIL` upstream; jars needed for the real ones |
+| 4 | 3.6 validation tightened (`MetaProSIP`, `FileConverter_RAW_1`, `EICExtractor`) | same family as the 11 `TestsCaseValidation` lint findings |
+| 3 | `ImageCreator`, `FeatureLinkerWNet` are not in the conda `openms` package | blacklist |
+| 2 | `PSMFeatureExtractor`: `Unknown option(s) '[-skip_db_check, -multiple_search_engines]'` | real 3.6 CLI drift |
+
+### Round-2 items closed on the way
+
+* `aux/filetypes.txt`: `fasta peff` → `peff peff` (the first column is the
+  OpenMS/CTD extension; `fasta fasta` already wins for FASTA).
+* host paths removed from `aux/hardcoded_params.json` (MSFragger, Novor,
+  MaRaCluster) and `test-data.sh` (`MSFRAGGER_BINARY`, `NOVOR_BINARY`), so the
+  `forbidden_patterns.txt` host-path rule can be flipped from `warn` to `fail`
+  once the wrappers are regenerated.
+
+### Status
+
+Suite running over all 142 wrappers (~4 min/tool).
+`AssayGeneratorMetaboSirius` (needs `sirius`), `ConsensusID` (`D9`) and
+`DIAuditor` error out and are queued for diagnosis with `--no_cleanup`.
+
 ## WIP notes
 
 * Scaffolding landed on branch `openms3.6`: `aux/upgrade/{ctd_diff.py,manifest.py,check_generated.sh,
