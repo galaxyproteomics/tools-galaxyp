@@ -157,6 +157,15 @@ if [ ! -f test-data/MetaboliteSpectralDB.mzML ]; then
     mv MetaboliteSpectralDB.mzML test-data/
 fi
 
+## everything above is copied from the OpenMS source tree.  prepare_test_data.sh
+## afterwards creates all sorts of intermediates in test-data/ (e.g. the parquet
+## directories of the FeatureLinker tests), and a test which *consumes* such a
+## file cannot be expressed in Galaxy.  Remember what really exists, so
+## get_tests.py can tell fixtures from intermediates.
+( cd test-data && find . -mindepth 1 -maxdepth 3 ! -name "." \( -type f -o -type l -o -type d \) \
+    | sed 's@^\./@@' | sort > ../.upstream-fixtures.txt ) || exit 1
+wc -l ../.upstream-fixtures.txt
+
 #TODO remove? ln -fs TOFCalibration_ref_masses test-data/TOFCalibration_ref_masses.txt
 #TODO remove? ln -fs TOFCalibration_const test-data/TOFCalibration_const.csv
 

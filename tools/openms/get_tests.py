@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
 import argparse
+import json
+import os
 import os.path
 import re
 import shlex
@@ -10,6 +12,7 @@ from typing import (
     Dict,
     List,
     Optional,
+    Set,
     TextIO,
     Tuple,
 )
@@ -108,6 +111,34 @@ def chained_inputs(line: str) -> List[str]:
     ]
 
 
+# test-data.sh records the fixtures it copied from the OpenMS source tree before
+# prepare_test_data.sh adds the intermediates of the tests themselves.  A test
+# which consumes an intermediate (FLU_parquet_in1.featureparquet is written by
+# the FileConverter prep tests, MSGFPlusAdapter_1_out.mzid by the MSGF+ test)
+# cannot be expressed in Galaxy: it would upload a directory or a file which
+# does not exist.  Without the list (get_tests.py run by hand) fall back to
+# checking that the file exists at all.
+_UPSTREAM_LIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".upstream-fixtures.txt")
+
+
+def _upstream_fixtures() -> Optional[Set[str]]:
+    try:
+        with open(_UPSTREAM_LIST) as handle:
+            return {line.strip() for line in handle if line.strip()}
+    except FileNotFoundError:
+        return None
+
+
+UPSTREAM_FIXTURES = _upstream_fixtures()
+
+
+def is_fixture(token: str) -> bool:
+    if UPSTREAM_FIXTURES is not None:
+        return token in UPSTREAM_FIXTURES or os.path.basename(token) in UPSTREAM_FIXTURES
+    path = os.path.join("test-data", token)
+    return os.path.isfile(path)
+
+
 def missing_inputs(line: str) -> List[str]:
     """Input files which are not available in test-data/.
 
@@ -126,7 +157,7 @@ def missing_inputs(line: str) -> List[str]:
             continue
         if i > 0 and tokens[i - 1].startswith("-out"):
             continue
-        if not os.path.exists(os.path.join("test-data", tok)):
+        if not is_fixture(tok):
             missing.append(tok)
     return missing
 
@@ -136,6 +167,25 @@ def missing_inputs(line: str) -> List[str]:
 # feeding them can only fail (FeatureLinkerUnlabeled: "ZIP archive contains 5
 # file entries; expected exactly 1").
 UNREADABLE_SUFFIXES = (".parquet", ".featureparquet", ".idparquet", ".consensusparquet")
+
+
+HARDCODER = parse_hardcoded_parameters(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "aux", "hardcoded_params.json")
+)
+
+
+def only_blacklisted_outputs(line: str, tool_id: str) -> List[str]:
+    """Outputs of a test which are all blacklisted, i.e. the test is pointless.
+
+    MapAlignerIdentification_6 only writes -trafo_out, and -trafo_out is
+    blacklisted for the MapAligners (see aux/hardcoded_params.json), so the
+    generated test has no output at all and the tool stops with "Data output or
+    transformation output files have to be provided".
+    """
+    outputs = re.findall(r"-(\w*out\w*)\b", line)
+    if outputs and all(HARDCODER.get_blacklist(o, tool_id) for o in outputs):
+        return outputs
+    return []
 
 
 def unsupported_inputs(line: str) -> List[str]:
@@ -308,6 +358,12 @@ def process_test_line(
             f"    skip chained {test_id} (input is the output of another test: {', '.join(sorted(chained))})\n"
         )
         return
+    blacklisted_outputs = only_blacklisted_outputs(line, tool_id)
+    if blacklisted_outputs:
+        sys.stderr.write(
+            f"    skip {test_id} (only blacklisted outputs: {', '.join(sorted(set(blacklisted_outputs)))})\n"
+        )
+        return
     unsupported = unsupported_inputs(line)
     if unsupported:
         sys.stderr.write(
@@ -379,6 +435,7 @@ def process_test_line(
                 "dta",
                 "dta2d",
                 "edta",
+                "psms",
                 "mrm",
                 "splib",
             ],

@@ -46,7 +46,17 @@ FILENAME_RE = re.compile(r"^[\w.+\-]+\.(?:[A-Za-z0-9]{1,12}|xml|XML|raw)$")
 
 
 def sha256_file(path):
+    """Hash a fixture.  A directory counts as its sorted listing: 3.6 writes
+    parquet outputs as directories, and prepare_test_data.sh leaves them in
+    test-data/ (see get_tests.py: those intermediates are skipped, but the
+    fingerprint must not crash on them)."""
     digest = hashlib.sha256()
+    if os.path.isdir(path):
+        for name in sorted(os.listdir(path)):
+            digest.update(name.encode())
+            digest.update(b"\0")
+            digest.update(str(os.path.getsize(os.path.join(path, name))).encode())
+        return digest.hexdigest()
     with open(path, "rb") as handle:
         for chunk in iter(lambda: handle.read(1 << 20), b""):
             digest.update(chunk)
