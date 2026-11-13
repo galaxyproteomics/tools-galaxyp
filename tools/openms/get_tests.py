@@ -188,9 +188,26 @@ def only_blacklisted_outputs(line: str, tool_id: str) -> List[str]:
     return []
 
 
+PARQUET_FORMATS = tuple(s.lstrip(".") for s in UNREADABLE_SUFFIXES)
+
+
 def unsupported_inputs(line: str) -> List[str]:
+    """Files in the parquet family, on either side of the command line.
+
+    3.6 moved the parquet readers into the (blacklisted) Parquet* tools, so a
+    test reading `X.featureparquet` fails with "ZIP archive contains 5 file
+    entries; expected exactly 1", and `FileConverter -out X.tmp.featureparquet`
+    fails earlier still: the format is gone from the tool's `-out`, so the
+    wrapper does not even offer `out_type=featureparquet`.
+    """
     tokens = shlex.split(line)
-    return [t for t in tokens if t.endswith(UNREADABLE_SUFFIXES)]
+    unsupported = []
+    for i, tok in enumerate(tokens):
+        if tok.endswith(UNREADABLE_SUFFIXES) or tok in PARQUET_FORMATS:
+            unsupported.append(tok)
+        elif i > 0 and tokens[i - 1] == "-out_type" and tok in PARQUET_FORMATS:
+            unsupported.append(tok)
+    return unsupported
 
 
 def get_ini(line: str, tool_id: str) -> Tuple[str, str]:
