@@ -105,6 +105,45 @@ def fix_tmp_files(line: str, diff_pairs: Dict[str, str]) -> str:
     return shlex.join(cmd)
 
 
+def pin_mz_name(line: str) -> str:
+    """Make a `-mz_file` test independent of the name Galaxy gives the copy.
+
+    ID converters look up the run in a pepXML by the *file name* of the spectra
+    file ("Found no experiment with name 'PepXMLFile_test_mzML.mzML'. It has to
+    match the end of a run's 'base_name' ... (IDFileConverter: 'mz_name')"),
+    and Galaxy stages the upload as <dataset name>.<ext>, i.e.
+    `<tool>_<element_identifier>.mzML`.  Pin `-mz_name` to the stem of the
+    fixture the way upstream names the file.
+    """
+    cmd = shlex.split(line)
+    if "-mz_file" not in cmd or "-mz_name" in cmd:
+        return line
+    mz_file = cmd[cmd.index("-mz_file") + 1]
+    cmd += ["-mz_name", os.path.basename(mz_file).rsplit(".", 1)[0]]
+    return shlex.join(cmd)
+
+
+def unresolved_outputs(line: str) -> List[str]:
+    """Outputs which are still intermediates after fix_tmp_files().
+
+    fix_tmp_files() rewrites `-out X.tmp.ext` to the reference FuzzyDiff compares
+    against, and test-data.sh runs prepare_test_data.sh which leaves the other
+    intermediates behind.  What is left are the outputs upstream never compares
+    with anything (TOPP_FileConverter_29_back writes FileConverter_29.back.tmp.mzML
+    only to make sure the round trip does not crash): planemo then asks for a
+    fixture which does not exist.
+    """
+    cmd = shlex.split(line)
+    testdata = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test-data")
+    return [
+        cmd[i + 1]
+        for i, tok in enumerate(cmd[:-1])
+        if tok.startswith("-out")
+        and ".tmp." in cmd[i + 1]
+        and not os.path.exists(os.path.join(testdata, os.path.basename(cmd[i + 1])))
+    ]
+
+
 def chained_inputs(line: str) -> List[str]:
     """Intermediates ("*.tmp.*") which are passed as inputs."""
     tokens = line.split()
@@ -385,6 +424,13 @@ def process_test_line(
             f"    skip {test_id} (only blacklisted outputs: {', '.join(sorted(set(blacklisted_outputs)))})\n"
         )
         return
+    line = pin_mz_name(line)
+    unresolved_out = unresolved_outputs(line)
+    if unresolved_out:
+        sys.stderr.write(
+            f"    skip {test_id} (output is an intermediate upstream never compares: {', '.join(unresolved_out)})\n"
+        )
+        return
     unsupported = unsupported_inputs(line)
     if unsupported:
         sys.stderr.write(
@@ -457,6 +503,7 @@ def process_test_line(
                 "dta2d",
                 "edta",
                 "psms",
+                "msp",
                 "mrm",
                 "splib",
             ],
