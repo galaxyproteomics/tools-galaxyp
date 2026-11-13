@@ -47,13 +47,35 @@ def get_failing_tests(cmake: List[str]) -> List[str]:
     failing_tests = []
     re_fail = re.compile(r"set_tests_properties\(\"([^\"]+)\" PROPERTIES WILL_FAIL 1\)")
 
-    for cmake in args.cmake:
-        with open(cmake) as cmake_fh:
+    for path in cmake:
+        with open(path) as cmake_fh:
             for line in cmake_fh:
                 match = re_fail.search(line)
                 if match:
                     failing_tests.append(match.group(1))
     return failing_tests
+
+
+def get_message_tests(cmake: List[str]) -> List[str]:
+    """Tests which only assert a message, i.e. expect the tool to refuse to run.
+
+    Upstream writes e.g.
+
+        add_test("TOPP_EICExtractor_1" ${TOPP_BIN_PATH}/EICExtractor -rt_collect -1)
+        set_tests_properties("TOPP_EICExtractor_1" PROPERTIES PASS_REGULAR_EXPRESSION "rt_collect")
+
+    There is no input file and no output to compare, so there is nothing Galaxy
+    could check; the non-zero exit code is the point of the test.
+    """
+    message_tests = []
+    re_msg = re.compile(r"set_tests_properties\(\"([^\"]+)\" PROPERTIES [^)]*PASS_REGULAR_EXPRESSION")
+    for path in cmake:
+        with open(path) as cmake_fh:
+            for line in cmake_fh:
+                match = re_msg.search(line)
+                if match:
+                    message_tests.append(match.group(1))
+    return message_tests
 
 
 def fix_tmp_files(line: str, diff_pairs: Dict[str, str]) -> str:
@@ -98,13 +120,27 @@ def missing_inputs(line: str) -> List[str]:
     for i, tok in enumerate(tokens):
         # a file name: an alphabetic extension, and not a number like "0.05"
         # (the value of an unrelated option, which looks deceptively similar)
-        if tok.startswith("-") or not re.search(r"\.[A-Za-z][A-Za-z0-9]{1,9}$", tok):
+        looks_like_file = re.search(r"\.[A-Za-z][A-Za-z0-9]{1,9}$", tok) is not None
+        is_input_value = i > 0 and re.fullmatch(r"-in[0-9]*", tokens[i - 1]) is not None
+        if tok.startswith("-") or not (looks_like_file or is_input_value):
             continue
         if i > 0 and tokens[i - 1].startswith("-out"):
             continue
         if not os.path.exists(os.path.join("test-data", tok)):
             missing.append(tok)
     return missing
+
+
+# OpenMS 3.6 moved the parquet format into the (blacklisted) Parquet* tools and
+# the remaining readers cannot open the files the 3.6 tests ship, so tests
+# feeding them can only fail (FeatureLinkerUnlabeled: "ZIP archive contains 5
+# file entries; expected exactly 1").
+UNREADABLE_SUFFIXES = (".parquet", ".featureparquet", ".idparquet", ".consensusparquet")
+
+
+def unsupported_inputs(line: str) -> List[str]:
+    tokens = shlex.split(line)
+    return [t for t in tokens if t.endswith(UNREADABLE_SUFFIXES)]
 
 
 def get_ini(line: str, tool_id: str) -> Tuple[str, str]:
@@ -231,6 +267,8 @@ def process_test_line(
     line = f"{match.group(2)} {match.group(3)}"
 
     if test_id in failing_tests:
+        # WILL_FAIL or PASS_REGULAR_EXPRESSION: the test asserts that the tool
+        # refuses the input, there is no output Galaxy could compare
         sys.stderr.write(f"    skip failing {test_id} {line}\n")
         return
 
@@ -247,7 +285,17 @@ def process_test_line(
             return
         if re.search(skip, test_id):
             return
-    line = fix_tmp_files(line, diff_pairs)
+    # CMake loops (e.g. `foreach(format mzML mzXML)` around
+    # add_test("TOPP_ConsensusID_no_ids_${format}" ...)) are expanded at
+    # configure time; this plain parser only sees the template, so the
+    # reference file ConsensusID_no_ids_input_0.${format} does not exist.
+    unresolved = sorted(set(re.findall(r"\$\{[A-Za-z_][A-Za-z0-9_]*\}", line)))
+    if unresolved:
+        sys.stderr.write(
+            f"    skip {test_id} (unresolved variable(s): {', '.join(unresolved)})\n"
+        )
+        return
+    line = fix_tmp_files(line, diff_pairs)  # may create the reference symlinks
     # Remaining .tmp. files on the *input* side are intermediates produced by
     # another test of the same tool (upstream chains them with
     # set_tests_properties(... DEPENDS ...), see e.g. TOPP_IDMerger_idparquet_convert
@@ -258,6 +306,12 @@ def process_test_line(
     if chained:
         sys.stderr.write(
             f"    skip chained {test_id} (input is the output of another test: {', '.join(sorted(chained))})\n"
+        )
+        return
+    unsupported = unsupported_inputs(line)
+    if unsupported:
+        sys.stderr.write(
+            f"    skip {test_id} (format not readable in 3.6: {', '.join(sorted(set(unsupported)))})\n"
         )
         return
     missing = missing_inputs(line)
@@ -353,7 +407,7 @@ re_empty_prefix = re.compile(r"^\s*")
 re_empty_suffix = re.compile(r"\s*$")
 re_add_test = re.compile(r"add_test\(\"(TOPP|UTILS)_.*/" + args.id)
 re_diff = re.compile(r"\$\{DIFF\}.* -in1 ([^ ]+) -in2 ([^ ]+)")
-failing_tests = get_failing_tests(args.cmake)
+failing_tests = get_failing_tests(args.cmake) + get_message_tests(args.cmake)
 tests = []
 
 # process the given CMake files and compile lists of

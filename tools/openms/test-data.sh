@@ -263,8 +263,11 @@ function prepare_test_data {
     do
         test_id=$(echo "$line" | sed 's/add_test(//; s/"//g;  s/)[^)]*$//; s/\${TOPP_BIN_PATH}\///g;s/\${DATA_DIR_TOPP}\///g; s#THIRDPARTY/##g' | cut -d" " -f1)
 
-        if grep -lq "$test_id"'\".* PROPERTIES WILL_FAIL 1' $OPENMSGIT/src/tests/topp/CMakeLists.txt $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake; then
-            >&2 echo "    skip failing "$test_id
+        # WILL_FAIL and PASS_REGULAR_EXPRESSION mark negative tests: the tool is
+        # expected to refuse the input, so the non-zero exit code below is not a
+        # problem (and the test has no comparable output)
+        if grep -Eq "$test_id\"[^)]*(WILL_FAIL 1|PASS_REGULAR_EXPRESSION)" $OPENMSGIT/src/tests/topp/CMakeLists.txt $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake; then
+            >&2 echo "    skip negative test "$test_id
             continue
         fi
 
