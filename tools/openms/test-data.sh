@@ -236,13 +236,19 @@ function prepare_test_data {
         awk '{printf("%s@NEWLINE@", $0)}' | 
         sed 's/)@NEWLINE@/)\n/g' | sed 's/@NEWLINE@/ /g' | 
         sed 's/degenerate_cases\///' | 
-        egrep -v "WRITEINI|WRITECTD|INVALIDVALUE|DIFF" | 
+        # CMAKE_COMMAND tests are cmake scripts (${CMAKE_COMMAND} -E copy ...,
+        # ${CMAKE_COMMAND} -DINPUT_FILE=... -P ...), not tool invocations
+        egrep -v "WRITEINI|WRITECTD|INVALIDVALUE|DIFF|CMAKE_COMMAND" | 
         grep add_test | 
         egrep "TOPP|UTILS" |
         sed 's@${DATA_DIR_SHARE}/@@g;'|
         # since 3.6 intermediates live in ${TESTS_TEMP_DIR}: same as above, the
         # wrapper tests refer to the reference file in test-data
         sed 's@${TESTS_TEMP_DIR}/@@g'|
+        # chained tests (upstream: set_tests_properties(... DEPENDS ...)) take an
+        # intermediate of another test as input; that intermediate does not exist
+        # here and the corresponding wrapper test is skipped as well
+        egrep -v -- '-in[0-9]* [^ ]*\.tmp\.'|
         sed 's@${TMP_RIP_PATH}@./@g'|
         sed 's@TOFCalibration_ref_masses @TOFCalibration_ref_masses.txt @g; s@TOFCalibration_const @TOFCalibration_const.csv @'| 
 	sed 's/\("TOPP_SiriusAdapter_4".*\)-sirius:database all\(.*\)/\1-sirius:database pubchem\2/' |

@@ -76,6 +76,35 @@ def fix_tmp_files(line: str, diff_pairs: Dict[str, str]) -> str:
     return shlex.join(cmd)
 
 
+def chained_inputs(line: str) -> List[str]:
+    """Intermediates ("*.tmp.*") which are passed as inputs."""
+    tokens = line.split()
+    return [
+        val
+        for opt, val in zip(tokens, tokens[1:])
+        if opt.startswith("-in") and ".tmp." in val
+    ]
+
+
+def missing_inputs(line: str) -> List[str]:
+    """Input files which are not available in test-data/.
+
+    Those are either intermediates of a previous test of the same tool or
+    fixtures which are not part of the source tree (e.g. generated at build
+    time).  Galaxy cannot produce them, so tests using them are skipped.
+    """
+    tokens = shlex.split(line)
+    missing = []
+    for i, tok in enumerate(tokens):
+        if tok.startswith("-") or not re.search(r"\.\w+$", tok):
+            continue
+        if i > 0 and tokens[i - 1].startswith("-out"):
+            continue
+        if not os.path.exists(os.path.join("test-data", tok)):
+            missing.append(tok)
+    return missing
+
+
 def get_ini(line: str, tool_id: str) -> Tuple[str, str]:
     """
     if there is an ini file then we use this to generate the test
@@ -214,6 +243,24 @@ def process_test_line(
         if re.search(skip, test_id):
             return
     line = fix_tmp_files(line, diff_pairs)
+    # Remaining .tmp. files on the *input* side are intermediates produced by
+    # another test of the same tool (upstream chains them with
+    # set_tests_properties(... DEPENDS ...), see e.g. TOPP_IDMerger_idparquet_convert
+    # which consumes the output of TOPP_IDMerger_idparquet). Galaxy tests cannot
+    # express such a dependency and the intermediate is never uploaded, so skip
+    # these tests instead of emitting tests which can only fail.
+    chained = chained_inputs(line)
+    if chained:
+        sys.stderr.write(
+            f"    skip chained {test_id} (input is the output of another test: {', '.join(sorted(chained))})\n"
+        )
+        return
+    missing = missing_inputs(line)
+    if missing:
+        sys.stderr.write(
+            f"    skip {test_id} (input not in test-data: {', '.join(sorted(set(missing)))})\n"
+        )
+        return
     # print(f"fix {line=}")
     line = unique_files(line)
     # print(f"unq {line=}")
