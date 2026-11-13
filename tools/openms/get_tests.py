@@ -96,7 +96,11 @@ def fix_tmp_files(line: str, diff_pairs: Dict[str, str]) -> str:
             if os.path.exists(dst):
                 os.unlink(dst)
             sys.stderr.write(f"symlink {e} {dst}\n")
-            os.symlink(e, dst)
+            try:
+                os.symlink(e, dst)
+            except FileExistsError:
+                # a re-run over a test-data/ which test-data.sh did not clean
+                pass
             cmd[i] = diff_pairs[e]
     return shlex.join(cmd)
 
@@ -501,13 +505,21 @@ for cmake in args.cmake:
             if line == "":
                 continue
 
-            # join test statements that are split over multiple lines
-            if line.endswith(")"):
-                jline += " " + line[:-1]
-            else:
-                jline = line
+            # join test statements that are split over multiple lines.  3.6
+            # reformatted many of them as
+            #   add_test("TOPP_ProSE_1" ${TOPP_BIN_PATH}/ProSE -test
+            #   -ini ${DATA_DIR_TOPP}/ProSE_1.ini -in
+            #   ${DATA_DIR_TOPP}/SimpleSearchEngine_1.mzML -out_idxml ...
+            #   )
+            # (the closing parenthesis on a line of its own), so keep
+            # accumulating until a line closes the statement instead of
+            # resetting the buffer with every continuation line.
+            jline = f"{jline} {line}".strip()
+            if line != ")" and not line.endswith(")"):
                 continue
-            line, jline = jline.strip(), ""
+            # drop the closing parenthesis of the add_test(...) call
+            line = jline[:-1].strip() if jline.endswith(")") else jline.strip()
+            jline = ""
             match = re_diff.search(line)
             if match:
                 in1 = match.group(1).split("/")[-1]
