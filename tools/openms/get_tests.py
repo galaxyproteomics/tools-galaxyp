@@ -37,6 +37,7 @@ SKIP_LIST = [
     r"INVALIDVALUE",
     r"\.flat\.json",
     r"\.ini\.json",
+    r"TOPP_FileConverter_29_back",  # -out FileConverter_29.back.tmp.mzML: no DIFF compares it, so there is no fixture to compare the wrapper output with
     r"OpenSwathMzMLFileCacher .*-convert_back",  # - OpenSwathMzMLFileCacher with -convert_back argument https://github.com/OpenMS/OpenMS/issues/4399
     r"MaRaClusterAdapter.*-consensus_out",  # - MaRaCluster with -consensus_out (parameter blacklister: https://github.com/OpenMS/OpenMS/issues/4456)
     r"FileMerger_1_input1.dta2d.*FileMerger_1_input2.dta ",  # - FileMerger with mixed dta dta2d input (ftype can not be specified in the test, dta can not be sniffed)
@@ -121,27 +122,6 @@ def pin_mz_name(line: str) -> str:
     mz_file = cmd[cmd.index("-mz_file") + 1]
     cmd += ["-mz_name", os.path.basename(mz_file).rsplit(".", 1)[0]]
     return shlex.join(cmd)
-
-
-def unresolved_outputs(line: str) -> List[str]:
-    """Outputs which are still intermediates after fix_tmp_files().
-
-    fix_tmp_files() rewrites `-out X.tmp.ext` to the reference FuzzyDiff compares
-    against, and test-data.sh runs prepare_test_data.sh which leaves the other
-    intermediates behind.  What is left are the outputs upstream never compares
-    with anything (TOPP_FileConverter_29_back writes FileConverter_29.back.tmp.mzML
-    only to make sure the round trip does not crash): planemo then asks for a
-    fixture which does not exist.
-    """
-    cmd = shlex.split(line)
-    testdata = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test-data")
-    return [
-        cmd[i + 1]
-        for i, tok in enumerate(cmd[:-1])
-        if tok.startswith("-out")
-        and ".tmp." in cmd[i + 1]
-        and not os.path.exists(os.path.join(testdata, os.path.basename(cmd[i + 1])))
-    ]
 
 
 def chained_inputs(line: str) -> List[str]:
@@ -425,12 +405,6 @@ def process_test_line(
         )
         return
     line = pin_mz_name(line)
-    unresolved_out = unresolved_outputs(line)
-    if unresolved_out:
-        sys.stderr.write(
-            f"    skip {test_id} (output is an intermediate upstream never compares: {', '.join(unresolved_out)})\n"
-        )
-        return
     unsupported = unsupported_inputs(line)
     if unsupported:
         sys.stderr.write(
