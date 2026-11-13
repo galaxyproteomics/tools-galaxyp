@@ -199,6 +199,13 @@ fi
 ## OpenMS 3.6 CTDs contain parameters of a type that CTDopts cannot parse at all
 ## (one such parameter breaks the conversion of the whole suite), see the script
 python3 aux/strip_output_dirs.py ctd/
+## correct the CTD parameters which upstream left unannotated (e.g. the FASTA
+## outputs of DecoyDatabase).  Must happen here, before get_tests.py reads the
+## CTDs: it derives the ftype of the expected test outputs from the
+## supported_formats, and CTDConverter derives the datatype of the output from
+## them.  Patching only before the conversion (i.e. in generate.sh) yields a
+## wrapper whose output is 'fasta' while its own test still expects 'txt'.
+python3 aux/patch_ctds.py ctd/ || >&2 echo 'patching the CTDs failed'
 ###############################################################################
 ## fix ini files: OpenMS test data contains ini files with outdated ini files.
 ## e.g. variables might be in different nodes, outdated variables present, new
