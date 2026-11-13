@@ -96,7 +96,9 @@ def missing_inputs(line: str) -> List[str]:
     tokens = shlex.split(line)
     missing = []
     for i, tok in enumerate(tokens):
-        if tok.startswith("-") or not re.search(r"\.\w+$", tok):
+        # a file name: an alphabetic extension, and not a number like "0.05"
+        # (the value of an unrelated option, which looks deceptively similar)
+        if tok.startswith("-") or not re.search(r"\.[A-Za-z][A-Za-z0-9]{1,9}$", tok):
             continue
         if i > 0 and tokens[i - 1].startswith("-out"):
             continue
@@ -212,6 +214,9 @@ def process_test_line(
     line = line.replace("${TESTS_TEMP_DIR}/", "")
     line = line.replace("THIRDPARTY/", "")
     line = line.replace("${DATA_DIR_SHARE}/", "")
+    line = line.replace("${DATA_DIR_CLASS_TESTS}/", "")
+    # a few tests name the build directory directly instead of ${TESTS_TEMP_DIR}
+    line = re.sub(r"(?<![\w/])tmp_path/", "", line)
     # IDRipper PATH gets empty causing problems. TODO But overall the option needs to be handled differently
     line = line.replace("${TMP_RIP_PATH}/", "")
     # some input files are originally in a subdir (degenerated cases/), but not in test-data

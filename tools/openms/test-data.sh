@@ -144,6 +144,8 @@ cp $(find $OPENMSGIT/src/tests/topp/ -type f | grep -Ev "third_party_tests.cmake
 cp -r $OPENMSGIT/share/OpenMS/MAPPING/ test-data/
 cp -r $OPENMSGIT/share/OpenMS/CHEMISTRY test-data/
 cp -r $OPENMSGIT/share/OpenMS/examples/ test-data/
+# two FileConverter tests feed class-test data (${DATA_DIR_CLASS_TESTS})
+cp $OPENMSGIT/src/tests/class_tests/openms/data/MSPGenericFile_input.msp test-data/ 2> /dev/null
 if [ ! -f test-data/MetaboliteSpectralDB.mzML ]; then
     DB_URL=https://raw.githubusercontent.com/sneumann/OpenMS/master/share/OpenMS/CHEMISTRY/MetaboliteSpectralDB.mzML
     # not every machine has wget (this one does not)
@@ -242,6 +244,9 @@ function prepare_test_data {
         grep add_test | 
         egrep "TOPP|UTILS" |
         sed 's@${DATA_DIR_SHARE}/@@g;'|
+        sed 's@${DATA_DIR_CLASS_TESTS}/@@g'|
+        # some tests name the build directory directly instead of using ${TESTS_TEMP_DIR}
+        sed 's@\btmp_path/@@g'|
         # since 3.6 intermediates live in ${TESTS_TEMP_DIR}: same as above, the
         # wrapper tests refer to the reference file in test-data
         sed 's@${TESTS_TEMP_DIR}/@@g'|
@@ -249,6 +254,8 @@ function prepare_test_data {
         # intermediate of another test as input; that intermediate does not exist
         # here and the corresponding wrapper test is skipped as well
         egrep -v -- '-in[0-9]* [^ ]*\.tmp\.'|
+        # negative tests which check that a missing parameter is rejected
+        grep -v 'requires_'|
         sed 's@${TMP_RIP_PATH}@./@g'|
         sed 's@TOFCalibration_ref_masses @TOFCalibration_ref_masses.txt @g; s@TOFCalibration_const @TOFCalibration_const.csv @'| 
 	sed 's/\("TOPP_SiriusAdapter_4".*\)-sirius:database all\(.*\)/\1-sirius:database pubchem\2/' |
@@ -262,6 +269,11 @@ function prepare_test_data {
         fi
 
         line=$(echo "$line" | sed 's/add_test("//; s/)[^)]*$//; s/\${TOPP_BIN_PATH}\///g;s/\${DATA_DIR_TOPP}\///g; s#THIRDPARTY/##g' | cut -d" " -f2-)
+        unresolved=$(echo "$line" | grep -oE '\$\{[A-Za-z_]+\}' | sort -u | tr '\n' ' ')
+        if [ -n "$unresolved" ]; then
+            >&2 echo "    skip $test_id (unresolved variable(s): $unresolved)"
+            continue
+        fi
         # line="$(fix_tmp_files $line)"
         echo 'echo executing "'$test_id'"'
         echo "$line > $test_id.stdout 2> $test_id.stderr"
