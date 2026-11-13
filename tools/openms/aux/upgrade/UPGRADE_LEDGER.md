@@ -97,6 +97,37 @@ The pipeline no longer hardcodes anything that changed with 3.6:
 
 ## Round 3 — functional tests (in progress)
 
+### Round 3a — the generator now emits only what Galaxy can run
+
+Iteration over `aux/generate.sh` + `planemo test`, fixing the generator (never a
+generated wrapper) until the failing set shrinks. Wrapper test count: **688**
+(3.2 baseline) → **656** → **650** → **649**.
+
+| the generator used to emit | disposition |
+|---|---|
+| tests upstream marks `WILL_FAIL 1` or with `PASS_REGULAR_EXPRESSION` (negative tests: the wrapper would have to assert on a non-zero exit code) | `get_message_tests()` drops them |
+| tests reading/writing a parquet file (`FileConverter`, `FeatureLinkerUnlabeled` chains), plus `-out_type consensusparquet` | `UNREADABLE_SUFFIXES` / `PARQUET_FORMATS`: no Galaxy datatype, and 3.6 dropped the writers from `FileConverter -out` |
+| tests whose only outputs are blacklisted parameters | `only_blacklisted_outputs()` |
+| tests of the form `${CMAKE_COMMAND} -E copy …`, `-DINPUT_FILE=… -P …` | filtered like `WRITEINI`/`WRITECTD` |
+| tests consuming an intermediate of another test (`DEPENDS`, `.tmp.`) | `chained_inputs()` |
+| tests referencing a file which is not an upstream fixture (`prepare_test_data.sh` intermediates, `${DATA_DIR_CLASS_TESTS}/`, host paths, `MSFragger.jar`, `novor.jar`) | `.upstream-fixtures.txt` snapshot + `is_fixture()` / `missing_inputs()` |
+| tests with an unexpanded `${…}` | skip with the variable names in the log |
+| `.msp` inputs | `test_unsniffable`: Galaxy sniffed the class-test fixture as `txt` and `FileConverter` rejected the format |
+| `-mz_file` tests | `pin_mz_name()`: the ID converters match the pepXML run by the *file name* of the spectra file, and Galaxy stages the upload as `<dataset name>.<ext>`, so `PepXMLFile_test.mzML` arrived as `PepXMLFile_test_mzML.mzML` → `Found no experiment with name …`. Now `-mz_name` is pinned to the fixture stem |
+| `TOPP_FileConverter_29_back` (`-out FileConverter_29.back.tmp.mzML`, no DIFF compares it) | `SKIP_LIST` |
+| tests of tools needing an external executable the mull env does not have (`${SIRIUS_BINARY}`, `${MSFRAGGER_BINARY}`, `${NOVOR_BINARY}`, `${SPECTRAST_BINARY}`, ...) | skipped; only `EXTERNAL_PROGRAM_NOTFOUND` can come out of them. 22 wrappers are left without a test and stay covered by `.lint_skip: TestsMissing` |
+
+Also fixed on the way: the 3.6 reformatting of `add_test()` over several lines
+(closing `)` on its own line) made the joiner drop whole tests — 656 → 619 and
+`ProSE`, `IsobaricWorkflow`, `SimpleSearchEngine`, `CometAdapter` lost their
+tests entirely. `c8207e8b` accumulates until the statement closes and then drops
+the trailing `)`. Parse coverage: 1706 of 1739 `add_test()` statements, the 33
+leftovers are the `${i}` loops and the `add_test(NAME … COMMAND …)` form.
+
+`LuciphorAdapter` has no test in 3.6 on purpose (`CMakeLists.txt:1347` is a
+comment).
+
+
 Local execution is possible after all: `planemo test` with a prebuilt mull
 environment (`planemo 0.75.48`, python 3.12, environment
 `mulled-v1-e5fb30be…` under the fake `HOME`), driven by
