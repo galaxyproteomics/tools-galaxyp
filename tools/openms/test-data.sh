@@ -279,10 +279,12 @@ echo 'export FIDO_BINARY="Fido"' >> prepare_test_data.sh
 echo 'export LUCIPHOR_BINARY="$(dirname $(realpath $(which luciphor2)))/luciphor2.jar"' >> prepare_test_data.sh
 
 echo 'export MARACLUSTER_BINARY="'"$OPENMSGIT"'/THIRDPARTY/Linux/64bit/MaRaCluster/maracluster"'>> prepare_test_data.sh
-echo 'export MSFRAGGER_BINARY="/home/berntm/Downloads/MSFragger-3.5/MSFragger-3.5.jar"'>> prepare_test_data.sh
+# no host paths here: the jar is looked up on PATH (and the test skipped/failed
+# loudly if it is missing)
+echo 'export MSFRAGGER_BINARY="MSFragger.jar"'>> prepare_test_data.sh
 echo 'export MSGFPLUS_BINARY="$(msgf_plus -get_jar_path)"' >> prepare_test_data.sh
 echo 'export MYRIMATCH_BINARY="myrimatch"'>> prepare_test_data.sh
-echo 'export NOVOR_BINARY="/home/berntm/Downloads/novor/lib/novor.jar"' >> prepare_test_data.sh
+echo 'export NOVOR_BINARY="novor.jar"' >> prepare_test_data.sh
 echo 'export PERCOLATOR_BINARY="percolator"'>> prepare_test_data.sh
 echo 'export SIRIUS_BINARY="$(which sirius)"' >> prepare_test_data.sh
 echo 'export SPECTRAST_BINARY="'"$OPENMSGIT"'/THIRDPARTY/Linux/64bit/SpectraST/spectrast"' >> prepare_test_data.sh
