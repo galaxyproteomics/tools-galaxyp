@@ -59,6 +59,10 @@ fi
 ## conversion ctd->xml 
 ###############################################################################
 
+# correct the CTD parameters which upstream left unannotated (e.g. the FASTA
+# outputs of DecoyDatabase), before CTDConverter turns them into Galaxy types
+python3 aux/patch_ctds.py || >&2 echo 'patching the CTDs failed'
+
 >&2 echo "generate tool xml from ctd files"
 find . -maxdepth 0 -name "[A-Z]*xml" -delete
 source $(dirname $(which conda))/../etc/profile.d/conda.sh

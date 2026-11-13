@@ -123,6 +123,17 @@ case "$lint_skip" in
     ;;
 esac
 
+# 5. the hand-written tests (aux/macros_test.xml + prepare_test_data_manual.sh)
+#    are not regenerated, so their fixtures rot silently when upstream renames
+#    something; check them against test-data/ (skip when it was not populated)
+if [ -d test-data ] && [ -n "$(ls -A test-data 2>/dev/null)" ]; then
+    if ! python3 aux/upgrade/check_manual_tests.py; then
+        fail "manual tests reference fixtures which test-data.sh does not produce"
+    fi
+else
+    note "test-data/ is empty, skipping the manual-test fixture check"
+fi
+
 if [ "$failures" -ne 0 ]; then
     printf '\n%d check(s) failed\n' "$failures" >&2
     exit 1

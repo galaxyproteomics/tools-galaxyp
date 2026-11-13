@@ -38,6 +38,7 @@ SKIP_LIST = [
     r"\.flat\.json",
     r"\.ini\.json",
     r"TOPP_FileConverter_29_back",  # -out FileConverter_29.back.tmp.mzML: no DIFF compares it, so there is no fixture to compare the wrapper output with
+    r"^TOPP_DatabaseSuitability_[0-9]+$",  # calls Comet through ExternalProcess::run() (PATH lookup, comet.exe default); upstream guards these behind find_program(COMET_BINARY)
     r"OpenSwathMzMLFileCacher .*-convert_back",  # - OpenSwathMzMLFileCacher with -convert_back argument https://github.com/OpenMS/OpenMS/issues/4399
     r"MaRaClusterAdapter.*-consensus_out",  # - MaRaCluster with -consensus_out (parameter blacklister: https://github.com/OpenMS/OpenMS/issues/4456)
     r"FileMerger_1_input1.dta2d.*FileMerger_1_input2.dta ",  # - FileMerger with mixed dta dta2d input (ftype can not be specified in the test, dta can not be sniffed)
@@ -82,6 +83,69 @@ def get_message_tests(cmake: List[str]) -> List[str]:
     return message_tests
 
 
+def disabled_tests(cmake: List[str]) -> List[str]:
+    """Tests inside `if (WITH_FOO)`, where `option(WITH_FOO ... OFF)`.
+
+    Upstream switches whole test families off by default and expects them to be
+    enabled by hand, e.g.
+
+        option(WITH_MASCOT_TEST "Runs the Mascot Online test (do not turn this
+        on unless you know what you are doing)" OFF)
+        if (WITH_MASCOT_TEST)
+          add_test("TOPP_MascotAdapterOnline_1" ...)
+
+    Those tests need a server or a licensed vendor library, so a generated
+    Galaxy test can only fail.  The option default is taken from the same CMake
+    file (no hardcoded option names), and `else()` branches are honoured.
+    """
+    re_option = re.compile(r"option\(\s*(\w+)\s+\"[^\"]*\"\s+(ON|OFF)\s*\)")
+    re_if = re.compile(r"^\s*if\s*\(([^)]*)\)")
+    re_else = re.compile(r"^\s*else\s*\(")
+    re_endif = re.compile(r"^\s*endif\s*\(")
+    re_add_test = re.compile(r"add_test\(\"([^\"]+)\"")
+    disabled = []
+    for path in cmake:
+        with open(path) as cmake_fh:
+            lines = cmake_fh.readlines()
+        off = {
+            match.group(1)
+            for line in lines
+            if (match := re_option.search(line)) and match.group(2) == "OFF"
+        }
+        if not off:
+            continue
+        # one frame per open if(): is the region disabled, and is the branch
+        # enabled (flipped by `else`)
+        stack: List[bool] = []
+        own_stack: List[bool] = []
+        for line in lines:
+            match_if = re_if.match(line)
+            if match_if:
+                parent = stack[-1] if stack else False
+                own = match_if.group(1).strip() in off
+                stack.append(parent or own)
+                own_stack.append(own)
+                continue
+            if re_else.match(line):
+                if own_stack:
+                    # the else branch of `if (WITH_FOO)` is enabled
+                    own_stack[-1] = not own_stack[-1]
+                    stack[-1] = (
+                        stack[-2] if len(stack) > 1 else False
+                    ) or own_stack[-1]
+                continue
+            if re_endif.match(line):
+                if stack:
+                    stack.pop()
+                    own_stack.pop()
+                continue
+            if stack and stack[-1]:
+                match_test = re_add_test.search(line)
+                if match_test:
+                    disabled.append(match_test.group(1))
+    return disabled
+
+
 def fix_tmp_files(line: str, diff_pairs: Dict[str, str]) -> str:
     """
     OpenMS tests output to tmp files and compare with FuzzyDiff to the expected file.
@@ -92,6 +156,10 @@ def fix_tmp_files(line: str, diff_pairs: Dict[str, str]) -> str:
     """
     cmd = shlex.split(line)
     for i, e in enumerate(cmd):
+        # never rewrite an input: X.tmp.ext as an input means "chained test",
+        # not "compare with the reference"
+        if i > 0 and cmd[i - 1].startswith("-in"):
+            continue
         if e in diff_pairs:
             dst = os.path.join("test-data", diff_pairs[e])
             if os.path.exists(dst):
@@ -172,16 +240,21 @@ def missing_inputs(line: str) -> List[str]:
     tokens = shlex.split(line)
     missing = []
     for i, tok in enumerate(tokens):
-        # a file name: an alphabetic extension, and not a number like "0.05"
-        # (the value of an unrelated option, which looks deceptively similar)
-        looks_like_file = re.search(r"\.[A-Za-z][A-Za-z0-9]{1,9}$", tok) is not None
-        is_input_value = i > 0 and re.fullmatch(r"-in[0-9]*", tokens[i - 1]) is not None
-        if tok.startswith("-") or not (looks_like_file or is_input_value):
-            continue
-        if i > 0 and tokens[i - 1].startswith("-out"):
-            continue
-        if not is_fixture(tok):
-            missing.append(tok)
+        # one option can carry a whitespace-separated file list in a single
+        # (quoted) token, e.g.
+        #   -Calibration:files:linear_irt_file "a.irt.TraML a.irt.TraML ..."
+        # (TOPP_OpenSwathWorkflow_27 passes the same file six times)
+        for part in tok.split():
+            # a file name: an alphabetic extension, and not a number like "0.05"
+            # (the value of an unrelated option, which looks deceptively similar)
+            looks_like_file = re.search(r"\.[A-Za-z][A-Za-z0-9]{1,9}$", part) is not None
+            is_input_value = i > 0 and re.fullmatch(r"-in[0-9]*", tokens[i - 1]) is not None
+            if part.startswith("-") or not (looks_like_file or is_input_value):
+                continue
+            if i > 0 and tokens[i - 1].startswith("-out"):
+                continue
+            if not is_fixture(part):
+                missing.append(part)
     return missing
 
 
@@ -356,6 +429,10 @@ def process_test_line(
 
     line = f"{match.group(2)} {match.group(3)}"
 
+    if test_id in DISABLED:
+        sys.stderr.write(f"    skip disabled {test_id} (with_* option is OFF)\n")
+        return
+
     if test_id in failing_tests:
         # WILL_FAIL or PASS_REGULAR_EXPRESSION: the test asserts that the tool
         # refuses the input, there is no output Galaxy could compare
@@ -385,19 +462,26 @@ def process_test_line(
             f"    skip {test_id} (unresolved variable(s): {', '.join(unresolved)})\n"
         )
         return
-    line = fix_tmp_files(line, diff_pairs)  # may create the reference symlinks
-    # Remaining .tmp. files on the *input* side are intermediates produced by
-    # another test of the same tool (upstream chains them with
-    # set_tests_properties(... DEPENDS ...), see e.g. TOPP_IDMerger_idparquet_convert
-    # which consumes the output of TOPP_IDMerger_idparquet). Galaxy tests cannot
-    # express such a dependency and the intermediate is never uploaded, so skip
-    # these tests instead of emitting tests which can only fail.
+    # .tmp. files on the *input* side are intermediates produced by another test
+    # of the same tool (upstream chains them with set_tests_properties(... DEPENDS
+    # ...), see e.g. TOPP_IDMerger_idparquet_convert which consumes the output of
+    # TOPP_IDMerger_idparquet).  Galaxy tests cannot express such a dependency and
+    # the intermediate is never uploaded, so skip these tests instead of emitting
+    # tests which can only fail.  Detect them *before* fix_tmp_files(), which maps
+    # every known intermediate onto the reference name it is compared with - that
+    # mapping is meant for outputs only (TOPP_FileFilter_43_read_again then looked
+    # like a test reading FileFilter_43_output.mzML while writing an uncompared
+    # FileFilter_43.dummy.tmp.mzML, which no fixture backs).
     chained = chained_inputs(line)
     if chained:
         sys.stderr.write(
             f"    skip chained {test_id} (input is the output of another test: {', '.join(sorted(chained))})\n"
         )
         return
+    # map each intermediate output onto the reference file it is compared with
+    # (and symlink it into test-data/): the temp extension is a build artefact,
+    # the reference name is what the wrapper has to declare as its output
+    line = fix_tmp_files(line, diff_pairs)
     blacklisted_outputs = only_blacklisted_outputs(line, tool_id)
     if blacklisted_outputs:
         sys.stderr.write(
@@ -506,6 +590,7 @@ re_empty_prefix = re.compile(r"^\s*")
 re_empty_suffix = re.compile(r"\s*$")
 re_add_test = re.compile(r"add_test\(\"(TOPP|UTILS)_.*/" + args.id)
 re_diff = re.compile(r"\$\{DIFF\}.* -in1 ([^ ]+) -in2 ([^ ]+)")
+DISABLED = disabled_tests(args.cmake)
 failing_tests = get_failing_tests(args.cmake) + get_message_tests(args.cmake)
 tests = []
 
