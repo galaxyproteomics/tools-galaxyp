@@ -144,9 +144,14 @@ cp $(find $OPENMSGIT/src/tests/topp/ -type f | grep -Ev "third_party_tests.cmake
 cp -r $OPENMSGIT/share/OpenMS/MAPPING/ test-data/
 cp -r $OPENMSGIT/share/OpenMS/CHEMISTRY test-data/
 cp -r $OPENMSGIT/share/OpenMS/examples/ test-data/
-if [ ! -f test-data/MetaboliteSpectralDB.mzML ]; then 
-    wget -nc https://raw.githubusercontent.com/sneumann/OpenMS/master/share/OpenMS/CHEMISTRY/MetaboliteSpectralDB.mzML
-    # wget -nc https://abibuilder.cs.uni-tuebingen.de/archive/openms/Tutorials/Data/latest/Example_Data/Metabolomics/databases/MetaboliteSpectralDB.mzML
+if [ ! -f test-data/MetaboliteSpectralDB.mzML ]; then
+    DB_URL=https://raw.githubusercontent.com/sneumann/OpenMS/master/share/OpenMS/CHEMISTRY/MetaboliteSpectralDB.mzML
+    # not every machine has wget (this one does not)
+    if command -v wget > /dev/null; then
+        wget -nc "$DB_URL"
+    else
+        curl -fsSL -o MetaboliteSpectralDB.mzML "$DB_URL" || exit 1
+    fi
     mv MetaboliteSpectralDB.mzML test-data/
 fi
 
@@ -235,6 +240,9 @@ function prepare_test_data {
         grep add_test | 
         egrep "TOPP|UTILS" |
         sed 's@${DATA_DIR_SHARE}/@@g;'|
+        # since 3.6 intermediates live in ${TESTS_TEMP_DIR}: same as above, the
+        # wrapper tests refer to the reference file in test-data
+        sed 's@${TESTS_TEMP_DIR}/@@g'|
         sed 's@${TMP_RIP_PATH}@./@g'|
         sed 's@TOFCalibration_ref_masses @TOFCalibration_ref_masses.txt @g; s@TOFCalibration_const @TOFCalibration_const.csv @'| 
 	sed 's/\("TOPP_SiriusAdapter_4".*\)-sirius:database all\(.*\)/\1-sirius:database pubchem\2/' |

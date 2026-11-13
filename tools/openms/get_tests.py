@@ -175,6 +175,12 @@ def process_test_line(
 
     line = line.replace("${TOPP_BIN_PATH}/", "")
     line = line.replace("${DATA_DIR_TOPP}/", "")
+    # since 3.6 the tests write their intermediate output to ${TESTS_TEMP_DIR}
+    # (src/tests/topp/CMakeLists.txt: set(TESTS_TEMP_DIR "${PROJECT_BINARY_DIR}/tmp_path"))
+    # and FuzzyDiff compares it to the reference in ${DATA_DIR_TOPP}. Strip the
+    # prefix like the other path variables: diff_pairs is keyed by basename, so
+    # without this fix_tmp_files() cannot map X.tmp.ext to the reference X.ext
+    line = line.replace("${TESTS_TEMP_DIR}/", "")
     line = line.replace("THIRDPARTY/", "")
     line = line.replace("${DATA_DIR_SHARE}/", "")
     # IDRipper PATH gets empty causing problems. TODO But overall the option needs to be handled differently
