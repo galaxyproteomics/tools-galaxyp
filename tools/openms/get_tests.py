@@ -62,6 +62,15 @@ SKIP_LIST = [
     # of the *tool*, and filetypes.txt is a global first-wins map, so this
     # needs a per-tool extension override in the generator (see the ledger).
     r'^TOPP_UniPEFF_',
+    # -exp_design names its spectra files by *file name* (the wrapper stages a
+    # data set as '<sanitized element identifier>.<openms extension>' in a
+    # directory of its own), so OpenMS reports
+    #   Spectra file does not exist: 'TMTTenPlexMethod_test.mzML' in:
+    #   exp_design/IsobaricWorkflow_1_design_tsv.tsv
+    # The design file would have to be rewritten per test to point at the staged
+    # name, which Galaxy cannot do.  Applies to IsobaricWorkflow (_1,
+    # strictly_unique) and Epifany.
+    r"-exp_design",
     # the percolator shipped in openms-thirdparty=3.6.0 aborts inside the
     # external binary ("Setting an empty value for primary MS runs paths",
     # exit 9) on the in-process tests as well, so there is nothing Galaxy or the
@@ -216,6 +225,73 @@ def map_output_references(xml: str, diff_pairs: Dict[str, str]) -> str:
     return re.sub(r'(<output [^>]*value=")([^"]*)"', replace, xml)
 
 
+# Outputs which may only be checked for existence and format, as
+# "<tool>": {"<output>"}.  Upstream compares these with FuzzyDiff, which parses
+# numbers with a relative tolerance; Galaxy compares by size (or byte equality),
+# so a formatting change alone makes the test fail although the content agrees.
+PUBLISH_ONLY_OUTPUTS = {
+    # OpenMS 3.6 writes doubles with full precision and in scientific notation
+    #   "826.031"                -> "826.030999999999949"
+    #   "928753024"              -> "9.28753e08"
+    # which grows these 2011 era references by ~75%.
+    "TextExporter": {"consensus_centroids", "consensus_elements", "consensus_features"},
+}
+
+
+def strip_uncomparable_outputs(
+    xml: str, uncomparable: Set[str], tool_id: str = ""
+) -> str:
+    """Turn an output into a presence/format check checks only.
+
+    Some outputs are compared upstream with a whitelist that removes the whole
+    payload: `${ZLIB_NG_MZML_WHITELIST}` ("encodedLength", "<binary>", "<offset")
+    exists because zlib-ng produces byte different but functionally equivalent
+    compressed mzML, and FuzzyDiff then compares the surrounding structure
+    only.  Galaxy can compare such a file by size, content or nothing; neither
+    size nor content is a function of what the tool computed, so assert only
+    that the output exists and is valid mzML.
+    """
+    def replace(match):
+        tag = match.group(0)
+        reference = re.search(r'value="([^"]*)"', tag)
+        if not reference:
+            return tag
+        name = re.search(r'name="([^"]*)"', tag).group(1)
+        if (os.path.basename(reference.group(1)) not in uncomparable
+                and name not in PUBLISH_ONLY_OUTPUTS.get(tool_id, ())):
+            return tag
+        ftype = re.search(r'ftype="([^"]*)"', tag)
+        ftype = f' ftype="{ftype.group(1)}"' if ftype else ""
+        return f'<output name="{name}"{ftype}/>'
+
+    return re.sub(r'<output [^>]*?/>', replace, xml)
+
+
+def check_multi_inputs(xml: str, multi: Dict[str, List[str]]) -> bool:
+    """Check that a multi file parameter carries all of its files in the test.
+
+    A CTD ITEMLIST becomes a multiple data parameter and CTDConverter writes its
+    files as one comma separated `value`, which Galaxy splits.  When the wrapper
+    deliberately declares the parameter as single valued - `OpenSwathWorkflow:in`
+    is forced by `aux/hardcoded_params.json` (`CTD:is_list: false`), because the
+    workflow takes one run per invocation - the generated test can only carry
+    the first file and the tool would silently process half of its input.
+    Returns False in that case, so that the caller skips the test.
+    """
+    for name, files in multi.items():
+        pattern = re.compile(r'<param\s+name="%s"[^>]*?/>' % re.escape(name))
+        match = pattern.search(xml)
+        if not match:
+            return False
+        value = re.search(r'value="([^"]*)"', match.group(0))
+        if not value:
+            return False
+        emitted = [os.path.basename(v) for v in value.group(1).split(",")]
+        if sorted(emitted) != sorted(files):
+            return False
+    return True
+
+
 def pin_mz_name(line: str) -> str:
     """Make a `-mz_file` test independent of the name Galaxy gives the copy.
 
@@ -243,7 +319,9 @@ def ctd_arguments(path: str) -> Dict[str, str]:
     arguments = {}
 
     def walk(node, prefix: List[str]):
-        for item in node.findall("ITEM"):
+        # ITEMLIST declares a list-valued parameter (e.g. OpenSwathWorkflow -in
+        # "Input files separated by blank") whose CTD type is still input-file
+        for item in node.findall("ITEM") + node.findall("ITEMLIST"):
             name = item.get("name")
             if name:
                 arguments["-" + ":".join(prefix + [name])] = item.get("type")
@@ -282,7 +360,7 @@ def text_params_with_files(line: str, tool_id: str) -> List[str]:
     types = ctd_arguments(ctd)
 
     cmd = shlex.split(line)
-    bad = []
+    bad: List[str] = []
     for i, argument in enumerate(cmd):
         if i == 0 or not argument.startswith("-") or i + 1 >= len(cmd):
             continue
@@ -292,6 +370,42 @@ def text_params_with_files(line: str, tool_id: str) -> List[str]:
         values = [v for v in shlex.split(cmd[i + 1]) if not v.startswith("-")]
         if any(is_fixture(v) for v in values):
             bad.append(f"{argument} ({types[argument]})")
+    return bad
+
+
+def multi_value_arguments(line: str, tool_id: str) -> Dict[str, List[str]]:
+    """File parameters which receive more than one file on the command line.
+
+    An ITEMLIST (or a plain space separated list, as in
+    TOPP_OpenSwathWorkflow_25 which passes two chromatograms to -in) becomes a
+    single data parameter in the wrapper, and CTDConverter puts only the first
+    file into the test, so the tool silently processed half of the input.  The
+    files are returned as {parameter: [file, ...]}, so that the caller can emit
+    <param name="in" values="a,b"/> instead (Galaxy splits `values` on commas).
+    """
+    ctd = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                       "ctd", f"{tool_id}.ctd")
+    if not os.path.exists(ctd):
+        return []
+    types = ctd_arguments(ctd)
+
+    cmd = shlex.split(line)
+    bad: Dict[str, List[str]] = {}
+    for i, argument in enumerate(cmd):
+        if i == 0 or not argument.startswith("-"):
+            continue
+        # only inputs: an ITEMLIST of output files becomes an output
+        # collection, not a data parameter
+        if types.get(argument) != "input-file":
+            continue
+        values = []
+        for token in cmd[i + 1:]:
+            if token.startswith("-"):
+                break
+            values.extend(shlex.split(token))
+        files = [v for v in values if is_fixture(v)]
+        if len(files) > 1:
+            bad[argument.lstrip("-")] = files
     return bad
 
 
@@ -497,7 +611,8 @@ def process_test_line(
     failing_tests: List[str],
     skip_list: List[str],
     diff_pairs: Dict[str, str],
-    version: str
+    version: str,
+    uncomparable: Optional[Set[str]] = None
 ) -> Optional[str]:
 
     re_test_id = re.compile(r"add_test\(\"([^\"]+)\" ([^ ]+) (.*)")
@@ -615,7 +730,9 @@ def process_test_line(
         return
     # print(f"fix {line=}")
     line = unique_files(line)
-    # print(f"unq {line=}")
+    # needs the renamed files of unique_files(): the same fixture used twice in
+    # one command line becomes <name>_0.<ext> / <name>_1.<ext>
+    multi = multi_value_arguments(line, tool_id)
     ini, line = get_ini(line, tool_id)
 
     from dataclasses import dataclass, field
@@ -698,6 +815,13 @@ def process_test_line(
         convert_models(ctd_args, parsed_ctd)
         with open(xml_tmp.name, "r") as xml_fh:
             body = map_output_references(xml_fh.read(), diff_pairs)
+        body = strip_uncomparable_outputs(body, uncomparable or set(), tool_id)
+        if multi and not check_multi_inputs(body, multi):
+            sys.stderr.write(
+                f"    skip {test_id} (more than one file for a single input "
+                f"parameter: {', '.join(multi)})\n"
+            )
+            return
         if "tmp_path/" in body:
             sys.stderr.write(
                 f"    skip {test_id} (output is a build temporary: "
@@ -731,6 +855,8 @@ tests = []
 jline = ""
 test_lines = []
 diff_pairs = {}
+uncomparable = set()
+re_payload_whitelist = re.compile(r"ZLIB_NG_MZML_WHITELIST|<binary>|<offset\b")
 for cmake in args.cmake:
     with open(cmake) as cmake_fh:
         for line in cmake_fh:
@@ -763,11 +889,14 @@ for cmake in args.cmake:
                 in2 = match.group(2).split("/")[-1]
                 if in1 != in2:
                     diff_pairs[in1] = in2
+                if re_payload_whitelist.search(line):
+                    uncomparable.add(in2)
             elif re_add_test.match(line):
                 test_lines.append(line)
 
 for line in test_lines:
-    test = process_test_line(args.id, line, failing_tests, SKIP_LIST, diff_pairs, args.version)
+    test = process_test_line(args.id, line, failing_tests, SKIP_LIST, diff_pairs,
+                             args.version, uncomparable)
     if test:
         tests.append(test)
 
