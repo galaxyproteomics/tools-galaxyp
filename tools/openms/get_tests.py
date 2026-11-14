@@ -8,6 +8,7 @@ import re
 import shlex
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
 from typing import (
     Dict,
     List,
@@ -44,7 +45,28 @@ SKIP_LIST = [
     r"FileMerger_1_input1.dta2d.*FileMerger_1_input2.dta ",  # - FileMerger with mixed dta dta2d input (ftype can not be specified in the test, dta can not be sniffed)
     r'^(TOPP_OpenSwathAnalyzer_test_3|TOPP_OpenSwathAnalyzer_test_4)$',  # no  suppert for cached mzML
     r'TOPP_SiriusAdapter_[0-9]+$',  # Do not test SiriusAdapter https://github.com/OpenMS/OpenMS/issues/7000 .. will be removed anyway
-    r'TOPP_AssayGeneratorMetabo_(7|8|9|10|11|12|13|14|15|16|17|18)$'  # Skip AssayGeneratorMetabo tests using Sirius  https://github.com/OpenMS/OpenMS/issues/7150 (will be replaced by two tools)
+    r'TOPP_AssayGeneratorMetabo_(7|8|9|10|11|12|13|14|15|16|17|18)$',  # Skip AssayGeneratorMetabo tests using Sirius  https://github.com/OpenMS/OpenMS/issues/7150 (will be replaced by two tools)
+    # OpenMS' own FileDiff compares XML attributes as *numbers* when both sides
+    # look numeric, Galaxy's compare="diff" is a plain text diff: 3.6 writes
+    # significance_threshold="0.0" where the reference fixture (and 3.2) has
+    # "0", which OpenMS accepts and Galaxy can not express.  IDRipper_1 and
+    # IDRipper_3 cover the same code path.
+    r'^TOPP_IDRipper_2(_out[0-9]+|a|a_out[0-9]+)?$',
+    # UniPEFF needs its input staged as *.xml and writes *.peff, but Galaxy has
+    # no datatype for either name: macros.xml gxy2omsext() maps the Galaxy *xml*
+    # dataset to *.bioml (what the BioML readers need) and the Galaxy *peff*
+    # dataset to *.fasta (what the other tools need), so the tool gets
+    # 'in/UniPEFF_1_input_xml.bioml' ("Could not determine format of input
+    # file") and is asked to write 'out/output.fasta' ("Invalid output file
+    # extension").  Which extension a *.xml/*.peff dataset needs is a property
+    # of the *tool*, and filetypes.txt is a global first-wins map, so this
+    # needs a per-tool extension override in the generator (see the ledger).
+    r'^TOPP_UniPEFF_',
+    # the percolator shipped in openms-thirdparty=3.6.0 aborts inside the
+    # external binary ("Setting an empty value for primary MS runs paths",
+    # exit 9) on the in-process tests as well, so there is nothing Galaxy or the
+    # wrapper can assert on
+    r'^TOPP_PercolatorAdapter_1_inproc',
 ]
 
 
@@ -174,6 +196,26 @@ def fix_tmp_files(line: str, diff_pairs: Dict[str, str]) -> str:
     return shlex.join(cmd)
 
 
+def map_output_references(xml: str, diff_pairs: Dict[str, str]) -> str:
+    """Point an <output value=...> at the reference file it is compared with.
+
+    Tests which pass an -ini file get their parameters (and therefore their
+    output file names) from that ini, which fix_tmp_files() never sees: the ini
+    of a migrated fixture still names the build intermediate
+    ("tmp_path/TextExporter_2_consensus_tsv.tmp.tsv") whose reference is
+    "TextExporter_2_consensus_tsv.tsv".  Apply the same mapping here.
+    """
+
+    def replace(match):
+        value = match.group(2)
+        reference = diff_pairs.get(os.path.basename(value))
+        if not reference:
+            return match.group(0)
+        return f"{match.group(1)}{reference}\""
+
+    return re.sub(r'(<output [^>]*value=")([^"]*)"', replace, xml)
+
+
 def pin_mz_name(line: str) -> str:
     """Make a `-mz_file` test independent of the name Galaxy gives the copy.
 
@@ -190,6 +232,67 @@ def pin_mz_name(line: str) -> str:
     mz_file = cmd[cmd.index("-mz_file") + 1]
     cmd += ["-mz_name", os.path.basename(mz_file).rsplit(".", 1)[0]]
     return shlex.join(cmd)
+
+
+FILE_CTD_TYPES = {"input-file", "input-dir", "output-file", "output-dir",
+                  "output-prefix"}
+
+
+def ctd_arguments(path: str) -> Dict[str, str]:
+    """Map the command line argument of every CTD <ITEM> to its CTD type."""
+    arguments = {}
+
+    def walk(node, prefix: List[str]):
+        for item in node.findall("ITEM"):
+            name = item.get("name")
+            if name:
+                arguments["-" + ":".join(prefix + [name])] = item.get("type")
+        for child in node.findall("NODE"):
+            name = child.get("name")
+            if not name or name.isdigit():
+                # the tool itself and the unnamed parameter groups
+                walk(child, prefix)
+            else:
+                walk(child, prefix + [name])
+
+    parameters = ET.parse(path).getroot().find("PARAMETERS")
+    if parameters is None:
+        return arguments
+    for tool in parameters.findall("NODE"):
+        # the first NODE is the tool itself: its name is not part of an argument
+        walk(tool, [])
+    return arguments
+
+
+def text_params_with_files(line: str, tool_id: str) -> List[str]:
+    """Fixture files handed to a parameter which is not a file parameter.
+
+    A CTD parameter of type string is passed to the tool as given, so the
+    generated test would hand OpenMS a bare file name which Galaxy never
+    stages ("Error: File not found (the file 'X.trafoXML' could not be
+    found)").  OpenMS declares such parameters upstream, e.g.
+    -Calibration:files:linear_irt_file is a string holding a space separated
+    list of iRT files.  Either the CTD is patched (aux/ctd_patches.json, as
+    done for -Calibration:rt_norm) or the test is skipped here.
+    """
+    ctd = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                       "ctd", f"{tool_id}.ctd")
+    if not os.path.exists(ctd):
+        return []
+    types = ctd_arguments(ctd)
+
+    cmd = shlex.split(line)
+    bad = []
+    for i, argument in enumerate(cmd):
+        if i == 0 or not argument.startswith("-") or i + 1 >= len(cmd):
+            continue
+        if argument not in types or types[argument] in FILE_CTD_TYPES:
+            continue
+        # the value may be one file or a quoted, space separated list of files
+        values = [v for v in shlex.split(cmd[i + 1]) if not v.startswith("-")]
+        if any(is_fixture(v) for v in values):
+            bad.append(f"{argument} ({types[argument]})")
+    return bad
 
 
 def chained_inputs(line: str) -> List[str]:
@@ -262,7 +365,10 @@ def missing_inputs(line: str) -> List[str]:
 # the remaining readers cannot open the files the 3.6 tests ship, so tests
 # feeding them can only fail (FeatureLinkerUnlabeled: "ZIP archive contains 5
 # file entries; expected exactly 1").
-UNREADABLE_SUFFIXES = (".parquet", ".featureparquet", ".idparquet", ".consensusparquet")
+# the parquet family: 3.6 moved the readers into the blacklisted Parquet* tools
+# (.oswpq is the OpenSWATH parquet flavour, see TOPP_OpenSwathAssayGenerator_parquet)
+UNREADABLE_SUFFIXES = (".parquet", ".featureparquet", ".idparquet",
+                       ".consensusparquet", ".oswpq")
 
 
 HARDCODER = parse_hardcoded_parameters(
@@ -489,6 +595,12 @@ def process_test_line(
         )
         return
     line = pin_mz_name(line)
+    text_files = text_params_with_files(line, tool_id)
+    if text_files:
+        sys.stderr.write(
+            f"    skip {test_id} (fixture handed to a non-file parameter: {', '.join(text_files)})\n"
+        )
+        return
     unsupported = unsupported_inputs(line)
     if unsupported:
         sys.stderr.write(
@@ -539,7 +651,20 @@ def process_test_line(
     ) as ctd_tmp, tempfile.NamedTemporaryFile(
         mode="w+", delete_on_close=False
     ) as xml_tmp:
-        fill_ctd_clargs(ini, line, ctd_tmp)
+        try:
+            fill_ctd_clargs(ini, line, ctd_tmp)
+        except SystemExit:
+            # e.g. TOPP_IDRipper_1 ... -out tmp_path/ : stripping the build
+            # directory leaves an option without a value and the CTD's own
+            # parser aborts the *whole* run, which silently dropped every test
+            # of that tool.  Galaxy cannot express an output directory anyway
+            # (the tool writes a set of files whose names it chooses), so skip
+            # the test instead of dying.
+            sys.stderr.write(
+                f"    skip unparseable {test_id} (an option lost its value when "
+                f"the build paths were stripped) {line}\n"
+            )
+            return
         ctd_tmp.close()
         xml_tmp.close()
         parsed_ctd = parse_input_ctds(None, [ctd_tmp.name], xml_tmp.name, "xml")
@@ -571,9 +696,15 @@ def process_test_line(
             ctd_args.hardcoded_parameters
         )
         convert_models(ctd_args, parsed_ctd)
-        xml_tmp = open(xml_tmp.name, "r")
-        for l in xml_tmp:
-            test.append(l)
+        with open(xml_tmp.name, "r") as xml_fh:
+            body = map_output_references(xml_fh.read(), diff_pairs)
+        if "tmp_path/" in body:
+            sys.stderr.write(
+                f"    skip {test_id} (output is a build temporary: "
+                f"{', '.join(re.findall(r'value=\"([^\"]*tmp_path/[^\"]*)\"', body))})\n"
+            )
+            return
+        test.append(body)
 
     return "".join(test)
 

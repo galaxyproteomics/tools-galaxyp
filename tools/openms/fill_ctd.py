@@ -7,7 +7,10 @@ import subprocess
 import sys
 from functools import reduce  # forward compatibility for Python 3
 
+import xml.etree.ElementTree as ET
+
 from CTDopts.CTDopts import (
+    CTDTYPE_TO_TYPE,
     _Choices,
     _InFile,
     _Null,
@@ -122,7 +125,41 @@ def fix_underscores(args):
                 fix_underscores(args[i])
 
 
-input_ctd = sys.argv[1]
+def strip_unknown_ctd_types(path):
+    """Remove CTD parameters whose type CTDopts does not know.
+
+    OpenMS 3.6 writes parameters of type "output-dir" and CTDopts aborts with
+
+        KeyError: 'output-dir'
+
+    for the whole model, i.e. for the whole tool.  The CTDs used for the
+    generation get the same treatment (aux/strip_output_dirs.py), but the
+    wrapper asks the binary for a *fresh* CTD at run time, so the filtering
+    has to happen here as well.  Types are taken from CTDopts itself, so a
+    future OpenMS parameter type is handled without touching this script.
+    """
+    tree = ET.parse(path)
+    dropped = []
+    for parent in tree.iter():
+        for child in list(parent):
+            if child.get("type") in CTDTYPE_TO_TYPE:
+                continue
+            if child.tag not in ("ITEM", "ITEMLIST"):
+                continue
+            dropped.append("{} (type {})".format(child.get("name"), child.get("type")))
+            parent.remove(child)
+    if not dropped:
+        return path
+    sys.stderr.write("fill_ctd.py: ignoring CTD parameters of unknown type: %s\n"
+                     % ", ".join(dropped))
+    stripped = path + ".stripped.ctd"
+    tree.write(stripped, encoding="utf-8", xml_declaration=True)
+    return stripped
+
+
+# the CTD to rewrite at the end (the wrapper hands it to -ini)
+output_ctd = sys.argv[1]
+input_ctd = strip_unknown_ctd_types(output_ctd)
 
 # load user specified parameters from json
 with open(sys.argv[2]) as fh:
@@ -194,4 +231,4 @@ for p in model.get_parameters():
         if v in [[], ""]:
             setInDict(args, p.get_lineage(name_only=True), p.default)
 
-model.write_ctd(input_ctd, arg_dict=args)
+model.write_ctd(output_ctd, arg_dict=args)

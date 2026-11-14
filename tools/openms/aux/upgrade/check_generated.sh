@@ -134,6 +134,12 @@ else
     note "test-data/ is empty, skipping the manual-test fixture check"
 fi
 
+# 6. a data input must not default to a file name: Galaxy cannot stage it, and
+#    CTDConverter copies the default into every test (see the script)
+if ! python3 aux/upgrade/check_test_fixtures.py; then
+    fail "a data input defaults to a file name (do not wrap executables as data)"
+fi
+
 if [ "$failures" -ne 0 ]; then
     printf '\n%d check(s) failed\n' "$failures" >&2
     exit 1
