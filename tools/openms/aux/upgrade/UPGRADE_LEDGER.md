@@ -11,7 +11,7 @@ later round does not re-litigate it.
 | 0 | 2026-11-12 | pin upstream, snapshot 3.2+3.6 CTDs | 135 | n/a | n/a | **snapshots done** (`ctd-snapshots/3.2`, `/3.6`, provenance committed); the planemo baseline is still open — planemo is not installed here |
 | 1 | 2026-11-12 | tool set: 7 deprecations, blacklist dir-output tools | 128 | n/a | n/a | wrappers moved to `deprecated/tools/openms/3.2/`, `MascotAdapterOnline` restored, 4 tools blacklisted; the 15 additions happen on regeneration |
 | 2 | wip | params/formats: `filetypes.txt`, `hardcoded_params.json`; make the generator version-agnostic | 128 | n/a | todo | generator scripts patched (version from `macros.xml`, `v<version>` tag, binaries from conda-meta); the aux/* worklist is prepared but only takes effect on regeneration |
-| 3 | 2026-11-14 | autotest failures by root cause | 142 | 5 (suite 8) -> 0 expected | suite 9 | 3a-3c; one class per iteration, 617 -> 614 tests |
+| 3 | 2026-11-14 | autotest failures by root cause | 142 | 5 (suite 8) -> 0 (suite 9) | - | 3a-3d; one class per iteration, 617 -> 614 tests |
 | 4 | todo | manual tests, `.ini` migration, reference refresh | todo | todo | todo | every refreshed reference needs a note below |
 | 5 | todo | full run vs. round-0 baseline | todo | 0 expected | todo | |
 
@@ -179,14 +179,48 @@ in `/workspace/.openms-tests/results/testdata-failures-triage.md`:
 
 ### Status
 
-Rounds 3a-3c are committed (`e4c1eaa0` generator, `6bab5ea4` wrappers) and
-`check_generated.sh` is green with **614 tests over 142 wrappers** (24 wrappers
-without a test, all covered by `.lint_skip: TestsMissing`).  Suite 8 (all 142
-wrappers) finished with 559 passed / 5 failed / 0 errors over 99 reporting
-tools; the five failures are the ones fixed in round 3c, so suite 9 is the first
-full run that is expected to be green.  `AssayGeneratorMetaboSirius`
-(needs `sirius`), `ConsensusID` (`D9`), `DIAuditor` and `FeatureLinkerUnlabeled`
-(the parquet directory fixture) are queued for a per-case decision.
+Suite 9 — the first full run after round 3c — is **green: 99 tools reporting,
+561 passed, 0 failed, 0 errors, all 15 chunks**, with 142 wrappers and 614 tests
+(`e4c1eaa0` generator, `6bab5ea4` wrappers, `31074536` ledger).  The three
+previously failing tools now report their full test sets:
+`OpenSwathWorkflow` 19, `TextExporter` 10, `IsobaricWorkflow` 1.
+
+Suite 9 was **not** as green as it looked: `summarize.py` counted the 99 tools
+that reported a result, and `MzMLSplitter` and `SeedListGenerator` were dropped
+by planemo altogether because of round 3d.  The driver now writes
+`results/requested.txt` and `summarize.py` names every requested tool which never
+reported, so a wrapper Galaxy refuses to parse can no longer hide in a green
+summary.
+
+`planemo lint --skip_file .lint_skip *.xml` over all 142 wrappers found the one
+known warning (`ConsensusID` `OutputsFormatSourceReference`, `D9`) and two new
+`ERROR (XSD)` for `MzMLSplitter` and `SeedListGenerator`
+(`<output_collection count="">`), which round 3d fixes — the round 0 lint
+baseline was taken before the wrappers were regenerated, so these slipped
+through.  After round 3d both tools are lint-clean and their 28 tests pass
+(`MzMLSplitter` 4, `SeedListGenerator` 6, `FileInfo` 18 for control).
+
+`AssayGeneratorMetaboSirius` (needs the `sirius` binary and a directory
+fixture), `ConsensusID` (`D9`), `DIAuditor` and `FeatureLinkerUnlabeled` (the
+parquet directory fixture) are queued for a per-case decision.
+
+### Round 3d — an output collection Galaxy can express
+
+`planemo lint` on the regenerated wrappers flags two `ERROR (XSD)`
+
+    Element 'output_collection', attribute 'count': '' is not a valid value
+    of the atomic type 'xs:integer'
+
+for `MzMLSplitter` (`out`, 2 tests) and `SeedListGenerator` (`out_prefix`, 3
+tests).  Upstream compares those members one by one through a templated name
+(`-out <prefix>` writes `<prefix>_part<N>of<M>.mzML`, and the DIFF steps name
+`..._part1of2.mzML`), which CTDConverter cannot map back to the fixture, so it
+emits `count=""` - a test Galaxy refuses to parse.  The fix is in the generator,
+`drop_empty_collection_count()`: the attribute is removed instead of guessed, so
+the test asserts that the collection was produced, which is the most specific
+statement available without inventing a member list (same principle as
+`strip_uncomparable_outputs()`).  Static check 7 of `check_generated.sh` now
+fails on `count=""`.
 
 ### Round 3b — one more class per iteration, and a static gate for each
 
