@@ -37,12 +37,19 @@ case "${1:-}" in
     ;;
 --regen)
     note "regenerating (aux/generate.sh) ..."
-    if ! bash aux/generate.sh >/tmp/generate.log 2>&1; then
-        fail "aux/generate.sh returned non-zero (see /tmp/generate.log)"
+    if ! bash aux/generate.sh >"${TMPDIR:-/tmp}/generate.log" 2>&1; then
+        fail "aux/generate.sh returned non-zero (see ${TMPDIR:-/tmp}/generate.log)"
     fi
-    if ! git diff --quiet -- '*.xml'; then
+    # a blacklisted tool is deleted by the generator and is maintained by hand
+    # (D1/D11); restoring it is the documented state, not a regeneration delta
+    if [ ! -f MascotAdapterOnline.xml ]; then
+        git checkout -- MascotAdapterOnline.xml && note "restored MascotAdapterOnline.xml (blacklisted, hand-maintained)"
+    fi
+    # ':(glob)*.xml' is the top-level wrappers only: a test run rewrites
+    # test-data/*.tmp.xquest.xml, which is not a generator delta
+    if ! git diff --quiet -- ':(glob)*.xml'; then
         fail "regeneration changed wrappers -> generator is not idempotent, or a generated file was edited by hand:"
-        git diff --stat -- '*.xml' | sed 's/^/  /'
+        git diff --stat -- ':(glob)*.xml' | sed 's/^/  /'
     else
         note "idempotent: regenerated wrappers byte-identical to HEAD"
     fi
@@ -111,10 +118,16 @@ fi
 
 # 4. TestsMissing must be an explicit, counted decision, not an accident
 lint_skip=$(tr '\n' ' ' < .lint_skip 2>/dev/null)
-untested=()
-for f in "${TOOLS[@]}"; do
-    grep -q '<test ' "$f" || untested+=("$(basename "$f" .xml)")
-done
+# a test inside a comment is not a test (MascotAdapterOnline, D11), and a
+# naive grep cannot tell the two apart
+mapfile -t untested < <(python3 - "${TOOLS[@]}" <<'PY'
+import re, sys
+for path in sys.argv[1:]:
+    text = re.sub(r"<!--.*?-->", "", open(path).read(), flags=re.S)
+    if "<test " not in text:
+        print(path[:-4])
+PY
+)
 note "wrappers without <test>: ${#untested[@]}"
 case "$lint_skip" in
 *TestsMissing*) note "  tolerated by .lint_skip: TestsMissing" ;;

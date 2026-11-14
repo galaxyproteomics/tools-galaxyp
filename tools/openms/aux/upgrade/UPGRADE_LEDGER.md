@@ -13,7 +13,7 @@ later round does not re-litigate it.
 | 2 | wip | params/formats: `filetypes.txt`, `hardcoded_params.json`; make the generator version-agnostic | 128 | n/a | todo | generator scripts patched (version from `macros.xml`, `v<version>` tag, binaries from conda-meta); the aux/* worklist is prepared but only takes effect on regeneration |
 | 3 | 2026-11-14 | autotest failures by root cause | 142 | 5 (suite 8) -> 0 (suite 9) -> 2 (suite 10) | - | 3a-3d; one class per iteration, 617 -> 614 tests; both suite 10 failures are outside the wrappers (`D11`, a Galaxy restart) |
 | 4 | todo | manual tests, `.ini` migration, reference refresh | todo | todo | todo | every refreshed reference needs a note below |
-| 5 | todo | full run vs. round-0 baseline | todo | 0 expected | todo | |
+| 5 | 2026-11-15 | full run vs. round-0 baseline | 142 | **0** | `manifest.py report --gate`: GATE PASSED | suite 10: 117 pass, 25 skip (24 no upstream test + `MascotAdapterOnline` D11), 0 untested, 0 fail; `check_generated.sh --regen` proves the wrappers are byte-identical to HEAD |
 
 ## Decisions
 
@@ -43,6 +43,38 @@ generation (`D1`) and hence maintained by hand.  The tests are therefore kept
 inside an XML comment with the reason spelled out: a licensed server only has to
 delete the comment markers.  Consequence: the wrapper now has no active `<test>`
 and joins the 24 other wrappers the `TestsMissing` lint skip covers.
+
+## The gate, as of round 5
+
+    $ python3 aux/upgrade/manifest.py report --gate
+    tools            : 142
+    pass             : 117
+    fail (allowlist) : 0
+    fail (ours)      : 0
+    blocked          : 0
+    untested         : 0
+    stale (fp moved) : 0
+    escalate (2x)    : 0
+
+    GATE PASSED: no unexplained failures.
+
+    $ bash aux/upgrade/check_generated.sh --regen
+    restored MascotAdapterOnline.xml (blacklisted, hand-maintained)
+    idempotent: regenerated wrappers byte-identical to HEAD
+    all static checks passed
+
+`manifest.py import-summary <planemo summary.tsv>` is how a planemo suite
+reaches the ledger: the driver runs ten tools per Galaxy instance, so the
+per-tool `record` calls are not practical there.  A tool the summary does not
+mention is left untouched, never marked green.
+
+The one remaining lint finding is `D9` (`ConsensusID`
+`OutputsFormatSourceReference`): the converter writes `format_source="in"` while
+`in_cond|in` exists twice (`<when value="no">` holds the multiple variant,
+`<when value="yes">` the single one), so Galaxy cannot resolve it.  Qualifying
+the name does not help - both paths are identical - and the wrapper is
+generated, so this needs a CTDConverter fix.  It is a warning, the round-0
+baseline recorded it, and the 10 `ConsensusID` tests pass.
 
 ## Reference-file refreshes (must be justified)
 

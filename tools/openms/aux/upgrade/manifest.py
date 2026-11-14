@@ -66,7 +66,9 @@ def sha256_file(path):
 def wrapper_paths(only=None):
     tools = []
     for entry in sorted(os.listdir(TOOLDIR)):
-        if not entry.endswith(".xml") or entry == "macros.xml":
+        # macros_autotest.xml / macros_discarded_auto.xml hold the generated
+        # test bodies, they are not tools
+        if not entry.endswith(".xml") or entry.startswith("macros"):
             continue
         name = entry[:-4]
         if only and name not in only:
@@ -271,6 +273,47 @@ def cmd_record(args):
     return 0
 
 
+def cmd_import_summary(args):
+    """Fold a planemo summary (tool<TAB>passed<TAB>failed<TAB>errors) in.
+
+    The planemo driver runs many tools per Galaxy instance, so this is how a
+    whole suite reaches the ledger; `record` stays for single tools.  A tool the
+    summary does not mention (no <test>, or one Galaxy refused to parse) is left
+    untouched rather than silently marked green.
+    """
+    rows = read_status()
+    imported = 0
+    for line in open(args.summary):
+        line = line.rstrip("\n")
+        if not line.strip() or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) < 4 or parts[1] == "passed":
+            continue
+        tool, passed, failed, errors = parts[0], int(parts[1]), int(parts[2]), int(parts[3])
+        old = rows.get(tool, {})
+        problems = failed + errors
+        cause = ""
+        if problems:
+            cause = args.cause or f"{problems} failing test(s)"
+            attempts = int(old.get("attempts") or 0) + 1
+        else:
+            attempts = 0
+        rows[tool] = {
+            "tool": tool,
+            "status": "pass" if not problems else "fail",
+            "attempts": attempts,
+            "cause": cause,
+            "decision": old.get("decision", ""),
+            "fp": old.get("fp", ""),
+            "updated": args.date,
+        }
+        imported += 1
+    write_status(rows)
+    print(f"imported {imported} tool(s) from {args.summary}")
+    return 0
+
+
 def cmd_report(args):
     rows = read_status()
     allowed = read_allowlist()
@@ -364,6 +407,12 @@ def main(argv=None):
     rec.add_argument("--reset-attempts", action="store_true")
     rec.add_argument("--fp", default="")
     rec.set_defaults(func=cmd_record)
+
+    imp = sub.add_parser("import-summary",
+                         help="fold a planemo summary.tsv into the ledger")
+    imp.add_argument("summary")
+    imp.add_argument("--cause", default="")
+    imp.set_defaults(func=cmd_import_summary)
 
     rep = sub.add_parser("report", help="round status / exit criterion")
     rep.add_argument("--gate", action="store_true", help="non-zero exit if not converged")
