@@ -179,9 +179,66 @@ in `/workspace/.openms-tests/results/testdata-failures-triage.md`:
 
 ### Status
 
-Suite running over all 142 wrappers (~4 min/tool).
-`AssayGeneratorMetaboSirius` (needs `sirius`), `ConsensusID` (`D9`) and
-`DIAuditor` error out and are queued for diagnosis with `--no_cleanup`.
+Round 3b is committed (`361d11f3` generator, `3db9ec64` wrappers); suite 8
+runs over all 142 wrappers with the driver untouched.  `AssayGeneratorMetaboSirius`
+(needs `sirius`), `ConsensusID` (`D9`), `DIAuditor` and `FeatureLinkerUnlabeled`
+(the parquet directory fixture) are queued for a per-case decision.
+
+### Round 3b — one more class per iteration, and a static gate for each
+
+Suite 7 (all 142 wrappers) had to be thrown away: editing `run-suite.sh` while
+bash was still reading it (`line 91: unexpected EOF while looking for matching
+'"'`) killed the parser mid-run, so chunk 08/13 wrote no report and 41 tools
+were never counted.  Lesson: the driver is not edited while it drives.
+What it did show was one *class* of failure per tool, all of them in the
+generator, none in a wrapper:
+
+| failure | root cause | fix |
+|---|---|---|
+| `DecoyDatabase #5`: `Dataset metadata verification for [file_ext] failed, expected [txt] but found [fasta]` | `generate.sh` patched the CTDs right before CTDConverter, but `test-data.sh` -> `get_tests.py` had already derived the expected ftype from the unpatched `supported_formats` | `patch_ctds.py` moved into `test-data.sh`, directly after `strip_output_dirs.py` (`efc0e601`) |
+| `IsobaricWorkflow`/`MS1LabeledWorkflow` (exit 1): `CTDopts.py: KeyError: 'output-dir'` | the wrapper calls `<tool> -write_ctd` at *run time*, so the CTD CTDopts parses still contains 3.6's `out_qpx type="output-dir"`; `strip_output_dirs.py` only cleans the build snapshots | `fill_ctd.py: strip_unknown_ctd_types()` drops every `ITEM`/`ITEMLIST` whose type is not in `CTDTYPE_TO_TYPE`, writes `<tool>.stripped.ctd`, logs it, and `write_ctd()` still writes to the original name (so `-ini <tool>.ctd` works) |
+| `OpenNuXL` (6 errors): `AssertionError: Test input file (ThermoRawFileParser.exe) cannot be found` | `ThermoRaw_executable` is an `input-file` whose CTD default is the literal executable name; CTDConverter copies the default into every test | global `ThermoRaw_executable` entry in `aux/hardcoded_params.json`, plus **check 6** of `check_generated.sh`: `aux/upgrade/check_test_fixtures.py` fails if any data input carries a fixed value |
+| `OpenSwathWorkflow` (20 failures): `Error: File not found (the file 'OpenSwathWorkflow_1_input.trafoXML' could not be found)` | `-Calibration:rt_norm` names an RT normalization file but the CTD types it `string`, so the wrapper passes the bare name through and Galaxy never stages it | `aux/ctd_patches.json`: `Calibration:rt_norm` -> `input-file` + `supported_formats: "*.trafoXML,*.TraML"` |
+| `OpenSwathWorkflow #21/#27` (`linear_irt_file`) | `-Calibration:files:linear_irt_file` is a *space separated list* of iRT files in one string | `get_tests.py: text_params_with_files()` skips a test which hands a known fixture to a CTD parameter that is not a file parameter (`ctd_arguments()` builds `-Section:param -> type` from the CTD `<NODE>` nesting) |
+| `TextExporter #2`: `Test output file (tmp_path/TextExporter_2_consensus_tsv.tmp.tsv) is missing` | a test which passes `-ini` gets its parameters from that ini; the migrated fixture still names the build intermediate, and `fix_tmp_files()` only rewrites the command line | `get_tests.py: map_output_references()` applies the same `diff_pairs` mapping to `<output value=...>` after conversion; a leftover `tmp_path/` skips the test |
+| `IDRipper #2/#3` (2 failures) | hand-maintained tests (`aux/macros_test.xml` — the generator *discards* IDRipper's autotests because of its `output_prefix` parameter): OpenMS compares XML attributes as numbers, Galaxy's `compare="diff"` compares text, and 3.6 writes `significance_threshold="0.0"` where the reference has `"0"` | the two `IDRipper_2` tests removed from `manutest_IDRipper`, with the reason in place |
+| `OpenSwathAssayGenerator`/`OpenSwathDecoyGenerator`/`TargetedFileConverter`: `Parameter 'out_type': an invalid option ('oswpq')` | `.oswpq` is the OpenSWATH parquet flavour and 3.6 dropped those writers, like the other parquet formats | `.oswpq` added to `UNREADABLE_SUFFIXES` |
+| `PercolatorAdapter #1-#3` (exit 9) | the percolator shipped in `openms-thirdparty=3.6.0` aborts inside the external binary: `Setting an empty value for primary MS runs paths` | `SKIP_LIST` |
+| `UniPEFF` (17 failures) | it needs `in` staged as `*.xml` and writes `*.peff`; `macros.xml: gxy2omsext()` maps the Galaxy *xml* dataset to `*.bioml` (what the BioML readers need) and the Galaxy *peff* dataset to `*.fasta` (what every other tool needs), so the tool gets `in/UniPEFF_1_input_xml.bioml` and is asked to write `out/output.fasta` | `SKIP_LIST` (D10) |
+
+Consequence for the generator: **617** wrapper tests (was 644), 24 wrappers
+without a test (was 22), still covered by `.lint_skip: TestsMissing`.
+
+Two dead ends worth recording:
+
+* a `missing_outputs()` guard (skip a test whose `<output value=...>` is not in
+  `test-data/`) looked right for `TextExporter` but also killed
+  `GNPSExport_2/3/4`, `OpenSwathWorkflow_1_library_prefilter` and others: the
+  *presence* of a fixture is a property of the mutable `test-data/` directory,
+  not of the CMake file, so generation would depend on whether
+  `prepare_test_data.sh` ran. Replaced by the `SKIP_LIST` entries and by
+  `map_output_references()`, which is a pure function of the CMake input.
+* ordering `chained_inputs()` before `fix_tmp_files()` fixed
+  `FileFilter #42` but silently broke `ProteinQuantifier`,
+  `MapAlignerIdentification`, `InternalCalibration`, `IDSplitter` (their
+  inputs were rewritten to reference names); `fix_tmp_files()` therefore never
+  rewrites a token preceded by `-in*`.
+
+### D10 — UniPEFF stays unwrappable until the extension is per tool
+
+`macros.xml: gxy2omsext()` is one global map from Galaxy datatype to OpenMS
+extension, and it is *almost* injective: Galaxy `xml` -> `.bioml` is right for
+the BioML readers (`CVInspector`, `SemanticValidator`, the old `-in bioml`
+tools) and wrong for UniPEFF's plain UniProt XML; Galaxy `peff` -> `.fasta` is
+right for every consumer of a PEFF file and wrong for UniPEFF, which writes
+PEFF and refuses annotations to a `.fasta` name.  Galaxy has no `bioml`
+datatype (`galaxy/tool_util/linters/datatypes_conf.xml.sample` has no
+`bioml`), so there is no second datatype to split the mapping on, and
+`aux/filetypes.txt` maps CTD patterns to Galaxy types globally (first wins).
+The fix is a per-tool extension override in the generator (e.g.
+`aux/extensions.json` keyed by `<tool>:<argument>`); until then UniPEFF's 17
+tests are skipped and the tool is not wrapped-in-tested state.  This is a
+pre-existing wrapper defect, not a 3.6 regression: 3.2 had the same mapping.
 
 ## WIP notes
 
