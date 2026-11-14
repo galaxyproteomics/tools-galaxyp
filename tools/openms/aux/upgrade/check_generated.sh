@@ -140,6 +140,26 @@ if ! python3 aux/upgrade/check_test_fixtures.py; then
     fail "a data input defaults to a file name (do not wrap executables as data)"
 fi
 
+# 7. a test must be expressible: the `count` of an output collection is an
+#    integer, and a collection needs count/min/max or element children
+#    (CTDConverter writes count="" when it cannot map a templated member name)
+for t in "${TOOLS[@]}"; do
+    if grep -q 'count=""' "$t"; then
+        fail "$t: <output_collection count=\"\"> is not a valid test"
+    fi
+    if grep -q '<output_collection [^>]*/>' "$t" &&
+        ! grep -q '<output_collection [^>]*\(count\|min\|max\)=' "$t"; then
+        fail "$t: <output_collection> without count/min/max"
+    fi
+done
+note "output collections are expressible"
+
+# 8. a test must declare as many outputs as it expects: Galaxy fails such a job
+#    with "Incorrect number of outputs", which says nothing about the tool
+if ! python3 aux/upgrade/check_expect_num_outputs.py; then
+    fail "a test expects fewer outputs than it declares"
+fi
+
 if [ "$failures" -ne 0 ]; then
     printf '\n%d check(s) failed\n' "$failures" >&2
     exit 1

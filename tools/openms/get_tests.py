@@ -267,6 +267,47 @@ def strip_uncomparable_outputs(
     return re.sub(r'<output [^>]*?/>', replace, xml)
 
 
+def fix_empty_collection_count(xml: str) -> str:
+    """Replace a `count` that CTDConverter could not fill in.
+
+    When the members of an output collection are compared upstream through a
+    templated file name (MzMLSplitter writes `<prefix>_part<N>of<M>.mzML` and
+    the DIFF steps name them one by one), CTDConverter cannot map the references
+    and emits `<output_collection name="out" count=""/>`, which is not a valid
+    Galaxy test (`count` must be an integer).  Without the attribute the test
+    can express neither: Galaxy's test parser rejects an empty `count`, while its
+    linter rejects a collection without `count`/`min`/`max`/`element`.  `min="1"`
+    says exactly what is known - the collection was produced and is not empty.
+    """
+    return re.sub(r'(<output_collection\b[^>]*?)\s+count=""', r'\1 min="1"', xml)
+
+
+def fix_expect_num_outputs(xml: str) -> str:
+    """Make `expect_num_outputs` agree with the outputs the test declares.
+
+    CTDConverter counts the outputs it could resolve, so a collection whose
+    members are unknown (see fix_empty_collection_count) leaves the number one
+    too low and Galaxy fails the job with
+
+        Incorrect number of outputs - expected 1, found 2
+        (dataset(s): ctd_out collection(s): out)
+
+    The number is only ever *raised*: every `<output>` and `<output_collection>`
+    the test declares is produced (that is what makes it a failure the first
+    time), while the opposite - a test that declares fewer outputs than the tool
+    writes, e.g. `TOPP_FileInfo_12`, which compares only the CTD dump and leaves
+    `-out` unchecked - is a legitimate assertion and must be left alone.
+    """
+    match = re.search(r'<test[^>]*\sexpect_num_outputs="([0-9]+)"[^>]*>', xml)
+    if not match:
+        return xml
+    declared = len(re.findall(r'<output(?:_collection)?\s', xml[match.end():]))
+    if declared <= int(match.group(1)):
+        return xml
+    tag = match.group(0).replace(match.group(1), str(declared))
+    return xml[:match.start()] + tag + xml[match.end():]
+
+
 def check_multi_inputs(xml: str, multi: Dict[str, List[str]]) -> bool:
     """Check that a multi file parameter carries all of its files in the test.
 
@@ -816,6 +857,8 @@ def process_test_line(
         with open(xml_tmp.name, "r") as xml_fh:
             body = map_output_references(xml_fh.read(), diff_pairs)
         body = strip_uncomparable_outputs(body, uncomparable or set(), tool_id)
+        body = fix_empty_collection_count(body)
+        body = fix_expect_num_outputs(body)
         if multi and not check_multi_inputs(body, multi):
             sys.stderr.write(
                 f"    skip {test_id} (more than one file for a single input "
