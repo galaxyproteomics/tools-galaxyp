@@ -11,7 +11,7 @@ later round does not re-litigate it.
 | 0 | 2026-11-12 | pin upstream, snapshot 3.2+3.6 CTDs | 135 | n/a | n/a | **snapshots done** (`ctd-snapshots/3.2`, `/3.6`, provenance committed); the planemo baseline is still open — planemo is not installed here |
 | 1 | 2026-11-12 | tool set: 7 deprecations, blacklist dir-output tools | 128 | n/a | n/a | wrappers moved to `deprecated/tools/openms/3.2/`, `MascotAdapterOnline` restored, 4 tools blacklisted; the 15 additions happen on regeneration |
 | 2 | wip | params/formats: `filetypes.txt`, `hardcoded_params.json`; make the generator version-agnostic | 128 | n/a | todo | generator scripts patched (version from `macros.xml`, `v<version>` tag, binaries from conda-meta); the aux/* worklist is prepared but only takes effect on regeneration |
-| 3 | todo | autotest failures by root cause | todo | todo | todo | 2-strike rule applies |
+| 3 | 2026-11-14 | autotest failures by root cause | 142 | 5 (suite 8) -> 0 expected | suite 9 | 3a-3c; one class per iteration, 617 -> 614 tests |
 | 4 | todo | manual tests, `.ini` migration, reference refresh | todo | todo | todo | every refreshed reference needs a note below |
 | 5 | todo | full run vs. round-0 baseline | todo | 0 expected | todo | |
 
@@ -179,8 +179,12 @@ in `/workspace/.openms-tests/results/testdata-failures-triage.md`:
 
 ### Status
 
-Round 3b is committed (`361d11f3` generator, `3db9ec64` wrappers); suite 8
-runs over all 142 wrappers with the driver untouched.  `AssayGeneratorMetaboSirius`
+Rounds 3a-3c are committed (`e4c1eaa0` generator, `6bab5ea4` wrappers) and
+`check_generated.sh` is green with **614 tests over 142 wrappers** (24 wrappers
+without a test, all covered by `.lint_skip: TestsMissing`).  Suite 8 (all 142
+wrappers) finished with 559 passed / 5 failed / 0 errors over 99 reporting
+tools; the five failures are the ones fixed in round 3c, so suite 9 is the first
+full run that is expected to be green.  `AssayGeneratorMetaboSirius`
 (needs `sirius`), `ConsensusID` (`D9`), `DIAuditor` and `FeatureLinkerUnlabeled`
 (the parquet directory fixture) are queued for a per-case decision.
 
@@ -223,6 +227,48 @@ Two dead ends worth recording:
   `MapAlignerIdentification`, `InternalCalibration`, `IDSplitter` (their
   inputs were rewritten to reference names); `fix_tmp_files()` therefore never
   rewrites a token preceded by `-in*`.
+
+### Round 3c — FuzzyDiff tolerance and multi-file inputs
+
+Suite 8 finished all 15 chunks: **99 tools reported, 559 passed, 5 failed,
+0 errors** (96 tools fully green).  The remaining five are three new classes,
+again all of them in the generator:
+
+| failure | root cause | fix |
+|---|---|---|
+| `IsobaricWorkflow #1/#2` (exit 3): `Error: Unable to read file (Error: Spectra file does not exist: 'TMTTenPlexMethod_test.mzML' in: exp_design/IsobaricWorkflow_1_design_tsv.tsv)` | `-exp_design` names its spectra *by file name*, but the wrapper stages a data set as `<sanitized element identifier>.<openms extension>` in a directory of its own, so the design file can never resolve.  The design file would have to be rewritten per test | `SKIP_LIST: -exp_design` (also affects `Epifany` if it ever gains such a test; only `IsobaricWorkflow` and `Epifany` have the parameter) |
+| `OpenSwathWorkflow #17` (`out_chrom`, `_22_output.chrom.mzML` 33677 b vs 21751 b) | `TOPP_OpenSwathWorkflow_22_out2` compares with `${ZLIB_NG_MZML_WHITELIST}` = `"encodedLength" "<binary>" "<offset"`, i.e. upstream throws the whole payload away because zlib-ng produces different (but equivalent) compressed mzML.  Galaxy can only compare size, and the size is a function of the compression, not of the computation | `strip_uncomparable_outputs()`: the DIFF line decides; an output whose whitelist removes `<binary>`/`<offset` becomes a presence+format assertion (`<output name="out_chrom" ftype="mzml"/>`) |
+| `OpenSwathWorkflow #20` (`out_features`, `_25_output.featureXML` 42500 b vs 25714 b) | `TOPP_OpenSwathWorkflow_25` passes **two** files to `-in`, `-27` the same file six times; `aux/hardcoded_params.json` forces `CTD:is_list: false` for `OpenSwathWorkflow:in`, so the wrapper takes one run per invocation and the emitted test carried only `MRMMapping_output.chrom.mzML` and the tool legitimately produced half the features | `check_multi_inputs()` verifies that every parameter which got several files upstream carries all of them in the emitted test and skips the test otherwise (`_25`, `_27`).  `ctd_arguments()` now also collects `ITEMLIST` |
+| `TextExporter #2` (`consensus_elements` 35326 b vs 61741 b) | reproduced locally: identical rows and columns, but OpenMS 3.6 writes doubles with full precision and in scientific notation (`826.031` -> `826.030999999999949`, `928753024` -> `9.28753e08`), which grows these 2011 era references by ~75%.  Upstream passes because FuzzyDiff parses numbers with a relative tolerance; Galaxy compares by size | `PUBLISH_ONLY_OUTPUTS` — `TextExporter: consensus_centroids/elements/features` keep the existence and `csv` format assertion only |
+
+The first attempt at the multi-file class was wrong in both directions, which is
+why the check verifies instead of rewrites.  A CTD `ITEMLIST` becomes a Galaxy
+`multiple="true"` data parameter, and CTDConverter already writes its files as
+one comma separated `value` that Galaxy splits, so `IDMerger` (7 tests),
+`FileMerger` (10), `MapAlignerPoseClustering` (3) and the other list-taking tools
+keep every test.  Only a parameter which the wrapper *declares* as single valued
+loses information.  Rewriting the value into `values="a,b"` on such a parameter
+would produce an invalid test (Galaxy would offer a list to a single data input),
+so the check compares the emitted value with the upstream command line and skips
+when they differ.  Net effect of round 3c on the test count: 617 -> 614.
+
+Two findings that change how reference mismatches must be handled from here on:
+
+1. **`tools/openms/test-data/` is a clone of the upstream test-data repository**
+   (only the 45 hand-maintained files below `CHEMISTRY/` etc. are tracked;
+   `prepare_test_data.sh` fetches the rest).  A reference file therefore
+   **cannot be refreshed in this repository** — whatever we wrote would
+   disappear with the next `prepare_test_data.sh` and never reach CI.  Any test
+   which upstream only passes through FuzzyDiff's numeric tolerance or through
+   a payload whitelist has to be relaxed in the wrapper, not "fixed" by
+   rewriting the expectation.  The `## Reference-file refreshes` table stays
+   what it was: a log of upstream reference changes we had to follow.
+2. `OpenSwathWorkflow -test` is not the reason for the `_22` mismatch: a run
+   without `-ini` writes the same 243 `<userParam name="parameter: ...">`
+   entries (59 kB vs the 33 kB reference), and a `-test` run (32.8 kB) differs
+   from the reference only in the intensity arrays.  The interesting part is
+   invisible to a size comparison: `sim_size` cannot tell a parameter dump from
+   a chromatogram.
 
 ### D10 — UniPEFF stays unwrappable until the extension is per tool
 
