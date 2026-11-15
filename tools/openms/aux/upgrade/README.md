@@ -97,12 +97,13 @@ file that has to change (`filetypes.txt`, `hardcoded_params.json` stale entries,
 | file | purpose |
 |---|---|
 | `ctd_diff.py` | structural CTD diff + impact hints |
-| `manifest.py` | fingerprints, "what changed", decision ledger, round gate |
+| `manifest.py` | fingerprints (per fixture, with clock/timing tokens washed out), "what changed", decision ledger, round gate |
 | `check_generated.sh` | static gate, idempotence check, freeze/unfreeze |
 | `snapshot_ctds.sh` | one CTD snapshot per OpenMS version (+ provenance) |
 | `run_tests.sh` | planemo per tool, records into the ledger |
 | `teststatus.tsv`, `fingerprints.json` | machine-written loop state, commit at round ends (small, and it is the reviewer's evidence); `testlogs/` is git-ignored |
 | `allowlist.txt` | known-broken tools that are not our doing, with reason |
+| `unstable_fixtures.txt` | fixtures `test-data.sh` regenerates that are *not* reproducible (Epifany's EM, `-threads 4` order); the fingerprint records their existence, not their bytes |
 | `UPGRADE_LEDGER.md` | per-round log, decisions, output-refresh justifications |
 | `pre-commit` | optional hook: `cp aux/upgrade/pre-commit ../../.git/hooks/` |
 | `selftest.sh` | self-test of `ctd_diff.py`/`manifest.py` on synthetic CTDs; run after touching them |

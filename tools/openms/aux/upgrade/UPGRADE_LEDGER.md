@@ -24,6 +24,7 @@ later round does not re-litigate it.
 | D3 | `Decharger`, `MetaboliteAdductDecharger`, `MaRaClusterAdapter`, `FLASHDeconv`, `IDDecoyProbability`, `ProteomicsLFQ` | keep blacklisted | pre-existing reasons in `aux/tools_blacklist.txt`, unrelated to the version jump. |
 | D6 | layout of `deprecated/` | one subdirectory per archived suite state (`3.1/`, `3.2/`), each with its own `macros.xml` + `fill_ctd.py` | a wrapper's `<requirement>` pin must match the suite it was generated from. The 7 wrappers dropped in this upgrade are 3.2-generated, the 15 older ones are 3.1-generated; one shared `macros.xml` would have made one of the two groups install the wrong OpenMS. `<import>` resolves relative to the importing file, so this needs no edit to any wrapper. |
 | D5 | nested/stale `hardcoded_params.json` entries | **partly done** (round 5): only entries naming tools that no longer exist are pruned (`separator`/`IDMassAccuracy`, `xml_out`/`XTandemAdapter`, `algorithm:tryptic_only`/`CompNovo`+`CompNovoCID`); the rest are kept | `ctd_diff.py` lists 18 parameters that vanished from the 3.6 CTDs, but most of those entries are *deliberate* blacklists whose parameter is hidden by `strip_output_dirs.py` (`out_qpx`), dropped for a reason (`trafo_out`, D7) or re-typed rather than removed (`in`/`OpenSwathWorkflow`, `test`). Only a `tools` list naming a tool that is not in the 3.6 snapshot is unambiguously dead. `check_generated.sh --regen` proves the three removals leave every wrapper byte-identical. The host-path rule is flipped from `warn` to `fail` (no wrapper contains `/home/<user>/` any more). |
+| D13 | what a fixture fingerprint may hash | timestamps and runtime footers are washed out, four fixtures are hashed as "unstable" | `test-data.sh` does not ship a dozen fixtures, it **generates** them by running the tools, and OpenMS stamps them with the clock (`<IdentificationRun date=...>`, `creationDate=...`, the `took 0.09 s (wall) ... Peak Memory Usage` footer, and in the binary `.oms` a plain `2026-11-15 18:40:55`). Hashing those bytes made the gate report **15 phantom stale tools** after every regeneration. `sha256_fixture()` now normalises the stamp tokens (an actual fixture change is still caught byte for byte), and `unstable_fixtures.txt` names the four fixtures that are not reproducible at all (Epifany's EM scores, `-threads 4` feature order) - exactly the ones the wrappers assert with `compare="sim_size" delta_frac="0.7"`. Verified: two full regenerations in a row move **0** fingerprints. |
 | D4 | `FileConverter` raw path | open | 3.6 moved raw handling into `RawToMzML:*` and added `-RawToMzML:reader` (`inprocess` default on Linux). The hardcoded `RawToMzML:NET_executable=mono` / `ThermoRaw_executable=ThermoRawFileParser.exe` are ignored unless `reader=external`, and `mono` is no longer a recipe dependency. Decide in round 2. |
 
 ### D11 — `MascotAdapterOnline` keeps its tests only as a comment
@@ -43,6 +44,45 @@ generation (`D1`) and hence maintained by hand.  The tests are therefore kept
 inside an XML comment with the reason spelled out: a licensed server only has to
 delete the comment markers.  Consequence: the wrapper now has no active `<test>`
 and joins the 24 other wrappers the `TestsMissing` lint skip covers.
+
+## The gate, as of round 6 — a fingerprint that survives a regeneration
+
+`manifest.py report` recomputes every fingerprint live and compares it with the one
+recorded in `teststatus.tsv`, so a stale row means "re-test this tool".  After the
+round-5 gate passed, a *re-regeneration* turned that into 15 stale tools although
+the wrappers were byte-identical and nothing the tests assert had changed:
+
+    $ bash aux/upgrade/check_generated.sh --regen      # wrappers byte-identical
+    $ python3 aux/upgrade/manifest.py report --gate
+    GATE FAILED: results recorded against an older fingerprint; re-test the stale tools.
+      ... 15 tools ...
+
+The cause is the fixture pipeline, not the wrappers: `test-data.sh` generates a
+dozen reference files by running the tools themselves, and each generated file
+carries the clock.  Three of the shapes seen:
+
+    <IdentificationRun date="2026-11-15T18:51:26" ...>        idXML / featureXML
+    creationDate="2026-11-15T19:24:52"                        mzIdentML, mzQC
+    2026-11-15 18:40:55                                       oms (binary)
+    took 0.09 s (wall), ... Peak Memory Usage: 56 MB.         *.stdout fixtures
+
+`sha256_fixture()` now normalises exactly those tokens before hashing, and
+`aux/upgrade/unstable_fixtures.txt` lists the four fixtures whose *scores* are
+irreproducible in the first place (Epifany's EM, `-threads 4` feature order) -
+the same four the wrappers assert with `compare="sim_size" delta_frac="0.7"`, so
+the fingerprint records their existence instead of their bytes.  `fingerprints.json`
+now also stores a `refdigest` per fixture, which is what named the culprits:
+
+    $ python3 aux/upgrade/manifest.py fingerprint --out fingerprints.json
+    $ bash aux/generate.sh
+    $ python3 aux/upgrade/manifest.py fingerprint --out /scratch/.../after.json
+    0 tools moved
+
+The last full regeneration moves zero fingerprints (the three iterations before it
+moved 15, then 12, then 9, then 2 - each one named by its `refdigest` delta), so
+the gate means what it says: it changes when a wrapper, a CTD or a *real* fixture changes, not when a
+fixture is written one second later.  The 67 status rows were re-fingerprinted
+once, when the hash function changed; no test result was re-interpreted.
 
 ## The gate, as of round 5
 

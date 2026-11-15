@@ -77,6 +77,67 @@ def wrapper_paths(only=None):
     return tools
 
 
+# A dozen fixtures are not shipped by the test-data repository: test-data.sh
+# generates them by running the tools themselves (IDFileConverter_12_output,
+# OpenSwathWorkflow_threads4, QCCalculator_2, ...) and OpenMS stamps every one of
+# them with the clock and with its own runtime:
+#
+#     <IdentificationRun date="2026-11-15T18:51:26" ...          (idXML)
+#     creationDate="2026-11-15T19:24:52"                          (mzIdentML)
+#     "creationDate": "2026-11-15T19:24:52"                       (mzQC)
+#     2026-11-15 18:40:55                                         (oms, binary)
+#     took 0.09 s (wall), ... Peak Memory Usage: 56 MB.           (*.stdout)
+#
+# so a wrapper whose test references such a fixture looks "changed" after every
+# regeneration although neither the wrapper, the CTD nor anything the test
+# asserts moved - that is how the gate ended up reporting 15 phantom stale
+# tools.  Wash those tokens out and compare the rest byte for byte: a real
+# fixture change is still caught, a fresh timestamp is not.
+_ISO_STAMP = re.compile(rb"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"
+                        rb"(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?")
+_LOCAL_STAMP = re.compile(rb"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
+_RUNTIME = re.compile(rb"took [0-9.]+ s \(wall\), [0-9.]+ s \(CPU\), "
+                      rb"[0-9.]+ s \(system\), [0-9.]+ s \(user\); "
+                      rb"Peak Memory Usage: [0-9]+ MB")
+_MAX_SCRUB = 8 << 20
+_UNSTABLE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "unstable_fixtures.txt")
+_unstable = None
+
+
+def unstable_fixtures():
+    """Basenames whose bytes are not reproducible (see unstable_fixtures.txt)."""
+    global _unstable
+    if _unstable is None:
+        _unstable = set()
+        if os.path.exists(_UNSTABLE_FILE):
+            with open(_UNSTABLE_FILE, encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.split("#", 1)[0].strip()
+                    if line:
+                        _unstable.add(line.split("\t")[0].strip())
+    return _unstable
+
+
+def sha256_fixture(path):
+    if os.path.basename(path) in unstable_fixtures():
+        return "unstable"
+    if os.path.isdir(path):
+        digest = hashlib.sha256()
+        for name in sorted(os.listdir(path)):
+            digest.update(name.encode())
+            digest.update(sha256_fixture(os.path.join(path, name)).encode())
+        return digest.hexdigest()
+    if os.path.getsize(path) > _MAX_SCRUB:
+        return sha256_file(path)
+    with open(path, "rb") as handle:
+        data = handle.read()
+    data = _ISO_STAMP.sub(b"TIMESTAMP", data)
+    data = _LOCAL_STAMP.sub(b"TIMESTAMP", data)
+    data = _RUNTIME.sub(b"took TIMING", data)
+    return hashlib.sha256(data).hexdigest()
+
+
 def referenced_testdata(wrapper):
     """All basenames mentioned in the wrapper that exist in test-data/."""
     testdata = os.path.join(TOOLDIR, "test-data")
@@ -100,12 +161,16 @@ def tool_fingerprint(tool, wrapper):
     for name in refs:
         digest.update(b"\0")
         digest.update(name.encode())
-        digest.update(sha256_file(os.path.join(testdata, name)).encode())
+        digest.update(sha256_fixture(os.path.join(testdata, name)).encode())
     ctd = os.path.join(TOOLDIR, "ctd", tool + ".ctd")
     return {
         "fp": digest.hexdigest(),
         "wrapper": sha256_file(wrapper),
         "refs": len(refs),
+        # per-fixture digests, so that a moved fp names the fixture that moved
+        # (manifest.py refdiff) instead of only saying "this tool is stale"
+        "refdigest": {name: sha256_fixture(os.path.join(testdata, name))
+                      for name in refs},
         "ctd": sha256_file(ctd) if os.path.exists(ctd) else None,
     }
 
