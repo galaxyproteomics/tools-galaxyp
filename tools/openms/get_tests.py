@@ -76,6 +76,15 @@ SKIP_LIST = [
     # exit 9) on the in-process tests as well, so there is nothing Galaxy or the
     # wrapper can assert on
     r'^TOPP_PercolatorAdapter_1_inproc',
+    # AssayGeneratorMetaboSirius reads a *directory* (a SIRIUS project:
+    # formula_identifications.tsv, canopus_formula_summary.tsv, report.mztab and
+    # one subdirectory per compound).  Its CTD calls the parameter input-file,
+    # which is why the wrapper offers a single data set, but passing one file
+    # makes the tool answer "SIRIUS project directory is empty." (verified with
+    # 3.6.0), and Galaxy can only stage single files.  The fixture is not in the
+    # test-data repository either - it lives in the OpenMS source tree - so the
+    # three tests cannot be expressed (see D12 in the ledger).
+    r'^TOPP_AssayGeneratorMetaboSirius_',
 ]
 
 

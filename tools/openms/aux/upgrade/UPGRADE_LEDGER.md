@@ -76,6 +76,30 @@ the name does not help - both paths are identical - and the wrapper is
 generated, so this needs a CTDConverter fix.  It is a warning, the round-0
 baseline recorded it, and the 10 `ConsensusID` tests pass.
 
+### D12 — `AssayGeneratorMetaboSirius` cannot be tested, and barely used
+
+Its `-in` is a *directory*: a SIRIUS project holding `formula_identifications.tsv`,
+`canopus_formula_summary.tsv`, `report.mztab` and one subdirectory per compound.
+Two independent reasons make the three upstream tests inexpressible:
+
+* the CTD types the parameter as `input-file`, so the wrapper offers a single
+  data set; passing one file makes 3.6.0 answer
+  `Error: Unexpected internal error (SIRIUS project directory is empty.)`
+  (reproduced in `/scratch/berntm/sirtest`), and Galaxy can only stage single
+  files - there is no directory datatype;
+* the fixture is not even in the test-data repository: it lives in the OpenMS
+  source tree (`src/tests/topp/AssayGeneratorMetabo-in-SIRIUS-project`), so
+  `prepare_test_data.sh` never fetches it.
+
+The tests are therefore skipped by name in `SKIP_LIST` (they used to be dropped
+silently by `missing_inputs()`), and the tool runs green in the suite by having
+no tests.  Making it usable needs a functional decision - wrap a tar archive and
+unpack it into the job directory, or blacklist the tool like the parquet ones
+(`D2`) - which is the maintainer's call, so it is recorded rather than guessed.
+The remaining `-test` runs (no `sirius` binary needed) do pass when the directory
+is provided: `AssayGeneratorMetaboSirius -test -in <project>` reproduces
+`AssayGeneratorMetaboSirius_output_1.tsv` byte for byte.
+
 ## Reference-file refreshes (must be justified)
 
 | file | round | justification |
@@ -265,9 +289,23 @@ Two of the seven failures are not wrapper bugs:
   (`results/suite10b.log`), so it is infrastructure, not a test.
 * `MascotAdapterOnline` 2/2 - see `D11`.
 
-`AssayGeneratorMetaboSirius` (needs the `sirius` binary and a directory
-fixture), `ConsensusID` (`D9`), `DIAuditor` and `FeatureLinkerUnlabeled` (the
-parquet directory fixture) are queued for a per-case decision.
+The four tools that were still on the blocked list are now decided:
+
+| tool | state | evidence |
+|---|---|---|
+| `ConsensusID` | **green**, 10 tests | the `D9` lint warning is cosmetic, see below |
+| `DIAuditor` | **green**, 2 tests | suite 10 |
+| `FeatureLinkerUnlabeled` | **green**, 4 tests | the parquet directory fixture is no longer needed: the 3.6 CTD writes `.consensusXML` and the wrapper's own tests pass (suite 10) |
+| `AssayGeneratorMetaboSirius` | **blocked**, `D12` | needs a directory input, see `D12` |
+
+`D9` cannot be fixed from this repository.  CTDConverter builds the batch-mode
+conditional itself (`ctdconverter/galaxy/converter.py:1407`): it deep-copies the
+data parameter into `<when value="no">` and puts the single variant into
+`<when value="yes">`, so both Galaxy parameter paths are literally
+`in_cond|in`.  Galaxy's `format_source` resolution therefore sees two candidates,
+and qualifying the name does not help - there is nothing to disambiguate.  The
+fix belongs upstream (name the batch branch differently) and the warning does not
+affect the 10 passing `ConsensusID` tests.
 
 ### Round 3d — an output collection Galaxy can express
 
