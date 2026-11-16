@@ -471,6 +471,35 @@ The fix is a per-tool extension override in the generator (e.g.
 tests are skipped and the tool is not wrapped-in-tested state.  This is a
 pre-existing wrapper defect, not a 3.6 regression: 3.2 had the same mapping.
 
+### What `strip_output_dirs.py` drops (D2/D3)
+
+The CTDs of OpenMS 3.6 declare **11** parameters as `type="output-dir"`, in the
+four wrapped tools and in four blacklisted ones:
+
+| tool | parameter | what it is |
+|---|---|---|
+| `IsobaricWorkflow`, `MS1LabeledWorkflow`\*, `ProteinQuantifier`, `ProteomicsLFQ`\*, `ProSE` | `out_qpx` | a *directory* of one qpx per input file |
+| `ProSE` | `out_parquet` | the same for parquet (excluded on both sides, D2) |
+| `ProSE` | `out_mod_analysis_dir` | the whole modified-peptide analysis: per-mod tables, plots, FASTA |
+| `OpenSwathExport`\*, `OpenSwathPeakMapExtractor`\* | `out_dir` | one file per transition group |
+| `ProteomicsLFQ`\* | `feat_dir` | the per-run featureXML set |
+| `QualityControl` | `directory` | the MaxQuant-style report bundle |
+
+\* blacklisted, so no wrapper exists for it anyway.
+
+A Galaxy dataset is a single file, and even the `Directory` datatype Galaxy
+learned later can not be *requested* by an `<output>` - a tool has to produce a
+file. `strip_output_dirs.py` therefore deletes those 11 parameters from the CTD
+snapshot before the conversion, which keeps the remaining outputs of the same
+tools (idXML, mzTab, the QC JSONs) wrappable: `QualityControl` loses only its
+report bundle, `ProSE` only the optional duplicates.
+
+The alternative would be to write into a subdirectory and `tar` it, and to
+declare the output as a `tar.gz`. It is only worth it for `QualityControl`,
+whose `directory` is the MaxQuant-compatible table set a user may actually want
+to download; for `out_qpx`/`out_parquet` the format is excluded anyway, and
+`feat_dir`/`out_dir` belong to blacklisted tools. Left open, not forgotten.
+
 ## Round 6.5 — the PR review, answered in the generator
 
 Ten review comments on #783. Five of them are mechanical and land here; the
@@ -503,7 +532,7 @@ defect, but the jars are licence-gated, so the fixtures can not be produced.
   nothing left to hide.  `macros_autotest.xml` also left `GLOBAL_FILES` in
   `manifest.py` - the fingerprint already covers the wrapper that includes it.
 
-**Verification.**  142 wrappers, 629 tests (612 before), `planemo lint` clean on
+**Verification.**  142 wrappers, 626 tests (612 before), `planemo lint` clean on
 the changed files, `check_generated.sh` all green including the manual-test
 fixture check (which now finds 0 problems: the 5 dangling
 `MSGFPlusAdapter_1_out.idXML` references disappeared with the restored tests,
@@ -519,6 +548,17 @@ boost libraries (a `$HOME` cleanup took 27k files out of it), which is exactly
 what a user without `openms-thirdparty` sees - and the failure was
 `Error: Executable not found`, not a broken wrapper.  Restoring the packages
 from the conda cache fixed it.
+
+**Full suite.**  All 142 wrappers were then run in Galaxy (`results/archive-4/`
+of the test harness, 15 chunks): **123 tools, 626 passed, 0 failed, 0 errors**.
+The 19 tools the summary does not mention are exactly the wrappers without a
+`<test>` (checked, not assumed: the per-tool test counts of the wrappers and of
+the suite agree for all 123).  `manifest.py import-summary --stamp` folded that
+run into the ledger - the `--stamp` flag is new, because an imported summary
+belongs to the tree it was produced from, and the old fingerprint is what made
+`report --gate` call every tool stale after a regeneration:
+
+    tools 142 / pass 123 / skip 19 / stale 0 / escalate 0 -> GATE PASSED
 
 **Not done here** (`§2` of the TODO list): the ~1205 `compare="sim_size"
 delta_frac="0.7"` outputs are the strongest review point - most of them should

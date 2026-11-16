@@ -367,13 +367,18 @@ def cmd_import_summary(args):
             attempts = int(old.get("attempts") or 0) + 1
         else:
             attempts = 0
+        fp = old.get("fp", "")
+        if getattr(args, "stamp", False):
+            wrapper = os.path.join(TOOLDIR, tool + ".xml")
+            if os.path.exists(wrapper):
+                fp = tool_fingerprint(tool, wrapper)["fp"]
         rows[tool] = {
             "tool": tool,
             "status": "pass" if not problems else "fail",
             "attempts": attempts,
             "cause": cause,
             "decision": old.get("decision", ""),
-            "fp": old.get("fp", ""),
+            "fp": fp,
             "updated": args.date,
         }
         imported += 1
@@ -480,6 +485,10 @@ def main(argv=None):
                          help="fold a planemo summary.tsv into the ledger")
     imp.add_argument("summary")
     imp.add_argument("--cause", default="")
+    imp.add_argument("--stamp", action="store_true",
+                     help="record the *current* fingerprint of every imported tool "
+                          "(the suite ran against this working tree) instead of "
+                          "keeping the one from a previous round")
     imp.set_defaults(func=cmd_import_summary)
 
     rep = sub.add_parser("report", help="round status / exit criterion")

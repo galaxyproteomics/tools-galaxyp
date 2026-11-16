@@ -45,7 +45,16 @@ SKIP_LIST = [
     # Without the jar the fixture can not be produced, so a restored test could
     # only fail (same shape as the CometAdapter case, different conclusion).
     r"^TOPP_(MSFraggerAdapter|NovorAdapter)_",
-    r"^TOPP_DatabaseSuitability_[0-9]+$",  # calls Comet through ExternalProcess::run() (PATH lookup, comet.exe default); upstream guards these behind find_program(COMET_BINARY)
+    # DatabaseSuitability calls CometAdapter through ExternalProcess::run(), i.e. a PATH
+    # lookup (comet.exe by default), which Galaxy cannot stage; upstream guards the
+    # three tests behind find_program(COMET_BINARY) and passes PATH via
+    # ENVIRONMENT ${TOPP_PATH_ENV}.  Even with Comet present they are only
+    # comparable through a relaxed FuzzyDiff (-ratio 1.05 -absdiff 0.05) because the
+    # correction factor is computed from a *random* subsampling of the FASTA
+    # (getSubsampledFasta_), so the numbers differ between runs.  Galaxy has no
+    # tolerance parameter for tabular content; the deterministic part (the tool
+    # runs, writes a tsv) would be a much weaker assertion than upstream makes.
+    r"^TOPP_DatabaseSuitability_[0-9]+$",
     r"OpenSwathMzMLFileCacher .*-convert_back",  # - OpenSwathMzMLFileCacher with -convert_back argument https://github.com/OpenMS/OpenMS/issues/4399
     r"MaRaClusterAdapter.*-consensus_out",  # - MaRaCluster with -consensus_out (parameter blacklister: https://github.com/OpenMS/OpenMS/issues/4456)
     r"FileMerger_1_input1.dta2d.*FileMerger_1_input2.dta ",  # - FileMerger with mixed dta dta2d input (ftype can not be specified in the test, dta can not be sniffed)
