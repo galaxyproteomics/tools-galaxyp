@@ -39,6 +39,12 @@ SKIP_LIST = [
     r"\.flat\.json",
     r"\.ini\.json",
     r"TOPP_FileConverter_29_back",  # -out FileConverter_29.back.tmp.mzML: no DIFF compares it, so there is no fixture to compare the wrapper output with
+    # MSFragger and Novor are licence-gated (the user has to download
+    # MSFragger.jar / novor.jar), no recipe ships them, and upstream guards
+    # their tests with `if (NOT (${MSFRAGGER_BINARY} STREQUAL "...-NOTFOUND"))`.
+    # Without the jar the fixture can not be produced, so a restored test could
+    # only fail (same shape as the CometAdapter case, different conclusion).
+    r"^TOPP_(MSFraggerAdapter|NovorAdapter)_",
     r"^TOPP_DatabaseSuitability_[0-9]+$",  # calls Comet through ExternalProcess::run() (PATH lookup, comet.exe default); upstream guards these behind find_program(COMET_BINARY)
     r"OpenSwathMzMLFileCacher .*-convert_back",  # - OpenSwathMzMLFileCacher with -convert_back argument https://github.com/OpenMS/OpenMS/issues/4399
     r"MaRaClusterAdapter.*-consensus_out",  # - MaRaCluster with -consensus_out (parameter blacklister: https://github.com/OpenMS/OpenMS/issues/4456)
@@ -403,8 +409,7 @@ def text_params_with_files(line: str, tool_id: str) -> List[str]:
     list of iRT files.  Either the CTD is patched (aux/ctd_patches.json, as
     done for -Calibration:rt_norm) or the test is skipped here.
     """
-    ctd = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                       "ctd", f"{tool_id}.ctd")
+    ctd = os.path.join(CTD_DIR, f"{tool_id}.ctd")
     if not os.path.exists(ctd):
         return []
     types = ctd_arguments(ctd)
@@ -433,8 +438,7 @@ def multi_value_arguments(line: str, tool_id: str) -> Dict[str, List[str]]:
     files are returned as {parameter: [file, ...]}, so that the caller can emit
     <param name="in" values="a,b"/> instead (Galaxy splits `values` on commas).
     """
-    ctd = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                       "ctd", f"{tool_id}.ctd")
+    ctd = os.path.join(CTD_DIR, f"{tool_id}.ctd")
     if not os.path.exists(ctd):
         return []
     types = ctd_arguments(ctd)
@@ -476,7 +480,15 @@ def chained_inputs(line: str) -> List[str]:
 # cannot be expressed in Galaxy: it would upload a directory or a file which
 # does not exist.  Without the list (get_tests.py run by hand) fall back to
 # checking that the file exists at all.
-_UPSTREAM_LIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".upstream-fixtures.txt")
+_UPSTREAM_LIST = os.environ.get("OPENMS_UPSTREAM_FIXTURES") or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), ".upstream-fixtures.txt"
+)
+# the CTD snapshot is a build artefact (tools/openms/ctd/ by default, or whatever
+# test-data.sh generated into $tmp/generated/ctd); the generator must not depend
+# on files inside the tool directory
+CTD_DIR = os.environ.get("OPENMS_CTD_DIR") or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "ctd"
+)
 
 
 def _upstream_fixtures() -> Optional[Set[str]]:
@@ -497,13 +509,21 @@ def is_fixture(token: str) -> bool:
     return os.path.isfile(path)
 
 
-def missing_inputs(line: str) -> List[str]:
+def missing_inputs(line: str, tool_id: str) -> List[str]:
     """Input files which are not available in test-data/.
 
     Those are either intermediates of a previous test of the same tool or
     fixtures which are not part of the source tree (e.g. generated at build
     time).  Galaxy cannot produce them, so tests using them are skipped.
+
+    Only *inputs* count.  An output is written by the test itself and has no
+    fixture unless a FuzzyDiff compares it - reading the CTD types is the only
+    reliable way to tell them apart, because the flag names are not uniform
+    (`-out`, `-out1`, but also `-pin_out`, which the `-out` prefix test in this
+    function missed and which cost CometAdapter its four tests).
     """
+    ctd = os.path.join(CTD_DIR, f"{tool_id}.ctd")
+    types = ctd_arguments(ctd) if os.path.exists(ctd) else {}
     tokens = shlex.split(line)
     missing = []
     for i, tok in enumerate(tokens):
@@ -519,6 +539,8 @@ def missing_inputs(line: str) -> List[str]:
             if part.startswith("-") or not (looks_like_file or is_input_value):
                 continue
             if i > 0 and tokens[i - 1].startswith("-out"):
+                continue
+            if i > 0 and str(types.get(tokens[i - 1], "")).startswith("output"):
                 continue
             if not is_fixture(part):
                 missing.append(part)
@@ -591,7 +613,7 @@ def get_ini(line: str, tool_id: str) -> Tuple[str, str]:
     if ini:
         return os.path.join("test-data", ini), shlex.join(cmd)
     else:
-        return os.path.join("ctd", f"{tool_id}.ctd"), line
+        return os.path.join(CTD_DIR, f"{tool_id}.ctd"), line
 
 
 def unique_files(line: str):
@@ -655,6 +677,30 @@ def fill_ctd_clargs(ini: str, line: str, ctd_tmp: TextIO) -> None:
     ini_model.write_ctd(ctd_tmp, ini_values)
 
 
+# `-comet_executable "${COMET_BINARY}"` and the eight other adapters that take
+# the path of an external binary on the command line.  The variable is set by
+# prepare_test_data.sh for the OpenMS test run only, so the generator saw an
+# unresolved `${COMET_BINARY}` and dropped the test - which is how CometAdapter
+# lost all six of its tests.  In Galaxy the binary comes from the wrapper:
+# aux/hardcoded_params.json pins each of them (`"comet_executable": "comet"`,
+# `"executable": ...` per tool), and the recipe (openms-thirdparty) puts them on
+# PATH.  So drop the flag and let the wrapper decide.
+_BINARY_ARGUMENT = re.compile(
+    r'\s+-[A-Za-z0-9_:]*executable\s+"?\$\{[A-Za-z_][A-Za-z0-9_]*_BINARY\}"?'
+)
+
+
+def drop_binary_arguments(line: str, test_id: str) -> str:
+    """Remove `-<x>_executable "${<X>_BINARY}"` from a test command line."""
+    dropped = _BINARY_ARGUMENT.findall(line)
+    for argument in dropped:
+        sys.stderr.write(
+            f"    drop {test_id}:{argument.rstrip()} "
+            f"(the wrapper pins the executable)\n"
+        )
+    return _BINARY_ARGUMENT.sub("", line)
+
+
 def process_test_line(
     id: str,
     line: str,
@@ -665,7 +711,11 @@ def process_test_line(
     uncomparable: Optional[Set[str]] = None
 ) -> Optional[str]:
 
-    re_test_id = re.compile(r"add_test\(\"([^\"]+)\" ([^ ]+) (.*)")
+    # NOT every add_test() is well formatted: 3.6 has
+    #   add_test("TOPP_CometAdapter_6"  CometAdapter -test ...
+    # (two spaces), which the single-space pattern turned into
+    # "Ill formated test line" -> sys.exit() -> the whole tool lost its tests
+    re_test_id = re.compile(r"add_test\(\"([^\"]+)\"\s+([^ ]+)\s*(.*)")
     re_id_out_test = re.compile(r"_out_?[0-9]?")
 
     # TODO auto extract from  set(OLD_OSW_PARAM ... lin
@@ -699,6 +749,7 @@ def process_test_line(
     tool_id = match.group(2)
 
     line = f"{match.group(2)} {match.group(3)}"
+    line = drop_binary_arguments(line, test_id)
 
     if test_id in DISABLED:
         sys.stderr.write(f"    skip disabled {test_id} (with_* option is OFF)\n")
@@ -772,7 +823,7 @@ def process_test_line(
             f"    skip {test_id} (format not readable in 3.6: {', '.join(sorted(set(unsupported)))})\n"
         )
         return
-    missing = missing_inputs(line)
+    missing = missing_inputs(line, tool_id)
     if missing:
         sys.stderr.write(
             f"    skip {test_id} (input not in test-data: {', '.join(sorted(set(missing)))})\n"

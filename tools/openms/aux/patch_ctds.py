@@ -9,10 +9,21 @@ which is a property of the CTD, not of this repo, so it is corrected on the
 snapshot instead of in the generated wrapper (same class of decision as
 aux/strip_output_dirs.py).
 
+Two kinds of corrections:
+
+* `"<Tool>": {"<Section>:<param>": {"<attribute>": "<value>"}}` - set attributes
+  of one parameter (the supported_formats / input-file fixes).
+* `"_substitutions": [["<regex>", "<replacement>"], ...]` - rewrite the
+  `description` of *every* parameter of *every* tool, for wording upstream
+  generates from C++ type names (`std::string that is appended ...` is not
+  something a Galaxy user should have to read).
+
 Usage: patch_ctds.py [CTD_DIR]   (default: ctd)
 """
+import glob
 import json
 import os
+import re
 import sys
 import xml.etree.ElementTree as ET
 
@@ -46,6 +57,27 @@ def items(root):
     return by_path
 
 
+def substitute(root, rules, tool):
+    """Rewrite description/label attributes with the `_substitutions` rules."""
+    changed = 0
+    for item in root.iter():
+        for attribute in ("description", "label"):
+            value = item.get(attribute)
+            if not value:
+                continue
+            new = value
+            for pattern, replacement in rules:
+                new = re.sub(pattern, replacement, new)
+            if new != value:
+                sys.stderr.write(
+                    f"patch_ctds: {tool}: {item.get('name')} {attribute}: "
+                    f"{new!r}\n"
+                )
+                item.set(attribute, new)
+                changed += 1
+    return changed
+
+
 def patch(tool, spec, ctd_dir):
     path = os.path.join(ctd_dir, f"{tool}.ctd")
     if not os.path.isfile(path):
@@ -71,17 +103,31 @@ def patch(tool, spec, ctd_dir):
     return 0
 
 
+def substitute_ctd(path, rules):
+    """Apply the `_substitutions` rules to one CTD file."""
+    tool = os.path.basename(path)[:-4]
+    tree = ET.parse(path)
+    root = tree.getroot()
+    if substitute(root, rules, tool):
+        tree.write(path, encoding="UTF-8", xml_declaration=True)
+
+
 def main(argv):
     ctd_dir = argv[1] if len(argv) > 1 else os.path.join(
         os.path.dirname(HERE), "ctd"
     )
     with open(PATCHES) as fh:
         patches = json.load(fh)
+    rules = patches.get("_substitutions", [])
     failures = 0
     for tool, spec in patches.items():
         if tool.startswith("_"):
             continue
         failures += patch(tool, spec, ctd_dir)
+    # the substitutions are not per tool: they clean up wording upstream
+    # generates from C++ type names, in every CTD the loop above did not touch
+    for path in sorted(glob.glob(os.path.join(ctd_dir, "*.ctd"))):
+        substitute_ctd(path, rules)
     return 1 if failures else 0
 
 

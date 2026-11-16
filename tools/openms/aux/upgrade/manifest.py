@@ -37,7 +37,10 @@ STATUS = os.path.join(HERE, "teststatus.tsv")
 ALLOWLIST = os.path.join(HERE, "allowlist.txt")
 
 # files that, when they change, invalidate every tool's result
-GLOBAL_FILES = ("macros.xml", "aux/macros_test.xml", "aux/macros_autotest.xml",
+# the generated test macros are not listed: they are an artefact of
+# test-data.sh (kept in $ARTIFACTS, outside the tool directory) and their content
+# reaches the fingerprint through the wrapper that includes it
+GLOBAL_FILES = ("macros.xml", "aux/macros_test.xml",
                 "aux/filetypes.txt", "aux/hardcoded_params.json",
                 "aux/tools_blacklist.txt")
 

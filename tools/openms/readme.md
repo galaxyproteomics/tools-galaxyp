@@ -124,6 +124,11 @@ Whats happening:
    - From these CMake files Galaxy tests are auto generated and stored in `macros_autotest.xml`
    - The command lines are stored in `prepare_test_data.sh` for regeneration of test data
 
+   Both are build artefacts, together with the CTD snapshot (`ctd/`) and the
+   list of real upstream fixtures: `test-data.sh` writes them to `$ARTIFACTS`
+   (default: `$tmp/generated`, i.e. outside this directory), so the tool
+   directory itself contains only the wrappers, the macros and the scripts.
+
 More details can be found in the comments of the shell script.
 
 Open problems

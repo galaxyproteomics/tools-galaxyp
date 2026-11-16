@@ -12,6 +12,15 @@ if [ -z "$tmp" ]; then
     created="yes"
 fi
 
+# everything the generator produces besides the wrappers themselves - the CTD
+# snapshot, the generated test macros, the test shell script, the list of real
+# fixtures - is a build artefact.  It lives in $ARTIFACTS, not in the tool
+# directory: that directory is what goes to the ToolShed, and keeping the
+# artefacts out of it means it needs no .gitignore.
+ARTIFACTS="${ARTIFACTS:-$tmp/generated}"
+mkdir -p "$ARTIFACTS"
+export ARTIFACTS
+
 export OPENMSGIT="$tmp/OpenMS$VERSION.0-git"
 export OPENMSPKG="$tmp/OpenMS$VERSION-pkg/"
 # reuse an existing environment if one is given
@@ -163,8 +172,9 @@ fi
 ## file cannot be expressed in Galaxy.  Remember what really exists, so
 ## get_tests.py can tell fixtures from intermediates.
 ( cd test-data && find . -mindepth 1 -maxdepth 3 ! -name "." \( -type f -o -type l -o -type d \) \
-    | sed 's@^\./@@' | sort > ../.upstream-fixtures.txt ) || exit 1
-wc -l ../.upstream-fixtures.txt
+    | sed 's@^\./@@' | sort > "$ARTIFACTS/.upstream-fixtures.txt" ) || exit 1
+wc -l "$ARTIFACTS/.upstream-fixtures.txt"
+export OPENMS_UPSTREAM_FIXTURES="$ARTIFACTS/.upstream-fixtures.txt"
 
 #TODO remove? ln -fs TOFCalibration_ref_masses test-data/TOFCalibration_ref_masses.txt
 #TODO remove? ln -fs TOFCalibration_const test-data/TOFCalibration_const.csv
@@ -182,30 +192,32 @@ wc -l ../.upstream-fixtures.txt
 ###############################################################################
 echo "Create CTD files"
 conda activate $OPENMSENV
-rm -rf ctd
-mkdir -p ctd
+ctd="$ARTIFACTS/ctd"
+rm -rf "$ctd"
+mkdir -p "$ctd"
+export OPENMS_CTD_DIR="$ctd"
 
 for i in $OPENMSPKG/bin/*
 do
     b=$(basename $i)
     echo $b
-    $b -write_ctd ctd/
-    sed -i -e 's/²/^2/' ctd/$b.ctd
+    $b -write_ctd "$ctd"/
+    sed -i -e 's/²/^2/' "$ctd"/$b.ctd
 done
-if [[ -z "$(ls -A ctd)" ]]; then
+if [[ -z "$(ls -A "$ctd")" ]]; then
     echo "no CTD files were written - check the binary list in $OPENMSPKG/bin" >&2
     exit 1
 fi
 ## OpenMS 3.6 CTDs contain parameters of a type that CTDopts cannot parse at all
 ## (one such parameter breaks the conversion of the whole suite), see the script
-python3 aux/strip_output_dirs.py ctd/
+python3 aux/strip_output_dirs.py "$ctd"/
 ## correct the CTD parameters which upstream left unannotated (e.g. the FASTA
 ## outputs of DecoyDatabase).  Must happen here, before get_tests.py reads the
 ## CTDs: it derives the ftype of the expected test outputs from the
 ## supported_formats, and CTDConverter derives the datatype of the output from
 ## them.  Patching only before the conversion (i.e. in generate.sh) yields a
 ## wrapper whose output is 'fasta' while its own test still expects 'txt'.
-python3 aux/patch_ctds.py ctd/ || >&2 echo 'patching the CTDs failed'
+python3 aux/patch_ctds.py "$ctd"/ || >&2 echo 'patching the CTDs failed'
 ###############################################################################
 ## fix ini files: OpenMS test data contains ini files with outdated ini files.
 ## e.g. variables might be in different nodes, outdated variables present, new
@@ -288,6 +300,16 @@ function prepare_test_data {
         fi
 
         line=$(echo "$line" | sed 's/add_test("//; s/)[^)]*$//; s/\${TOPP_BIN_PATH}\///g;s/\${DATA_DIR_TOPP}\///g; s#THIRDPARTY/##g' | cut -d" " -f2-)
+        # the external-binary tests pass the program as
+        #   -comet_executable "${COMET_BINARY}"
+        # and upstream wraps the whole block in
+        #   if (NOT (${COMET_BINARY} STREQUAL "COMET_BINARY-NOTFOUND"))
+        # so CMake leaves the variable unset here.  The *_BINARY variables are
+        # exported at the top of this script, hence the shell form resolves at
+        # run time: the fixtures for those tests are produced by exactly the
+        # program the wrapper will pin later (get_tests.py drops the flag, the
+        # wrapper gets it from aux/hardcoded_params.json).
+        line=$(echo "$line" | sed -E 's/\$\{([A-Za-z_][A-Za-z0-9_]*_BINARY)\}/$\1/g')
         unresolved=$(echo "$line" | grep -oE '\$\{[A-Za-z_]+\}' | sort -u | tr '\n' ' ')
         if [ -n "$unresolved" ]; then
             >&2 echo "    skip $test_id (unresolved variable(s): $unresolved)"
@@ -302,33 +324,34 @@ function prepare_test_data {
 
 echo "Create test shell script"
 
-echo -n "" > prepare_test_data.sh
-echo 'export COMET_BINARY="comet"' >> prepare_test_data.sh
-echo 'export CRUX_BINARY="crux"' >> prepare_test_data.sh
-echo 'export FIDOCHOOSEPARAMS_BINARY="FidoChooseParameters"' >> prepare_test_data.sh
-echo 'export FIDO_BINARY="Fido"' >> prepare_test_data.sh
-echo 'export LUCIPHOR_BINARY="$(dirname $(realpath $(which luciphor2)))/luciphor2.jar"' >> prepare_test_data.sh
+prep="$ARTIFACTS/prepare_test_data.sh"
+echo -n "" > "$prep"
+echo 'export COMET_BINARY="comet"' >> "$prep"
+echo 'export CRUX_BINARY="crux"' >> "$prep"
+echo 'export FIDOCHOOSEPARAMS_BINARY="FidoChooseParameters"' >> "$prep"
+echo 'export FIDO_BINARY="Fido"' >> "$prep"
+echo 'export LUCIPHOR_BINARY="$(dirname $(realpath $(which luciphor2)))/luciphor2.jar"' >> "$prep"
 
-echo 'export MARACLUSTER_BINARY="'"$OPENMSGIT"'/THIRDPARTY/Linux/64bit/MaRaCluster/maracluster"'>> prepare_test_data.sh
+echo 'export MARACLUSTER_BINARY="'"$OPENMSGIT"'/THIRDPARTY/Linux/64bit/MaRaCluster/maracluster"'>> "$prep"
 # no host paths here: the jar is looked up on PATH (and the test skipped/failed
 # loudly if it is missing)
-echo 'export MSFRAGGER_BINARY="MSFragger.jar"'>> prepare_test_data.sh
-echo 'export MSGFPLUS_BINARY="$(msgf_plus -get_jar_path)"' >> prepare_test_data.sh
-echo 'export MYRIMATCH_BINARY="myrimatch"'>> prepare_test_data.sh
-echo 'export NOVOR_BINARY="novor.jar"' >> prepare_test_data.sh
-echo 'export PERCOLATOR_BINARY="percolator"'>> prepare_test_data.sh
-echo 'export SIRIUS_BINARY="$(which sirius)"' >> prepare_test_data.sh
-echo 'export SPECTRAST_BINARY="'"$OPENMSGIT"'/THIRDPARTY/Linux/64bit/SpectraST/spectrast"' >> prepare_test_data.sh
-echo 'export XTANDEM_BINARY="xtandem"' >> prepare_test_data.sh
-echo 'export THERMORAWFILEPARSER_BINARY="ThermoRawFileParser.exe"' >> prepare_test_data.sh
-echo 'export SAGE_BINARY=sage' >> prepare_test_data.sh
+echo 'export MSFRAGGER_BINARY="MSFragger.jar"'>> "$prep"
+echo 'export MSGFPLUS_BINARY="$(msgf_plus -get_jar_path)"' >> "$prep"
+echo 'export MYRIMATCH_BINARY="myrimatch"'>> "$prep"
+echo 'export NOVOR_BINARY="novor.jar"' >> "$prep"
+echo 'export PERCOLATOR_BINARY="percolator"'>> "$prep"
+echo 'export SIRIUS_BINARY="$(which sirius)"' >> "$prep"
+echo 'export SPECTRAST_BINARY="'"$OPENMSGIT"'/THIRDPARTY/Linux/64bit/SpectraST/spectrast"' >> "$prep"
+echo 'export XTANDEM_BINARY="xtandem"' >> "$prep"
+echo 'export THERMORAWFILEPARSER_BINARY="ThermoRawFileParser.exe"' >> "$prep"
+echo 'export SAGE_BINARY=sage' >> "$prep"
 
-prepare_test_data >> prepare_test_data.sh #tmp_test_data.sh
+prepare_test_data >> "$prep" #tmp_test_data.sh
 
 echo "Execute test shell script"
-chmod u+x prepare_test_data.sh
+chmod u+x "$prep"
 cd ./test-data || exit
-../prepare_test_data.sh
+"$prep"
 cd - || exit
 
 
@@ -350,7 +373,7 @@ cd - || exit
 
 echo "Write test macros to $autotests"
 echo "<macros>" > "$autotests"
-for i in $(ls ctd/*ctd)
+for i in "$ctd"/*ctd
 do
     b=$(basename "$i" .ctd)
     ./get_tests.py --id "$b" --version "$VERSION" --cmake "$OPENMSGIT"/src/tests/topp/CMakeLists.txt "$OPENMSGIT"/src/tests/topp/THIRDPARTY/third_party_tests.cmake >> "$autotests"
@@ -373,17 +396,17 @@ echo "</macros>" >> "$autotests"
 # -> SpectraSTSearchAdapter 
 echo "Discard some tests"
 if [[ ! -z "$1" ]]; then
-    echo "" > macros_discarded_auto.xml
+    echo "" > "$ARTIFACTS/macros_discarded_auto.xml"
     for i in OpenSwathFileSplitter IDRipper MzMLSplitter SeedListGenerator MSFraggerAdapter MaRaClusterAdapter NovorAdapter SpectraSTSearchAdapter
     do
-        echo "<xml name=\"manutest_$i\">" >>  macros_discarded_auto.xml
-        xmlstarlet sel -t -c "/macros/xml[@name='autotest_$i']/test" macros_autotest.xml >>  macros_discarded_auto.xml || exit 1
-        echo "</xml>"  >>  macros_discarded_auto.xml
-        xmlstarlet ed -d "/macros/xml[@name='autotest_$i']/test" macros_autotest.xml > tmp || exit 1
-        [ -s tmp ] || { echo "xmlstarlet produced an empty macro file while discarding $i" >&2; exit 1; }
-        mv tmp macros_autotest.xml
+        echo "<xml name=\"manutest_$i\">" >>  "$ARTIFACTS/macros_discarded_auto.xml"
+        xmlstarlet sel -t -c "/macros/xml[@name='autotest_$i']/test" "$autotests" >>  "$ARTIFACTS/macros_discarded_auto.xml" || exit 1
+        echo "</xml>"  >>  "$ARTIFACTS/macros_discarded_auto.xml"
+        xmlstarlet ed -d "/macros/xml[@name='autotest_$i']/test" "$autotests" > "$ARTIFACTS/tmp" || exit 1
+        [ -s "$ARTIFACTS/tmp" ] || { echo "xmlstarlet produced an empty macro file while discarding $i" >&2; exit 1; }
+        mv "$ARTIFACTS/tmp" "$autotests"
     done
-    >&2 echo "discarded autogenerated macros for curation in macros_discarded_auto.xml"
+    >&2 echo "discarded autogenerated macros for curation in $ARTIFACTS/macros_discarded_auto.xml"
 fi
 conda deactivate
 
