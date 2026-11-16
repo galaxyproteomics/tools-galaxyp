@@ -103,9 +103,16 @@ OpenMS source tree is fetched by Galaxy itself:
 ```
 
 * `aux/upstream-fixtures.tsv` (committed, written by `test-data.sh`) maps the
-  fixture basename to its URL, so `get_tests.py` needs neither network nor an
-  OpenMS clone and the wrappers stay a pure function of versioned state. The
-  tag comes from `macros.xml` (`@TOOL_VERSION@` → `v3.6.0`).
+  fixture basename to its URL and byte size, so `get_tests.py` needs neither
+  network nor an OpenMS clone and the wrappers stay a pure function of versioned
+  state. The tag comes from `macros.xml` (`@TOOL_VERSION@` → `v3.6.0`).
+* the size is not decoration: Galaxy's `sim_size` checks an absolute `delta`
+  (default **10000**) *before* it checks `delta_frac`
+  (`tool_util/verify/__init__.py`, `assert_size`), so `delta_frac="0.7"` on its
+  own rejects any reference more than 10 kB away. The annotator therefore also
+  writes the matching `delta` (`0.7 x reference size`) next to the `location`.
+  Without it a real upstream reference failed the comparison that a locally
+  regenerated fixture had always passed (both were the same file).
 * a basename which occurs in more than one of the copied directories resolves
   to the `src/tests/topp` copy - that is the one `test-data.sh` has always
   flattened into `test-data/` (e.g. `PepXMLFile_test.pepxml` is also class-test

@@ -182,7 +182,7 @@ export OPENMS_UPSTREAM_FIXTURES="$ARTIFACTS/.upstream-fixtures.txt"
 ## get_tests.py must not depend on the runtime state of test-data/ - or on this
 ## clone existing - when the wrappers are generated.
 ##
-##   basename <TAB> https://raw.githubusercontent.com/OpenMS/OpenMS/<tag>/<path>
+##   basename <TAB> https://raw.githubusercontent.com/OpenMS/OpenMS/<tag>/<path> <TAB> bytes
 ##
 ## Baselining by name is safe: the wrapper test attributes reference fixtures by
 ## basename, and every referenced name resolves to exactly one file here (the
@@ -225,7 +225,10 @@ with open(out, "w") as fh:
         url = ("https://raw.githubusercontent.com/sneumann/OpenMS/master/"
                "share/OpenMS/CHEMISTRY/MetaboliteSpectralDB.mzML" if rows[name] is None
                else base + rows[name])
-        fh.write("%s\t%s\n" % (name, url))
+        # the size lets the wrapper compare a remote reference by size at all:
+        # Galaxy checks an absolute `delta` (default 10000) *before* `delta_frac`
+        size = 0 if rows[name] is None else os.path.getsize(os.path.join(root, rows[name]))
+        fh.write("%s\t%s\t%d\n" % (name, url, size))
 print("%d unique fixtures, %d ambiguous name(s) dropped"
       % (len(rows), len(paths) - len(rows)))
 PY

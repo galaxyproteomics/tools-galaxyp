@@ -15,7 +15,7 @@ outputs (`location` on an `<output>`, `tool_util/verify/interactor.py`).  A URL
 *replaces* the local fixture instead of falling back to it, so the mapping from
 fixture name to URL lives in a committed manifest (`aux/upstream-fixtures.tsv`,
 written by test-data.sh) and the wrappers stay a pure function of versioned
-state.
+state (one row per fixture: name, URL, size).
 
 Files without an upstream counterpart - the references upstream only compares
 through FuzzyDiff tolerances, which the wrappers regenerate locally from
@@ -118,6 +118,37 @@ def assertions(name, expectation):
     return "<assert_contents>%s</assert_contents>" % "".join(body)
 
 
+DELTA_FRAC_DEFAULT = 0.05
+
+
+def with_delta(tag, attrs_text, adict, fixtures, key):
+    """Add the `delta` that makes a `delta_frac` comparison work.
+
+    Galaxy's `sim_size` checks an absolute `delta` first - default 10000, i.e.
+    minute - and only then the fraction (`tool_util/verify/__init__.py`,
+    `assert_size`).  A wrapper that says `delta_frac="0.7"` therefore rejected
+    any reference whose size is more than 10 kB away, which was invisible while
+    the reference *was* the produced file (the local test data is created by
+    running the tool).  With a real upstream reference the fraction has to be
+    spelled out as an absolute delta too.
+    """
+    if tag != "output" or "delta" in adict or "delta_frac" not in adict:
+        return attrs_text
+    size = int(fixtures[key][1] or 0) if len(fixtures[key]) > 1 else 0
+    if not size:
+        return attrs_text
+    try:
+        frac = float(adict["delta_frac"])
+    except ValueError:
+        return attrs_text
+    if not frac or frac >= 1:
+        return attrs_text
+    delta = int(size * frac)
+    if delta <= 10000:
+        return attrs_text
+    return '%s delta="%d"' % (attrs_text, delta)
+
+
 def rewrite(match, fixtures, expectations):
     """A self-closing <param>/<output .../> element."""
     return _rewrite(match.group(1), match.group(2), match.group(0), fixtures, expectations)
@@ -142,6 +173,7 @@ def _rewrite(tag, attrs_text, original, fixtures, expectations, children=None):
         if "location" in adict:
             return original
         url = fixtures[key][0]
+        attrs_text = with_delta(tag, attrs_text, adict, fixtures, key)
         if children is None:
             return '<%s%s location="%s"/>' % (tag, attrs_text, url)
         return '<%s%s location="%s"%s' % (tag, attrs_text, url, closing)
