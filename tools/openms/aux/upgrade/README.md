@@ -92,6 +92,50 @@ file that has to change (`filetypes.txt`, `hardcoded_params.json` stale entries,
    radius** — any change there invalidates every recorded test result;
    `manifest.py changed` says so explicitly.
 
+## Test data
+
+The wrappers do not ship the OpenMS test data. A reference which exists in the
+OpenMS source tree is fetched by Galaxy itself:
+
+```xml
+<param name="in" value="FileFilter_1_input.mzML"
+       location="https://raw.githubusercontent.com/OpenMS/OpenMS/v3.6.0/src/tests/topp/FileFilter_1_input.mzML"/>
+```
+
+* `aux/upstream-fixtures.tsv` (committed, written by `test-data.sh`) maps the
+  fixture basename to its URL, so `get_tests.py` needs neither network nor an
+  OpenMS clone and the wrappers stay a pure function of versioned state. The
+  tag comes from `macros.xml` (`@TOOL_VERSION@` → `v3.6.0`).
+* a basename which occurs in more than one of the copied directories resolves
+  to the `src/tests/topp` copy - that is the one `test-data.sh` has always
+  flattened into `test-data/` (e.g. `PepXMLFile_test.pepxml` is also class-test
+  data).
+* everything a download cannot provide - the intermediates a test writes for a
+  later test, and the 89 outputs upstream only compares through FuzzyDiff
+  tolerances - is *asserted on* instead of compared: the bounds live in
+  `aux/output_expectations.tsv` (written by `aux/make_expectations.py`),
+  `aux/remote_test_data.py` turns them into `has_size`/`has_n_lines`/
+  `is_valid_xml`. Written out by hand only when the expected numbers must
+  change (version bump, reviewed output change) and justified in the ledger:
+  regenerating them automatically would let a regression rewrite its own
+  expectation.
+* `check_generated.sh` check 9 fails the gate when a reference is neither
+  remote, asserted on nor committed to `test-data/`.
+
+`location` *replaces* a local fixture (Galaxy does not fall back to
+`test-data/`, see `tool_util/verify/interactor.py`), so `planemo test` needs
+network. Offline:
+
+```bash
+aux/generate.sh                 # as always: creates the fixtures in test-data/
+sed -i -E 's/ location="https:\/\/raw\.githubusercontent\.com[^"]*"//g' ./*.xml
+planemo test ...
+git checkout -- .               # never commit this, the wrappers are generated
+```
+
+The assertions do not need a reference, so offline only the inputs have to
+exist.
+
 ## Files
 
 | file | purpose |
@@ -100,6 +144,9 @@ file that has to change (`filetypes.txt`, `hardcoded_params.json` stale entries,
 | `manifest.py` | fingerprints (per fixture, with clock/timing tokens washed out), "what changed", decision ledger, round gate |
 | `check_generated.sh` | static gate, idempotence check, freeze/unfreeze |
 | `snapshot_ctds.sh` | one CTD snapshot per OpenMS version (+ provenance) |
+| `../remote_test_data.py` | adds `location=` / `assert_contents` to the generated tests (also applied to `aux/macros_test.xml`) |
+| `../upstream-fixtures.tsv` | fixture basename → upstream URL (committed, written by `test-data.sh`) |
+| `../make_expectations.py`, `../output_expectations.tsv` | what to assert for references without an upstream file |
 | `run_tests.sh` | planemo per tool, records into the ledger |
 | `teststatus.tsv`, `fingerprints.json` | machine-written loop state, commit at round ends (small, and it is the reviewer's evidence); `testlogs/` is git-ignored |
 | `allowlist.txt` | known-broken tools that are not our doing, with reason |

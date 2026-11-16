@@ -173,6 +173,15 @@ if ! python3 aux/upgrade/check_expect_num_outputs.py; then
     fail "a test expects fewer outputs than it declares"
 fi
 
+# 9. a test reference must be downloadable, asserted on or committed: the
+#    wrappers are supposed to run without the OpenMS test data being created
+#    locally first (remote test data, aux/upstream-fixtures.tsv) - an output
+#    which still compares against a generated fixture would silently reintroduce
+#    the prepare_test_data.sh dependency
+if ! python3 aux/upgrade/check_remote_test_data.py; then
+    fail "a test reference is neither remote, asserted on, nor committed"
+fi
+
 if [ "$failures" -ne 0 ]; then
     printf '\n%d check(s) failed\n' "$failures" >&2
     exit 1

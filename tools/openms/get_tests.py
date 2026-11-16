@@ -511,6 +511,25 @@ def _upstream_fixtures() -> Optional[Set[str]]:
 UPSTREAM_FIXTURES = _upstream_fixtures()
 
 
+# Remote test data: instead of shipping every fixture, the generated tests point
+# Galaxy at the upstream file ("location"), and references which only exist
+# because prepare_test_data.sh ran the tool locally become assertions.  Both
+# tables live in aux/ and are committed; see aux/remote_test_data.py.
+AUX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aux")
+sys.path.insert(0, AUX)
+import remote_test_data  # noqa: E402  (the path has to be set up first)
+
+FIXTURE_URLS: Dict[str, List[str]] = {}
+EXPECTATIONS: Dict[str, List[str]] = {}
+
+
+def annotate(body: str) -> str:
+    """Add location="..." / assert_contents to one generated <test> body."""
+    stats = {"location": 0, "assert": 0}
+    return remote_test_data.annotate(body, FIXTURE_URLS, EXPECTATIONS, stats)
+
+
+
 def is_fixture(token: str) -> bool:
     if UPSTREAM_FIXTURES is not None:
         return token in UPSTREAM_FIXTURES or os.path.basename(token) in UPSTREAM_FIXTURES
@@ -928,6 +947,9 @@ def process_test_line(
         body = strip_uncomparable_outputs(body, uncomparable or set(), tool_id)
         body = fix_empty_collection_count(body)
         body = fix_expect_num_outputs(body)
+        # point Galaxy at the upstream fixture / assert on what cannot be
+        # downloaded (last: the previous steps rewrite `value=`)
+        body = annotate(body)
         if multi and not check_multi_inputs(body, multi):
             sys.stderr.write(
                 f"    skip {test_id} (more than one file for a single input "
@@ -951,6 +973,20 @@ parser.add_argument("--cmake", nargs="+", help="OpenMS test CMake files")
 parser.add_argument("--version", dest="version", help="OpenMS Version")
 args = parser.parse_args()
 sys.stderr.write(f"generate tests for {args.id}\n")
+
+# the remote-test-data tables (committed, see aux/remote_test_data.py); the
+# environment can point elsewhere, e.g. to preview a different manifest
+FIXTURE_URLS.update(
+    remote_test_data.read_tsv(
+        os.environ.get("OPENMS_FIXTURES_TSV") or os.path.join(AUX, "upstream-fixtures.tsv")
+    )
+)
+EXPECTATIONS.update(
+    remote_test_data.read_tsv(
+        os.environ.get("OPENMS_EXPECTATIONS_TSV")
+        or os.path.join(AUX, "output_expectations.tsv")
+    )
+)
 
 re_comment = re.compile("#.*")
 re_empty_prefix = re.compile(r"^\s*")

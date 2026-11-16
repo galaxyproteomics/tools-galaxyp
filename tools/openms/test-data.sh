@@ -173,8 +173,75 @@ fi
 ## get_tests.py can tell fixtures from intermediates.
 ( cd test-data && find . -mindepth 1 -maxdepth 3 ! -name "." \( -type f -o -type l -o -type d \) \
     | sed 's@^\./@@' | sort > "$ARTIFACTS/.upstream-fixtures.txt" ) || exit 1
-wc -l "$ARTIFACTS/.upstream-fixtures.txt"
 export OPENMS_UPSTREAM_FIXTURES="$ARTIFACTS/.upstream-fixtures.txt"
+
+## Which fixture lives where in the OpenMS repository.  Galaxy can download a
+## test file from a URL ("remote test data", `location="..."` on a test
+## <param>/<output>), which is what lets a wrapper be tested without a local
+## copy of the fixture.  The manifest is committed as aux/upstream-fixtures.tsv:
+## get_tests.py must not depend on the runtime state of test-data/ - or on this
+## clone existing - when the wrappers are generated.
+##
+##   basename <TAB> https://raw.githubusercontent.com/OpenMS/OpenMS/<tag>/<path>
+##
+## Baselining by name is safe: the wrapper test attributes reference fixtures by
+## basename, and every referenced name resolves to exactly one file here (the
+## few ambiguous ones - the parquet tables of the blacklisted parquet tools, the
+## SIRIUS project files - are dropped, they stay local fixtures).
+echo "Write the upstream fixture manifest"
+python3 - "$OPENMSGIT" "$ARTIFACTS/upstream-fixtures.tsv" \
+    "https://raw.githubusercontent.com/OpenMS/OpenMS/$GITTAG/" <<'PY' || exit 1
+import collections, os, sys
+root, out, base = sys.argv[1], sys.argv[2], sys.argv[3]
+# the directories test-data.sh copies from (share/) or picks single files out of
+# (class_tests/openms/data -> class-test data of the FileConverter tests)
+roots = ["src/tests/topp", "share/OpenMS/MAPPING", "share/OpenMS/CHEMISTRY",
+         "share/OpenMS/examples", "src/tests/class_tests/openms/data"]
+skip = {"third_party_tests.cmake", "CMakeLists.txt"}
+paths = collections.defaultdict(list)
+for r in roots:
+    for dirpath, _dirnames, filenames in os.walk(os.path.join(root, r)):
+        for name in filenames:
+            if name.startswith("."):
+                continue
+            if r == "src/tests/topp" and (name in skip or "check_ini" in name):
+                continue
+            paths[name].append(os.path.relpath(os.path.join(dirpath, name), root))
+# test-data.sh flattens src/tests/topp into test-data/, so for a name which
+# exists in more than one of the roots the topp copy is the one the wrappers
+# have always used (e.g. PepXMLFile_test.pepxml is also class test data)
+topp = {n: [p for p in ps if p.startswith("src/tests/topp" + os.sep)]
+        for n, ps in paths.items()}
+rows = {}
+for name, ps in paths.items():
+    if len(ps) == 1:
+        rows[name] = ps[0]
+    elif len(topp[name]) == 1:
+        rows[name] = topp[name][0]
+# not in the OpenMS tree (the spectral library is 30 MB and lives in a fork)
+rows["MetaboliteSpectralDB.mzML"] = None
+with open(out, "w") as fh:
+    for name in sorted(rows):
+        url = ("https://raw.githubusercontent.com/sneumann/OpenMS/master/"
+               "share/OpenMS/CHEMISTRY/MetaboliteSpectralDB.mzML" if rows[name] is None
+               else base + rows[name])
+        fh.write("%s\t%s\n" % (name, url))
+print("%d unique fixtures, %d ambiguous name(s) dropped"
+      % (len(rows), len(paths) - len(rows)))
+PY
+export OPENMS_FIXTURES_TSV="$ARTIFACTS/upstream-fixtures.tsv"
+if [ -f aux/upstream-fixtures.tsv ] && ! diff -q aux/upstream-fixtures.tsv "$OPENMS_FIXTURES_TSV" > /dev/null; then
+    echo "WARNING: aux/upstream-fixtures.tsv differs from the manifest just written" >&2
+    echo "         (regenerate the wrappers and commit the manifest)" >&2
+fi
+
+## The manually curated tests get the same treatment as the generated ones:
+## fixtures which exist upstream are referenced by URL, and references we cannot
+## download are asserted on.  The source file stays hand maintained and readable
+## (check_manual_tests.py validates it); the annotated copy is what the
+## conversion consumes.
+echo "Annotate the manually curated tests"
+python3 aux/remote_test_data.py aux/macros_test.xml -o "$ARTIFACTS/macros_test.xml" || exit 1
 
 #TODO remove? ln -fs TOFCalibration_ref_masses test-data/TOFCalibration_ref_masses.txt
 #TODO remove? ln -fs TOFCalibration_const test-data/TOFCalibration_const.csv

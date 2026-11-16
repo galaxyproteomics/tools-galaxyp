@@ -74,7 +74,7 @@ source $(dirname $(which conda))/../etc/profile.d/conda.sh
 conda activate "${OPENMSENV:-OpenMS$VERSION-env}"
 CTDConverter galaxy -i "$ARTIFACTS"/ctd/*ctd -o ./ -s aux/tools_blacklist.txt -f "$FILETYPES" \
 	-m macros.xml -p aux/hardcoded_params.json \
-	--test-macros "$ARTIFACTS"/macros_autotest.xml --test-macros-prefix autotest_  --test-macros aux/macros_test.xml --test-macros-prefix manutest_ \
+	--test-macros "$ARTIFACTS"/macros_autotest.xml --test-macros-prefix autotest_  --test-macros "$ARTIFACTS"/macros_test.xml --test-macros-prefix manutest_ \
 	--tool-version $VERSION --tool-profile '@PROFILE@' --bump-file aux/bump.json \
 	> "$ARTIFACTS"/convert.out 2> "$ARTIFACTS"/convert.err
 if [[ "$?" -ne "0" ]]; then >&2 echo 'CTD -> XML conversion failed'; >&2 echo -e "stderr:\n$(cat "$ARTIFACTS"/convert.err)"; fi
