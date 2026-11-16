@@ -132,6 +132,12 @@ def _rewrite(tag, attrs_text, original, fixtures, expectations, children=None):
     if key is None:
         return original
     closing = "" if children is None else ">%s</%s>" % (children, tag)
+    # an expectation row wins over the manifest for an OUTPUT: the row exists
+    # because the upstream file is not what the tool produces (AccurateMassSearch_1
+    # is compared upstream with -whitelist "", i.e. not at all, and the committed
+    # copy is stale).  Asserting on the output is the honest check.
+    if tag == "output" and expectations.get(value, expectations.get(key)) is not None:
+        return _assert_on(tag, attrs, adict, value, key, expectations, children)
     if key in fixtures:
         if "location" in adict:
             return original
@@ -139,8 +145,11 @@ def _rewrite(tag, attrs_text, original, fixtures, expectations, children=None):
         if children is None:
             return '<%s%s location="%s"/>' % (tag, attrs_text, url)
         return '<%s%s location="%s"%s' % (tag, attrs_text, url, closing)
-    if tag != "output" or expectations.get(value, expectations.get(key)) is None:
-        return original
+    return original
+
+
+def _assert_on(tag, attrs, adict, value, key, expectations, children):
+    """Replace the comparison of an <output> with an assertion on its content."""
     expectation = expectations.get(value, expectations.get(key))
     if children is None:
         body = assertions(value, expectation)
