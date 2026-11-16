@@ -14,18 +14,25 @@ later round does not re-litigate it.
 | 3 | 2026-11-14 | autotest failures by root cause | 142 | 5 (suite 8) -> 0 (suite 9) -> 2 (suite 10) | - | 3a-3d; one class per iteration, 617 -> 614 tests; both suite 10 failures are outside the wrappers (`D11`, a Galaxy restart) |
 | 4 | todo | manual tests, `.ini` migration, reference refresh | todo | todo | todo | every refreshed reference needs a note below |
 | 5 | 2026-11-15 | full run vs. round-0 baseline | 142 | **0** | `manifest.py report --gate`: GATE PASSED | suite 10: 117 pass, 25 skip (24 no upstream test + `MascotAdapterOnline` D11), 0 untested, 0 fail; `check_generated.sh --regen` proves the wrappers are byte-identical to HEAD |
+| 6 | 2026-11-16 | PR #783 review: profile, description wording, `${X_BINARY}`, artefacts, `*.yaml` | 142 | **0** | `check_generated.sh`: all static checks passed; the 9 wrappers whose test count moved re-run in Galaxy: 23/23 green | D14-D20; 612 -> 629 tests, 25 -> 19 wrappers without `<test>` |
 
 ## Decisions
 
 | id | tool(s) | decision | reason |
 |---|---|---|---|
-| D1 | `MascotAdapterOnline` | **restored to `tools/openms/`** (was moved to `deprecated/` in `b5c3d845`), normalised to `profile="23.0"` + docs 3.2.0 | it is *not* removed: `MascotAdapter` went away in 3.4.0, `MascotAdapterOnline` exists through 3.6.0 (`src/topp/executables.cmake`). It stays in `aux/tools_blacklist.txt` (broken upstream, #4412) and is therefore **not regenerated** — the file is hand-maintained until round 3 re-evaluates un-blacklisting it. |
+| D1 | `MascotAdapterOnline` | **restored to `tools/openms/`** (was moved to `deprecated/` in `b5c3d845`), normalised to `profile="@PROFILE@"` (D15) + docs 3.2.0 | it is *not* removed: `MascotAdapter` went away in 3.4.0, `MascotAdapterOnline` exists through 3.6.0 (`src/topp/executables.cmake`). It stays in `aux/tools_blacklist.txt` (broken upstream, #4412) and is therefore **not regenerated** — the file is hand-maintained until round 3 re-evaluates un-blacklisting it. |
 | D2 | `ParquetConverter`, `ParquetDiff`, `*-out_qpx` | blacklist / do not wrap | their outputs are *directories* of parquet files; Galaxy datasets are single files. Needs collection-in/collection-out support before it can be wrapped. |
 | D3 | `Decharger`, `MetaboliteAdductDecharger`, `MaRaClusterAdapter`, `FLASHDeconv`, `IDDecoyProbability`, `ProteomicsLFQ` | keep blacklisted | pre-existing reasons in `aux/tools_blacklist.txt`, unrelated to the version jump. |
 | D6 | layout of `deprecated/` | one subdirectory per archived suite state (`3.1/`, `3.2/`), each with its own `macros.xml` + `fill_ctd.py` | a wrapper's `<requirement>` pin must match the suite it was generated from. The 7 wrappers dropped in this upgrade are 3.2-generated, the 15 older ones are 3.1-generated; one shared `macros.xml` would have made one of the two groups install the wrong OpenMS. `<import>` resolves relative to the importing file, so this needs no edit to any wrapper. |
 | D5 | nested/stale `hardcoded_params.json` entries | **partly done** (round 5): only entries naming tools that no longer exist are pruned (`separator`/`IDMassAccuracy`, `xml_out`/`XTandemAdapter`, `algorithm:tryptic_only`/`CompNovo`+`CompNovoCID`); the rest are kept | `ctd_diff.py` lists 18 parameters that vanished from the 3.6 CTDs, but most of those entries are *deliberate* blacklists whose parameter is hidden by `strip_output_dirs.py` (`out_qpx`), dropped for a reason (`trafo_out`, D7) or re-typed rather than removed (`in`/`OpenSwathWorkflow`, `test`). Only a `tools` list naming a tool that is not in the 3.6 snapshot is unambiguously dead. `check_generated.sh --regen` proves the three removals leave every wrapper byte-identical. The host-path rule is flipped from `warn` to `fail` (no wrapper contains `/home/<user>/` any more). |
 | D13 | what a fixture fingerprint may hash | timestamps and runtime footers are washed out, four fixtures are hashed as "unstable" | `test-data.sh` does not ship a dozen fixtures, it **generates** them by running the tools, and OpenMS stamps them with the clock (`<IdentificationRun date=...>`, `creationDate=...`, the `took 0.09 s (wall) ... Peak Memory Usage` footer, and in the binary `.oms` a plain `2026-11-15 18:40:55`). Hashing those bytes made the gate report **15 phantom stale tools** after every regeneration. `sha256_fixture()` now normalises the stamp tokens (an actual fixture change is still caught byte for byte), and `unstable_fixtures.txt` names the four fixtures that are not reproducible at all (Epifany's EM scores, `-threads 4` feature order) - exactly the ones the wrappers assert with `compare="sim_size" delta_frac="0.7"`. Verified: two full regenerations in a row move **0** fingerprints. |
 | D14 | `MSGFPlusAdapter -tasks` | **blacklisted** (`"value": "@"` for `MSGFPlusAdapter`) - the wrapper neither shows it nor passes it, OpenMS computes it | `-tasks` is OpenMS' internal split of the spectra over the thread pool (`tasks = 0` = `min(threads*3, numSpectra/250)`, `tasks < 0` = `abs(tasks)*threads`). It is not a scientific decision, it is a memory/speed trade-off inside the search, and the CTD marks it `advanced="false"`, so it landed in the main section with all four sentences of OpenMS help text as its label. Threads are already `${GALAXY_SLOTS:-1}` (`threads` in `aux/hardcoded_params.json`); leaving `-tasks` unset is the CTD default and lets OpenMS scale it to the inputs. `MSGFPlusAdapter` has no tests either way, so the regeneration diff is exactly the one deleted `<param>` line. |
+| D15 | wrapper `profile` | **a token**, `@PROFILE@` = `24.1` in `macros.xml`, passed to CTDConverter as the literal token | every wrapper said `profile="23.0"` while the CI tests on Galaxy `release_24.1` (`.github/workflows/pr.yaml`: `GALAXY_BRANCH`). A tool profile newer than the Galaxy that loads it only produces a warning, so 25.1 would have been noise. As a token the bump is one line; `MascotAdapterOnline.xml` is hand-maintained and carries the same token. |
+| D16 | CTD `description`/`label` wording | fixed **in the CTD snapshot** by a generic `_substitutions` pass in `aux/ctd_patches.json`, applied by `patch_ctds.py` to every CTD | eight wrappers documented their decoy option as `std::string` - OpenMS writes its own C++ type into the CTD, not prose for a user. A per-wrapper edit would come back on the next regeneration; a per-CTD patch would have to be repeated for every new tool. The substitution is one line and reaches all 152 CTDs (7x `decoy_string`, 1x `decoy_pattern`; `DecoyDatabase` was already worded correctly). |
+| D17 | a test whose command line passes `${X_BINARY}` | **drop the flag, keep the test** | `third_party_tests.cmake` passes the executable explicitly (29 occurrences: comet 8, percolator 7, maracluster 3, msgf_plus 3, sage 2, spectrast 2, MSFragger 2, novor 1, luciphor 1). `hardcoded_params.json` pins the same binaries for the wrapper, so the flag is redundant in Galaxy and the command line no longer dies on the unexpanded `${...}`. `test-data.sh` resolves the same variables from the environment it exports, so the fixtures for those tests exist. 14 tests come back on 9 wrappers. |
+| D18 | generated artefacts | **`$ARTIFACTS` (default `$tmp/generated`), never the tool directory**; `tools/openms/.gitignore` deleted | `ctd/`, `macros_autotest.xml`, `macros_discarded_auto.xml`, `prepare_test_data.sh`, `.upstream-fixtures.txt`, `convert.{out,err}` are rebuildable from the CTDs and the CMake files, but lived next to the wrappers and had to be gitignored - a regeneration in a dirty tree could leave them half-tracked. `test-data.sh`/`get_tests.py` read the location from `OPENMS_CTD_DIR`/`OPENMS_UPSTREAM_FIXTURES`. `manifest.py` stops fingerprinting `macros_autotest.xml`: it is an artefact, and its content already reaches the fingerprint through the wrapper that includes it. |
+| D19 | `MSFraggerAdapter`, `NovorAdapter` tests | **skipped in `SKIP_LIST`**, wrappers unchanged | same shape as D17 (`${MSFRAGGER_BINARY}`/`${NOVOR_BINARY}`) but a different conclusion: the jars are licence-gated, no bioconda recipe ships them, and upstream itself guards the tests behind `STREQUAL "*-NOTFOUND"`. The fixtures can not be produced here either. |
+| D20 | `ProSE -summary_out` | **`yaml` <-> `yaml` in `aux/filetypes.txt` and `@EXT_FOO@`** | OpenMS writes a `*.yaml` report and refuses any other extension, while the suite had no mapping for Galaxy's `yaml` datatype, so the wrapper staged `output.txt` and OpenMS aborted (`Invalid output file extension for file 'summary_out/output.txt'`). With the mapping the wrapper stages `output.yaml`, the report is a real output instead of a broken one, and upstream `TOPP_ProSE_9` becomes expressible. |
 | D4 | `FileConverter` raw path | open | 3.6 moved raw handling into `RawToMzML:*` and added `-RawToMzML:reader` (`inprocess` default on Linux). The hardcoded `RawToMzML:NET_executable=mono` / `ThermoRaw_executable=ThermoRawFileParser.exe` are ignored unless `reader=external`, and `mono` is no longer a recipe dependency. Decide in round 2. |
 
 ### D11 — `MascotAdapterOnline` keeps its tests only as a comment
@@ -463,6 +470,64 @@ The fix is a per-tool extension override in the generator (e.g.
 `aux/extensions.json` keyed by `<tool>:<argument>`); until then UniPEFF's 17
 tests are skipped and the tool is not wrapped-in-tested state.  This is a
 pre-existing wrapper defect, not a 3.6 regression: 3.2 had the same mapping.
+
+## Round 6.5 — the PR review, answered in the generator
+
+Ten review comments on #783. Five of them are mechanical and land here; the
+verdicts and the open ones are in `.openms-tests/TODO-review-783.md`.
+
+**§1 the five mechanical points.**  `profile` (`D15`), `std::string` (`D16`),
+`${X_BINARY}` (`D17`), artefacts (`D18`), `*.yaml` (`D20`).  Two of them turned
+out bigger than the comment suggested:
+
+* `${X_BINARY}` was not only a wrapper defect.  `get_tests.py` threw the whole
+test away because the command line kept an unexpanded `${...}` - 29 upstream
+  tests, 14 of which are now runnable, including the six `TOPP_CometAdapter_*`
+  the review named explicitly.  Verifying that restoration uncovered two further
+generator bugs, both of which cost a tool *all* of its tests:
+
+  - `add_test("TOPP_CometAdapter_6"  CometAdapter -test ...` - 3.6 writes two
+    spaces after some test ids.  The one-space regex did not match, the line
+    fell through to `Ill formated test line`, and `sys.exit()` took the tool
+    with it.  The regex now allows any run of whitespace.
+  - `missing_inputs()` classified an argument as an input by its `-in` prefix.
+    `-pin_out` is `type="output-file"` in the CTD and has no `-in` prefix to
+    miss, so it looked like a missing input - four more CometAdapter tests
+    gone.  Both checks now come from the CTD, not from the parameter name.
+
+  `MSFraggerAdapter`/`NovorAdapter` keep zero tests (`D19`): same wrapper
+defect, but the jars are licence-gated, so the fixtures can not be produced.
+
+* `tools/openms/.gitignore` is gone rather than reworded.  Everything it listed
+  is a build artefact and now lives in `$ARTIFACTS`, so the tool directory has
+  nothing left to hide.  `macros_autotest.xml` also left `GLOBAL_FILES` in
+  `manifest.py` - the fingerprint already covers the wrapper that includes it.
+
+**Verification.**  142 wrappers, 629 tests (612 before), `planemo lint` clean on
+the changed files, `check_generated.sh` all green including the manual-test
+fixture check (which now finds 0 problems: the 5 dangling
+`MSGFPlusAdapter_1_out.idXML` references disappeared with the restored tests,
+because `TOPP_MSGFPlusAdapter_*` produces the `.idXML` again).  The nine
+wrappers whose test count moved were run in Galaxy against the *recipe*
+environment (`openms` + `openms-thirdparty` 3.6.0 from bioconda, i.e. the
+`comet`/`percolator`/`msgf_plus`/`sage`/`luciphor2` the requirements would
+install): 23 of 23 tests pass.
+
+Running that suite also proved the value of the `D17` split: the sandbox's
+mulled environment had lost `bin/comet`, `bin/sage`, `bin/msgf_plus` and the
+boost libraries (a `$HOME` cleanup took 27k files out of it), which is exactly
+what a user without `openms-thirdparty` sees - and the failure was
+`Error: Executable not found`, not a broken wrapper.  Restoring the packages
+from the conda cache fixed it.
+
+**Not done here** (`§2` of the TODO list): the ~1205 `compare="sim_size"
+delta_frac="0.7"` outputs are the strongest review point - most of them should
+be remote `location="https://..."` references plus `has_size`/`assert_contents`
+rather than generated fixtures.  That is a per-test decision over 1205 outputs,
+not a generator switch, and it changes what the suite downloads.  Also open:
+the `DatabaseSuitability` skip reason, the size of `aux/upgrade/`,
+`strip_output_dirs.py` documentation, `QualityControl`'s directory output, and
+the `macros_test.xml` `expect_num_outputs` drift.
 
 ## WIP notes
 

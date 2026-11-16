@@ -8,7 +8,7 @@ directory holds the tooling that keeps the iteration monotone and terminating.
 | | |
 |---|---|
 | **Inputs (the state)** | `aux/*` (`filetypes.txt`, `hardcoded_params.json`, `tools_blacklist.txt`, `macros_test.xml`), `macros.xml`, `test-data/**` (regenerated locally by `test-data.sh`, *not* versioned), and a *frozen* upstream: OpenMS tag + exact conda build string + a CTD snapshot of both versions |
-| **Derived (never edit)** | every generated `<Tool>.xml`, `test-data.sh` output, `ctd/` |
+| **Derived (never edit)** | every generated `<Tool>.xml`, the artefacts `test-data.sh` produces (`ctd/`, `macros_autotest.xml`, `macros_discarded_auto.xml`, `prepare_test_data.sh`, `.upstream-fixtures.txt`) - all in `$ARTIFACTS`, never in the tool directory |
 | **Progress measure** | the number of tools in the failure set `F`, where `F` = (wrappers without a passing test) − allowlist |
 | **Termination rule** | each round either shrinks `F` or moves one tool into the allowlist with a recorded decision |
 
