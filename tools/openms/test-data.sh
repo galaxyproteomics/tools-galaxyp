@@ -297,6 +297,8 @@ python3 aux/patch_ctds.py "$ctd"/ || >&2 echo 'patching the CTDs failed'
 ## see https://github.com/OpenMS/OpenMS/issues/4462
 ###############################################################################
 echo "Update test INI files"
+KEEP_INI=$(mktemp)
+grep -v '^\s*#\|^\s*$' aux/ini_keep_original.txt > $KEEP_INI
 for ini in test-data/*ini
 do
     tool=$(cat $ini | grep 'NODE name="' | head -n 1 | sed 's/.*name="\([^"]\+\)".*/\1/')
@@ -306,10 +308,31 @@ do
           continue
     fi
     cp $ini $ini.backup
-    $bin -ini $ini -write_ini $ini > $ini.stdout 2> $ini.stderr
+    ## -write_ini writes the *defaults* of the tool; -ini only selects the
+    ## parameter set which gets augmented, so a value the tool sets itself does
+    ## not survive the round trip.  IsobaricAnalyzer's ':type' is the one that
+    ## breaks a test: TMTTenPlexMethod_test.ini came back as 'itraq4plex' and
+    ## the produced consensusXML was an iTRAQ file while the upstream reference
+    ## is a TMT one (upstream hides this with -whitelist "<map").  Such a file
+    ## is listed in aux/ini_keep_original.txt and keeps its original; any other
+    ## file is converted, but a changed value is reported.
+    $bin -ini $ini -write_ini $ini.converted > $ini.stdout 2> $ini.stderr
     if [[ "$?" -ne "0" ]]; then
         >&2 echo "could not convert $ini"
+        rm -f $ini.converted
+        continue
     fi
+    if ! python3 aux/check_ini_conversion.py $ini $ini.converted > $ini.changed; then
+        if grep -qxF "$(basename $ini)" $KEEP_INI; then
+            >&2 echo "keeping $ini (aux/ini_keep_original.txt): $(head -n 1 $ini.changed)"
+            rm -f $ini.converted
+            continue
+        fi
+        >&2 echo "warning: converting $ini changes $(head -n 1 $ini.changed)"
+    else
+        rm -f $ini.changed
+    fi
+    mv $ini.converted $ini
 done
 
 ###############################################################################

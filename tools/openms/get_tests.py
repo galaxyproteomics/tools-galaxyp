@@ -217,7 +217,18 @@ def fix_tmp_files(line: str, diff_pairs: Dict[str, str]) -> str:
             continue
         if e in diff_pairs:
             dst = os.path.join("test-data", diff_pairs[e])
-            if os.path.exists(dst):
+            cmd[i] = diff_pairs[e]
+            if os.path.exists(dst) and not os.path.islink(dst):
+                # the OpenMS checkout already brought this reference file: it is
+                # the committed expectation, and the intermediate written by
+                # prepare_test_data.sh is only a build artifact.  Do not replace
+                # it - the two can disagree (IsobaricAnalyzer's TMT10plex test
+                # feeds a stale .ini, upstream hides the difference with
+                # "-whitelist <map", so the artifact is an iTRAQ output while
+                # the reference is a TMT one).  The wrapper test then compares
+                # against the reference (or downloads it, see `location`).
+                continue
+            if os.path.exists(dst) or os.path.islink(dst):
                 os.unlink(dst)
             sys.stderr.write(f"symlink {e} {dst}\n")
             try:
@@ -225,7 +236,6 @@ def fix_tmp_files(line: str, diff_pairs: Dict[str, str]) -> str:
             except FileExistsError:
                 # a re-run over a test-data/ which test-data.sh did not clean
                 pass
-            cmd[i] = diff_pairs[e]
     return shlex.join(cmd)
 
 
