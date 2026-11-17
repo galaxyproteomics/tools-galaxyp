@@ -179,6 +179,7 @@ exist.
 | `ctd_diff.py` | structural CTD diff + impact hints |
 | `manifest.py` | fingerprints (per fixture, with clock/timing tokens washed out), "what changed", decision ledger, round gate |
 | `check_generated.sh` | static gate, idempotence check, freeze/unfreeze |
+| `check_manual_tests.py` | the hand-written material (fixtures, and the macro tests as they ended up in the wrappers) |
 | `snapshot_ctds.sh` | one CTD snapshot per OpenMS version (+ provenance) |
 | `../remote_test_data.py` | adds `location=` / `assert_contents` to the generated tests (also applied to `aux/macros_test.xml`) |
 | `../upstream-fixtures.tsv` | fixture basename → upstream URL (committed, written by `test-data.sh`) |
