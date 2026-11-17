@@ -1,9 +1,10 @@
-<tool id="cardinal_colocalization" name="MSI colocalization" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="22.05">
+<tool id="cardinal_colocalization" name="MSI colocalization" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
     <description>mass spectrometry imaging colocalization</description>
     <macros>
         <import>macros.xml</import>
     </macros>
     <expand macro="requirements"/>
+    <expand macro="creator"/>
     <command detect_errors="exit_code">
     <![CDATA[
 
@@ -41,6 +42,7 @@ library(gridExtra)
 #end if
 
 ## remove duplicated coordinates
+msidata = as(msidata, "MSImagingExperiment")
 msidata <- msidata[,!duplicated(coord(msidata))]
 
 
@@ -64,11 +66,12 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)))==0)
 {
 
     ## colocalization analysis
-    col_results <- colocalized(msidata, 
-             #if str($reference_type.reference) == "mz_ref":
-                mz = $reference_type.mz_value,
+    #if str($reference_type.reference) == "mz_ref":
+        mz_ref_idx = which.min(abs(mz(msidata) - $reference_type.mz_value))
+        mz_ref_val = mz(msidata)[mz_ref_idx]
+        col_results <- colocalized(msidata, mz = mz_ref_val,
             #else
-                ref = reference_group,
+        col_results <- colocalized(msidata, ref = reference_group,
             #end if
             n = $n_tophits,
             sort.by = "$sort_by",
@@ -76,6 +79,8 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)))==0)
 
     ## Summary results table
     col_results_df <- as.data.frame(col_results)
+
+    colnames(col_results_df) <- c("i", "mz","Pearson", "Manders' overlap", "M1", "M2", "Dice similarity")
 
     write.table(col_results_df, file="$coloc_results", quote = FALSE, row.names = FALSE, col.names=TRUE, sep = "\t")
     
@@ -111,73 +116,73 @@ if (npeaks > 0 && sum(is.na(spectra(msidata)))==0)
         <expand macro="reading_msidata"/>
         <conditional name="reference_type">
             <param name="reference" type="select" label="Reference type" help="Region of interest (selected spectra) or m/z feature.">
-                    <option value="mz_ref" selected="True">m/z feature</option>
-                    <option value="roi_ref">Region of interest (spectra)</option>
-                </param>
-                <when value="mz_ref">
-                    <param name="mz_value" type="float" value="1000" label="m/z feature" help="The m/z closest to this m/z value will be used as a reference."/>    
-                </when>      
-                <when value="roi_ref">
-                    <expand macro="reading_pixel_annotations"/>
-                    <param name="ref_name" type="text" value="reference" label="Reference name" help="Name has to match exactly on of the annotation names in the annotation file"/>    
-                </when>
-        </conditional>
-            <param name="n_tophits" type="integer" value="10" label="Top hits" help="The number of top-ranked colocalized features to return in the tabular file." />
-	    <param name="sort_by" type="select" display="radio"
-                   label="sort.by" help="The colocalization measure used to rank colocalized features. Possible options
-include Pearson’s correlation and Manders’ colocalization coefficients.">
-                    <option value="correlation" selected="True">Pearson's correlation</option>
-                    <option value="M1">Manders' colocalization coefficient 1</option>
-                    <option value="M2">Manders' colocalization coefficient 2</option>
+                <option value="mz_ref" selected="true">m/z feature</option>
+                <option value="roi_ref">Region of interest (spectra)</option>
             </param>
+            <when value="mz_ref">
+                <param name="mz_value" type="float" value="1000" label="m/z feature" help="The m/z closest to this m/z value will be used as a reference."/>
+            </when>
+            <when value="roi_ref">
+                <expand macro="reading_pixel_annotations"/>
+                <param name="ref_name" type="text" value="reference" label="Reference name" help="Name has to match exactly on of the annotation names in the annotation file"/>
+            </when>
+        </conditional>
+        <param name="n_tophits" type="integer" value="10" label="Top hits" help="The number of top-ranked colocalized features to return in the tabular file."/>
+        <param name="sort_by" type="select" display="radio" label="sort.by" help="The colocalization measure used to rank colocalized features. Possible options include Pearson’s correlation, Manders’ colocalization coefficients M1 and M2, Manders' overlap coefficients, and Dice similarity coefficients.">
+            <option value="cor" selected="true">Pearson's correlation</option>
+            <option value="M1">Manders' colocalization coefficient 1</option>
+            <option value="M2">Manders' colocalization coefficient 2</option>
+            <option value="MOC"> Manders' overlap coefficient</option>
+            <option value="Dice">Dice similarity coefficient</option>
+        </param>
     </inputs>
     <outputs>
-        <data format="pdf" name="coloc_pdf" from_work_dir="colocalization.pdf" label = "${tool.name} on ${on_string}: results"/>
+        <data format="pdf" name="coloc_pdf" from_work_dir="colocalization.pdf" label="${tool.name} on ${on_string}: results"/>
         <data format="tabular" name="coloc_results" label="${tool.name} on ${on_string}: summary"/>
     </outputs>
     <tests>
-        <test>
-	    <param name="infile" value="" ftype="imzml">
-	        <composite_data value="spatial_DGMM_input.imzML"/>
-	        <composite_data value="spatial_DGMM_input.ibd"/>
-	    </param>
-	    <conditional name="reference_type">
-	        <param name="reference" value="mz_ref"/>
-	        <param name="mz_value" value="1000"/>
-	    </conditional>
-	    <output name="coloc_pdf" file="coloc1.pdf" compare="sim_size" delta="2000"/>
+        <test expect_num_outputs="2">
+            <param name="infile" value="" ftype="imzml">
+                <composite_data value="spatial_DGMM_input.imzML"/>
+                <composite_data value="spatial_DGMM_input.ibd"/>
+            </param>
+            <conditional name="reference_type">
+                <param name="reference" value="mz_ref"/>
+                <param name="mz_value" value="1000"/>
+            </conditional>
+            <output name="coloc_pdf" file="coloc1.pdf" compare="sim_size" delta="2000"/>
             <output name="coloc_results" file="coloc_table1.tabular"/>
         </test>
-        <test>
-        <param name="infile" value="" ftype="imzml">
-            <composite_data value="spatial_DGMM_input.imzML"/>
-            <composite_data value="spatial_DGMM_input.ibd"/>
-        </param>
-	<conditional name="reference_type">
-            <param name="reference" value="roi_ref"/>
-            <param name="annotation_file" value="DGMM_annotations.tabular"/>
-            <param name="column_x" value="1"/>
-            <param name="column_y" value="2"/>
-            <param name="column_names" value="3"/>
-            <param name="tabular_header" value="True"/>
-            <param name="ref_name" value="circle"/>    
-        </conditional>
+        <test expect_num_outputs="2">
+            <param name="infile" value="" ftype="imzml">
+                <composite_data value="spatial_DGMM_input.imzML"/>
+                <composite_data value="spatial_DGMM_input.ibd"/>
+            </param>
+            <conditional name="reference_type">
+                <param name="reference" value="roi_ref"/>
+                <param name="annotation_file" value="DGMM_annotations.tabular"/>
+                <param name="column_x" value="1"/>
+                <param name="column_y" value="2"/>
+                <param name="column_names" value="3"/>
+                <param name="tabular_header" value="True"/>
+                <param name="ref_name" value="circle"/>
+            </conditional>
             <param name="n_tophits" value="5"/>
             <param name="sort_by" value="M2"/>
-	    <output name="coloc_pdf" file="coloc2.pdf" compare="sim_size" delta="2000"/>
+            <output name="coloc_pdf" file="coloc2.pdf" compare="sim_size" delta="2000"/>
             <output name="coloc_results" file="coloc_table2.tabular"/>
         </test>
-        <test>
-	    <param name="infile" value="123_combined.RData" ftype="rdata"/>
-	    <conditional name="reference_type">
-	        <param name="reference" value="mz_ref"/>
-	        <param name="mz_value" value="102.0"/>
-	    </conditional> 
-	        <param name="n_tophits" value="50"/>
-	        <param name="sort_by" value="correlation"/>
-	        <output name="coloc_pdf" file="coloc3.pdf" compare="sim_size" delta="2000"/>
-	        <output name="coloc_results" file="coloc_table3.tabular"/>
-        </test>        
+        <test expect_num_outputs="2">
+            <param name="infile" value="123_combined.RData" ftype="rdata"/>
+            <conditional name="reference_type">
+                <param name="reference" value="mz_ref"/>
+                <param name="mz_value" value="102.0"/>
+            </conditional>
+            <param name="n_tophits" value="50"/>
+            <param name="sort_by" value="cor"/>
+            <output name="coloc_pdf" file="coloc3.pdf" compare="sim_size" delta="2000"/>
+            <output name="coloc_results" file="coloc_table3.tabular"/>
+        </test>
     </tests>
     <help>
         <![CDATA[
@@ -216,5 +221,4 @@ This tool finds colocalized features in an imaging dataset. Use it to find m/z f
     <citations>
         <citation type="doi">10.1093/bioinformatics/btv146</citation>
     </citations>
-
 </tool>
