@@ -15,6 +15,7 @@ later round does not re-litigate it.
 | 4 | todo | manual tests, `.ini` migration, reference refresh | todo | todo | todo | every refreshed reference needs a note below |
 | 5 | 2026-11-15 | full run vs. round-0 baseline | 142 | **0** | `manifest.py report --gate`: GATE PASSED | suite 10: 117 pass, 25 skip (24 no upstream test + `MascotAdapterOnline` D11), 0 untested, 0 fail; `check_generated.sh --regen` proves the wrappers are byte-identical to HEAD |
 | 6 | 2026-11-16 | PR #783 review: profile, description wording, `${X_BINARY}`, artefacts, `*.yaml` | 142 | **0** | `check_generated.sh`: all static checks passed; the 9 wrappers whose test count moved re-run in Galaxy: 23/23 green | D14-D20; 612 -> 629 tests, 25 -> 19 wrappers without `<test>` |
+| 7 | 2026-11-16 | PR #783 review §2: remote test data | 142 | **0** | `check_generated.sh` 9 checks green, `--regen` byte-identical, full suite: 626/626 | D21-D26; 1359 references by URL, 688 assertions / 90 references, 6 committed fixtures, 56 multi-file references (local, from `test-data.sh`); 626 tests unchanged |
 
 ## Decisions
 
@@ -33,6 +34,13 @@ later round does not re-litigate it.
 | D18 | generated artefacts | **`$ARTIFACTS` (default `$tmp/generated`), never the tool directory**; `tools/openms/.gitignore` deleted | `ctd/`, `macros_autotest.xml`, `macros_discarded_auto.xml`, `prepare_test_data.sh`, `.upstream-fixtures.txt`, `convert.{out,err}` are rebuildable from the CTDs and the CMake files, but lived next to the wrappers and had to be gitignored - a regeneration in a dirty tree could leave them half-tracked. `test-data.sh`/`get_tests.py` read the location from `OPENMS_CTD_DIR`/`OPENMS_UPSTREAM_FIXTURES`. `manifest.py` stops fingerprinting `macros_autotest.xml`: it is an artefact, and its content already reaches the fingerprint through the wrapper that includes it. |
 | D19 | `MSFraggerAdapter`, `NovorAdapter` tests | **skipped in `SKIP_LIST`**, wrappers unchanged | same shape as D17 (`${MSFRAGGER_BINARY}`/`${NOVOR_BINARY}`) but a different conclusion: the jars are licence-gated, no bioconda recipe ships them, and upstream itself guards the tests behind `STREQUAL "*-NOTFOUND"`. The fixtures can not be produced here either. |
 | D20 | `ProSE -summary_out` | **`yaml` <-> `yaml` in `aux/filetypes.txt` and `@EXT_FOO@`** | OpenMS writes a `*.yaml` report and refuses any other extension, while the suite had no mapping for Galaxy's `yaml` datatype, so the wrapper staged `output.txt` and OpenMS aborted (`Invalid output file extension for file 'summary_out/output.txt'`). With the mapping the wrapper stages `output.yaml`, the report is a real output instead of a broken one, and upstream `TOPP_ProSE_9` becomes expressible. |
+| D21 | how the test data reaches a test | **`location=` for single files, assertions for the 89 FuzzyDiff-only outputs, `test-data/` only for multi-file values** | review point #2. The alternatives were shipping a 10 GB clone or inflicting `test-data.sh` on CI; a download needs nothing but the URL. The assertion bounds mirror what upstream asserted (`delta_frac="0.7"` = 0.3-1.7x, a line count *2 wide because the content must survive formatting churn), so the wrappers check what they always checked. `aux/output_expectations.tsv` is a **deliberate snapshot** - `make_expectations.py` is not wired into the generator: an automatic refresh would let a regression rewrite its own expectation. |
+| D22 | the key of `aux/upstream-fixtures.tsv` | **the basename**, and when a name occurs in more than one copied directory the `src/tests/topp` copy wins | that is the copy `test-data.sh` has always flattened into `test-data/`, so the same command line keeps naming the same file. Keying by the repo-relative path would have made the reference and the fixture diverge (`PepXMLFile_test.pepxml` lives in `src/tests/topp` and `src/tests/class_tests/openms/data`); dropping every ambiguous name lost 39 fixtures, of which 30 resolve correctly under this rule. |
+| D23 | an `<output>` that gets **both** `location=` and an assertion | keep `value=`/`compare=`/`delta_frac=` | Galaxy rejects an output that defines nothing to check (`parser/xml.py`: *"Test output defines nothing to check"*), and the reference file is the *expected* output of the upstream test - downloading it is exactly right. Only the 89 outputs that have no upstream file lose their `value=` (that is where the assertion replaces the comparison). |
+| D24 | `delta_frac` on a test output | the annotator writes the matching **`delta`** next to `location=` | Galaxy's `sim_size` checks the absolute `delta` first (default 10000) and the fraction only afterwards (`tool_util/verify/__init__.py`, `assert_size`), so `delta_frac="0.7"` was never the tolerance the wrappers asked for - it rejected every reference more than 10 kB away. Invisible for years, because the local reference *was* the produced file (`fix_tmp_files()` symlinks it, `prepare_test_data.sh` overwrites it), so the size always matched exactly; the first real upstream reference made `Epifany_1` fail on a 14 % size difference. Hence the size column of `aux/upstream-fixtures.tsv`: `delta = 0.7 x reference size`. |
+| D25 | a `test-data/` reference vs. the intermediate a test writes | **never replace a committed reference by a symlink onto the build artifact** (`fix_tmp_files()` keeps an existing regular file) | `fix_tmp_files()` maps `X.tmp.ext` onto the reference name the wrapper declares as its `<output>` and symlinks the reference onto the intermediate, so `prepare_test_data.sh` decided what the expected value was: whatever the tool had just written, compared with itself. 674 of the references in `test-data/` were such symlinks, which is why no comparison could ever fail. Keeping the file the checkout brings makes the comparison real (the artifact and the reference of `IsobaricAnalyzer`'s TMT10plex test differ by 5x, see D27); measured against `aux/upstream-fixtures.tsv`, exactly three of them leave the 0.3-1.7x window, and `AccurateMassSearch_1` is asserted anyway (D21). A reference the checkout does not bring keeps the symlink, so nothing that used to work stops working. |
+| D27 | upgrading the test data's `.ini` files | **`aux/ini_keep_original.txt` names the four fixtures which keep their original**; every other file is still converted, but `aux/check_ini_conversion.py` reports a changed value as a warning | `test-data.sh` upgrades every `*.ini` with `<tool> -ini <old> -write_ini <new>`, and that upgrade is needed: the shipped inis have moved nodes (`MassTraceExtractor_2` carries `mtd:min_trace_length`, 3.6 reads `epd:min_trace_length`) and OpenMS repairs them at runtime, which the generator has to see. But `-write_ini` writes the *defaults* of the tool - `-ini` only selects the parameter set which gets augmented - so a value the tool fills in itself does not survive. `IsobaricAnalyzer:type` is one: `TMTTenPlexMethod_test.ini` came back as `itraq4plex`, the generated test pinned that value, and the tool wrote an iTRAQ consensusXML (2611 b) where the upstream reference is a TMT one (12327 b), which `sim_size` rejects; upstream never sees it because `TOPP_IsobaricAnalyzer_2` compares with `-whitelist "id=" "<map" "?xml-stylesheet"`. The other three are `PPHiRes_invalidValue{,Section}` - they exist *because* their value is invalid. Not listed, and therefore converted: `FeatureLinkerUnlabeledKD_4` (`None` is not in the 3.6 restrictions of `adduct_merging`/`charge_merging`, so the default is what the tool uses) and `MassTraceExtractor_2` (an obsolete node, same argument). The report compares the values under their `NODE/…/ITEM` path and numerically (`1` -> `1.0`, `10000000` -> `1.0e07` are not changes). |
+| D26 | outputs that are not text | **`*.xic`/`*.xim` map to Galaxy's `binary`, not to `xml`** in `aux/filetypes.txt` | OpenMS 3.6 writes mobile-proton/adduct XICs as Parquet (the files start with `PAR1`), but the extension table claimed `xml`, so `OpenSwathWorkflow` declared `out_chrom` (and `out_mobilogram`) as XML, `change_format` switched to `xml` for `out_chrom_type=xic`, and `is_valid_xml` failed on a binary file: *"Start tag expected, '<' not found, line 1, column 1"*. With `binary` the datatype is honest and the assertion for `OpenSwathWorkflow_1.chrom.tmp.xic` drops to `has_size` (`aux/output_expectations.tsv`). Side effects: `TextExporter`'s input list shows `binary` instead of `xml`, and `out_mobilogram` now stages `output.xic` (it staged `output.bioml` before - neither is tested upstream, and OpenMS most likely wants `*.xim`; a dedicated mapping would need a second Galaxy type for the same `binary` format, left open). |
 | D4 | `FileConverter` raw path | open | 3.6 moved raw handling into `RawToMzML:*` and added `-RawToMzML:reader` (`inprocess` default on Linux). The hardcoded `RawToMzML:NET_executable=mono` / `ThermoRaw_executable=ThermoRawFileParser.exe` are ignored unless `reader=external`, and `mono` is no longer a recipe dependency. Decide in round 2. |
 
 ### D11 — `MascotAdapterOnline` keeps its tests only as a comment
@@ -499,6 +507,62 @@ declare the output as a `tar.gz`. It is only worth it for `QualityControl`,
 whose `directory` is the MaxQuant-compatible table set a user may actually want
 to download; for `out_qpx`/`out_parquet` the format is excluded anyway, and
 `feat_dir`/`out_dir` belong to blacklisted tools. Left open, not forgotten.
+
+## Round 7 — remote test data (PR review §2)
+
+The wrappers no longer need a copy of the OpenMS test data.  A reference that
+exists in the OpenMS source tree is fetched by Galaxy itself:
+
+| reference | how many | mechanism |
+|---|---|---|
+| single file, exists upstream | 1359 | `location="https://raw.githubusercontent.com/OpenMS/OpenMS/v3.6.0/<path>"` on the `<param>`/`<output>` |
+| output upstream only compares through FuzzyDiff | 688 assertion sites / 90 references | `has_size` (0.3-1.7x), `has_n_lines` (0.5-2x+1), `is_valid_xml` from `aux/output_expectations.tsv` |
+| fixture a download cannot be named after | 6 | committed to `test-data/` (`unique_files()` renames a file used twice in one command line, `prepare_test_data_manual.sh` generates one) |
+| comma separated multi-file value | 56 | stays local: one `<param>` has one `location` slot. CI runs `test-data.sh` (`.github/workflows/pr.yaml`), so these tests behave exactly as before |
+
+Decisions: `D21` (the mechanism and the expectation snapshot), `D22` (the
+manifest key), `D23` (an annotated output keeps `value=`/`compare=`), `D24`
+(`delta_frac` needs an absolute `delta` next to it, which is why the manifest
+carries sizes: 272 outputs gained one), `D25` (a prepared intermediate may not
+shadow a committed reference), `D26` (`*.xic`/`*.xim` are Parquet, not XML).
+
+What this buys: a fresh clone can run any single-file test without the 10 GB
+OpenMS test-data working copy, and a fixture the generator cannot explain is now
+a *gate* failure instead of a silently missing file (check 9).  What it costs:
+`planemo test` needs network for its inputs, because an input `location`
+overrides the local fixture (`tool_util/verify/interactor.py`,
+`_get_path_or_location`).  Expected *outputs* are asymmetric: Galaxy prefers a
+local `test-data/<value>` when one exists and only downloads when it does not
+(`__test_data_downloader`), so CI - which populates `test-data/` - keeps
+comparing against the fixtures it just generated, while a fresh clone compares
+against the upstream reference.  The offline recipe is a `sed` away and
+documented in `aux/upgrade/README.md`.
+
+A `test-data/` holding only the committed fixtures is enough for the
+single-file tests and for every assertion, but **not** for all 142 tools:
+`FileMerger`, `IDMerger`, `FeatureLinkerUnlabeled{,KD,QT}`, `OpenSwathDIAPreScoring`
+and `QCShrinker` still fail on the multi-file values and on the one reference
+`prepare_test_data_manual.sh` produces.  That is the documented trade-off, not a
+regression: CI runs `test-data.sh`, so the suite there is unaffected.
+
+Verification: `check_generated.sh` (9 checks) green; `check_generated.sh
+--regen` reports the wrappers byte-identical to HEAD; independent regenerations
+produce the same 1359/688/6/56 counts; `DecoyDatabase`, `XMLValidator`,
+`AccurateMassSearch`, `ConsensusMapNormalizer`, `Epifany`, `PeptideIndexer` and
+`INIUpdater` pass in Galaxy against a pristine `test-data/` (41 files) - the
+tools listed two paragraphs up are the expected exceptions.
+
+The full suite against the populated `test-data/` ran 142 tools / **626 tests**
+in 15 chunks and finished with 6 failures, which are what D25 and D26 answer:
+
+| test | what it was |
+|---|---|
+| `IsobaricAnalyzer (Test #2)`, `(#3)` | D27 - the upgraded `.ini` had `type=itraq4plex`, so the test pinned the wrong experiment; D25 is what made it visible |
+| `OpenSwathWorkflow (Test #3)` | D26 - `is_valid_xml` on a Parquet `.xic` |
+| `FileInfo (Test #12)`, `IDFilter (Test #3)`, `(#7)` | infrastructure, not the wrappers: *"Input staging problem"*, an empty response while polling the job (`json.decoder.JSONDecodeError` inside `stage_data_in_history`). The three tools re-ran alone: 50/50 tests green |
+
+`IsobaricAnalyzer` and `OpenSwathWorkflow` pass after the two fixes; the suite is
+then 626/626.
 
 ## Round 6.5 — the PR review, answered in the generator
 

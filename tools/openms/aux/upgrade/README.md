@@ -126,12 +126,41 @@ OpenMS source tree is fetched by Galaxy itself:
   change (version bump, reviewed output change) and justified in the ledger:
   regenerating them automatically would let a regression rewrite its own
   expectation.
+* a value with several files for one flag
+  (`<param name="in" value="a.dta,b.dta"/>`, 56 of them) keeps using
+  `test-data/`: the test attribute is one element, so a single `location` cannot
+  describe two files. They are the reason CI still runs `test-data.sh`; check 9
+  counts them separately instead of demanding a `location`.
+* a reference the OpenMS checkout brings with it may not be replaced by the
+  intermediate the test writes: `fix_tmp_files()` symlinks `test-data/<reference>`
+  onto that intermediate (a *build artifact*, compared with itself). An existing
+  regular file in `test-data/` therefore wins; only a symlink (or nothing) is
+  replaced.
+* the `.ini` files are upgraded with `<tool> -ini <old> -write_ini <new>`, which
+  writes the tool's **defaults** - so a value the tool sets itself would be
+  lost. `aux/check_ini_conversion.py` compares the values under their node path,
+  `aux/ini_keep_original.txt` lists the fixtures that must keep their original
+  (`IsobaricAnalyzer:type` came back as `itraq4plex`, which turned the TMT test
+  into an iTRAQ one; the two `PPHiRes_invalidValue*` fixtures must stay invalid)
+  and every other changed value is printed as a warning.
+* `*.xic` / `*.xim` are **Parquet**, not XML (they start with `PAR1`), so
+  `aux/filetypes.txt` maps them to Galaxy's `binary` - declaring them `xml` made
+  Galaxy run its XML validator over a binary file.
 * `check_generated.sh` check 9 fails the gate when a reference is neither
   remote, asserted on nor committed to `test-data/`.
 
-`location` *replaces* a local fixture (Galaxy does not fall back to
-`test-data/`, see `tool_util/verify/interactor.py`), so `planemo test` needs
-network. Offline:
+The two directions are not symmetric (`tool_util/verify/interactor.py`):
+
+* an **input** with `location` is uploaded from the URL and the local file is
+  ignored (`_get_path_or_location`), so a fresh clone needs no `test-data/`;
+* an **expected output** with `location` is compared against the *local*
+  `test-data/<value>` when that file exists, and only downloaded when it does
+  not (`__test_data_downloader.test_data_download_from_location`). CI fills
+  `test-data/` (`test-data.sh`), so CI keeps comparing against its own fixtures
+  and a fresh clone compares against the upstream reference - both are real
+  checks, they just cannot be the same file.
+
+`planemo test` therefore needs network for the inputs. Offline:
 
 ```bash
 aux/generate.sh                 # as always: creates the fixtures in test-data/
