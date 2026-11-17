@@ -36,7 +36,15 @@ case "${1:-}" in
     exit 0
     ;;
 --regen)
-    note "regenerating (aux/generate.sh) ..."
+    # the generator activates ${OPENMSENV:-OpenMS<version>-env} to run OpenMS.
+    #  Without it every tool call fails ("If a single input file is provided,
+    # ..."), the generator deletes all wrappers and the diff below reports 143
+    # phantom deletions instead of the real question.
+    OPENMS_ENV=${OPENMSENV:-OpenMS$(grep -oP '^VERSION=\K.*' aux/generate.sh | head -1)-env}
+    if ! conda env list 2>/dev/null | grep -qE "[ /]$OPENMS_ENV\$"; then
+        fail "conda env '$OPENMS_ENV' is not visible: set HOME and OPENMSENV as described in aux/upgrade/README.md"
+    fi
+    note "regenerating (aux/generate.sh, env $OPENMS_ENV) ..."
     if ! bash aux/generate.sh >"${TMPDIR:-/tmp}/generate.log" 2>&1; then
         fail "aux/generate.sh returned non-zero (see ${TMPDIR:-/tmp}/generate.log)"
     fi

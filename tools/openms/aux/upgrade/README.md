@@ -57,7 +57,9 @@ aux/upgrade/run_tests.sh --changed --update
 python3 aux/upgrade/manifest.py report --gate
 
 # only when the aux/* inputs changed materially (slow: needs conda + OpenMS env)
-aux/upgrade/check_generated.sh --regen
+# generate.sh activates ${OPENMSENV:-OpenMS<version>-env}; a prefix-installed
+# env is not named like that, so point OPENMSENV at it:
+OPENMSENV=openms36 aux/upgrade/check_generated.sh --regen
 ```
 
 The CTD snapshots are read from the `openms` conda package's file list, not from
