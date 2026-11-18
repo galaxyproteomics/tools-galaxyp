@@ -18,6 +18,16 @@ Two kinds of corrections:
   generates from C++ type names (`std::string that is appended ...` is not
   something a Galaxy user should have to read).
 
+and one normalisation that applies to every CTD, whether or not a patch names
+it: the value list of a `restrictions` attribute is sorted.  OpenMS writes the
+enumerable values of a parameter (the enzyme select being the prominent one) in
+the order its own container produces them, and that order is not stable across
+environments: the same 3.6.0 package here wrote
+`colicin_E5,no cleavage,...,RNase_T1` in one run and
+`RNase_T1,colicin_E5,no cleavage,...` in the next, i.e. a rotation of the same
+list.  CTDConverter turns that list into the wrapper's <option> elements, so a
+regeneration would show a diff that is not a change of the generator.
+
 Usage: patch_ctds.py [CTD_DIR]   (default: ctd)
 """
 import glob
@@ -103,12 +113,34 @@ def patch(tool, spec, ctd_dir):
     return 0
 
 
+def sort_restrictions(root, tool):
+    """Sort the comma separated value list of every `restrictions` attribute."""
+    changed = 0
+    for item in root.iter("ITEM"):
+        value = item.get("restrictions")
+        # a single value (e.g. the numeric range of an int) has nothing to sort
+        if not value or "," not in value:
+            continue
+        # an empty entry is a value of its own (`<option value=""/>`, i.e. "use
+        # the tool's default"), so it must survive the sort
+        ordered = ",".join(sorted(v.strip() for v in value.split(",")))
+        if ordered != value:
+            sys.stderr.write(
+                f"patch_ctds: {tool}: {item.get('name')} restrictions sorted\n"
+            )
+            item.set("restrictions", ordered)
+            changed += 1
+    return changed
+
+
 def substitute_ctd(path, rules):
-    """Apply the `_substitutions` rules to one CTD file."""
+    """Apply the `_substitutions` rules to one CTD file and sort its value lists."""
     tool = os.path.basename(path)[:-4]
     tree = ET.parse(path)
     root = tree.getroot()
-    if substitute(root, rules, tool):
+    changed = substitute(root, rules, tool)
+    changed += sort_restrictions(root, tool)
+    if changed:
         tree.write(path, encoding="UTF-8", xml_declaration=True)
 
 
@@ -124,8 +156,9 @@ def main(argv):
         if tool.startswith("_"):
             continue
         failures += patch(tool, spec, ctd_dir)
-    # the substitutions are not per tool: they clean up wording upstream
-    # generates from C++ type names, in every CTD the loop above did not touch
+    # the substitutions and the sorted value lists are not per tool: they clean
+    # up wording upstream generates from C++ type names and an order that
+    # upstream's containers produce, in every CTD the loop above did not touch
     for path in sorted(glob.glob(os.path.join(ctd_dir, "*.ctd"))):
         substitute_ctd(path, rules)
     return 1 if failures else 0
