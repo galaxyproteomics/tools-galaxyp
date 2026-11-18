@@ -483,17 +483,17 @@ pre-existing wrapper defect, not a 3.6 regression: 3.2 had the same mapping.
 
 ### What `strip_output_dirs.py` drops (D2/D3)
 
-The CTDs of OpenMS 3.6 declare **11** parameters as `type="output-dir"`, in the
-four wrapped tools and in four blacklisted ones:
+The CTDs of OpenMS 3.6 declare **11** parameters as `type="output-dir"`, in
+eight tools - five of them have a wrapper, three are blacklisted:
 
 | tool | parameter | what it is |
 |---|---|---|
-| `IsobaricWorkflow`, `MS1LabeledWorkflow`\*, `ProteinQuantifier`, `ProteomicsLFQ`\*, `ProSE` | `out_qpx` | a *directory* of one qpx per input file |
-| `ProSE` | `out_parquet` | the same for parquet (excluded on both sides, D2) |
-| `ProSE` | `out_mod_analysis_dir` | the whole modified-peptide analysis: per-mod tables, plots, FASTA |
-| `OpenSwathExport`\*, `OpenSwathPeakMapExtractor`\* | `out_dir` | one file per transition group |
-| `ProteomicsLFQ`\* | `feat_dir` | the per-run featureXML set |
-| `QualityControl` | `directory` | the MaxQuant-style report bundle |
+| `IsobaricWorkflow`, `MS1LabeledWorkflow`, `ProteinQuantifier`, `ProteomicsLFQ`\*, `ProSE` | `out_qpx` | a *directory* of qpx files: `quantms.feature.parquet`, `quantms.psm.parquet`, `quantms.pg.parquet` (ProSE: per-input `<basename>.psm.parquet` plus the merged `quantms.*`) |
+| `ProSE` | `out_parquet` | the same for OpenMS-internal parquet: per input `<basename>.psm/proteins/pg/search_params.parquet` plus merged `openms.*` (excluded on both sides, D2) |
+| `ProSE` | `out_mod_analysis_dir` | the open-search modification analysis: delta-mass and PTM statistics tables, per input by basename plus an aggregate table |
+| `OpenSwathExport`\*, `OpenSwathPeakMapExtractor`\* | `out_dir` | one file per transition group (`OpenSwathExport`: written next to the input `.osw` when the parameter is unset; `OpenSwathPeakMapExtractor`: `<run>.xipm`, only with `-separate_runs`) |
+| `ProteomicsLFQ`\* | `feat_dir` | per-run featureXML checkpoints - a run whose checkpoint is valid is not detected again, so this makes a run resumable |
+| `QualityControl` | `out_txt:directory` | the MaxQuant-compatible text set: `evidence.txt` and `msms.txt` (`-out_txt:omit_mq_evidence` / `-omit_mq_msms` switch them off) |
 
 \* blacklisted, so no wrapper exists for it anyway.
 
