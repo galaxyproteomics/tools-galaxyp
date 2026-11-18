@@ -67,6 +67,23 @@ The CTD snapshots are read from the `openms` conda package's file list, not from
 handed `-write_ctd`. `.ctd` files are git-ignored, `provenance.txt` is not, so a
 diff stays reproducible.
 
+Two different OpenMS installs take part in a regeneration, and they are easy to
+confuse:
+
+| what | where `test-data.sh` takes it from | used for |
+| --- | --- | --- |
+| the binaries | `$OPENMSPKG/bin/*` = `$tmp/OpenMS<version>-pkg/` | `-write_ctd` - this *is* the CTD the wrappers are generated from |
+| the library and `CTDConverter` | `conda activate ${OPENMSENV:-OpenMS<version>-env}` | running `aux/generate.sh` |
+
+So a CTD is never produced by the environment you activate by hand to inspect it,
+and the two installs are not necessarily identical even for the same version: the
+value list of a `select` parameter is written in whatever order the *package*
+binary enumerates it in. That order is not a property of the wrapper (it is not a
+semantic change, but it makes regeneration non-reproducible), which is why
+`aux/patch_ctds.py` sorts every multi-value `restrictions` before CTDConverter
+sees it (D28 in `UPGRADE_LEDGER.md`). Do not "fix" a diff that only moves
+`<option>` lines by refreshing the wrappers.
+
 `ctd_diff.py` is the highest-value piece: it turns "the regenerated XML diff is
 huge" into a per-tool list of renamed/added/removed parameters with hints at the
 file that has to change (`filetypes.txt`, `hardcoded_params.json` stale entries,
