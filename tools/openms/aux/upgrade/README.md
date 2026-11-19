@@ -84,6 +84,22 @@ semantic change, but it makes regeneration non-reproducible), which is why
 sees it (D28 in `UPGRADE_LEDGER.md`). Do not "fix" a diff that only moves
 `<option>` lines by refreshing the wrappers.
 
+`aux/generate.sh` clones the converter branch `topic/fix-selects2` from
+`bernt-matthias/CTDConverter` if `$CTDCONVERTER` is not already a checkout, so a
+regeneration is only reproducible against a branch that carries the fixes the
+wrappers rely on.  The branch needs at least
+
+* *Use the command line path for the discover directory* (`dd7dc95`) and
+* *Only a prefix output uses the dotted command line path* (`ae3635e`) - the
+  directory `discover_datasets` reads has to be the one the command line names
+  (`out_txt.directory` for a prefix, `rt_concat_trafo_out` for a list of output
+  files), and an optional prefix output may only be asserted by a test that
+  passes it (D29).
+
+The installed package is *not* an editable install: `aux/generate.sh` imports
+`ctdconverter` from the `OPENMSENV` env, so an edit has to be copied into
+`<env>/lib/python*/site-packages/ctdconverter/` as well.
+
 `ctd_diff.py` is the highest-value piece: it turns "the regenerated XML diff is
 huge" into a per-tool list of renamed/added/removed parameters with hints at the
 file that has to change (`filetypes.txt`, `hardcoded_params.json` stale entries,
