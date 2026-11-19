@@ -510,6 +510,34 @@ whose `directory` is the MaxQuant-compatible table set a user may actually want
 to download; for `out_qpx`/`out_parquet` the format is excluded anyway, and
 `feat_dir`/`out_dir` belong to blacklisted tools. Left open, not forgotten.
 
+#### `output-dir` vs `output-prefix` - there is no documentation
+
+Neither type is described anywhere a user or a wrapper author would look, so
+what follows was assembled from the code that consumes them:
+
+| source | what it says |
+|---|---|
+| `CTDopts.py:37-67` (the CTD library itself) | the four file-ish types are "dummy classes ... equivalent to `str`", i.e. the format assigns them no semantics; it knows `input-file`, `output-file`, `output-prefix`, `input-prefix` - **not** `output-dir` |
+| `CTDConverter/galaxy/converter.py:44` | only `_OutPrefix` is mapped (`-> output-prefix`); there is no `output-dir` case at all |
+| `ParamCTDFile.cpp:125-134` | the writer emits `output-dir` for `TAG_OUTPUT_DIR`, `output-prefix` for `TAG_OUTPUT_PREFIX` - the tag list decides, and each tag is set by a separate `register..._()` |
+| `ParamCWLFile.cpp:126-136` | the intended difference shows up in CWL: `output-prefix` -> `{output, prefixed}`, `output-dir` -> `{output, directory}` |
+| `tool_description_lib/README.md` "Special cases" | the only prose: "`{prefixed, output}`: A partial path that is used as a prefix. If used with `StringValue`, only a single file will be created" (a `StringValueList` means several); "`{directory, output}`: same as `{file, directory}` but for directories" |
+| `TOPPASToolVertex.cpp:314-327` | the GUI reads only `TAG_OUTPUT_DIR` (as `IOT_DIR`, "output directory"); `TAG_OUTPUT_PREFIX` is not special-cased, so a prefix param is shown as an ordinary output file |
+| `CHANGELOG` 3.3.0 (#7497) | "QualityControl ... supports output directories", "TOPPAS supports writing results to output directories" - a changelog line, not a definition |
+
+The practical difference, then:
+
+* **`output-prefix`** - the value is a path *stem*. The tool appends its own
+  suffixes, so the parameter alone determines the file names. A wrapper can
+  therefore declare them; the five such parameters (IDRipper, IonMobilityBinning
+  and SeedListGenerator `out`/`out_prefix` required, MzMLSplitter `out` and
+  OpenSwathFileSplitter `outputDirectory` optional) are all wrapped with a
+  `<collection type="list">`.
+* **`output-dir`** - the value is a *directory* the tool creates and fills with
+  files the CTD never names. Nothing in the CTD says what will appear, so no
+  wrapper can declare datasets for it - which is the reason for stripping (and
+  for blacklisting the tools whose only output it is).
+
 ## Round 7 — remote test data (PR review §2)
 
 The wrappers no longer need a copy of the OpenMS test data.  A reference that
