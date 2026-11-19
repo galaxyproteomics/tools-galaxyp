@@ -7,7 +7,7 @@ arrives here without `supported_formats`.  CTDConverter then falls back to
 `txt`, the wrapper declares a `txt` output and the tool refuses to write it -
 which is a property of the CTD, not of this repo, so it is corrected on the
 snapshot instead of in the generated wrapper (same class of decision as
-aux/strip_output_dirs.py).
+aux/retype_output_dirs.py).
 
 Two kinds of corrections:
 

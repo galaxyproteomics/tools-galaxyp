@@ -17,6 +17,7 @@ later round does not re-litigate it.
 | 6 | 2026-11-16 | PR #783 review: profile, description wording, `${X_BINARY}`, artefacts, `*.yaml` | 142 | **0** | `check_generated.sh`: all static checks passed; the 9 wrappers whose test count moved re-run in Galaxy: 23/23 green | D14-D20; 612 -> 629 tests, 25 -> 19 wrappers without `<test>` |
 | 7 | 2026-11-16 | PR #783 review §2: remote test data | 142 | **0** | `check_generated.sh` 9 checks green, `--regen` byte-identical, full suite: 626/626 | D21-D27; 1359 references by URL, 688 assertions (90 of them replace a FuzzyDiff-only output), 6 committed fixtures, 56 multi-file references stay local (and 1 cannot be moved at all); 272 outputs carry the `delta` of their `delta_frac`; 626 tests |
 | 7b | 2026-11-18 | make the wrapper independent of the order OpenMS writes its value lists in | 142 | **0** | `check_generated.sh` 9 checks green, `--regen` byte-identical (twice) | D28; 81 wrappers change, and every changed line is an `<option>` element moving - the set of options, their `value=`, their text and their `selected=` are untouched; the 81 changed wrappers were re-tested (73 with tests: 483 tests, 0 failed, 0 errors; plus `XFDR` 7/7 - the 8 remaining ones define no test at all, so only their fingerprint was re-stamped) |
+| 7c | 2026-11-19 | `output-dir` parameters: retype instead of drop | 142 | **0** | `check_generated.sh` 9 checks green, `--regen` byte-identical, the 5 changed wrappers re-tested in Galaxy (38/38), `manifest.py report --gate`: GATE PASSED | D29; the 11 directory outputs of the 3.6 CTDs become `<collection type="list">` outputs (`out_qpx`/`out_parquet` as `format="parquet"`, `QualityControl`'s `out_txt:directory` as `txt`) instead of being deleted; 5 wrappers change (`IsobaricWorkflow`, `MS1LabeledWorkflow`, `ProSE`, `ProteinQuantifier`, `QualityControl`) plus the parquet extension in `macros.xml`; 3 new upstream tests come back (`MS1LabeledWorkflow_qpx`, `MS1LabeledWorkflow_6_ratios_qpx`, `ProSE_3_qpx`), 2 existing ones gain the new output (`ProteinQuantifier_18_qpx`/`_19_qpx`); test count 623 -> 626 |
 
 ## Decisions
 
@@ -26,7 +27,7 @@ later round does not re-litigate it.
 | D2 | `ParquetConverter`, `ParquetDiff`, `*-out_qpx` | blacklist / do not wrap | their outputs are *directories* of parquet files; Galaxy datasets are single files. Needs collection-in/collection-out support before it can be wrapped. |
 | D3 | `Decharger`, `MetaboliteAdductDecharger`, `MaRaClusterAdapter`, `FLASHDeconv`, `IDDecoyProbability`, `ProteomicsLFQ` | keep blacklisted | pre-existing reasons in `aux/tools_blacklist.txt`, unrelated to the version jump. |
 | D6 | layout of `deprecated/` | one subdirectory per archived suite state (`3.1/`, `3.2/`), each with its own `macros.xml` + `fill_ctd.py` | a wrapper's `<requirement>` pin must match the suite it was generated from. The 7 wrappers dropped in this upgrade are 3.2-generated, the 15 older ones are 3.1-generated; one shared `macros.xml` would have made one of the two groups install the wrong OpenMS. `<import>` resolves relative to the importing file, so this needs no edit to any wrapper. |
-| D5 | nested/stale `hardcoded_params.json` entries | **partly done** (round 5): only entries naming tools that no longer exist are pruned (`separator`/`IDMassAccuracy`, `xml_out`/`XTandemAdapter`, `algorithm:tryptic_only`/`CompNovo`+`CompNovoCID`); the rest are kept | `ctd_diff.py` lists 18 parameters that vanished from the 3.6 CTDs, but most of those entries are *deliberate* blacklists whose parameter is hidden by `strip_output_dirs.py` (`out_qpx`), dropped for a reason (`trafo_out`, D7) or re-typed rather than removed (`in`/`OpenSwathWorkflow`, `test`). Only a `tools` list naming a tool that is not in the 3.6 snapshot is unambiguously dead. `check_generated.sh --regen` proves the three removals leave every wrapper byte-identical. The host-path rule is flipped from `warn` to `fail` (no wrapper contains `/home/<user>/` any more). |
+| D5 | nested/stale `hardcoded_params.json` entries | **partly done** (round 5): only entries naming tools that no longer exist are pruned (`separator`/`IDMassAccuracy`, `xml_out`/`XTandemAdapter`, `algorithm:tryptic_only`/`CompNovo`+`CompNovoCID`); the rest are kept | `ctd_diff.py` lists 18 parameters that vanished from the 3.6 CTDs, but most of those entries are *deliberate* blacklists whose parameter is now *retyped* rather than hidden (`out_qpx`), dropped for a reason (`trafo_out`, D7) or re-typed rather than removed (`in`/`OpenSwathWorkflow`, `test`). Only a `tools` list naming a tool that is not in the 3.6 snapshot is unambiguously dead. `check_generated.sh --regen` proves the three removals leave every wrapper byte-identical. The host-path rule is flipped from `warn` to `fail` (no wrapper contains `/home/<user>/` any more). |
 | D13 | what a fixture fingerprint may hash | timestamps and runtime footers are washed out, four fixtures are hashed as "unstable" | `test-data.sh` does not ship a dozen fixtures, it **generates** them by running the tools, and OpenMS stamps them with the clock (`<IdentificationRun date=...>`, `creationDate=...`, the `took 0.09 s (wall) ... Peak Memory Usage` footer, and in the binary `.oms` a plain `2026-11-15 18:40:55`). Hashing those bytes made the gate report **15 phantom stale tools** after every regeneration. `sha256_fixture()` now normalises the stamp tokens (an actual fixture change is still caught byte for byte), and `unstable_fixtures.txt` names the four fixtures that are not reproducible at all (Epifany's EM scores, `-threads 4` feature order) - exactly the ones the wrappers assert with `compare="sim_size" delta_frac="0.7"`. Verified: two full regenerations in a row move **0** fingerprints. |
 | D14 | `MSGFPlusAdapter -tasks` | **blacklisted** (`"value": "@"` for `MSGFPlusAdapter`) - the wrapper neither shows it nor passes it, OpenMS computes it | `-tasks` is OpenMS' internal split of the spectra over the thread pool (`tasks = 0` = `min(threads*3, numSpectra/250)`, `tasks < 0` = `abs(tasks)*threads`). It is not a scientific decision, it is a memory/speed trade-off inside the search, and the CTD marks it `advanced="false"`, so it landed in the main section with all four sentences of OpenMS help text as its label. Threads are already `${GALAXY_SLOTS:-1}` (`threads` in `aux/hardcoded_params.json`); leaving `-tasks` unset is the CTD default and lets OpenMS scale it to the inputs. `MSGFPlusAdapter` has no tests either way, so the regeneration diff is exactly the one deleted `<param>` line. |
 | D15 | wrapper `profile` | **a token**, `@PROFILE@` = `24.1` in `macros.xml`, passed to CTDConverter as the literal token | every wrapper said `profile="23.0"` while the CI tests on Galaxy `release_24.1` (`.github/workflows/pr.yaml`: `GALAXY_BRANCH`). A tool profile newer than the Galaxy that loads it only produces a warning, so 25.1 would have been noise. As a token the bump is one line; `MascotAdapterOnline.xml` is hand-maintained and carries the same token. |
@@ -43,6 +44,7 @@ later round does not re-litigate it.
 | D26 | outputs that are not text | **`*.xic`/`*.xim` map to Galaxy's `binary`, not to `xml`** in `aux/filetypes.txt` | OpenMS 3.6 writes mobile-proton/adduct XICs as Parquet (the files start with `PAR1`), but the extension table claimed `xml`, so `OpenSwathWorkflow` declared `out_chrom` (and `out_mobilogram`) as XML, `change_format` switched to `xml` for `out_chrom_type=xic`, and `is_valid_xml` failed on a binary file: *"Start tag expected, '<' not found, line 1, column 1"*. With `binary` the datatype is honest and the assertion for `OpenSwathWorkflow_1.chrom.tmp.xic` drops to `has_size` (`aux/output_expectations.tsv`). Side effects: `TextExporter`'s input list shows `binary` instead of `xml`, and `out_mobilogram` now stages `output.xic` (it staged `output.bioml` before - neither is tested upstream, and OpenMS most likely wants `*.xim`; a dedicated mapping would need a second Galaxy type for the same `binary` format, left open). |
 | D27 | upgrading the test data's `.ini` files | **`aux/ini_keep_original.txt` names the four fixtures which keep their original**; every other file is still converted, but `aux/check_ini_conversion.py` reports a changed value as a warning | `test-data.sh` upgrades every `*.ini` with `<tool> -ini <old> -write_ini <new>`, and that upgrade is needed: the shipped inis have moved nodes (`MassTraceExtractor_2` carries `mtd:min_trace_length`, 3.6 reads `epd:min_trace_length`) and OpenMS repairs them at runtime, which the generator has to see. But `-write_ini` writes the *defaults* of the tool - `-ini` only selects the parameter set which gets augmented - so a value the tool fills in itself does not survive. `IsobaricAnalyzer:type` is one: `TMTTenPlexMethod_test.ini` came back as `itraq4plex`, the generated test pinned that value, and the tool wrote an iTRAQ consensusXML (2611 b) where the upstream reference is a TMT one (12327 b), which `sim_size` rejects; upstream never sees it because `TOPP_IsobaricAnalyzer_2` compares with `-whitelist "id=" "<map" "?xml-stylesheet"`. The other three are `PPHiRes_invalidValue{,Section}` - they exist *because* their value is invalid. Not listed, and therefore converted: `FeatureLinkerUnlabeledKD_4` (`None` is not in the 3.6 restrictions of `adduct_merging`/`charge_merging`, so the default is what the tool uses) and `MassTraceExtractor_2` (an obsolete node, same argument). The report compares the values under their `NODE/…/ITEM` path and numerically (`1` -> `1.0`, `10000000` -> `1.0e07` are not changes). |
 | D28 | the order of `<option>`s in a `select` | **the CTD's `restrictions` list is sorted** by `patch_ctds.py`, so the wrapper does not inherit the order of OpenMS' container | the CTD repeats the enumerable values of a parameter as a comma separated `restrictions` attribute, and OpenMS produces that list in the iteration order of its own container: the enzyme select of `NucleicAcidSearchEngine` came out as `colicin_E5,no cleavage,...,RNase_T1` in one environment and `RNase_T1,colicin_E5,...,RNase_A` in the next - the same fourteen names, rotated. Three different rotations of that one list were observed for the same 3.6.0 package (the committed wrappers, the regeneration of 14:07, and the regeneration of 21:20), none of them reproducible from the input, and CTDConverter turns the list into the wrapper's options, so `check_generated.sh --regen` reported 13 changed wrappers whose diff was nothing but `<option>` elements moving. Sorting in the CTD (the layer that already exists for exactly this kind of upstream omission, D16) rather than in the converter keeps the conversion mechanical: it applies to all 710 multi-value restrictions of the 152 CTDs, of which 81 wrappers show the result, and it makes the wrapper a function of the *set* of values. An empty entry is a value of its own (`<option value=""/>`, `ProteinInference -Algorithm:score_type`) and survives the sort. |
+| D29 | the 11 `type="output-dir"` parameters of the 3.6 CTDs | **retyped to `output-prefix`**, not deleted (`aux/retype_output_dirs.py`, and `fill_ctd.py` for the CTD a wrapper writes at run time) | supersedes the strip rationale of D2/D3 for these parameters. `output-dir` is an OpenMS-private type (introduced in 3.3.0 for `QualityControl`, #7497) which CTDopts predates - it raises `KeyError: 'output-dir'` and kills the conversion of the whole suite. `output-prefix` is the legacy CTDopts type for the same thing: the value is a path the tool appends its own file names to, i.e. a prefix that happens to end with a separator. Retyping keeps the parameter (a user may want the parquet export) and lets CTDConverter declare a collection for it, which deleting the parameter made impossible. The directory is `mkdir`ed in the preprocessing block and passed as `<param>/`, so the wrapper's `discover_datasets` sees exactly the files the tool wrote. `ProSE.out_mod_analysis_dir` stays hidden: it is a mixture of tables and plots with no single datatype. |
 | D4 | `FileConverter` raw path | open | 3.6 moved raw handling into `RawToMzML:*` and added `-RawToMzML:reader` (`inprocess` default on Linux). The hardcoded `RawToMzML:NET_executable=mono` / `ThermoRaw_executable=ThermoRawFileParser.exe` are ignored unless `reader=external`, and `mono` is no longer a recipe dependency. Decide in round 2. |
 
 ### D11 — `MascotAdapterOnline` keeps its tests only as a comment
@@ -481,7 +483,7 @@ The fix is a per-tool extension override in the generator (e.g.
 tests are skipped and the tool is not wrapped-in-tested state.  This is a
 pre-existing wrapper defect, not a 3.6 regression: 3.2 had the same mapping.
 
-### What `strip_output_dirs.py` drops (D2/D3)
+### The `output-dir` parameters: retyped, not dropped (D29, was D2/D3)
 
 The CTDs of OpenMS 3.6 declare **11** parameters as `type="output-dir"`, in
 eight tools - five of them have a wrapper, three are blacklisted:
@@ -489,7 +491,7 @@ eight tools - five of them have a wrapper, three are blacklisted:
 | tool | parameter | what it is |
 |---|---|---|
 | `IsobaricWorkflow`, `MS1LabeledWorkflow`, `ProteinQuantifier`, `ProteomicsLFQ`\*, `ProSE` | `out_qpx` | a *directory* of qpx files: `quantms.feature.parquet`, `quantms.psm.parquet`, `quantms.pg.parquet` (ProSE: per-input `<basename>.psm.parquet` plus the merged `quantms.*`) |
-| `ProSE` | `out_parquet` | the same for OpenMS-internal parquet: per input `<basename>.psm/proteins/pg/search_params.parquet` plus merged `openms.*` (excluded on both sides, D2) |
+| `ProSE` | `out_parquet` | the same for OpenMS-internal parquet: per input `<basename>.psm/proteins/pg/search_params.parquet` plus merged `openms.*` |
 | `ProSE` | `out_mod_analysis_dir` | the open-search modification analysis: delta-mass and PTM statistics tables, per input by basename plus an aggregate table |
 | `OpenSwathExport`\*, `OpenSwathPeakMapExtractor`\* | `out_dir` | one file per transition group (`OpenSwathExport`: written next to the input `.osw` when the parameter is unset; `OpenSwathPeakMapExtractor`: `<run>.xipm`, only with `-separate_runs`) |
 | `ProteomicsLFQ`\* | `feat_dir` | per-run featureXML checkpoints - a run whose checkpoint is valid is not detected again, so this makes a run resumable |
@@ -497,18 +499,58 @@ eight tools - five of them have a wrapper, three are blacklisted:
 
 \* blacklisted, so no wrapper exists for it anyway.
 
-A Galaxy dataset is a single file, and even the `Directory` datatype Galaxy
-learned later can not be *requested* by an `<output>` - a tool has to produce a
-file. `strip_output_dirs.py` therefore deletes those 11 parameters from the CTD
-snapshot before the conversion, which keeps the remaining outputs of the same
-tools (idXML, mzTab, the QC JSONs) wrappable: `QualityControl` loses only its
-report bundle, `ProSE` only the optional duplicates.
+Rounds 1-6 deleted those 11 parameters from the CTD before the conversion
+(`strip_output_dirs.py`): `output-dir` is an OpenMS-private type that CTDopts
+1.5 does not know (`KeyError: 'output-dir'`), and the wrapper author of a
+Galaxy `<output>` names a file, not a directory.  Round 7c **retypes** them to
+`output-prefix` instead (`aux/retype_output_dirs.py`, plus `fill_ctd.py` for
+the CTD a wrapper writes at run time), because a directory output *is* an
+output prefix whose prefix ends with a separator - the tool appends its own
+file names to the value, so the names are discoverable at run time and
+`discover_datasets` can turn them into a collection.  Nothing is lost, and the
+retaining option can be offered:
 
-The alternative would be to write into a subdirectory and `tar` it, and to
-declare the output as a `tar.gz`. It is only worth it for `QualityControl`,
-whose `directory` is the MaxQuant-compatible table set a user may actually want
-to download; for `out_qpx`/`out_parquet` the format is excluded anyway, and
-`feat_dir`/`out_dir` belong to blacklisted tools. Left open, not forgotten.
+| wrapper | new output | test |
+|---|---|---|
+| `IsobaricWorkflow` | `out_qpx`, optional, `format="parquet"` | no upstream test passes `-out_qpx` |
+| `MS1LabeledWorkflow` | `out_qpx`, optional, `format="parquet"` | `TOPP_MS1LabeledWorkflow_qpx` and `_6_ratios_qpx` come back (both pass `-out_qpx`, and both are `out_qpx_FLAG` tests now) |
+| `ProteinQuantifier` | `out_qpx`, optional, `format="parquet"` | `TOPP_ProteinQuantifier_18_qpx`/`_19_qpx` gain the collection |
+| `ProSE` | `out_qpx` and `out_parquet`, optional, `format="parquet"` | `TOPP_ProSE_3_qpx` comes back |
+| `QualityControl` | `out_txt_directory`, optional, `format="txt"` | not asserted by any upstream test (`-out_txt:directory` is never passed) |
+| `ProSE` | `out_mod_analysis_dir` | **stays hidden** (`aux/hardcoded_params.json`): the directory mixes tables and plots, so there is no datatype for it |
+
+The alternative - write into a subdirectory and `tar` it, declaring a `tar.gz`
+- would have hidden the format behind an archive; a list collection needs no
+extra tool.
+
+Two generator defects surfaced with the retyping:
+
+* **CTDConverter used the wrong directory.**  `discover_datasets/@directory`
+  was built with `get_galaxy_parameter_path(param, separator="_")`, i.e. the
+  *Galaxy identifier* (`out_txt_directory`), while the wrapper creates and
+  passes the *command line* path (`out_txt.directory/`, sections joined by
+  `.`).  The collection stayed empty.  Fixed on the fork as
+  `ctdconverter/galaxy/converter.py:create_output_node`: `_OutPrefix` uses
+  `fix_dedup_prefix=True` (the dotted path), an `_OutFile` list keeps the
+  underscore one, because for a list of output files the wrapper passes a
+  directory it names after the parameter.  Commit `dd7dc95`
+  ("Use the command line path for the discover directory",
+  `bernt-matthias/CTDConverter@topic/fix-selects2`).
+* **An optional prefix output was asserted in every test.**  `create_test_only`
+  emitted `<output_collection>` for every `_OutPrefix` parameter regardless of
+  whether the upstream command line passes it, and never added the
+  `<name>_FLAG` to `OPTIONAL_OUTPUTS` - a test that declares an output the
+  wrapper's `<filter>` hides can only fail.  An `_OutPrefix` is now treated like
+  an `_OutFile`: "the test passes it" means the model carries a value for it,
+  which is what `fill_ctd_clargs` puts there.  This was invisible until now
+  because every wrapped prefix parameter was made *required* by
+  `aux/hardcoded_params.json` (`out`/`MzMLSplitter` + `IDRipper`,
+  `out_prefix`/`SeedListGenerator`, `outputDirectory`/`OpenSwathFileSplitter`).
+* **An `.ini` file has no types.**  `ProSE`'s tests pass `-ini`, so the model
+  came from `Parameters`, not from the CTD, and OpenMS writes an `output-dir`
+  as `type="string"` with `tags="output dir"` - the value then looked like the
+  value of a text field.  `get_tests.py:retype_ini_output_dirs()` retypes
+  exactly that tag, mirroring `aux/retype_output_dirs.py`.
 
 #### `output-dir` vs `output-prefix` - there is no documentation
 
@@ -534,9 +576,12 @@ The practical difference, then:
   OpenSwathFileSplitter `outputDirectory` optional) are all wrapped with a
   `<collection type="list">`.
 * **`output-dir`** - the value is a *directory* the tool creates and fills with
-  files the CTD never names. Nothing in the CTD says what will appear, so no
-  wrapper can declare datasets for it - which is the reason for stripping (and
-  for blacklisting the tools whose only output it is).
+  files the CTD never names. Nothing in the CTD says what will appear, so the
+  wrapper can only *discover* the files instead of naming them; that is the
+  difference to a `output-prefix`, where the CTD (via `supported_formats`) does
+  describe the names. Both are wrapped as a `<collection type="list">`: the
+  prefix one from the value, the directory one from what appears in it (D29).
+  Only a tool whose *entire* output is such a directory stays blacklisted.
 
 ## Round 7 — remote test data (PR review §2)
 
@@ -660,8 +705,9 @@ be remote `location="https://..."` references plus `has_size`/`assert_contents`
 rather than generated fixtures.  That is a per-test decision over 1205 outputs,
 not a generator switch, and it changes what the suite downloads.  Also open:
 the `DatabaseSuitability` skip reason, the size of `aux/upgrade/`,
-`strip_output_dirs.py` documentation, `QualityControl`'s directory output, and
-the `macros_test.xml` `expect_num_outputs` drift.
+and the `macros_test.xml` `expect_num_outputs` drift.  (`QualityControl`'s
+directory output and the `output-dir` documentation were closed in round 7c,
+D29.)
 
 ## WIP notes
 
@@ -717,7 +763,8 @@ the jump 3.2 -> 3.6 needed a decision, all recorded here:
 Verification for this round: `aux/upgrade/check_generated.sh` -> *all static checks
 passed* (one WARN: host paths), `xmllint` clean on all 142 wrappers, all `ftype=`/`format=`
 values are Galaxy datatypes, no `type="output-dir"` parameter survived
-(`aux/strip_output_dirs.py`).
+(`aux/strip_output_dirs.py`; since round 7c the 11 parameters are *retyped* to
+`output-prefix` instead, D29).
 
 ## Round 0 (baseline) — planemo tooling
 
