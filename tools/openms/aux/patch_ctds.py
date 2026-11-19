@@ -54,6 +54,10 @@ def items(root):
             # so also register the short section:param form used in the patches
             if prefix:
                 by_path.setdefault(f"{prefix.split(':')[-1]}:{name}", item)
+            # a patch may also name the parameter alone ("out_qpx"): the CTD nests
+            # it in a numbered NODE (PARAMETERS > NODE 1 > ITEM out_qpx), which is
+            # an implementation detail of the C++ parameter registration
+            by_path.setdefault(name, item)
             if item.get("type") in ("select", "select-file"):
                 walk(item, path)
             for node_list in item.findall("NODE"):

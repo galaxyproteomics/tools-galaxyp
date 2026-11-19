@@ -27,7 +27,9 @@ from ctdconverter.galaxy.converter import convert_models
 from CTDopts.CTDopts import (
     CTDModel,
     ModelTypeError,
+    Parameter,
     Parameters,
+    _OutPrefix,
 )
 
 SKIP_LIST = [
@@ -692,6 +694,28 @@ def unique_files(line: str):
     return shlex.join(cmd)
 
 
+# ParamTags.h: TAG_OUTPUT_DIR, the tag OpenMS writes for a parameter that names
+# a directory (`output-dir` in the CTD, see aux/retype_output_dirs.py)
+_OUTPUT_DIR_TAG = "output dir"
+
+
+def retype_ini_output_dirs(ini_model: Parameters) -> None:
+    """Retype the output directories of a model parsed from an .ini file.
+
+    An .ini file only carries values, not the type a CTD declares: OpenMS writes
+    `output-dir` as `type="string"` plus `tags="output dir"`, so the parameter
+    comes back as a plain string and the generated test would pass a directory
+    name as the value of a text field instead of selecting the output - the
+    collection would then never be produced.  Re-typing it here (exactly like
+    aux/retype_output_dirs.py does for the CTDs) keeps the two paths in sync.
+    """
+    for param in ini_model.get_parameters(nodes=True):
+        # get_parameters(nodes=True) also yields the sections, which are
+        # ParameterGroups: they have no tags (and no value to retype)
+        if isinstance(param, Parameter) and _OUTPUT_DIR_TAG in (param.tags or []):
+            param.type = _OutPrefix
+
+
 def fill_ctd_clargs(ini: str, line: str, ctd_tmp: TextIO) -> None:
     cmd = shlex.split(line)
 
@@ -708,6 +732,8 @@ def fill_ctd_clargs(ini: str, line: str, ctd_tmp: TextIO) -> None:
     assert ini_model is not None, "Could not parse %s, seems to be no CTD/PARAMS" % (
         args.ini_file
     )
+    if isinstance(ini_model, Parameters):
+        retype_ini_output_dirs(ini_model)
 
     # get a dictionary of the ctd arguments where the values of the parameters
     # given on the command line are overwritten

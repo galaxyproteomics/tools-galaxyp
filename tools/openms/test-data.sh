@@ -279,8 +279,10 @@ if [[ -z "$(ls -A "$ctd")" ]]; then
     exit 1
 fi
 ## OpenMS 3.6 CTDs contain parameters of a type that CTDopts cannot parse at all
-## (one such parameter breaks the conversion of the whole suite), see the script
-python3 aux/strip_output_dirs.py "$ctd"/
+## (one such parameter breaks the conversion of the whole suite).  The type is a
+## prefix that ends with a separator, so it is retyped rather than dropped - the
+## wrapper can then declare a collection for the directory, see the script.
+python3 aux/retype_output_dirs.py "$ctd"/
 ## correct the CTD parameters which upstream left unannotated (e.g. the FASTA
 ## outputs of DecoyDatabase).  Must happen here, before get_tests.py reads the
 ## CTDs: it derives the ftype of the expected test outputs from the
