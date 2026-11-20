@@ -19,17 +19,30 @@ mkdir out &&
 
 ## Main program call
 
+#if "out_idparquet_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir -p out_idparquet_bundle &&
+#end if
 set -o pipefail &&
 @EXECUTABLE@ -write_ctd ./ &&
 python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
 @EXECUTABLE@ -ini @EXECUTABLE@.ctd
 -in
 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
+#if "out_idparquet_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+-out_type
+idparquet
+#end if
 -out
+#if "out_idparquet_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+'out_idparquet_bundle/out.idparquet'
+#else
 'out/output.${out_type}'
+#end if
 
 ## Postprocessing
+#if "out_idparquet_FLAG" not in str($OPTIONAL_OUTPUTS).split(',')
 && mv 'out/output.${out_type}' '$out'
+#end if
 #if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
   && mv '@EXECUTABLE@.ctd' '$ctd_out'
 #end if]]></command>
@@ -57,13 +70,19 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
     </expand>
     <param name="OPTIONAL_OUTPUTS" type="select" optional="true" multiple="true" label="Optional outputs">
       <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+      <option value="out_idparquet_FLAG">out (idparquet bundle)</option>
     </param>
   </inputs>
   <outputs>
+    <collection type="list" name="out_idparquet" label="${tool.name} on ${on_string}: out (idparquet bundle)">
+      <discover_datasets directory="out_idparquet_bundle/out.idparquet" recurse="true" format="parquet" pattern="(?P&lt;designation&gt;.*\.parquet)"/>
+      <filter>OPTIONAL_OUTPUTS is not None and "out_idparquet_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </collection>
     <data name="out" label="${tool.name} on ${on_string}: out" format="idxml">
       <change_format>
         <when input="out_type" value="mzid" format="mzid"/>
       </change_format>
+      <filter>OPTIONAL_OUTPUTS is None or ("out_idparquet_FLAG" not in OPTIONAL_OUTPUTS)</filter>
     </data>
     <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
       <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
@@ -107,6 +126,37 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <assert_stdout>
         <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
       </assert_stdout>
+    </test>
+    <test expect_num_outputs="1">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="MSGFPlusAdapter_1_out.idXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/v3.6.0/src/tests/topp/THIRDPARTY/MSGFPlusAdapter_1_out.idXML"/>
+      <param name="out_type" value="idXML"/>
+      <param name="OPTIONAL_OUTPUTS" value="out_idparquet_FLAG"/>
+      <output_collection name="out_idparquet" type="list" min="4" max="4">
+        <element name="protein_groups.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+        <element name="proteins.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+        <element name="psms.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+        <element name="search_params.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+      </output_collection>
     </test>
   </tests>
   <help><![CDATA[Computes extra features for each input PSM.

@@ -25,14 +25,33 @@ mkdir out &&
 
 ## Main program call
 
+#if "out_featureparquet_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir -p out_featureparquet_bundle &&
+#end if
+#if "out_consensusparquet_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir -p out_consensusparquet_bundle &&
+#end if
 set -o pipefail &&
 @EXECUTABLE@ -write_ctd ./ &&
 python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
 @EXECUTABLE@ -ini @EXECUTABLE@.ctd
 -in
 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
+#if "out_featureparquet_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+-out_type
+featureparquet
+#elif "out_consensusparquet_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+-out_type
+consensusparquet
+#end if
 -out
+#if "out_featureparquet_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+'out_featureparquet_bundle/out.featureparquet'
+#elif "out_consensusparquet_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+'out_consensusparquet_bundle/out.consensusparquet'
+#else
 'out/output.${out_type}'
+#end if
 ## advanced options
   #if $OpenSwathWorkflow.tr:
     -OpenSwathWorkflow:tr
@@ -41,7 +60,9 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
 
 
 ## Postprocessing
+#if "out_featureparquet_FLAG" not in str($OPTIONAL_OUTPUTS).split(',') and "out_consensusparquet_FLAG" not in str($OPTIONAL_OUTPUTS).split(',')
 && mv 'out/output.${out_type}' '$out'
+#end if
 #if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
   && mv '@EXECUTABLE@.ctd' '$ctd_out'
 #end if]]></command>
@@ -105,9 +126,19 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
     </expand>
     <param name="OPTIONAL_OUTPUTS" type="select" optional="true" multiple="true" label="Optional outputs">
       <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+      <option value="out_featureparquet_FLAG">out (featureparquet bundle)</option>
+      <option value="out_consensusparquet_FLAG">out (consensusparquet bundle)</option>
     </param>
   </inputs>
   <outputs>
+    <collection type="list" name="out_featureparquet" label="${tool.name} on ${on_string}: out (featureparquet bundle)">
+      <discover_datasets directory="out_featureparquet_bundle/out.featureparquet" recurse="true" format="parquet" pattern="(?P&lt;designation&gt;.*\.parquet)"/>
+      <filter>OPTIONAL_OUTPUTS is not None and "out_featureparquet_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </collection>
+    <collection type="list" name="out_consensusparquet" label="${tool.name} on ${on_string}: out (consensusparquet bundle)">
+      <discover_datasets directory="out_consensusparquet_bundle/out.consensusparquet" recurse="true" format="parquet" pattern="(?P&lt;designation&gt;.*\.parquet)"/>
+      <filter>OPTIONAL_OUTPUTS is not None and "out_consensusparquet_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </collection>
     <data name="out" label="${tool.name} on ${on_string}: out" format="consensusxml">
       <change_format>
         <when input="out_type" value="csv" format="csv"/>
@@ -123,6 +154,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <when input="out_type" value="sqMass" format="sqmass"/>
         <when input="out_type" value="xic" format="binary"/>
       </change_format>
+      <filter>OPTIONAL_OUTPUTS is None or ("out_featureparquet_FLAG" not in OPTIONAL_OUTPUTS and "out_consensusparquet_FLAG" not in OPTIONAL_OUTPUTS)</filter>
     </data>
     <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
       <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
@@ -1471,6 +1503,118 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <param name="in" value="FileConverter_1_input.mzData" location="https://raw.githubusercontent.com/OpenMS/OpenMS/v3.6.0/src/tests/topp/FileConverter_1_input.mzData"/>
       <output name="out" file="FileConverter_1_output.mzML" compare="sim_size" delta="5700" ftype="mzml"/>
       <param name="out_type" value="mzML"/>
+    </test>
+    <test expect_num_outputs="1">
+      <section name="adv_opts">
+        <param name="UID_postprocessing" value="ensure"/>
+        <param name="TIC_DTA2D" value="false"/>
+        <param name="MGF_compact" value="false"/>
+        <param name="force_MaxQuant_compatibility" value="false"/>
+        <param name="force_TPP_compatibility" value="false"/>
+        <param name="convert_to_chromatograms" value="false"/>
+        <param name="write_scan_index" value="true"/>
+        <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
+        <param name="lossy_mass_accuracy" value="-1.0"/>
+        <param name="process_lowmemory" value="false"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="FileConverter_20_input.featureXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/v3.6.0/src/tests/topp/FileConverter_20_input.featureXML"/>
+      <param name="out_type" value="featureXML"/>
+      <section name="RawToMzML">
+        <param name="no_peak_picking" value="false"/>
+        <param name="no_zlib_compression" value="false"/>
+        <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="out_featureparquet_FLAG"/>
+      <output_collection name="out_featureparquet" type="list" min="5" max="5">
+        <element name="features.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+        <element name="protein_groups.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+        <element name="proteins.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+        <element name="psms.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+        <element name="search_params.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+      </output_collection>
+    </test>
+    <test expect_num_outputs="1">
+      <section name="adv_opts">
+        <param name="UID_postprocessing" value="ensure"/>
+        <param name="TIC_DTA2D" value="false"/>
+        <param name="MGF_compact" value="false"/>
+        <param name="force_MaxQuant_compatibility" value="false"/>
+        <param name="force_TPP_compatibility" value="false"/>
+        <param name="convert_to_chromatograms" value="false"/>
+        <param name="write_scan_index" value="true"/>
+        <param name="lossy_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
+        <param name="lossy_mass_accuracy" value="-1.0"/>
+        <param name="process_lowmemory" value="false"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="FileConverter_7_input.consensusXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/v3.6.0/src/tests/topp/FileConverter_7_input.consensusXML"/>
+      <param name="out_type" value="featureXML"/>
+      <section name="RawToMzML">
+        <param name="no_peak_picking" value="false"/>
+        <param name="no_zlib_compression" value="false"/>
+        <param name="include_noise" value="false"/>
+        <param name="reader" value="external"/>
+      </section>
+      <section name="OpenSwathWorkflow">
+        <param name="legacy_traml_id" value="false"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="out_consensusparquet_FLAG"/>
+      <output_collection name="out_consensusparquet" type="list" min="5" max="5">
+        <element name="consensus_features.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+        <element name="protein_groups.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+        <element name="proteins.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+        <element name="psms.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+        <element name="search_params.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+      </output_collection>
     </test>
   </tests>
   <help><![CDATA[Converts between different MS file formats.

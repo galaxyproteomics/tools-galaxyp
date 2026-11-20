@@ -67,6 +67,9 @@ mkdir out &&
 
 ## Main program call
 
+#if "out_idparquet_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir -p out_idparquet_bundle &&
+#end if
 set -o pipefail &&
 @EXECUTABLE@ -write_ctd ./ &&
 python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
@@ -91,8 +94,16 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
   -in_osw
   'in_osw/${re.sub("[^\w\-_]", "_", $in_osw.element_identifier)}.$gxy2omsext($in_osw.ext)'
 #end if
+#if "out_idparquet_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+-out_type
+idparquet
+#end if
 -out
+#if "out_idparquet_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+'out_idparquet_bundle/out.idparquet'
+#else
 'out/output.${out_type}'
+#end if
 #if "out_pin_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
   -out_pin
   'out_pin/output.${gxy2omsext("tabular")}'
@@ -132,7 +143,9 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
 #end if
 
 ## Postprocessing
+#if "out_idparquet_FLAG" not in str($OPTIONAL_OUTPUTS).split(',')
 && mv 'out/output.${out_type}' '$out'
+#end if
 #if "out_pin_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
   && mv 'out_pin/output.${gxy2omsext("tabular")}' '$out_pin'
 #end if
@@ -270,14 +283,20 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="out_pout_decoy_proteins_FLAG">out_pout_decoy_proteins (Write pout file (e.g., for debugging))</option>
       <option value="weights_FLAG">weights (Output final weights to the given file)</option>
       <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+      <option value="out_idparquet_FLAG">out (idparquet bundle)</option>
     </param>
   </inputs>
   <outputs>
+    <collection type="list" name="out_idparquet" label="${tool.name} on ${on_string}: out (idparquet bundle)">
+      <discover_datasets directory="out_idparquet_bundle/out.idparquet" recurse="true" format="parquet" pattern="(?P&lt;designation&gt;.*\.parquet)"/>
+      <filter>OPTIONAL_OUTPUTS is not None and "out_idparquet_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </collection>
     <data name="out" label="${tool.name} on ${on_string}: out" format="idxml">
       <change_format>
         <when input="out_type" value="mzid" format="mzid"/>
         <when input="out_type" value="osw" format="osw"/>
       </change_format>
+      <filter>OPTIONAL_OUTPUTS is None or ("out_idparquet_FLAG" not in OPTIONAL_OUTPUTS)</filter>
     </data>
     <data name="out_pin" label="${tool.name} on ${on_string}: out_pin" format="tabular">
       <filter>OPTIONAL_OUTPUTS is not None and "out_pin_FLAG" in OPTIONAL_OUTPUTS</filter>
@@ -541,6 +560,73 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <assert_stdout>
         <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
       </assert_stdout>
+    </test>
+    <test expect_num_outputs="1">
+      <section name="adv_opts">
+        <param name="generic_feature_set" value="false"/>
+        <param name="subset_max_train" value="0"/>
+        <param name="cpos" value="0.0"/>
+        <param name="cneg" value="0.0"/>
+        <param name="testFDR" value="0.5"/>
+        <param name="trainFDR" value="0.5"/>
+        <param name="maxiter" value="10"/>
+        <param name="nested_xval_bins" value="1"/>
+        <param name="quick_validation" value="false"/>
+        <param name="static" value="false"/>
+        <param name="default_direction" value=""/>
+        <param name="verbose" value="2"/>
+        <param name="unitnorm" value="false"/>
+        <param name="test_each_iteration" value="false"/>
+        <param name="override" value="false"/>
+        <param name="seed" value="1"/>
+        <param name="doc" value="0"/>
+        <param name="klammer" value="false"/>
+        <param name="decoy_pattern" value="random"/>
+        <param name="post_processing_tdc" value="false"/>
+        <param name="train_best_positive" value="false"/>
+        <param name="ipf_max_peakgroup_pep" value="0.7"/>
+        <param name="ipf_max_transition_isotope_overlap" value="0.5"/>
+        <param name="ipf_min_transition_sn" value="0.0"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <conditional name="in_cond">
+        <param name="in" value="PercolatorAdapter_1.idXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/v3.6.0/src/tests/topp/THIRDPARTY/PercolatorAdapter_1.idXML"/>
+      </conditional>
+      <param name="out_type" value="idXML"/>
+      <param name="enzyme" value="trypsin"/>
+      <param name="use_subprocess" value="true"/>
+      <param name="peptide_level_fdrs" value="false"/>
+      <param name="protein_level_fdrs" value="false"/>
+      <param name="osw_level" value="ms2"/>
+      <param name="score_type" value="q-value"/>
+      <param name="best_per_spectrum_only" value="false"/>
+      <section name="score">
+        <param name="fdr" value="1.0"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="out_idparquet_FLAG"/>
+      <output_collection name="out_idparquet" type="list" min="4" max="4">
+        <element name="protein_groups.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+        <element name="proteins.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+        <element name="psms.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+        <element name="search_params.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+      </output_collection>
     </test>
   </tests>
   <help><![CDATA[Facilitate input to Percolator and reintegrate.

@@ -30,15 +30,22 @@ cp '$database' 'database/${re.sub("[^\w\-_]", "_", $database.element_identifier)
 
 ## Main program call
 
+#if "out_idparquet_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir -p out_idparquet_bundle &&
+#end if
 set -o pipefail &&
 @EXECUTABLE@ -write_ctd ./ &&
 python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
 @EXECUTABLE@ -ini @EXECUTABLE@.ctd
 -in
 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
-#if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+#if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',') or "out_idparquet_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
   -out
+  #if "out_idparquet_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  'out_idparquet_bundle/out.idparquet'
+  #else
   'out/output.${gxy2omsext("idxml")}'
+  #end if
 #end if
 #if "mzid_out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
   -mzid_out
@@ -56,7 +63,9 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
 
 ## Postprocessing
 #if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  #if "out_idparquet_FLAG" not in str($OPTIONAL_OUTPUTS).split(',')
   && mv 'out/output.${gxy2omsext("idxml")}' '$out'
+  #end if
 #end if
 #if "mzid_out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
   && mv 'mzid_out/output.${gxy2omsext("mzid")}' '$mzid_out'
@@ -6296,11 +6305,16 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="out_FLAG">out (Output file (.idXML) or directory bundle (.idparquet) containing the search results)</option>
       <option value="mzid_out_FLAG">mzid_out (Alternative output file (MS-GF+ parameter '-o'))</option>
       <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+      <option value="out_idparquet_FLAG">out (idparquet bundle)</option>
     </param>
   </inputs>
   <outputs>
+    <collection type="list" name="out_idparquet" label="${tool.name} on ${on_string}: out (idparquet bundle)">
+      <discover_datasets directory="out_idparquet_bundle/out.idparquet" recurse="true" format="parquet" pattern="(?P&lt;designation&gt;.*\.parquet)"/>
+      <filter>OPTIONAL_OUTPUTS is not None and "out_idparquet_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </collection>
     <data name="out" label="${tool.name} on ${on_string}: out" format="idxml">
-      <filter>OPTIONAL_OUTPUTS is not None and "out_FLAG" in OPTIONAL_OUTPUTS</filter>
+      <filter>OPTIONAL_OUTPUTS is not None and "out_FLAG" in OPTIONAL_OUTPUTS and "out_idparquet_FLAG" not in OPTIONAL_OUTPUTS</filter>
     </data>
     <data name="mzid_out" label="${tool.name} on ${on_string}: mzid_out" format="mzid">
       <filter>OPTIONAL_OUTPUTS is not None and "mzid_out_FLAG" in OPTIONAL_OUTPUTS</filter>
@@ -6428,6 +6442,75 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <assert_stdout>
         <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
       </assert_stdout>
+    </test>
+    <test expect_num_outputs="1">
+      <section name="adv_opts">
+        <param name="legacy_conversion" value="false"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="spectra.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/v3.6.0/src/tests/topp/THIRDPARTY/spectra.mzML"/>
+      <param name="database" value="proteins.fasta" location="https://raw.githubusercontent.com/OpenMS/OpenMS/v3.6.0/src/tests/topp/THIRDPARTY/proteins.fasta"/>
+      <param name="precursor_mass_tolerance" value="10.0"/>
+      <param name="precursor_error_units" value="ppm"/>
+      <param name="isotope_error_range" value="0,1"/>
+      <param name="fragment_method" value="from_spectrum"/>
+      <param name="instrument" value="high_res"/>
+      <param name="enzyme" value="Trypsin/P"/>
+      <param name="protocol" value="none"/>
+      <param name="tryptic" value="fully"/>
+      <param name="min_precursor_charge" value="1"/>
+      <param name="max_precursor_charge" value="3"/>
+      <param name="min_peptide_length" value="6"/>
+      <param name="max_peptide_length" value="40"/>
+      <param name="matches_per_spec" value="1"/>
+      <param name="min_peaks" value="10"/>
+      <param name="add_features" value="false"/>
+      <param name="max_mods" value="2"/>
+      <param name="max_missed_cleavages" value="-1"/>
+      <param name="variable_modifications" value="Oxidation (M)"/>
+      <param name="allow_dense_centroided_peaks" value="false"/>
+      <param name="reindex" value="true"/>
+      <section name="PeptideIndexing">
+        <param name="decoy_string" value=""/>
+        <param name="decoy_string_position" value="prefix"/>
+        <param name="missing_decoy_action" value="warn"/>
+        <param name="write_protein_sequence" value="false"/>
+        <param name="write_protein_description" value="false"/>
+        <param name="keep_unreferenced_proteins" value="false"/>
+        <param name="unmatched_action" value="error"/>
+        <param name="aaa_max" value="3"/>
+        <param name="mismatches_max" value="0"/>
+        <param name="IL_equivalent" value="false"/>
+        <param name="allow_nterm_protein_cleavage" value="true"/>
+        <section name="enzyme">
+          <param name="name" value="auto"/>
+          <param name="specificity" value="auto"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="out_idparquet_FLAG"/>
+      <output_collection name="out_idparquet" type="list" min="4" max="4">
+        <element name="protein_groups.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+        <element name="proteins.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+        <element name="psms.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+        <element name="search_params.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+      </output_collection>
     </test>
   </tests>
   <help><![CDATA[MS/MS database search using MS-GF+.
