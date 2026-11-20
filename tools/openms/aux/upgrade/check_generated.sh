@@ -190,6 +190,13 @@ if ! python3 aux/upgrade/check_remote_test_data.py; then
     fail "a test reference is neither remote, asserted on, nor committed"
 fi
 
+# 10. the parquet bundle outputs are added by a post-processor (D30); a wrapper
+#    in the spec that lost them (hand edit, new CTD run without the step) would
+#    silently fall back to a single-file output for a directory bundle
+if ! python3 aux/parquet_bundles.py --check; then
+    fail "a parquet bundle output is missing (aux/parquet_bundles.py --check)"
+fi
+
 if [ "$failures" -ne 0 ]; then
     printf '\n%d check(s) failed\n' "$failures" >&2
     exit 1

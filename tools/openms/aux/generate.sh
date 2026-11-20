@@ -84,6 +84,10 @@ conda deactivate
 
 sed -i -e 's@http://www.openms.de/doxygen/nightly/html/@https://openms.de/doxygen/release/'$VERSION'.0/html/@' ./*xml
 
+# Parquet-directory outputs cannot be a single <data>; CTDConverter knows nothing
+# about the bundle layout, so the collections are added afterwards (D30).
+python3 aux/parquet_bundles.py || { >&2 echo 'adding the parquet bundle outputs failed'; exit 1; }
+
 # the build artefacts in $ARTIFACTS are kept for inspection; remove them with
 #   rm -rf "$ARTIFACTS"
 # or let test-data.sh delete them via `tmp=$(mktemp -d)`
