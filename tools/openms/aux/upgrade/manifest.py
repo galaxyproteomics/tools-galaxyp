@@ -197,7 +197,10 @@ def cmd_fingerprint(args):
     if args.check:
         return check_idempotent(data, args.check)
     for tool, rec in sorted(data["tools"].items()):
-        print(f"{tool}\t{rec['fp'][:16]}\trefs={rec['refs']}")
+        # the full digest: `run_tests.sh` records column 2 as the tool's fp and
+        # `report` compares it to `tool_fingerprint()`.  A shortened form here
+        # made every freshly recorded tool look "stale (fp moved)".
+        print(f"{tool}\t{rec['fp']}\trefs={rec['refs']}")
     return 0
 
 

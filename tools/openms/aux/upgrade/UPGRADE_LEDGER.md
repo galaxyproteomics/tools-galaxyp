@@ -18,6 +18,7 @@ later round does not re-litigate it.
 | 7 | 2026-11-16 | PR #783 review §2: remote test data | 142 | **0** | `check_generated.sh` 9 checks green, `--regen` byte-identical, full suite: 626/626 | D21-D27; 1359 references by URL, 688 assertions (90 of them replace a FuzzyDiff-only output), 6 committed fixtures, 56 multi-file references stay local (and 1 cannot be moved at all); 272 outputs carry the `delta` of their `delta_frac`; 626 tests |
 | 7b | 2026-11-18 | make the wrapper independent of the order OpenMS writes its value lists in | 142 | **0** | `check_generated.sh` 9 checks green, `--regen` byte-identical (twice) | D28; 81 wrappers change, and every changed line is an `<option>` element moving - the set of options, their `value=`, their text and their `selected=` are untouched; the 81 changed wrappers were re-tested (73 with tests: 483 tests, 0 failed, 0 errors; plus `XFDR` 7/7 - the 8 remaining ones define no test at all, so only their fingerprint was re-stamped) |
 | 7c | 2026-11-19 | `output-dir` parameters: retype instead of drop | 142 | **0** | `check_generated.sh` 9 checks green, `--regen` byte-identical, the 5 changed wrappers re-tested in Galaxy (38/38), `manifest.py report --gate`: GATE PASSED | D29; the 11 directory outputs of the 3.6 CTDs become `<collection type="list">` outputs (`out_qpx`/`out_parquet` as `format="parquet"`, `QualityControl`'s `out_txt:directory` as `txt`) instead of being deleted; 5 wrappers change (`IsobaricWorkflow`, `MS1LabeledWorkflow`, `ProSE`, `ProteinQuantifier`, `QualityControl`) plus the parquet extension in `macros.xml`; 3 new upstream tests come back (`MS1LabeledWorkflow_qpx`, `MS1LabeledWorkflow_6_ratios_qpx`, `ProSE_3_qpx`), 2 existing ones gain the new output (`ProteinQuantifier_18_qpx`/`_19_qpx`); test count 623 -> 626 |
+| 8a | 2026-11-20 | parquet bundles, producer side (D30) | 142 | **0** (`report --gate`: 142 tools, 123 pass, 0 fail, 0 untested, 0 stale, `GATE PASSED`) | `check_generated.sh` 10 checks green (`all static checks passed`, 45 manual tests in 34 wrappers); `parquet_bundles.py --check` 7 checked / 0 problems, a second patch run changes nothing; a fresh `aux/generate.sh` reproduces all 7 wrappers and `aux/macros_test.xml` byte-identically; **92/92 tests** of the 7 wrappers pass in Galaxy (CometAdapter 5, FileConverter 37, IDFileConverter 37, MSGFPlusAdapter 3, PSMFeatureExtractor 3, PercolatorAdapter 5, SageAdapter 2), including the 8 new bundle tests | D30; `aux/parquet_bundles.{json,py}` add **8** optional `<collection type="list">` outputs (`out_idparquet` x6, `out_featureparquet`/`out_consensusparquet` for `FileConverter`) behind `OPTIONAL_OUTPUTS`, each with a committed structural test in `aux/macros_test.xml` - no default command line, no existing test moves. **The CTD inventory was wrong**: only 7 of the 19 producers can write a bundle at all, the other 10 (plus `IDMerger`) derive the output type from the input and are mirror-only (8c). Details and evidence in the round-8 notes below |
 
 ## Decisions
 
@@ -44,6 +45,7 @@ later round does not re-litigate it.
 | D26 | outputs that are not text | **`*.xic`/`*.xim` map to Galaxy's `binary`, not to `xml`** in `aux/filetypes.txt` | OpenMS 3.6 writes mobile-proton/adduct XICs as Parquet (the files start with `PAR1`), but the extension table claimed `xml`, so `OpenSwathWorkflow` declared `out_chrom` (and `out_mobilogram`) as XML, `change_format` switched to `xml` for `out_chrom_type=xic`, and `is_valid_xml` failed on a binary file: *"Start tag expected, '<' not found, line 1, column 1"*. With `binary` the datatype is honest and the assertion for `OpenSwathWorkflow_1.chrom.tmp.xic` drops to `has_size` (`aux/output_expectations.tsv`). Side effects: `TextExporter`'s input list shows `binary` instead of `xml`, and `out_mobilogram` now stages `output.xic` (it staged `output.bioml` before - neither is tested upstream, and OpenMS most likely wants `*.xim`; a dedicated mapping would need a second Galaxy type for the same `binary` format, left open). |
 | D27 | upgrading the test data's `.ini` files | **`aux/ini_keep_original.txt` names the four fixtures which keep their original**; every other file is still converted, but `aux/check_ini_conversion.py` reports a changed value as a warning | `test-data.sh` upgrades every `*.ini` with `<tool> -ini <old> -write_ini <new>`, and that upgrade is needed: the shipped inis have moved nodes (`MassTraceExtractor_2` carries `mtd:min_trace_length`, 3.6 reads `epd:min_trace_length`) and OpenMS repairs them at runtime, which the generator has to see. But `-write_ini` writes the *defaults* of the tool - `-ini` only selects the parameter set which gets augmented - so a value the tool fills in itself does not survive. `IsobaricAnalyzer:type` is one: `TMTTenPlexMethod_test.ini` came back as `itraq4plex`, the generated test pinned that value, and the tool wrote an iTRAQ consensusXML (2611 b) where the upstream reference is a TMT one (12327 b), which `sim_size` rejects; upstream never sees it because `TOPP_IsobaricAnalyzer_2` compares with `-whitelist "id=" "<map" "?xml-stylesheet"`. The other three are `PPHiRes_invalidValue{,Section}` - they exist *because* their value is invalid. Not listed, and therefore converted: `FeatureLinkerUnlabeledKD_4` (`None` is not in the 3.6 restrictions of `adduct_merging`/`charge_merging`, so the default is what the tool uses) and `MassTraceExtractor_2` (an obsolete node, same argument). The report compares the values under their `NODE/…/ITEM` path and numerically (`1` -> `1.0`, `10000000` -> `1.0e07` are not changes). |
 | D28 | the order of `<option>`s in a `select` | **the CTD's `restrictions` list is sorted** by `patch_ctds.py`, so the wrapper does not inherit the order of OpenMS' container | the CTD repeats the enumerable values of a parameter as a comma separated `restrictions` attribute, and OpenMS produces that list in the iteration order of its own container: the enzyme select of `NucleicAcidSearchEngine` came out as `colicin_E5,no cleavage,...,RNase_T1` in one environment and `RNase_T1,colicin_E5,...,RNase_A` in the next - the same fourteen names, rotated. Three different rotations of that one list were observed for the same 3.6.0 package (the committed wrappers, the regeneration of 14:07, and the regeneration of 21:20), none of them reproducible from the input, and CTDConverter turns the list into the wrapper's options, so `check_generated.sh --regen` reported 13 changed wrappers whose diff was nothing but `<option>` elements moving. Sorting in the CTD (the layer that already exists for exactly this kind of upstream omission, D16) rather than in the converter keeps the conversion mechanical: it applies to all 710 multi-value restrictions of the 152 CTDs, of which 81 wrappers show the result, and it makes the wrapper a function of the *set* of values. An empty entry is a value of its own (`<option value=""/>`, `ProteinInference -Algorithm:score_type`) and survives the sort. |
+| D30 | the internal Parquet bundles (`.idparquet`, `.featureparquet`, `.consensusparquet`) on both sides | **a `list` collection of `parquet` datasets**, with the inner file names as element designations, produced by a **repo-local post-processor** (`aux/parquet_bundles.py`, run inside `generate.sh` after CTDConverter) rather than by a third CTDConverter commit | a Parquet *file* holds exactly one table (one `FileMetaData` header, one schema) and an OpenMS map/IdXML is 4-5 relations, so the bundle is a directory by construction and the reader requires the file names verbatim (`PSMArrowIO.h:26-35`). A collection is the only Galaxy shape that keeps one logical object, one output chip and the free designations; N separate `<data>` outputs would multiply every output list and lose the names. Route: `aux/generate.sh` clones `topic/fix-selects2`, which already has two unpushed commits (`dd7dc95`, `ae3635e`) - a third would make the wrappers reproducible only with push access. Producers get an *additional optional* output `out_<kind>` behind `OPTIONAL_OUTPUTS`, so no existing command line or test moves; consumers need a `<conditional>` and are staged separately. Design, inventory and staging: `.openms-tests/PLAN-parquet-bundles.md`. **Stage 8a (producers) is implemented for the 7 tools that can actually write a bundle** - round 8a; the CTD-declared inventory of 27 params was wrong, see the round-8 notes. |
 | D29 | the 11 `type="output-dir"` parameters of the 3.6 CTDs | **retyped to `output-prefix`**, not deleted (`aux/retype_output_dirs.py`, and `fill_ctd.py` for the CTD a wrapper writes at run time) | supersedes the strip rationale of D2/D3 for these parameters. `output-dir` is an OpenMS-private type (introduced in 3.3.0 for `QualityControl`, #7497) which CTDopts predates - it raises `KeyError: 'output-dir'` and kills the conversion of the whole suite. `output-prefix` is the legacy CTDopts type for the same thing: the value is a path the tool appends its own file names to, i.e. a prefix that happens to end with a separator. Retyping keeps the parameter (a user may want the parquet export) and lets CTDConverter declare a collection for it, which deleting the parameter made impossible. The directory is `mkdir`ed in the preprocessing block and passed as `<param>/`, so the wrapper's `discover_datasets` sees exactly the files the tool wrote. `ProSE.out_mod_analysis_dir` stays hidden: it is a mixture of tables and plots with no single datatype. |
 | D4 | `FileConverter` raw path | open | 3.6 moved raw handling into `RawToMzML:*` and added `-RawToMzML:reader` (`inprocess` default on Linux). The hardcoded `RawToMzML:NET_executable=mono` / `ThermoRaw_executable=ThermoRawFileParser.exe` are ignored unless `reader=external`, and `mono` is no longer a recipe dependency. Decide in round 2. |
 
@@ -709,11 +711,122 @@ and the `macros_test.xml` `expect_num_outputs` drift.  (`QualityControl`'s
 directory output and the `output-dir` documentation were closed in round 7c,
 D29.)
 
+## Round 8 — Parquet bundles, both directions (8a closed, 8b/8c open)
+
+Stage 8a (producer side) is in the tree: `aux/parquet_bundles.json` (spec) +
+`aux/parquet_bundles.py` (post-processor, idempotent, `--check` mode), wired
+into `aux/generate.sh` and `aux/upgrade/check_generated.sh` step 10.
+7 wrappers gain 8 optional bundle outputs, each with a committed structural
+test in `aux/macros_test.xml`. 8b/8c (consumers) are not started, and the
+precondition for un-blacklisting `ParquetConverter` (D2) is 8b.
+
+Full design, inventory and staging: `.openms-tests/PLAN-parquet-bundles.md`.
+Summary:
+
+* Only the **internal** bundles are in scope (`.idparquet`, `.featureparquet`,
+  `.consensusparquet`). Single-file `.xic`/`.xim` stay `binary` (D26); QPX and
+  `ProSE -out_parquet` are already collections (D29); `.oswpq` is
+  Hive-partitioned and stays out.
+* Shape: a `list` collection of `parquet` datasets whose **element
+  designations are the inner file names** - that is what the reader requires
+  (`PSMArrowIO.h:26-35`, `ProteomicsLFQ.cpp:1445-1448`). The pattern therefore
+  keeps the extension (`(?P<designation>.*\.parquet)`, members are
+  `psms.parquet` …, discovered in alphabetical order); the QPX collections of
+  round 7c strip it, which is harmless because nothing reconstructs a file
+  name from them.
+* Mechanism: `aux/parquet_bundles.py`, a post-processor over the generated
+  XML inside `aux/generate.sh`, **not** a third commit on
+  `CTDConverter@topic/fix-selects2` (two of its commits are already unpushed,
+  so a third would make regeneration depend on push access).
+* Producers: the output params get an *additional optional* output
+  `out_<kind>` behind the existing `OPTIONAL_OUTPUTS` multi-select, plus
+  `mkdir -p`/`#if` in the command line. Nothing existing moves - not one of
+  the 626 tests, not one command line - which is the whole point of doing it
+  this way instead of widening an `-out_type` select (`<change_format>` cannot
+  turn a `<data>` into a `<collection>`). For the 5 wrappers that *do* name
+  their output after `-out_type` (`'out/output.${out_type}'`), the same `#if`
+  chain emits `-out_type <kind>` on the command line, overriding the value
+  `fill_ctd.py` wrote into the ini - `getConsistentOutputfileType()`
+  (`FileConverter.cpp:492`, `IDFileConverter.cpp:264`) refuses a file name and
+  a select that disagree.
+* **The CTD inventory (27 params over 19 wrappers) was wrong**, and only a
+  runtime smoke test showed it: the CTDs declare the parquet formats for `-out`
+  everywhere, but each tool's `FileHandler::store*()` allowed-types list
+  decides. `PeptideIndexer` with the flag fails immediately with
+  `type: idparquet is not allowed for storing identifications. Allowed types
+  are: , idXML`. Grouping by the C++ call site:
+  - **can write a bundle (8a, 7 wrappers):** `CometAdapter` (`:933`),
+    `MSGFPlusAdapter` (`:899`), `SageAdapter` (`:945`), `PercolatorAdapter`
+    (`:1546`, `out_type` valid strings `:417`), `PSMFeatureExtractor`
+    (`:214-225`), `IDFileConverter` (`:726`), `FileConverter` (`:189,949,990`);
+  - **mirror-only, i.e. 8c (10 wrappers):** `PeptideIndexer` (`:182`),
+    `IDScoreSwitcher` (`:97`), `IDFilter` (`:834,:856`), `MapRTTransformer`
+    (`:185,:194,:207`), `IDConflictResolver` (`:135,:157`),
+    `FeatureFinderIdentification` (`:195-205`), `FeatureLinker{Labeled,
+    Unlabeled,UnlabeledKD,UnlabeledQT}` (`FeatureLinkerBase.cpp:42-52,278`) -
+    all derive the output type from the input type;
+  - **`IDMerger`** allows `IDPARQUET` but `:241-253` requires input and output
+    to have the same type (`Mixing different file types is not supported`), so
+    it is mirror-only as well - the first smoke test proved it.
+* Consumers second, in two steps: `ParquetConverter` as the feature/consensus
+  bridge (small), then the native consumer params via a `<conditional>`
+  (deferred - it moves `$in` to `$input_kind.in` in every command line).
+* Three consumer shapes do **not** fit and need their own decision:
+  `format_source="in"` (`IDFilter`, `MapRTTransformer`, `IDConflictResolver` -
+  the output type mirrors the input type), `MapAlignerIdentification.out`
+  (already a collection in batch mode, would become `list:list`), and the
+  list-valued inputs (`FeatureLinker*`, `IDMerger`, `IDRipper`,
+  `MapAlignerIdentification -in`).
+* Testability does not improve on the producer side: upstream never compares
+  Parquet bytes - all 88 parquet blocks in `src/tests/topp/CMakeLists.txt` are
+  round trips - so a bundle *output* can only be asserted structurally
+  (`count`/`min`/`sim_size`), while a bundle *input* can be built from
+  fixtures and asserted through its XML twin, i.e. the ~30 read-side blocks
+  can come back and the write-only ones cannot. The 8a verification therefore
+  first used throwaway probe wrappers (one per tool, `out_<kind>_FLAG`,
+  `<output_collection>` asserting each member by name with `has_size`); those
+  became the committed tests of `aux/macros_test.xml` - 8 of them
+  (`manutest_<Tool>`; `FileConverter` carries two). They stay structural until
+  8c supplies a consumer.
+* Two traps worth remembering. (1) The post-processor decides "already
+  patched" from the `<discover_datasets directory=...>` line, not from the
+  `*_FLAG` string: the generated tests of `aux/macros_test.xml` select exactly
+  that flag, and the test macros are emitted *before* the wrappers are
+  converted, so a flag-based guard silently skips the patch and the next
+  regeneration reverts the collection outputs. (2) The bundle test must keep a
+  value the `out_type` select offers (`idXML`, `featureXML`, ...): none of the
+  four selects lists a parquet kind - the parquet list of the CTD only reaches
+  the format of `-out` - so `value="idparquet"` makes Galaxy answer
+  `POST /api/tools 400`. The switch happens on the command line
+  (`-out_type <kind>` inside the bundle branch), which makes the test double as
+  proof that the CLI value beats the ini.
+* Verification of 8a: a fresh `aux/generate.sh` reproduces the 7 patched
+  wrappers *and* `aux/macros_test.xml` byte-identically, `parquet_bundles.py
+  --check` reports 7 checked / 0 problems (a second patch run changes nothing),
+  `check_generated.sh` reports `all static checks passed` (45 manual tests in
+  34 wrappers), all **92 tests** of the 7 wrappers pass in Galaxy (84 existing +
+  the 8 new bundle tests), and `manifest.py report --gate` closes the round
+  (`GATE PASSED: no unexplained failures`, 0 stale).
+
 ## WIP notes
 
 * Scaffolding landed on branch `openms3.6`: `aux/upgrade/{ctd_diff.py,manifest.py,check_generated.sh,
   snapshot_ctds.sh,run_tests.sh,selftest.sh}` + this ledger. `check_generated.sh` and
   `selftest.sh` pass; no round has been closed yet.
+* Fixed while closing round 8a: `manifest.py fingerprint` printed the first 16
+  hex digits of the digest, while `report` compares the recorded value with the
+  full 64 - so every tool recorded through `run_tests.sh --update` came out
+  `stale (fp moved)` forever. Column 2 now carries the full digest.
+* A regeneration re-produces fixtures into `tools/openms/test-data/`, which in
+  3 cases today replaces a *symlink* into the upstream tree with the locally
+  produced file (`MapAlignerIdentification_7_input1_0.idXML`,
+  `PeptideIndexer_14_out.idXML`, `empty_0.idXML`, plus the `XFDR` temp files).
+  Restore them with `git checkout -- tools/openms/test-data/` before computing
+  fingerprints or running `report --gate`, otherwise those tools look
+  `stale (fp moved)` for a fixture the loop never meant to change.
+* `/tmp` on this host is a 16 MB tmpfs. A planemo log written there is cut off
+  mid-run and every test after the cut fails, which looks exactly like a
+  wrapper regression; `TMPDIR` and the logs belong on the big filesystem.
 * `check_generated.sh` currently reports one **WARN**: host paths (`/home/berntm/...`) in
   `MSFraggerAdapter.xml`, `NovorAdapter.xml` and `test-data.sh`, coming from
   `aux/hardcoded_params.json`. Cannot be fixed without regenerating, so it is a warn until
