@@ -618,8 +618,16 @@ def only_blacklisted_outputs(line: str, tool_id: str) -> List[str]:
 
 PARQUET_FORMATS = tuple(s.lstrip(".") for s in UNREADABLE_SUFFIXES)
 
+# ... except for the readers 3.6 moved the parquet support *into*: those open the
+# tables of a bundle directory, so a test feeding them one is exactly the test
+# the wrapper needs (ParquetDiff compares two tables - the fixtures are the
+# psms.parquet members of IDMerger_idparquet_input1.idparquet/ & input2)
+PARQUET_READERS = {
+    "ParquetDiff": {".parquet"},
+}
 
-def unsupported_inputs(line: str) -> List[str]:
+
+def unsupported_inputs(line: str, tool_id: str = "") -> List[str]:
     """Files in the parquet family, on either side of the command line.
 
     3.6 moved the parquet readers into the (blacklisted) Parquet* tools, so a
@@ -628,10 +636,13 @@ def unsupported_inputs(line: str) -> List[str]:
     fails earlier still: the format is gone from the tool's `-out`, so the
     wrapper does not even offer `out_type=featureparquet`.
     """
+    readable = PARQUET_READERS.get(tool_id, frozenset())
     tokens = shlex.split(line)
     unsupported = []
     for i, tok in enumerate(tokens):
         if tok.endswith(UNREADABLE_SUFFIXES) or tok in PARQUET_FORMATS:
+            if os.path.splitext(tok)[1] in readable:
+                continue
             unsupported.append(tok)
         elif i > 0 and tokens[i - 1] == "-out_type" and tok in PARQUET_FORMATS:
             unsupported.append(tok)
@@ -686,8 +697,16 @@ def unique_files(line: str):
             sys.stderr.write(
                 f'\tsymlink {os.path.join("test-data", new_f)} {f}\n'
             )
+            # a fixture inside a bundle directory keeps its directory
+            # (…_0.idparquet/psms.parquet), which has to exist for the link;
+            # the link then lives one level deeper than the file it points at,
+            # so its target has to be relative to the link's own directory
+            # (a bare `f` would resolve inside the new directory and dangle)
+            new_path = os.path.join("test-data", new_f)
+            os.makedirs(os.path.dirname(new_path), exist_ok=True)
             try:
-                os.symlink(f, os.path.join("test-data", new_f))
+                os.symlink(os.path.relpath(os.path.join("test-data", f),
+                                           os.path.dirname(new_path)), new_path)
             except FileExistsError:
                 pass
             cmd[idx] = new_f
@@ -881,7 +900,7 @@ def process_test_line(
             f"    skip {test_id} (fixture handed to a non-file parameter: {', '.join(text_files)})\n"
         )
         return
-    unsupported = unsupported_inputs(line)
+    unsupported = unsupported_inputs(line, tool_id)
     if unsupported:
         sys.stderr.write(
             f"    skip {test_id} (format not readable in 3.6: {', '.join(sorted(set(unsupported)))})\n"

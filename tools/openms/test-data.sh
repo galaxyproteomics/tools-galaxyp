@@ -150,11 +150,26 @@ echo "Get test data"
 find test-data -type f,l,d ! -name "*fa" ! -name "*loc" ! -name "test-data" ! -name MetaboliteSpectralDB.mzML -delete
 
 cp $(find $OPENMSGIT/src/tests/topp/ -type f | grep -Ev "third_party_tests.cmake|CMakeLists.txt|check_ini") test-data/
+# The parquet bundle fixtures (IDMerger_idparquet_input1.idparquet/ & co) are
+# directories and the tests address their members by name
+# (IDMerger_idparquet_input1.idparquet/psms.parquet).  Flattening them loses the
+# directory, and since every bundle names its tables alike (psms.parquet,
+# proteins.parquet, ...) one of them would also shadow the other.
+for bundle in $OPENMSGIT/src/tests/topp/*.idparquet/ \
+              $OPENMSGIT/src/tests/topp/*.featureparquet/ \
+              $OPENMSGIT/src/tests/topp/*.consensusparquet/; do
+    if [ -d "$bundle" ]; then
+        cp -r "$bundle" test-data/
+    fi
+done
 cp -r $OPENMSGIT/share/OpenMS/MAPPING/ test-data/
 cp -r $OPENMSGIT/share/OpenMS/CHEMISTRY test-data/
 cp -r $OPENMSGIT/share/OpenMS/examples/ test-data/
 # two FileConverter tests feed class-test data (${DATA_DIR_CLASS_TESTS})
 cp $OPENMSGIT/src/tests/class_tests/openms/data/MSPGenericFile_input.msp test-data/ 2> /dev/null
+# the upstream OpenSwathExport test feeds the shared PyProphet inference OSW, which
+# only exists as class-test data (OPENSWATH_SHARED_INFERENCE_OSW, CMakeLists.txt)
+cp $OPENMSGIT/src/tests/class_tests/openms/data/PyProphet_inference_test.osw test-data/ 2> /dev/null
 if [ ! -f test-data/MetaboliteSpectralDB.mzML ]; then
     DB_URL=https://raw.githubusercontent.com/sneumann/OpenMS/master/share/OpenMS/CHEMISTRY/MetaboliteSpectralDB.mzML
     # not every machine has wget (this one does not)

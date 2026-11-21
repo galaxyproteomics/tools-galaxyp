@@ -1,0 +1,553 @@
+<!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
+<!--Proposed Tool Section: [Targeted Experiments and OpenSWATH]-->
+<tool id="OpenSwathPeakMapExtractor" name="OpenSwathPeakMapExtractor" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+  <description>Extract targeted mz/RT/IM peak maps from DIA or diaPASEF data</description>
+  <macros>
+    <token name="@EXECUTABLE@">OpenSwathPeakMapExtractor</token>
+    <import>macros.xml</import>
+  </macros>
+  <expand macro="requirements"/>
+  <expand macro="stdio"/>
+  <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
+@EXT_FOO@
+#import re
+
+## Preprocessing
+mkdir in_cond.in &&
+#if $in_cond.in_select == "no"
+mkdir ${' '.join(["'in_cond.in/%s'" % (i) for i, f in enumerate($in_cond.in) if f])} && 
+${' '.join(["cp '%s' 'in_cond.in/%s/%s.%s' && " % (f, i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in_cond.in) if f])}
+#else
+cp '$in_cond.in' 'in_cond.in/${re.sub("[^\w\-_]", "_", $in_cond.in.element_identifier)}.$gxy2omsext($in_cond.in.ext)' &&
+#end if
+mkdir tr &&
+cp '$tr' 'tr/${re.sub("[^\w\-_]", "_", $tr.element_identifier)}.$gxy2omsext($tr.ext)' &&
+#if $swath_windows_file:
+  mkdir swath_windows_file &&
+  cp '$swath_windows_file' 'swath_windows_file/${re.sub("[^\w\-_]", "_", $swath_windows_file.element_identifier)}.$gxy2omsext($swath_windows_file.ext)' &&
+#end if
+#if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir out &&
+#end if
+#if "out_dir_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir out_dir &&
+#end if
+#if "irt_mzml_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir Debugging_irt_mzml &&
+#end if
+#if "irt_trafo_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir Debugging_irt_trafo &&
+#end if
+
+## Main program call
+
+set -o pipefail &&
+@EXECUTABLE@ -write_ctd ./ &&
+python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
+@EXECUTABLE@ -ini @EXECUTABLE@.ctd
+-in
+#if $in_cond.in_select == "no"
+${' '.join(["'in_cond.in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in_cond.in) if f])}
+#else
+'in_cond.in/${re.sub("[^\w\-_]", "_", $in_cond.in.element_identifier)}.$gxy2omsext($in_cond.in.ext)'
+#end if
+-tr
+'tr/${re.sub("[^\w\-_]", "_", $tr.element_identifier)}.$gxy2omsext($tr.ext)'
+#if $swath_windows_file:
+  -swath_windows_file
+  'swath_windows_file/${re.sub("[^\w\-_]", "_", $swath_windows_file.element_identifier)}.$gxy2omsext($swath_windows_file.ext)'
+#end if
+#if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  -out
+  'out/output.${gxy2omsext("parquet")}'
+#end if
+#if "out_dir_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  -out_dir
+  out_dir/
+#end if
+#if "irt_mzml_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  -Debugging:irt_mzml
+  'Debugging_irt_mzml/output.${gxy2omsext("mzml")}'
+#end if
+#if "irt_trafo_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  -Debugging:irt_trafo
+  'Debugging_irt_trafo/output.${gxy2omsext("trafoxml")}'
+#end if
+#if len(str($OPTIONAL_OUTPUTS).split(',')) == 0
+  | tee '$stdout'
+#end if
+
+## Postprocessing
+#if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  && mv 'out/output.${gxy2omsext("parquet")}' '$out'
+#end if
+#if "irt_mzml_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  && mv 'Debugging_irt_mzml/output.${gxy2omsext("mzml")}' '$Debugging_irt_mzml'
+#end if
+#if "irt_trafo_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  && mv 'Debugging_irt_trafo/output.${gxy2omsext("trafoxml")}' '$Debugging_irt_trafo'
+#end if
+#if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
+  && mv '@EXECUTABLE@.ctd' '$ctd_out'
+#end if]]></command>
+  <configfiles>
+    <inputs name="args_json" data_style="paths"/>
+    <configfile name="hardcoded_json"><![CDATA[{"tempDirectory": "\$TMP_DIR", "log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
+  </configfiles>
+  <inputs>
+    <conditional name="in_cond">
+      <param name="in_select" type="select" label="Run tool in batch mode for -in">
+        <option value="no">No: process all datasets jointly</option>
+        <option value="yes">Yes: process each dataset in an independent job</option>
+      </param>
+      <when value="no">
+        <param argument="-in" type="data" format="mzml,mzxml,sqmass" multiple="true" label="Input files separated by blank" help=" select mzml,mzxml,sqmass data sets(s)"/>
+      </when>
+      <when value="yes">
+        <param argument="-in" type="data" format="mzml,mzxml,sqmass" label="Input files separated by blank" help=" select mzml,mzxml,sqmass data sets(s)"/>
+      </when>
+    </conditional>
+    <param argument="-tr" type="data" format="pqp,tabular,traml" label="transition file ('TraML','tsv','pqp','oswpq')" help=" select pqp,tabular,traml data sets(s)"/>
+    <param argument="-swath_windows_file" type="data" format="txt" optional="true" label="Optional, tab-separated file containing the SWATH windows for extraction: lower_offset upper_offset" help="The first line is treated as a header select txt data sets(s)"/>
+    <param argument="-separate_runs" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Write one .xipm file per input run instead of aggregating all runs into -out" help=""/>
+    <param argument="-pasef" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Data is PASEF data" help=""/>
+    <param argument="-rt_extraction_window" type="float" value="600.0" label="Only extract RT around this value" help="This is the full window size. Non-positive values disable RT filtering during peak-map extraction"/>
+    <param argument="-ion_mobility_window" type="float" value="-1.0" label="Extraction window in ion mobility dimension" help="This is the full window size. Non-positive values extract the full IM range"/>
+    <param argument="-mz_extraction_window" type="float" min="0.0" value="50.0" label="Extraction window in Thomson or ppm (see mz_extraction_window_unit)" help=""/>
+    <param argument="-mz_extraction_window_ms1" type="float" min="0.0" value="50.0" label="Extraction window used in MS1 in Thomson or ppm (see mz_extraction_window_ms1_unit)" help=""/>
+    <param argument="-im_extraction_window_ms1" type="float" value="-1.0" label="Extraction window in ion mobility dimension for MS1" help="-1 extracts the full IM range"/>
+    <param argument="-keep_cached_files" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Do not remove cached files created in tempDirectory" help=""/>
+    <section name="Calibration" title="Parameters for calibrant iRT peptides for RT normalization and mass / ion mobility correction, including configurable estimated RT-window floor/ceiling clamps" help="" expanded="false">
+      <param name="tr_irt_priority_sampling" argument="-Calibration:tr_irt_priority_sampling" type="text" optional="true" value="" label="Optional custom transition file (TSV format only) containing additional priority peptides for iRT sampling" help="">
+        <expand macro="list_string_san" name="tr_irt_priority_sampling"/>
+      </param>
+      <param name="rt_norm" argument="-Calibration:rt_norm" type="text" optional="true" value="" label="RT normalization file (how to map the RTs of this run to the ones stored in the library)" help="If set, no automatic RT calibration is performed">
+        <expand macro="list_string_san" name="rt_norm"/>
+      </param>
+      <section name="auto_irt" title="" help="" expanded="false">
+        <param name="enabled" argument="-Calibration:auto_irt:enabled" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Whether to sample iRTs on‐the‐fly (true) from the input targeted transition file (instead of passing specific iRT files)" help="This may be useful if standard iRTs (Biognosys iRT kit) were not spiked-in. If set to false, and no additional iRT files are provided, and no transformation is provided, then no calibration is performed"/>
+        <param name="irt_bins" argument="-Calibration:auto_irt:irt_bins" type="integer" min="1" max="10000" value="100" label="Number of RT bins for linear iRT sampling" help=""/>
+        <param name="irt_peptides_per_bin" argument="-Calibration:auto_irt:irt_peptides_per_bin" type="integer" min="1" value="5" label="Peptides sampled per bin for linear iRT" help=""/>
+        <param name="irt_seed" argument="-Calibration:auto_irt:irt_seed" type="integer" min="0" value="5489" label="RNG seed for reproducible sampling (0 = non-deterministic)" help=""/>
+        <param name="irt_bins_nonlinear" argument="-Calibration:auto_irt:irt_bins_nonlinear" type="integer" min="1" max="10000" value="2000" label="Number of RT bins for nonlinear iRT sampling" help=""/>
+        <param name="irt_peptides_per_bin_nonlinear" argument="-Calibration:auto_irt:irt_peptides_per_bin_nonlinear" type="integer" min="0" value="50" label="Peptides sampled per bin for nonlinear iRT (0 = skip nonlinear)" help=""/>
+        <param name="linear_top_fraction" argument="-Calibration:auto_irt:linear_top_fraction" type="float" min="0.01" max="1.0" value="0.4" label="Top fraction of intense peptides to sample for linear iRT" help=""/>
+        <param name="nonlinear_top_fraction" argument="-Calibration:auto_irt:nonlinear_top_fraction" type="float" min="0.01" max="1.0" value="0.7" label="Top fraction of intense peptides to sample for nonlinear iRT" help=""/>
+        <param name="irt_nonlinear_rt_extraction_window" argument="-Calibration:auto_irt:irt_nonlinear_rt_extraction_window" type="float" min="-1.0" value="600.0" label="Only extract RT around this value for non linear iRT calibration (set to -1 to use whole range)" help=""/>
+        <section name="prefilter" title="" help="" expanded="false">
+          <param name="enabled" argument="-Calibration:auto_irt:prefilter:enabled" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Enable raw-data evidence prefiltering for sampled iRT peptides" help=""/>
+          <param name="evidence_sources" argument="-Calibration:auto_irt:prefilter:evidence_sources" type="select" label="Evidence source for iRT prefiltering: use MS2 fragments only (more stringent than hybrid)" help="">
+            <option value="hybrid">hybrid</option>
+            <option value="ms1">ms1</option>
+            <option value="ms2" selected="true">ms2</option>
+            <expand macro="list_string_san" name="evidence_sources"/>
+          </param>
+          <param name="ms1_top_peaks_per_spectrum" argument="-Calibration:auto_irt:prefilter:ms1_top_peaks_per_spectrum" type="integer" min="1" value="1000" label="Number of most intense MS1 peaks to keep per spectrum before precursor m/z matching" help=""/>
+          <param name="ms2_top_peaks_per_spectrum" argument="-Calibration:auto_irt:prefilter:ms2_top_peaks_per_spectrum" type="integer" min="1" value="1000" label="Number of most intense MS2 peaks to keep per spectrum before fragment m/z matching" help=""/>
+          <param name="ms2_top_transitions_per_precursor" argument="-Calibration:auto_irt:prefilter:ms2_top_transitions_per_precursor" type="integer" min="1" max="64" value="6" label="Number of highest library-intensity fragment transitions to index per precursor for MS2 evidence" help=""/>
+          <param name="ms2_min_fragment_hits" argument="-Calibration:auto_irt:prefilter:ms2_min_fragment_hits" type="integer" min="1" max="64" value="6" label="Minimum fragment hits for iRT prefiltering (higher threshold ensures robust iRT peptides)" help=""/>
+          <param name="min_supported_precursors" argument="-Calibration:auto_irt:prefilter:min_supported_precursors" type="integer" min="1" value="3" label="Minimum number of supported precursors required when the prefilter is enabled" help=""/>
+          <section name="peak_picking" title="" help="" expanded="false">
+            <param name="enabled" argument="-Calibration:auto_irt:prefilter:peak_picking:enabled" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Run PeakPickerHiRes on spectra before top-N matching" help="This is intended for profile data and is disabled by default"/>
+            <param name="use_gauss" argument="-Calibration:auto_irt:prefilter:peak_picking:use_gauss" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Use Gaussian smoothing before PeakPickerHiRes" help="If false, use Savitzky-Golay smoothing"/>
+            <section name="PeakPickerHiRes" title="" help="" expanded="false">
+              <param name="signal_to_noise" argument="-Calibration:auto_irt:prefilter:peak_picking:PeakPickerHiRes:signal_to_noise" type="float" min="0.0" value="0.0" label="Minimal signal-to-noise ratio for a peak to be picked (0.0 disables SNT estimation!)" help=""/>
+              <param name="spacing_difference_gap" argument="-Calibration:auto_irt:prefilter:peak_picking:PeakPickerHiRes:spacing_difference_gap" type="float" min="0.0" value="4.0" label="The extension of a peak is stopped if the spacing between two subsequent data points exceeds 'spacing_difference_gap * min_spacing'" help="'min_spacing' is the smaller of the two spacings from the peak apex to its two neighboring points. '0' to disable the constraint. Not applicable to chromatograms"/>
+              <param name="spacing_difference" argument="-Calibration:auto_irt:prefilter:peak_picking:PeakPickerHiRes:spacing_difference" type="float" min="0.0" value="1.5" label="Maximum allowed difference between points during peak extension, in multiples of the minimal difference between the peak apex and its two neighboring points" help="If this difference is exceeded a missing point is assumed (see parameter 'missing'). A higher value implies a less stringent peak definition, since individual signals within the peak are allowed to be further apart. '0' to disable the constraint. Not applicable to chromatograms"/>
+              <param name="missing" argument="-Calibration:auto_irt:prefilter:peak_picking:PeakPickerHiRes:missing" type="integer" min="0" value="1" label="Maximum number of missing points allowed when extending a peak to the left or to the right" help="A missing data point occurs if the spacing between two subsequent data points exceeds 'spacing_difference * min_spacing'. 'min_spacing' is the smaller of the two spacings from the peak apex to its two neighboring points. Not applicable to chromatograms"/>
+              <param name="ms_levels" argument="-Calibration:auto_irt:prefilter:peak_picking:PeakPickerHiRes:ms_levels" type="text" optional="true" value="" label="List of MS levels for which the peak picking is applied" help="If empty, auto mode is enabled, all peaks which aren't picked yet will get picked. Other scans are copied to the output without changes (space separated list, in order to allow for spaces in list items surround them by single quotes)">
+                <expand macro="list_integer_valsan" name="ms_levels">
+                  <validator type="expression" message="a space separated list of integer values in the range 1: is required"><![CDATA[len(value.split(' ')) == len([_ for _ in value.split(' ') if  1 <= int(_)])
+]]></validator>
+                </expand>
+              </param>
+              <param name="report_FWHM" argument="-Calibration:auto_irt:prefilter:peak_picking:PeakPickerHiRes:report_FWHM" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Add metadata for FWHM (as floatDataArray named 'FWHM' or 'FWHM_ppm', depending on param 'report_FWHM_unit') for each picked peak" help=""/>
+              <param name="report_FWHM_unit" argument="-Calibration:auto_irt:prefilter:peak_picking:PeakPickerHiRes:report_FWHM_unit" type="select" label="Unit of FWHM" help="Either absolute in the unit of input, e.g. 'm/z' for spectra, or relative as ppm (only sensible for spectra, not chromatograms)">
+                <option value="absolute">absolute</option>
+                <option value="relative" selected="true">relative</option>
+                <expand macro="list_string_san" name="report_FWHM_unit"/>
+              </param>
+              <param name="allow_missing_flank" argument="-Calibration:auto_irt:prefilter:peak_picking:PeakPickerHiRes:allow_missing_flank" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Allow peaks without flanking data points on both sides" help="This is useful for TimsTOF data where profile peaks may be missing the leading or trailing edge"/>
+              <section name="SignalToNoise" title="" help="" expanded="false">
+                <param name="max_intensity" argument="-Calibration:auto_irt:prefilter:peak_picking:PeakPickerHiRes:SignalToNoise:max_intensity" type="integer" min="-1" value="-1" label="maximal intensity considered for histogram construction" help="By default, it will be calculated automatically (see auto_mode). Only provide this parameter if you know what you are doing (and change 'auto_mode' to '-1')! All intensities EQUAL/ABOVE 'max_intensity' will be added to the LAST histogram bin. If you choose 'max_intensity' too small, the noise estimate might be too small as well.  If chosen too big, the bins become quite large (which you could counter by increasing 'bin_count', which increases runtime). In general, the Median-S/N estimator is more robust to a manual max_intensity than the MeanIterative-S/N"/>
+                <param name="auto_max_stdev_factor" argument="-Calibration:auto_irt:prefilter:peak_picking:PeakPickerHiRes:SignalToNoise:auto_max_stdev_factor" type="float" min="0.0" max="999.0" value="3.0" label="parameter for 'max_intensity' estimation (if 'auto_mode' == 0): mean + 'auto_max_stdev_factor' * stdev" help=""/>
+                <param name="auto_max_percentile" argument="-Calibration:auto_irt:prefilter:peak_picking:PeakPickerHiRes:SignalToNoise:auto_max_percentile" type="integer" min="0" max="100" value="95" label="parameter for 'max_intensity' estimation (if 'auto_mode' == 1): auto_max_percentile th percentile" help=""/>
+                <param name="auto_mode" argument="-Calibration:auto_irt:prefilter:peak_picking:PeakPickerHiRes:SignalToNoise:auto_mode" type="integer" min="-1" max="1" value="0" label="method to use to determine maximal intensity: -1 --&gt; use 'max_intensity'; 0 --&gt; 'auto_max_stdev_factor' method (default); 1 --&gt; 'auto_max_percentile' method" help=""/>
+                <param name="win_len" argument="-Calibration:auto_irt:prefilter:peak_picking:PeakPickerHiRes:SignalToNoise:win_len" type="float" min="1.0" value="200.0" label="window length in Thomson" help=""/>
+                <param name="bin_count" argument="-Calibration:auto_irt:prefilter:peak_picking:PeakPickerHiRes:SignalToNoise:bin_count" type="integer" min="3" value="30" label="number of bins for intensity values" help=""/>
+                <param name="min_required_elements" argument="-Calibration:auto_irt:prefilter:peak_picking:PeakPickerHiRes:SignalToNoise:min_required_elements" type="integer" min="1" value="10" label="minimum number of elements required in a window (otherwise it is considered sparse)" help=""/>
+                <param name="noise_for_empty_window" argument="-Calibration:auto_irt:prefilter:peak_picking:PeakPickerHiRes:SignalToNoise:noise_for_empty_window" type="float" value="1e+20" label="noise value used for sparse windows" help=""/>
+                <param name="write_log_messages" argument="-Calibration:auto_irt:prefilter:peak_picking:PeakPickerHiRes:SignalToNoise:write_log_messages" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Write out log messages in case of sparse windows or median in rightmost histogram bin" help=""/>
+              </section>
+            </section>
+          </section>
+        </section>
+      </section>
+      <section name="files" title="" help="" expanded="false">
+        <param name="linear_irt_file" argument="-Calibration:files:linear_irt_file" type="text" optional="true" value="" label="Path(s) to linear iRT transition file(s) (TraML, TSV, or PQP)" help="Accepts a string of a single file path or multiple file paths (space-separated, 'run1_irt.pqp run2_irt.pqp ... runN_irt.pqp') for run-specific mapping (positional: nth entry -&gt; nth run)">
+          <expand macro="list_string_san" name="linear_irt_file"/>
+        </param>
+        <param name="nonlinear_irt_file" argument="-Calibration:files:nonlinear_irt_file" type="text" optional="true" value="" label="Path(s) to nonlinear iRT transition file(s) (TraML, TSV, or PQP)" help="Accepts a string of a single file path or multiple file paths (space-separated, 'run1_irt.pqp run2_irt.pqp ... runN_irt.pqp') for run-specific mapping (positional: nth entry -&gt; nth run). Entries may be empty to indicate no nonlinear iRT for that run">
+          <expand macro="list_string_san" name="nonlinear_irt_file"/>
+        </param>
+      </section>
+      <section name="linear" title="" help="" expanded="false">
+        <param name="outlier_detection" argument="-Calibration:linear:outlier_detection" type="select" label="Which outlier detection method to use for linear calibration (valid: 'iter_residual', 'iter_jackknife', 'ransac', 'none')" help="Iterative methods remove one outlier at a time. Jackknife approach optimizes for maximum r-squared improvement while 'iter_residual' removes the datapoint with the largest residual error (removal by residual is computationally cheaper, use this with lots of peptides)">
+          <option value="iter_jackknife">iter_jackknife</option>
+          <option value="iter_residual" selected="true">iter_residual</option>
+          <option value="none">none</option>
+          <option value="ransac">ransac</option>
+          <expand macro="list_string_san" name="outlier_detection"/>
+        </param>
+      </section>
+      <section name="nonlinear" title="" help="" expanded="false">
+        <param name="outlier_detection" argument="-Calibration:nonlinear:outlier_detection" type="select" label="Which outlier detection method to use for nonlinear calibration (valid: 'iter_residual', 'iter_jackknife', 'ransac', 'none')" help="Iterative methods remove one outlier at a time. Jackknife approach optimizes for maximum r-squared improvement while 'iter_residual' removes the datapoint with the largest residual error (removal by residual is computationally cheaper, use this with lots of peptides)">
+          <option value="iter_jackknife">iter_jackknife</option>
+          <option value="iter_residual" selected="true">iter_residual</option>
+          <option value="none">none</option>
+          <option value="ransac">ransac</option>
+          <expand macro="list_string_san" name="outlier_detection"/>
+        </param>
+      </section>
+      <section name="windows" title="" help="" expanded="false">
+        <param name="estimate_rt" argument="-Calibration:windows:estimate_rt" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Estimate RT extraction windows from calibration" help=""/>
+        <param name="estimate_mz" argument="-Calibration:windows:estimate_mz" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Estimate m/z extraction windows from calibration" help=""/>
+        <param name="estimate_im" argument="-Calibration:windows:estimate_im" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Estimate ion mobility extraction windows from calibration" help=""/>
+        <param name="rt_percentile" argument="-Calibration:windows:rt_percentile" type="float" min="25.0" max="99.9" value="95.0" label="Percentile for RT window estimation (25.0-99.9)" help=""/>
+        <param name="rt_estimation_padding_factor" argument="-Calibration:windows:rt_estimation_padding_factor" type="float" min="1.0" value="1.3" label="A padding factor to multiply the estimated RT window by" help="For example, a factor of 1.3 will add a 30% padding to the estimated RT window, so if the estimated RT window is 144, then 43 will be added for a total estimated RT window of 187 seconds. A factor of 1.0 will not add any padding to the estimated window"/>
+        <param name="min_rt_window" argument="-Calibration:windows:min_rt_window" type="float" min="0.0" value="60.0" label="Minimum RT extraction window in seconds to apply after RT-window estimation" help="Set to 0 to disable the floor and use the raw estimated RT window"/>
+        <param name="max_rt_window" argument="-Calibration:windows:max_rt_window" type="float" min="0.0" value="600.0" label="Maximum RT extraction window in seconds to apply after RT-window estimation" help="Set to 0 to disable the ceiling and use the raw estimated RT window"/>
+      </section>
+      <section name="qc" title="" help="" expanded="false">
+        <param name="min_rsq" argument="-Calibration:qc:min_rsq" type="float" min="0.0" max="1.0" value="0.95" label="Minimum R-squared required for RT peptides regression" help=""/>
+        <param name="min_coverage" argument="-Calibration:qc:min_coverage" type="float" min="0.0" max="1.0" value="0.6" label="Minimum relative amount of RT peptides to keep" help=""/>
+      </section>
+      <section name="MassIMCorrection" title="Parameters for the m/z and ion mobility calibration" help="" expanded="false">
+        <param name="mz_extraction_window" argument="-Calibration:MassIMCorrection:mz_extraction_window" type="float" value="-1.0" label="M/z extraction window width" help=""/>
+        <param name="mz_extraction_window_ppm" argument="-Calibration:MassIMCorrection:mz_extraction_window_ppm" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Whether m/z extraction is in ppm" help=""/>
+        <param name="ms1_im_calibration" argument="-Calibration:MassIMCorrection:ms1_im_calibration" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Whether to use MS1 precursor data for the ion mobility calibration (default = false, uses MS2 / fragment ions for calibration)" help=""/>
+        <param name="im_extraction_window" argument="-Calibration:MassIMCorrection:im_extraction_window" type="float" value="-1.0" label="Ion mobility extraction window width" help=""/>
+        <param name="mz_estimation_padding_factor" argument="-Calibration:MassIMCorrection:mz_estimation_padding_factor" type="float" min="1.0" value="1.3" label="A padding factor to multiply the estimated m/z window by" help="For example, a factor of 1.3 will add a 30% padding to the estimated m/z window, so if the estimated m/z window is 18, then 5.4 will be added for a total estimated m/z window of 23.4. A factor of 1.0 will not add any padding to the estimated window"/>
+        <param name="im_estimation_padding_factor" argument="-Calibration:MassIMCorrection:im_estimation_padding_factor" type="float" min="1.0" value="1.3" label="A padding factor to multiply the estimated ion_mobility window by" help="For example, a factor of 1.3 will add a 30% padding to the estimated ion_mobility window, so if the estimated ion_mobility window is 0.03, then 0.009 will be added for a total estimated ion_mobility window of 0.039. A factor of 1.0 will not add any padding to the estimated window"/>
+        <param name="mz_estimation_percentile" argument="-Calibration:MassIMCorrection:mz_estimation_percentile" type="float" min="25.0" max="99.9" value="99.0" label="Percentile for m/z window estimation (25.0-99.9)" help=""/>
+        <param name="im_estimation_percentile" argument="-Calibration:MassIMCorrection:im_estimation_percentile" type="float" min="25.0" max="99.9" value="99.0" label="Percentile for ion mobility window estimation (25.0-99.9)" help=""/>
+        <param name="mz_correction_function" argument="-Calibration:MassIMCorrection:mz_correction_function" type="select" label="Type of normalization function for m/z calibration" help="">
+          <option value="none" selected="true">none</option>
+          <option value="quadratic_regression">quadratic_regression</option>
+          <option value="quadratic_regression_delta_ppm">quadratic_regression_delta_ppm</option>
+          <option value="regression_delta_ppm">regression_delta_ppm</option>
+          <option value="unweighted_regression">unweighted_regression</option>
+          <option value="weighted_quadratic_regression">weighted_quadratic_regression</option>
+          <option value="weighted_quadratic_regression_delta_ppm">weighted_quadratic_regression_delta_ppm</option>
+          <option value="weighted_regression">weighted_regression</option>
+          <expand macro="list_string_san" name="mz_correction_function"/>
+        </param>
+        <param name="im_correction_function" argument="-Calibration:MassIMCorrection:im_correction_function" type="select" label="Type of normalization function for IM calibration" help="">
+          <option value="linear" selected="true">linear</option>
+          <option value="none">none</option>
+          <expand macro="list_string_san" name="im_correction_function"/>
+        </param>
+        <param name="debug_im_file" argument="-Calibration:MassIMCorrection:debug_im_file" type="text" optional="true" value="" label="Debug file for Ion Mobility calibration" help="">
+          <expand macro="list_string_san" name="debug_im_file"/>
+        </param>
+        <param name="debug_mz_file" argument="-Calibration:MassIMCorrection:debug_mz_file" type="text" optional="true" value="" label="Debug file for m/z calibration" help="">
+          <expand macro="list_string_san" name="debug_mz_file"/>
+        </param>
+      </section>
+      <section name="RTNormalization" title="Parameters for the RTNormalization for iRT peptides" help="" expanded="false">
+        <param name="alignmentMethod" argument="-Calibration:RTNormalization:alignmentMethod" type="select" label="How to perform the alignment to the normalized RT space using anchor points" help="">
+          <option value="b_spline">b_spline</option>
+          <option value="interpolated">interpolated</option>
+          <option value="linear" selected="true">linear</option>
+          <option value="lowess">lowess</option>
+          <expand macro="list_string_san" name="alignmentMethod"/>
+        </param>
+        <param name="useIterativeChauvenet" argument="-Calibration:RTNormalization:useIterativeChauvenet" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Whether to use Chauvenet's criterion when using iterative methods" help=""/>
+        <param name="RANSACMaxIterations" argument="-Calibration:RTNormalization:RANSACMaxIterations" type="integer" value="1000" label="Maximum iterations for the RANSAC outlier detection algorithm" help=""/>
+        <param name="RANSACMaxPercentRTThreshold" argument="-Calibration:RTNormalization:RANSACMaxPercentRTThreshold" type="integer" value="3" label="Maximum threshold in RT dimension for the RANSAC outlier detection algorithm" help=""/>
+        <param name="RANSACSamplingSize" argument="-Calibration:RTNormalization:RANSACSamplingSize" type="integer" value="10" label="Sampling size of data points per iteration for the RANSAC outlier detection algorithm" help=""/>
+        <param name="estimateBestPeptides" argument="-Calibration:RTNormalization:estimateBestPeptides" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Whether the algorithms should try to choose the best peptides based on their peak shape for normalization" help=""/>
+        <param name="InitialQualityCutoff" argument="-Calibration:RTNormalization:InitialQualityCutoff" type="float" value="0.5" label="The initial overall quality cutoff for a peak to be scored" help=""/>
+        <param name="OverallQualityCutoff" argument="-Calibration:RTNormalization:OverallQualityCutoff" type="float" value="5.5" label="The overall quality cutoff for a peak to go into the retention time estimation" help=""/>
+        <param name="NrRTBins" argument="-Calibration:RTNormalization:NrRTBins" type="integer" value="10" label="Number of RT bins to use to compute coverage" help=""/>
+        <param name="MinPeptidesPerBin" argument="-Calibration:RTNormalization:MinPeptidesPerBin" type="integer" value="1" label="Minimal number of peptides that are required for a bin to count as covered" help=""/>
+        <param name="MinBinsFilled" argument="-Calibration:RTNormalization:MinBinsFilled" type="integer" value="8" label="Minimal number of bins required to be covered" help=""/>
+        <section name="lowess" title="" help="" expanded="false">
+          <param name="auto_span" argument="-Calibration:RTNormalization:lowess:auto_span" type="boolean" truevalue="true" falsevalue="false" checked="true" label="If true, or if 'span' is 0, automatically select LOWESS span by cross-validation" help=""/>
+          <param name="span" argument="-Calibration:RTNormalization:lowess:span" type="float" min="0.0" max="1.0" value="0.05" label="Span parameter for lowess" help=""/>
+          <param name="auto_span_min" argument="-Calibration:RTNormalization:lowess:auto_span_min" type="float" min="0.001" value="0.15" label="Lower bound for auto-selected span" help=""/>
+          <param name="auto_span_max" argument="-Calibration:RTNormalization:lowess:auto_span_max" type="float" max="0.99" value="0.8" label="Upper bound for auto-selected span" help=""/>
+          <param name="auto_span_grid" argument="-Calibration:RTNormalization:lowess:auto_span_grid" type="text" value="0.005,0.01,0.05,0.15,0.25,0.30,0.50,0.70,0.90" label="Optional explicit grid of span candidates in (0,1]" help="">
+            <expand macro="list_string_san" name="auto_span_grid"/>
+          </param>
+        </section>
+        <section name="b_spline" title="" help="" expanded="false">
+          <param name="num_nodes" argument="-Calibration:RTNormalization:b_spline:num_nodes" type="integer" min="0" value="5" label="Number of nodes for b spline" help=""/>
+        </section>
+      </section>
+    </section>
+    <section name="Library" title="Library parameters section" help="" expanded="false">
+      <param name="retentionTimeInterpretation" argument="-Library:retentionTimeInterpretation" type="select" label="How to interpret the provided retention time (the retention time column can either be interpreted to be in iRT, minutes or seconds)" help="">
+        <option value="iRT" selected="true">iRT</option>
+        <option value="minutes">minutes</option>
+        <option value="seconds">seconds</option>
+        <expand macro="list_string_san" name="retentionTimeInterpretation"/>
+      </param>
+      <param name="override_group_label_check" argument="-Library:override_group_label_check" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Override an internal check that assures that all members of the same PeptideGroupLabel have the same PeptideSequence (this ensures that only different isotopic forms of the same peptide can be grouped together in the same label group)" help="Only turn this off if you know what you are doing"/>
+      <param name="force_invalid_mods" argument="-Library:force_invalid_mods" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Force reading even if invalid modifications are encountered (OpenMS may not recognize the modification)" help=""/>
+    </section>
+    <section name="MRMMapping" title="Parameters for mapping chromatograms to transitions during iRT calibration" help="" expanded="false">
+      <param name="precursor_tolerance" argument="-MRMMapping:precursor_tolerance" type="float" value="0.9" label="Precursor tolerance when mapping (in Th)" help=""/>
+      <param name="product_tolerance" argument="-MRMMapping:product_tolerance" type="float" value="1.2" label="Product tolerance when mapping (in Th)" help=""/>
+      <param name="irt_precursor_tolerance" argument="-MRMMapping:irt_precursor_tolerance" type="float" value="1.5" label="Precursor tolerance when mapping iRT transitions (in Th)" help=""/>
+      <param name="irt_product_tolerance" argument="-MRMMapping:irt_product_tolerance" type="float" value="1.5" label="Product tolerance when mapping iRT transitions (in Th)" help=""/>
+      <param name="map_multiple_assays" argument="-MRMMapping:map_multiple_assays" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Allow to map multiple assays to chromatograms and duplicate these chromatograms in the output" help=""/>
+      <param name="error_on_unmapped" argument="-MRMMapping:error_on_unmapped" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Treat remaining, unmapped chromatograms as an erro" help=""/>
+    </section>
+    <expand macro="adv_opts_macro">
+      <param argument="-sort_swath_maps" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Sort input SWATH files when matching to SWATH windows from swath_windows_file" help=""/>
+      <param argument="-enable_ms1" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Extract precursor peak maps from the MS1 map if present" help=""/>
+      <param argument="-ms1_isotopes" type="integer" min="0" value="0" label="The number of additional MS1 isotopes used for extraction" help=""/>
+      <param argument="-min_upper_edge_dist" type="float" value="0.0" label="Minimal distance to the upper edge of a SWATH window to still consider a precursor, in Thomson" help=""/>
+      <param argument="-matching_window_only" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Assume the input data is targeted / PRM-like data with potentially overlapping DIA windows" help="Only extract each assay from the best matching DIA window"/>
+      <param argument="-extra_rt_extraction_window" type="float" min="0.0" value="0.0" label="Extract additional RT beyond the primary window for inspection" help=""/>
+      <param argument="-mz_extraction_window_unit" type="select" label="Unit for mz extraction" help="">
+        <option value="Th">Th</option>
+        <option value="ppm" selected="true">ppm</option>
+        <expand macro="list_string_san" name="mz_extraction_window_unit"/>
+      </param>
+      <param argument="-mz_extraction_window_ms1_unit" type="select" label="Unit of the MS1 m/z extraction window" help="">
+        <option value="Th">Th</option>
+        <option value="ppm" selected="true">ppm</option>
+        <expand macro="list_string_san" name="mz_extraction_window_ms1_unit"/>
+      </param>
+      <param argument="-use_ms1_ion_mobility" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Also apply ion mobility extraction to MS1 peak-map extraction" help=""/>
+      <param argument="-irt_mz_extraction_window" type="float" min="0.0" value="50.0" label="Extraction window used for iRT and m/z correction in Thomson or ppm (see irt_mz_extraction_window_unit)" help=""/>
+      <param argument="-irt_mz_extraction_window_unit" type="select" label="Unit for iRT mz extraction" help="">
+        <option value="Th">Th</option>
+        <option value="ppm" selected="true">ppm</option>
+        <expand macro="list_string_san" name="irt_mz_extraction_window_unit"/>
+      </param>
+      <param argument="-irt_im_extraction_window" type="float" value="-1.0" label="Ion mobility extraction window used for iRT calibration" help="-1 disables IM calibration"/>
+      <param argument="-split_file_input" type="boolean" truevalue="true" falsevalue="false" checked="false" label="The input files each contain one single SWATH window (alternatively: all SWATHs are in separate files)" help=""/>
+      <param argument="-readOptions" type="select" label="Whether to run directly on the input data, cache data to disk first, or load working sets into memory" help="">
+        <option value="cache">cache</option>
+        <option value="cacheWorkingInMemory">cacheWorkingInMemory</option>
+        <option value="normal" selected="true">normal</option>
+        <option value="workingInMemory">workingInMemory</option>
+        <expand macro="list_string_san" name="readOptions"/>
+      </param>
+      <param argument="-extraction_function" type="select" label="Function used to extract the signal" help="">
+        <option value="tophat" selected="true">tophat</option>
+        <expand macro="list_string_san" name="extraction_function"/>
+      </param>
+      <param argument="-batchSize" type="integer" min="0" value="1000" label="Compound batch size per SWATH window" help="Set 0 to process all compounds for a window in one batch"/>
+      <param argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
+      <param argument="-test" type="hidden" value="False" label="Enables the test mode (needed for internal use only)" help="" optional="true">
+        <expand macro="list_string_san" name="test"/>
+      </param>
+    </expand>
+    <param name="OPTIONAL_OUTPUTS" type="select" optional="true" multiple="true" label="Optional outputs">
+      <option value="out_FLAG">out (Output .xipm parquet file containing all runs)</option>
+      <option value="out_dir_FLAG">out_dir (Output directory for per-run .xipm files when -separate_runs is set)</option>
+      <option value="irt_mzml_FLAG">irt_mzml (Chromatogram mzML containing the iRT peptides)</option>
+      <option value="irt_trafo_FLAG">irt_trafo (Transformation file for RT transform)</option>
+      <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+    </param>
+  </inputs>
+  <outputs>
+    <data name="out" label="${tool.name} on ${on_string}: out" format="parquet">
+      <filter>OPTIONAL_OUTPUTS is not None and "out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+    <collection type="list" name="out_dir" label="${tool.name} on ${on_string}: out_dir">
+      <discover_datasets directory="out_dir" recurse="true" format="parquet" pattern="_?(?P&lt;designation&gt;.*)\.[^.]*"/>
+      <filter>OPTIONAL_OUTPUTS is not None and "out_dir_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </collection>
+    <data name="Debugging_irt_mzml" label="${tool.name} on ${on_string}: Debugging:irt_mzml" format="mzml">
+      <filter>OPTIONAL_OUTPUTS is not None and "irt_mzml_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+    <data name="Debugging_irt_trafo" label="${tool.name} on ${on_string}: Debugging:irt_trafo" format="trafoxml">
+      <filter>OPTIONAL_OUTPUTS is not None and "irt_trafo_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+    <data name="stdout" format="txt" label="${tool.name} on ${on_string}: stdout">
+      <filter>OPTIONAL_OUTPUTS is None</filter>
+    </data>
+    <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
+      <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+  </outputs>
+  <tests>
+    <!-- TOPP_OpenSwathPeakMapExtractor_1 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="sort_swath_maps" value="false"/>
+        <param name="enable_ms1" value="false"/>
+        <param name="ms1_isotopes" value="0"/>
+        <param name="min_upper_edge_dist" value="0.0"/>
+        <param name="matching_window_only" value="false"/>
+        <param name="extra_rt_extraction_window" value="0.0"/>
+        <param name="mz_extraction_window_unit" value="ppm"/>
+        <param name="mz_extraction_window_ms1_unit" value="ppm"/>
+        <param name="use_ms1_ion_mobility" value="true"/>
+        <param name="irt_mz_extraction_window" value="50.0"/>
+        <param name="irt_mz_extraction_window_unit" value="ppm"/>
+        <param name="irt_im_extraction_window" value="-1.0"/>
+        <param name="split_file_input" value="false"/>
+        <param name="readOptions" value="workingInMemory"/>
+        <param name="extraction_function" value="tophat"/>
+        <param name="batchSize" value="1000"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <conditional name="in_cond">
+        <param name="in" value="OpenSwathWorkflow_23_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/v3.6.0/src/tests/topp/OpenSwathWorkflow_23_input.mzML"/>
+      </conditional>
+      <param name="tr" value="OpenSwathWorkflow_23_input.tsv" ftype="tabular" location="https://raw.githubusercontent.com/OpenMS/OpenMS/v3.6.0/src/tests/topp/OpenSwathWorkflow_23_input.tsv"/>
+      <output_collection name="out_dir" min="1"/>
+      <param name="separate_runs" value="true"/>
+      <param name="pasef" value="true"/>
+      <param name="rt_extraction_window" value="600.0"/>
+      <param name="ion_mobility_window" value="0.1"/>
+      <param name="mz_extraction_window" value="50.0"/>
+      <param name="mz_extraction_window_ms1" value="50.0"/>
+      <param name="im_extraction_window_ms1" value="-1.0"/>
+      <param name="keep_cached_files" value="false"/>
+      <section name="Debugging"/>
+      <section name="Calibration">
+        <param name="tr_irt_priority_sampling" value=""/>
+        <param name="rt_norm" value=""/>
+        <section name="auto_irt">
+          <param name="enabled" value="false"/>
+          <param name="irt_bins" value="100"/>
+          <param name="irt_peptides_per_bin" value="5"/>
+          <param name="irt_seed" value="5489"/>
+          <param name="irt_bins_nonlinear" value="2000"/>
+          <param name="irt_peptides_per_bin_nonlinear" value="50"/>
+          <param name="linear_top_fraction" value="0.4"/>
+          <param name="nonlinear_top_fraction" value="0.7"/>
+          <param name="irt_nonlinear_rt_extraction_window" value="600.0"/>
+          <section name="prefilter">
+            <param name="enabled" value="true"/>
+            <param name="evidence_sources" value="ms2"/>
+            <param name="ms1_top_peaks_per_spectrum" value="1000"/>
+            <param name="ms2_top_peaks_per_spectrum" value="1000"/>
+            <param name="ms2_top_transitions_per_precursor" value="6"/>
+            <param name="ms2_min_fragment_hits" value="6"/>
+            <param name="min_supported_precursors" value="3"/>
+            <section name="peak_picking">
+              <param name="enabled" value="false"/>
+              <param name="use_gauss" value="true"/>
+              <section name="PeakPickerHiRes">
+                <param name="signal_to_noise" value="0.0"/>
+                <param name="spacing_difference_gap" value="4.0"/>
+                <param name="spacing_difference" value="1.5"/>
+                <param name="missing" value="1"/>
+                <param name="report_FWHM" value="false"/>
+                <param name="report_FWHM_unit" value="relative"/>
+                <param name="allow_missing_flank" value="false"/>
+                <section name="SignalToNoise">
+                  <param name="max_intensity" value="-1"/>
+                  <param name="auto_max_stdev_factor" value="3.0"/>
+                  <param name="auto_max_percentile" value="95"/>
+                  <param name="auto_mode" value="0"/>
+                  <param name="win_len" value="200.0"/>
+                  <param name="bin_count" value="30"/>
+                  <param name="min_required_elements" value="10"/>
+                  <param name="noise_for_empty_window" value="1e+20"/>
+                  <param name="write_log_messages" value="true"/>
+                </section>
+              </section>
+            </section>
+          </section>
+        </section>
+        <section name="files">
+          <param name="linear_irt_file" value=""/>
+          <param name="nonlinear_irt_file" value=""/>
+        </section>
+        <section name="linear">
+          <param name="outlier_detection" value="iter_residual"/>
+        </section>
+        <section name="nonlinear">
+          <param name="outlier_detection" value="iter_residual"/>
+        </section>
+        <section name="windows">
+          <param name="estimate_rt" value="false"/>
+          <param name="estimate_mz" value="false"/>
+          <param name="estimate_im" value="false"/>
+          <param name="rt_percentile" value="95.0"/>
+          <param name="rt_estimation_padding_factor" value="1.3"/>
+          <param name="min_rt_window" value="60.0"/>
+          <param name="max_rt_window" value="600.0"/>
+        </section>
+        <section name="qc">
+          <param name="min_rsq" value="0.95"/>
+          <param name="min_coverage" value="0.6"/>
+        </section>
+        <section name="MassIMCorrection">
+          <param name="mz_extraction_window" value="-1.0"/>
+          <param name="mz_extraction_window_ppm" value="false"/>
+          <param name="ms1_im_calibration" value="false"/>
+          <param name="im_extraction_window" value="-1.0"/>
+          <param name="mz_estimation_padding_factor" value="1.3"/>
+          <param name="im_estimation_padding_factor" value="1.3"/>
+          <param name="mz_estimation_percentile" value="99.0"/>
+          <param name="im_estimation_percentile" value="99.0"/>
+          <param name="mz_correction_function" value="none"/>
+          <param name="im_correction_function" value="linear"/>
+          <param name="debug_im_file" value=""/>
+          <param name="debug_mz_file" value=""/>
+        </section>
+        <section name="RTNormalization">
+          <param name="alignmentMethod" value="linear"/>
+          <param name="useIterativeChauvenet" value="false"/>
+          <param name="RANSACMaxIterations" value="1000"/>
+          <param name="RANSACMaxPercentRTThreshold" value="3"/>
+          <param name="RANSACSamplingSize" value="10"/>
+          <param name="estimateBestPeptides" value="false"/>
+          <param name="InitialQualityCutoff" value="0.5"/>
+          <param name="OverallQualityCutoff" value="5.5"/>
+          <param name="NrRTBins" value="10"/>
+          <param name="MinPeptidesPerBin" value="1"/>
+          <param name="MinBinsFilled" value="8"/>
+          <section name="lowess">
+            <param name="auto_span" value="true"/>
+            <param name="span" value="0.05"/>
+            <param name="auto_span_min" value="0.15"/>
+            <param name="auto_span_max" value="0.8"/>
+            <param name="auto_span_grid" value="0.005,0.01,0.05,0.15,0.25,0.30,0.50,0.70,0.90"/>
+          </section>
+          <section name="b_spline">
+            <param name="num_nodes" value="5"/>
+          </section>
+        </section>
+      </section>
+      <section name="Library">
+        <param name="retentionTimeInterpretation" value="iRT"/>
+        <param name="override_group_label_check" value="false"/>
+        <param name="force_invalid_mods" value="false"/>
+      </section>
+      <section name="MRMMapping">
+        <param name="precursor_tolerance" value="0.9"/>
+        <param name="product_tolerance" value="1.2"/>
+        <param name="irt_precursor_tolerance" value="1.5"/>
+        <param name="irt_product_tolerance" value="1.5"/>
+        <param name="map_multiple_assays" value="false"/>
+        <param name="error_on_unmapped" value="false"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG,out_dir_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+  </tests>
+  <help><![CDATA[Extract targeted mz/RT/IM peak maps from DIA or diaPASEF data
+
+
+For more information, visit http://www.openms.de/doxygen/release/3.6.0/html/TOPP_OpenSwathPeakMapExtractor.html]]></help>
+  <expand macro="references"/>
+</tool>

@@ -1,0 +1,157 @@
+<!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
+<!--Proposed Tool Section: [Targeted Experiments and OpenSWATH]-->
+<tool id="OpenSwathExport" name="OpenSwathExport" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+  <description>Export scored OpenSWATH results to TSV or Parquet tables</description>
+  <macros>
+    <token name="@EXECUTABLE@">OpenSwathExport</token>
+    <import>macros.xml</import>
+  </macros>
+  <expand macro="requirements"/>
+  <expand macro="stdio"/>
+  <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
+@EXT_FOO@
+#import re
+
+## Preprocessing
+mkdir in &&
+cp '$in' 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)' &&
+#if "out_dir_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir out_dir &&
+#end if
+
+## Main program call
+
+set -o pipefail &&
+@EXECUTABLE@ -write_ctd ./ &&
+python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
+@EXECUTABLE@ -ini @EXECUTABLE@.ctd
+-in
+'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
+#if "out_dir_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  -out_dir
+  out_dir/
+#end if
+#if len(str($OPTIONAL_OUTPUTS).split(',')) == 0
+  | tee '$stdout'
+#end if
+
+## Postprocessing
+#if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
+  && mv '@EXECUTABLE@.ctd' '$ctd_out'
+#end if]]></command>
+  <configfiles>
+    <inputs name="args_json" data_style="paths"/>
+    <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
+  </configfiles>
+  <inputs>
+    <param argument="-in" type="data" format="osw" label="Input scored OpenSWATH result file in OSW format" help=" select osw data sets(s)"/>
+    <section name="parquet" title="Options for scored feature parquet export" help="" expanded="false">
+      <param name="run" argument="-parquet:run" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Whether to export scored feature parquet tables" help=""/>
+      <param name="include_transition_data" argument="-parquet:include_transition_data" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Whether to also export transition-level parquet tables" help=""/>
+      <param name="exclude_decoys" argument="-parquet:exclude_decoys" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Whether to exclude decoys from parquet feature exports" help=""/>
+    </section>
+    <section name="results" title="Options for user-facing results export" help="" expanded="false">
+      <param name="run" argument="-results:run" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Whether to export the filtered results table" help=""/>
+      <param name="format" argument="-results:format" type="select" label="Output format for the filtered results table" help="">
+        <option value="parquet" selected="true">parquet</option>
+        <expand macro="list_string_san" name="format"/>
+      </param>
+      <param name="ipf" argument="-results:ipf" type="select" label="How IPF results should be represented when SCORE_IPF is present" help="">
+        <option value="augmented">augmented</option>
+        <option value="disable">disable</option>
+        <option value="peptidoform" selected="true">peptidoform</option>
+        <expand macro="list_string_san" name="ipf"/>
+      </param>
+      <param name="transition_quantification" argument="-results:transition_quantification" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Whether to aggregate transition-level quantification columns" help=""/>
+      <param name="max_transition_pep" argument="-results:max_transition_pep" type="float" value="0.7" label="Maximum transition PEP used for aggregated transition quantification" help=""/>
+      <param name="ipf_max_peptidoform_pep" argument="-results:ipf_max_peptidoform_pep" type="float" value="0.4" label="Maximum IPF PEP used for peptidoform export filtering" help=""/>
+      <param name="max_rs_peakgroup_qvalue" argument="-results:max_rs_peakgroup_qvalue" type="float" value="0.05" label="Maximum run-specific peakgroup q-value retained" help=""/>
+      <param name="use_peptide_scores" argument="-results:use_peptide_scores" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Whether to append peptide-level scores if SCORE_PEPTIDE is present and to require passing the peptide-level threshold" help=""/>
+      <param name="max_global_peptide_qvalue" argument="-results:max_global_peptide_qvalue" type="float" value="0.01" label="Maximum global peptide-level q-value retained when peptide filtering is enabled" help=""/>
+      <param name="use_protein_scores" argument="-results:use_protein_scores" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Whether to append protein-level scores if SCORE_PROTEIN is present and to require passing the protein-level threshold" help=""/>
+      <param name="max_global_protein_qvalue" argument="-results:max_global_protein_qvalue" type="float" value="0.01" label="Maximum global protein-level q-value retained when protein filtering is enabled" help=""/>
+      <param name="use_gene_scores" argument="-results:use_gene_scores" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Whether to append gene-level scores if SCORE_GENE is present and to require passing the gene-level threshold" help=""/>
+      <param name="max_global_gene_qvalue" argument="-results:max_global_gene_qvalue" type="float" value="0.01" label="Maximum global gene-level q-value retained when gene filtering is enabled" help=""/>
+      <param name="use_alignment" argument="-results:use_alignment" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Whether to recover aligned features when legacy alignment tables are present" help=""/>
+      <param name="max_alignment_pep" argument="-results:max_alignment_pep" type="float" value="0.7" label="Maximum alignment PEP retained when alignment recovery is enabled" help=""/>
+      <param name="exclude_decoys" argument="-results:exclude_decoys" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Whether to exclude decoys from the filtered results export" help=""/>
+    </section>
+    <section name="matrix" title="Options for quantification matrix exports" help="" expanded="false">
+      <param name="precursor" argument="-matrix:precursor" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Whether to export the precursor-level quantification matrix" help=""/>
+      <param name="peptide" argument="-matrix:peptide" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Whether to export the peptide-level quantification matrix" help=""/>
+      <param name="protein" argument="-matrix:protein" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Whether to export the protein-level quantification matrix" help=""/>
+      <param name="gene" argument="-matrix:gene" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Whether to export the gene-level quantification matrix" help=""/>
+      <param name="format" argument="-matrix:format" type="select" label="Output format for quantification matrices" help="">
+        <option value="parquet" selected="true">parquet</option>
+        <expand macro="list_string_san" name="format"/>
+      </param>
+      <param name="ipf" argument="-matrix:ipf" type="select" label="How IPF results should be represented when SCORE_IPF is present" help="">
+        <option value="augmented">augmented</option>
+        <option value="disable">disable</option>
+        <option value="peptidoform" selected="true">peptidoform</option>
+        <expand macro="list_string_san" name="ipf"/>
+      </param>
+      <param name="transition_quantification" argument="-matrix:transition_quantification" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Whether to aggregate transition-level quantification columns onto the filtered feature rows" help=""/>
+      <param name="max_transition_pep" argument="-matrix:max_transition_pep" type="float" value="0.7" label="Maximum transition PEP used for aggregated transition quantification" help=""/>
+      <param name="ipf_max_peptidoform_pep" argument="-matrix:ipf_max_peptidoform_pep" type="float" value="0.4" label="Maximum IPF PEP used for peptidoform export filtering" help=""/>
+      <param name="max_rs_peakgroup_qvalue" argument="-matrix:max_rs_peakgroup_qvalue" type="float" value="0.05" label="Maximum run-specific peakgroup q-value retained" help=""/>
+      <param name="use_peptide_scores" argument="-matrix:use_peptide_scores" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Whether peptide-level scores should be required when peptide filtering is enabled" help=""/>
+      <param name="max_global_peptide_qvalue" argument="-matrix:max_global_peptide_qvalue" type="float" value="0.01" label="Maximum global peptide-level q-value retained when peptide filtering is enabled" help=""/>
+      <param name="use_protein_scores" argument="-matrix:use_protein_scores" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Whether protein-level scores should be required when protein filtering is enabled" help=""/>
+      <param name="max_global_protein_qvalue" argument="-matrix:max_global_protein_qvalue" type="float" value="0.01" label="Maximum global protein-level q-value retained when protein filtering is enabled" help=""/>
+      <param name="use_gene_scores" argument="-matrix:use_gene_scores" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Whether gene-level scores should be required when gene filtering is enabled" help=""/>
+      <param name="max_global_gene_qvalue" argument="-matrix:max_global_gene_qvalue" type="float" value="0.01" label="Maximum global gene-level q-value retained when gene filtering is enabled" help=""/>
+      <param name="use_alignment" argument="-matrix:use_alignment" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Whether to recover aligned features when legacy alignment tables are present" help=""/>
+      <param name="max_alignment_pep" argument="-matrix:max_alignment_pep" type="float" value="0.7" label="Maximum alignment PEP retained when alignment recovery is enabled" help=""/>
+      <param name="exclude_decoys" argument="-matrix:exclude_decoys" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Whether to exclude decoys from the filtered matrix input rows" help=""/>
+      <param name="top_n" argument="-matrix:top_n" type="integer" value="3" label="Number of top precursors / peptides retained during matrix summarization" help=""/>
+      <param name="consistent_top" argument="-matrix:consistent_top" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Whether to use the same top precursors / peptides across all runs" help=""/>
+      <param name="normalization" argument="-matrix:normalization" type="select" label="Normalization applied to matrix sample columns after summarization" help="">
+        <option value="median">median</option>
+        <option value="medianmedian">medianmedian</option>
+        <option value="none" selected="true">none</option>
+        <expand macro="list_string_san" name="normalization"/>
+      </param>
+    </section>
+    <expand macro="adv_opts_macro">
+      <param argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
+      <param argument="-test" type="hidden" value="False" label="Enables the test mode (needed for internal use only)" help="" optional="true">
+        <expand macro="list_string_san" name="test"/>
+      </param>
+    </expand>
+    <param name="OPTIONAL_OUTPUTS" type="select" optional="true" multiple="true" label="Optional outputs">
+      <option value="out_dir_FLAG">out_dir (Optional output directory)</option>
+      <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+    </param>
+  </inputs>
+  <outputs>
+    <collection type="list" name="out_dir" label="${tool.name} on ${on_string}: out_dir">
+      <discover_datasets directory="out_dir" recurse="true" format="parquet" pattern="_?(?P&lt;designation&gt;.*)\.[^.]*"/>
+      <filter>OPTIONAL_OUTPUTS is not None and "out_dir_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </collection>
+    <data name="stdout" format="txt" label="${tool.name} on ${on_string}: stdout">
+      <filter>OPTIONAL_OUTPUTS is None</filter>
+    </data>
+    <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
+      <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+  </outputs>
+  <tests>
+    <!-- D30: the only output is a directory, and both format parameters are pinned
+       to parquet (aux/ctd_patches.json), so the collection is uniformly parquet:
+       the filtered results table and the peptide/protein matrices are the
+       defaults of the tool.  The element names are the input's *dataset* name
+       plus '.results'/'.peptide.matrix'/'.protein.matrix', i.e. they depend on
+       how Galaxy named the upload, so only the number of tables is asserted. -->
+    <test expect_num_outputs="1">
+      <param name="in" value="PyProphet_inference_test.osw" location="https://raw.githubusercontent.com/OpenMS/OpenMS/v3.6.0/src/tests/class_tests/openms/data/PyProphet_inference_test.osw"/>
+      <param name="OPTIONAL_OUTPUTS" value="out_dir_FLAG"/>
+      <output_collection name="out_dir" type="list" min="3" max="3"/>
+    </test>
+  </tests>
+  <help><![CDATA[Export scored OpenSWATH results to TSV or Parquet tables.
+
+
+For more information, visit http://www.openms.de/doxygen/release/3.6.0/html/TOPP_OpenSwathExport.html]]></help>
+  <expand macro="references"/>
+</tool>

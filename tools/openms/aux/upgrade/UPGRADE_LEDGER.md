@@ -19,6 +19,7 @@ later round does not re-litigate it.
 | 7b | 2026-11-18 | make the wrapper independent of the order OpenMS writes its value lists in | 142 | **0** | `check_generated.sh` 9 checks green, `--regen` byte-identical (twice) | D28; 81 wrappers change, and every changed line is an `<option>` element moving - the set of options, their `value=`, their text and their `selected=` are untouched; the 81 changed wrappers were re-tested (73 with tests: 483 tests, 0 failed, 0 errors; plus `XFDR` 7/7 - the 8 remaining ones define no test at all, so only their fingerprint was re-stamped) |
 | 7c | 2026-11-19 | `output-dir` parameters: retype instead of drop | 142 | **0** | `check_generated.sh` 9 checks green, `--regen` byte-identical, the 5 changed wrappers re-tested in Galaxy (38/38), `manifest.py report --gate`: GATE PASSED | D29; the 11 directory outputs of the 3.6 CTDs become `<collection type="list">` outputs (`out_qpx`/`out_parquet` as `format="parquet"`, `QualityControl`'s `out_txt:directory` as `txt`) instead of being deleted; 5 wrappers change (`IsobaricWorkflow`, `MS1LabeledWorkflow`, `ProSE`, `ProteinQuantifier`, `QualityControl`) plus the parquet extension in `macros.xml`; 3 new upstream tests come back (`MS1LabeledWorkflow_qpx`, `MS1LabeledWorkflow_6_ratios_qpx`, `ProSE_3_qpx`), 2 existing ones gain the new output (`ProteinQuantifier_18_qpx`/`_19_qpx`); test count 623 -> 626 |
 | 8a | 2026-11-20 | parquet bundles, producer side (D30) | 142 | **0** (`report --gate`: 142 tools, 123 pass, 0 fail, 0 untested, 0 stale, `GATE PASSED`) | `check_generated.sh` 10 checks green (`all static checks passed`, 45 manual tests in 34 wrappers); `parquet_bundles.py --check` 7 checked / 0 problems, a second patch run changes nothing; a fresh `aux/generate.sh` reproduces all 7 wrappers and `aux/macros_test.xml` byte-identically; **92/92 tests** of the 7 wrappers pass in Galaxy (CometAdapter 5, FileConverter 37, IDFileConverter 37, MSGFPlusAdapter 3, PSMFeatureExtractor 3, PercolatorAdapter 5, SageAdapter 2), including the 8 new bundle tests | D30; `aux/parquet_bundles.{json,py}` add **8** optional `<collection type="list">` outputs (`out_idparquet` x6, `out_featureparquet`/`out_consensusparquet` for `FileConverter`) behind `OPTIONAL_OUTPUTS`, each with a committed structural test in `aux/macros_test.xml` - no default command line, no existing test moves. **The CTD inventory was wrong**: only 7 of the 19 producers can write a bundle at all, the other 10 (plus `IDMerger`) derive the output type from the input and are mirror-only (8c). Details and evidence in the round-8 notes below |
+| 8b | 2026-11-21 | parquet bundles, directory-output tools un-blacklisted (D30) | 146 | **0** | `check_generated.sh` 10 checks green (`all static checks passed`, 48 manual tests in 36 wrappers); `parquet_bundles.py --check` 7 checked / 0 problems; a fresh `aux/generate.sh` reproduces the 4 new wrappers byte-identically; **7/7 tests** of the 4 new wrappers pass in Galaxy (ParquetDiff 3, ParquetConverter 2, OpenSwathExport 1, OpenSwathPeakMapExtractor 1) | `ParquetConverter`, `ParquetDiff`, `OpenSwathExport` and `OpenSwathPeakMapExtractor` leave `aux/tools_blacklist.txt` (the block comment went too - it had become wrong) and get generated wrappers: `ParquetConverter.out` (export direction only, featureXML/consensusXML -> 5-table bundle) and `OpenSwathExport.out_dir` (both format params pinned to parquet) are `list` collections of `parquet`, `OpenSwathPeakMapExtractor.out_dir` is a collection of `.xipm` (new `xipm -> parquet` in `aux/filetypes.txt`, `macros.xml` regenerated); `ParquetDiff` is single-file in/out and needed only the format patches. `aux/ctd_patches.json` carries the restrictions, `test-data.sh` copies the bundle fixtures *as directories* and the class-test OSW. 12 -> 12 tests: 3 generated (`TOPP_ParquetDiff_1/2/6`, the 5 negative ones are `WILL_FAIL` by design) + 2 manual tests in `aux/macros_test.xml` (`ParquetConverter`, `OpenSwathExport` - neither has a usable upstream test). 142 -> 146 wrappers, 634 -> 641 tests |
 
 ## Decisions
 
@@ -711,7 +712,7 @@ and the `macros_test.xml` `expect_num_outputs` drift.  (`QualityControl`'s
 directory output and the `output-dir` documentation were closed in round 7c,
 D29.)
 
-## Round 8 — Parquet bundles, both directions (8a closed, 8b/8c open)
+## Round 8 — Parquet bundles, both directions (8a/8b closed, 8c open)
 
 Stage 8a (producer side) is in the tree: `aux/parquet_bundles.json` (spec) +
 `aux/parquet_bundles.py` (post-processor, idempotent, `--check` mode), wired
@@ -807,6 +808,20 @@ Summary:
   34 wrappers), all **92 tests** of the 7 wrappers pass in Galaxy (84 existing +
   the 8 new bundle tests), and `manifest.py report --gate` closes the round
   (`GATE PASSED: no unexplained failures`, 0 stale).
+* **Stage 8b (round 8b)** un-blacklists the four directory-output tools and
+  lets the generator write them: `ParquetConverter` (export only), `ParquetDiff`,
+  `OpenSwathExport` (both format params pinned to parquet) and
+  `OpenSwathPeakMapExtractor` (`.xipm`, a single-file Parquet table, mapped to
+  the `parquet` datatype). Two of them have no usable upstream TOPP test, so
+  they carry a manual test in `aux/macros_test.xml`; 7/7 tests pass. The details
+  - the prefix-output collection names, the bundle fixtures that have to stay
+  directories, the nested `unique_files()` symlinks - are in
+  `.openms-tests/PLAN-parquet-bundles.md` §10.
+* Found while closing 8b: the committed `aux/upgrade/fingerprints.json` carried
+  a stale `_global` block (all five hashes differed from the files they name,
+  `aux/hardcoded_params.json` included), so `changed` reported a global change
+  in every round. Re-stamped; `report --gate` is unchanged because
+  `teststatus.tsv` was always computed from the live files.
 
 ## WIP notes
 

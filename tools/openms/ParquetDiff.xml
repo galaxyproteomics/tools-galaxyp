@@ -1,0 +1,192 @@
+<!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
+<!--Proposed Tool Section: [[for Developers]]-->
+<tool id="ParquetDiff" name="ParquetDiff" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+  <description>Compares two Parquet tables by primary key, tolerating numeric differences</description>
+  <macros>
+    <token name="@EXECUTABLE@">ParquetDiff</token>
+    <import>macros.xml</import>
+  </macros>
+  <expand macro="requirements"/>
+  <expand macro="stdio"/>
+  <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
+@EXT_FOO@
+#import re
+
+## Preprocessing
+mkdir in1 &&
+cp '$in1' 'in1/${re.sub("[^\w\-_]", "_", $in1.element_identifier)}.$gxy2omsext($in1.ext)' &&
+#if $in2:
+  mkdir in2 &&
+  cp '$in2' 'in2/${re.sub("[^\w\-_]", "_", $in2.element_identifier)}.$gxy2omsext($in2.ext)' &&
+#end if
+#if "out_tsv_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir out_tsv &&
+#end if
+
+## Main program call
+
+set -o pipefail &&
+@EXECUTABLE@ -write_ctd ./ &&
+python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
+@EXECUTABLE@ -ini @EXECUTABLE@.ctd
+-in1
+'in1/${re.sub("[^\w\-_]", "_", $in1.element_identifier)}.$gxy2omsext($in1.ext)'
+#if $in2:
+  -in2
+  'in2/${re.sub("[^\w\-_]", "_", $in2.element_identifier)}.$gxy2omsext($in2.ext)'
+#end if
+#if "out_tsv_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  -out_tsv
+  'out_tsv/output.${gxy2omsext("tabular")}'
+#end if
+#if len(str($OPTIONAL_OUTPUTS).split(',')) == 0
+  | tee '$stdout'
+#end if
+
+## Postprocessing
+#if "out_tsv_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  && mv 'out_tsv/output.${gxy2omsext("tabular")}' '$out_tsv'
+#end if
+#if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
+  && mv '@EXECUTABLE@.ctd' '$ctd_out'
+#end if]]></command>
+  <configfiles>
+    <inputs name="args_json" data_style="paths"/>
+    <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
+  </configfiles>
+  <inputs>
+    <param argument="-in1" type="data" format="parquet" label="first input file" help=" select parquet data sets(s)"/>
+    <param argument="-in2" type="data" format="parquet" optional="true" label="second input file (omit when 'schema' is given)" help=" select parquet data sets(s)"/>
+    <param argument="-pk" type="text" optional="true" value="" label="primary-key columns used to match rows" help="If empty, derived from the QPX 'file_type' metadata of the first file (space separated list, in order to allow for spaces in list items surround them by single quotes)">
+      <expand macro="list_string_val" name="pk"/>
+      <expand macro="list_string_san" name="pk"/>
+    </param>
+    <param argument="-schema" type="select" optional="true" label="instead of comparing two files, check 'in1' against the built-in QPX schema of this view" help="">
+      <option value="feature">feature</option>
+      <option value="pg">pg</option>
+      <option value="psm">psm</option>
+      <expand macro="list_string_san" name="schema"/>
+    </param>
+    <param argument="-ratio" type="float" min="1.0" value="1.0" label="acceptable relative erro" help="Only one of 'ratio' or 'absdiff' has to be satisfied.  Use &quot;absdiff&quot; to deal with cases like &quot;zero vs. epsilon&quot;"/>
+    <param argument="-absdiff" type="float" min="0.0" value="0.0" label="acceptable absolute difference" help="Only one of 'ratio' or 'absdiff' has to be satisfied. "/>
+    <param argument="-min_rows" type="integer" min="-1" value="-1" label="require every input to hold at least this many rows ('-1' does not check)" help="A schema check alone is satisfied by an empty table, so this is what distinguishes 'the tool wrote a correct table' from 'the tool wrote a correctly shaped nothing'. '0' is accepted and always passes: use it to record that a table is expected to be empty"/>
+    <param argument="-verbose" type="integer" min="0" max="2" value="2" label="set verbose level:" help="0 = very quiet mode (absolutely no output). 1 = quiet mode (no output unless differences detected). 2 = default (include summary at end). "/>
+    <expand macro="adv_opts_macro">
+      <param argument="-ignore" type="text" optional="true" value="" label="columns excluded from value comparison" help="They are still schema-checked (space separated list, in order to allow for spaces in list items surround them by single quotes)">
+        <expand macro="list_string_val" name="ignore"/>
+        <expand macro="list_string_san" name="ignore"/>
+      </param>
+      <param argument="-schema_only" type="boolean" truevalue="true" falsevalue="false" checked="false" label="compare schemas only; do not compare values" help=""/>
+      <param argument="-with_ids" type="boolean" truevalue="true" falsevalue="false" checked="false" label="also compare the QPX identity columns (feature_id/psm_id/pg_id and the cross-references between them)" help="Off by default: those values are derived, and the spec states that identity is meaningful within a file only, so comparing them across two files is a join it tells you not to make. 'schema' mode checks instead that they are present, non-null and unique"/>
+      <param argument="-unordered_lists" type="boolean" truevalue="true" falsevalue="false" checked="false" label="compare list-valued cells as multisets rather than sequences" help=""/>
+      <param argument="-max_reported" type="integer" min="0" value="25" label="stop listing differences of one kind after this many (0 = unlimited)" help=""/>
+      <param argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
+      <param argument="-test" type="hidden" value="False" label="Enables the test mode (needed for internal use only)" help="" optional="true">
+        <expand macro="list_string_san" name="test"/>
+      </param>
+    </expand>
+    <param name="OPTIONAL_OUTPUTS" type="select" optional="true" multiple="true" label="Optional outputs">
+      <option value="out_tsv_FLAG">out_tsv (instead of comparing, write 'in1' out as TSV sorted by primary key)</option>
+      <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+    </param>
+  </inputs>
+  <outputs>
+    <data name="out_tsv" label="${tool.name} on ${on_string}: out_tsv" format="tabular">
+      <filter>OPTIONAL_OUTPUTS is not None and "out_tsv_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+    <data name="stdout" format="txt" label="${tool.name} on ${on_string}: stdout">
+      <filter>OPTIONAL_OUTPUTS is None</filter>
+    </data>
+    <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
+      <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+  </outputs>
+  <tests>
+    <!-- TOPP_ParquetDiff_1 -->
+    <test expect_num_outputs="1">
+      <section name="adv_opts">
+        <param name="schema_only" value="false"/>
+        <param name="with_ids" value="false"/>
+        <param name="unordered_lists" value="false"/>
+        <param name="max_reported" value="25"/>
+        <param name="force" value="false"/>
+        <param name="test" value="false"/>
+      </section>
+      <param name="in1" value="IDMerger_idparquet_input1_0.idparquet/psms.parquet"/>
+      <param name="in2" value="IDMerger_idparquet_input1_1.idparquet/psms.parquet"/>
+      <param name="pk" value="&quot;peptidoform&quot; &quot;precursor_charge&quot;"/>
+      <param name="ratio" value="1.0"/>
+      <param name="absdiff" value="0.0"/>
+      <param name="min_rows" value="-1"/>
+      <param name="verbose" value="2"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_ParquetDiff_2 -->
+    <test expect_num_outputs="1">
+      <section name="adv_opts">
+        <param name="schema_only" value="true"/>
+        <param name="with_ids" value="false"/>
+        <param name="unordered_lists" value="false"/>
+        <param name="max_reported" value="25"/>
+        <param name="force" value="false"/>
+        <param name="test" value="false"/>
+      </section>
+      <param name="in1" value="IDMerger_idparquet_input2_0.idparquet/psms.parquet"/>
+      <param name="in2" value="IDMerger_idparquet_input2_1.idparquet/psms.parquet"/>
+      <param name="pk" value="&quot;peptidoform&quot; &quot;precursor_charge&quot;"/>
+      <param name="ratio" value="1.0"/>
+      <param name="absdiff" value="0.0"/>
+      <param name="min_rows" value="-1"/>
+      <param name="verbose" value="2"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_ParquetDiff_6 -->
+    <test expect_num_outputs="1">
+      <section name="adv_opts">
+        <param name="schema_only" value="false"/>
+        <param name="with_ids" value="false"/>
+        <param name="unordered_lists" value="false"/>
+        <param name="max_reported" value="25"/>
+        <param name="force" value="false"/>
+        <param name="test" value="false"/>
+      </section>
+      <param name="in1" value="IDMerger_idparquet_input1_0.idparquet/psms.parquet"/>
+      <param name="in2" value="IDMerger_idparquet_input1_1.idparquet/psms.parquet"/>
+      <param name="pk" value="&quot;peptidoform&quot; &quot;precursor_charge&quot;"/>
+      <param name="ratio" value="1.0"/>
+      <param name="absdiff" value="0.0"/>
+      <param name="min_rows" value="5"/>
+      <param name="verbose" value="2"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+  </tests>
+  <help><![CDATA[Compares two Parquet tables by primary key, tolerating numeric differences.
+
+
+For more information, visit http://www.openms.de/doxygen/release/3.6.0/html/TOPP_ParquetDiff.html]]></help>
+  <expand macro="references"/>
+</tool>
