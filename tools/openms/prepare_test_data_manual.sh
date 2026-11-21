@@ -15,13 +15,8 @@ if [[ "$?" -ne "0" ]]; then >&2 echo 'CVInspector failed'; >&2 echo -e "stderr:\
 Digestor -test -in random.fa -out Digestor.fasta -out_type fasta > Digestor.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'Digestor failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
-EICExtractor -test -in spectra.mzML -pos FileConverter_10_input.edta -out EICExtractor.csv > EICExtractor.stdout 2> stderr
+EICExtractor -test -in FileFilter_1_input.mzML -pos FileConverter_10_input.edta -out EICExtractor.csv > EICExtractor.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'EICExtractor failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
-
-#TODO ERPairFinder
-
-FeatureFinderIsotopeWavelet -test -in FeatureFinderCentroided_1_input.mzML -out  FeatureFinderIsotopeWavelet.featureXML > FeatureFinderIsotopeWavelet.stdout 2> stderr
-if [[ "$?" -ne "0" ]]; then >&2 echo 'FeatureFinderIsotopeWavelet failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
 
 # TODO? deprecated IDDecoyProbability
@@ -29,7 +24,7 @@ if [[ "$?" -ne "0" ]]; then >&2 echo 'FeatureFinderIsotopeWavelet failed'; >&2 e
 IDExtractor -test -in MSGFPlusAdapter_1_out.idXML -best_hits -number_of_peptides  1 -out  IDExtractor.idXML   > IDExtractor.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'IDExtractor failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
-MapStatistics -test -in SiriusAdapter_3_input.featureXML -out MapStatistics.txt > MapStatistics_1.stdout 2> stderr
+MapStatistics -test -in Decharger_input.featureXML -out MapStatistics.txt > MapStatistics_1.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'MapStatistics_1 failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
 MapStatistics -test -in ConsensusXMLFile_1.consensusXML -out MapStatistics2.txt > MapStatistics_2.stdout 2> stderr
@@ -54,14 +49,10 @@ OpenSwathRewriteToFeatureXML -featureXML OpenSwathFeatureXMLToTSV_input.featureX
 # if [[ "$?" -ne "0" ]]; then >&2 echo 'OpenSwathRewriteToFeatureXML failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
 # TODO PhosphoScoring 
-PhosphoScoring -in spectra.mzML -id MSGFPlusAdapter_1_out1.tmp -out PhosphoScoring.idxml > PhosphoScoring.stdout 2> stderr
+PhosphoScoring -in spectra.mzML -id MSGFPlusAdapter_1_out.idXML -out PhosphoScoring.idxml > PhosphoScoring.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'PhosphoScoring failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
 # TODO PSMFeatureExtractor should have auto tests with 2.7 https://github.com/OpenMS/OpenMS/pull/5087 
-PSMFeatureExtractor -test -in MSGFPlusAdapter_1_out.idXML XTandemAdapter_1_out.idXML -multiple_search_engines -skip_db_check -out_type idXML -out PSMFeatureExtractor.idxml > PSMFeatureExtractor_1.stdout 2> stderr
-if [[ "$?" -ne "0" ]]; then >&2 echo 'PSMFeatureExtractor_1 failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
-PSMFeatureExtractor -test -in MSGFPlusAdapter_1_out.idXML XTandemAdapter_1_out.idXML -multiple_search_engines -skip_db_check -out_type mzid -out PSMFeatureExtractor.mzid > PSMFeatureExtractor_2.stdout 2> stderr
-if [[ "$?" -ne "0" ]]; then >&2 echo 'PSMFeatureExtractor_2 failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 PSMFeatureExtractor -test -in MSGFPlusAdapter_1_out.idXML -out_type idXML -out PSMFeatureExtractor_3.idXML > PSMFeatureExtractor_3.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'PSMFeatureExtractor_3 failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
@@ -94,30 +85,18 @@ if [[ "$?" -ne "0" ]]; then >&2 echo 'SemanticValidator failed'; >&2 echo -e "st
 
 IDFilter -in PeptideIndexer_1.idXML -best:strict -out SequenceCoverageCalculator_1.idXML > IDFilter.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'IDFilter failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
-SequenceCoverageCalculator -test -in_database  PeptideIndexer_1.fasta -in_peptides  SequenceCoverageCalculator_1.idXML  -out  SequenceCoverageCalculator.txt > SequenceCoverageCalculator.stdout 2> stderr
+SequenceCoverageCalculator -test -in_database  PeptideIndexer_1.fasta -in_peptides  SequenceCoverageCalculator_1.idXML  -out  SequenceCoverageCalculator.idXML > SequenceCoverageCalculator.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'SequenceCoverageCalculator failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
 # TODO SpecLibCreator
 
-SpectraFilterBernNorm -test -in  SpectraFilterSqrtMower_1_input.mzML -out  SpectraFilterBernNorm.mzML > SpectraFilterBernNorm.stdout 2> stderr
-if [[ "$?" -ne "0" ]]; then >&2 echo 'SpectraFilterBernNorm failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
-
-SpectraFilterMarkerMower -test -in  SpectraFilterSqrtMower_1_input.mzML -out  SpectraFilterMarkerMower.mzML > SpectraFilterMarkerMower.stdout 2> stderr
-if [[ "$?" -ne "0" ]]; then >&2 echo 'SpectraFilterMarkerMower failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
-
-SpectraFilterNLargest -test -in  SpectraFilterSqrtMower_1_input.mzML -out  SpectraFilterNLargest.mzML > SpectraFilterNLargest.stdout 2> stderr
+SpectraFilterNLargest -test -in  SpectraFilterWindowMower_1_input.mzML -out  SpectraFilterNLargest.mzML > SpectraFilterNLargest.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'SpectraFilterNLargest failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
-SpectraFilterNormalizer -test -in  SpectraFilterSqrtMower_1_input.mzML -out  SpectraFilterNormalizer.mzML > SpectraFilterNormalizer.stdout 2> stderr
+SpectraFilterNormalizer -test -in  SpectraFilterWindowMower_1_input.mzML -out  SpectraFilterNormalizer.mzML > SpectraFilterNormalizer.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'SpectraFilterNormalizer failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
-SpectraFilterParentPeakMower -test -in  SpectraFilterSqrtMower_1_input.mzML -out  SpectraFilterParentPeakMower.mzML > SpectraFilterParentPeakMower.stdout 2> stderr
-if [[ "$?" -ne "0" ]]; then >&2 echo 'SpectraFilterParentPeakMower failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
-
-SpectraFilterScaler -test -in  SpectraFilterSqrtMower_1_input.mzML -out  SpectraFilterScaler.mzML > SpectraFilterScaler.stdout 2> stderr
-if [[ "$?" -ne "0" ]]; then >&2 echo 'SpectraFilterScaler failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
-
-SpectraFilterThresholdMower -test -in  SpectraFilterSqrtMower_1_input.mzML -out  SpectraFilterThresholdMower.mzML > SpectraFilterThresholdMower.stdout 2> stderr
+SpectraFilterThresholdMower -test -in  SpectraFilterWindowMower_1_input.mzML -out  SpectraFilterThresholdMower.mzML > SpectraFilterThresholdMower.stdout 2> stderr
 if [[ "$?" -ne "0" ]]; then >&2 echo 'SpectraFilterThresholdMower failed'; >&2 echo -e "stderr:\n$(cat stderr | sed 's/^/    /')"; fi
 
 SpectraMerger -test -in NovorAdapter_in.mzML -out SpectraMerger_1.mzML -algorithm:average_gaussian:ms_level 2 > SpectraMerger.stdout 2> stderr

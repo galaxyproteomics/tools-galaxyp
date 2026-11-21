@@ -1,0 +1,164 @@
+<!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
+<!--Proposed Tool Section: [Quantitation]-->
+<tool id="FeatureFinderLFQ" name="FeatureFinderLFQ" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+  <description>Feature detection for LC-MS1 data (EXPERIMENTAL)</description>
+  <macros>
+    <token name="@EXECUTABLE@">FeatureFinderLFQ</token>
+    <import>macros.xml</import>
+  </macros>
+  <expand macro="requirements"/>
+  <expand macro="stdio"/>
+  <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
+@EXT_FOO@
+#import re
+
+## Preprocessing
+mkdir in &&
+cp '$in' 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)' &&
+mkdir out &&
+#if "out_tsv_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir out_tsv &&
+#end if
+#if "out_hills_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir out_hills &&
+#end if
+
+## Main program call
+
+set -o pipefail &&
+@EXECUTABLE@ -write_ctd ./ &&
+python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
+@EXECUTABLE@ -ini @EXECUTABLE@.ctd
+-in
+'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
+-out
+'out/output.${gxy2omsext("featurexml")}'
+#if "out_tsv_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  -out_tsv
+  'out_tsv/output.${gxy2omsext("tabular")}'
+#end if
+#if "out_hills_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  -out_hills
+  'out_hills/output.${gxy2omsext("tabular")}'
+#end if
+#if len(str($OPTIONAL_OUTPUTS).split(',')) == 0
+  | tee '$stdout'
+#end if
+
+## Postprocessing
+&& mv 'out/output.${gxy2omsext("featurexml")}' '$out'
+#if "out_tsv_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  && mv 'out_tsv/output.${gxy2omsext("tabular")}' '$out_tsv'
+#end if
+#if "out_hills_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  && mv 'out_hills/output.${gxy2omsext("tabular")}' '$out_hills'
+#end if
+#if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
+  && mv '@EXECUTABLE@.ctd' '$ctd_out'
+#end if]]></command>
+  <configfiles>
+    <inputs name="args_json" data_style="paths"/>
+    <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
+  </configfiles>
+  <inputs>
+    <param argument="-in" type="data" format="mzml" label="Input mzML file (centroided data)" help=" select mzml data sets(s)"/>
+    <param argument="-write_hills" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Force writing of hills file even if no output path was provided" help=""/>
+    <param argument="-mini" type="float" min="0.0" value="1.0" label="Minimum intensity threshold" help=""/>
+    <param argument="-minmz" type="float" min="0.0" value="350.0" label="Minimum m/z value" help=""/>
+    <param argument="-maxmz" type="float" min="0.0" value="1500.0" label="Maximum m/z value" help=""/>
+    <param argument="-htol" type="float" min="0.0" value="8.0" label="Mass accuracy in ppm for combining peaks into hills" help=""/>
+    <param argument="-itol" type="float" min="0.0" value="8.0" label="Mass accuracy in ppm for isotopic patterns" help=""/>
+    <param argument="-hvf" type="float" min="1.0" value="1.3" label="Hill valley factor for splitting hills" help=""/>
+    <param argument="-ivf" type="float" min="1.0" value="5.0" label="Isotope valley factor for splitting isotope patterns" help=""/>
+    <param argument="-minlh" type="integer" min="1" value="2" label="Minimum number of scans for a hill" help=""/>
+    <param argument="-pasefmini" type="float" min="0.0" value="100.0" label="Minimum combined intensity for PASEF/TIMS clusters after m/z–ion-mobility centroiding" help=""/>
+    <param argument="-pasefminlh" type="integer" min="1" value="1" label="Minimum number of raw points per PASEF/TIMS cluster during centroiding" help=""/>
+    <param argument="-cmin" type="integer" min="1" value="1" label="Minimum charge state" help=""/>
+    <param argument="-cmax" type="integer" min="1" value="6" label="Maximum charge state" help=""/>
+    <param argument="-iuse" type="integer" min="-1" value="0" label="Number of isotopes for intensity calculation (0=mono only, -1=all, 1=mono+first, etc.)" help=""/>
+    <param argument="-nm" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Negative mode (affects neutral mass calculation)" help=""/>
+    <param argument="-tof" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Enable TOF-specific intensity filtering" help=""/>
+    <param argument="-profile" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Enable profile mode processing (centroid spectra using PeakPickerHiRes)" help=""/>
+    <param argument="-paseftol" type="float" min="0.0" value="0.05" label="Ion mobility accuracy for linking peaks into hills and grouping isotopes (0 = disable IM-based gating)" help="Default is for 1/K0 units (e.g., 0.03-0.08). For CCS data, use larger values (e.g., 5-20 square angstroms)"/>
+    <param argument="-use_hill_calib" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Enable automatic hill mass tolerance calibration" help=""/>
+    <param argument="-ignore_iso_calib" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Disable automatic isotope mass error calibration" help=""/>
+    <param argument="-hrttol" type="float" min="0.0" value="10.0" label="Maximum allowed RT difference (in seconds) between monoisotopic hill apex and isotope hill apex when assembling isotope patterns (0 disables RT gating)" help=""/>
+    <param argument="-convex_hulls" type="select" label="Representation of feature convex hulls in the output FeatureMap" help="'bounding_box' stores a single RT–m/z bounding box per feature (smaller featureXML, no per-trace detail), whereas 'mass_traces' stores one convex hull per contributing hill using all mass-trace points (larger featureXML, preserves detailed trace shape)">
+      <option value="bounding_box" selected="true">bounding_box</option>
+      <option value="mass_traces">mass_traces</option>
+      <expand macro="list_string_san" name="convex_hulls"/>
+    </param>
+    <param argument="-faims_merge_features" type="boolean" truevalue="true" falsevalue="false" checked="true" label="For FAIMS data with multiple compensation voltages: Merge features representing the same analyte detected at different CV values into a single feature" help="Only features with DIFFERENT FAIMS CV values are merged (same CV = different analytes). Has no effect on non-FAIMS data"/>
+    <expand macro="adv_opts_macro">
+      <param argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
+      <param argument="-test" type="hidden" value="False" label="Enables the test mode (needed for internal use only)" help="" optional="true">
+        <expand macro="list_string_san" name="test"/>
+      </param>
+    </expand>
+    <param name="OPTIONAL_OUTPUTS" type="select" optional="true" multiple="true" label="Optional outputs">
+      <option value="out_tsv_FLAG">out_tsv (Optional: output TSV file (Biosaur2 format))</option>
+      <option value="out_hills_FLAG">out_hills (Optional: write detected hills to TSV)</option>
+      <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+    </param>
+  </inputs>
+  <outputs>
+    <data name="out" label="${tool.name} on ${on_string}: out" format="featurexml"/>
+    <data name="out_tsv" label="${tool.name} on ${on_string}: out_tsv" format="tabular">
+      <filter>OPTIONAL_OUTPUTS is not None and "out_tsv_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+    <data name="out_hills" label="${tool.name} on ${on_string}: out_hills" format="tabular">
+      <filter>OPTIONAL_OUTPUTS is not None and "out_hills_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+    <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
+      <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+  </outputs>
+  <tests>
+    <!-- TOPP_FeatureFinderLFQ_1 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="FeatureFinderCentroided_1_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/v3.6.0/src/tests/topp/FeatureFinderCentroided_1_input.mzML"/>
+      <output name="out" value="FeatureFinderLFQ_1_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml" delta="12842" location="https://raw.githubusercontent.com/OpenMS/OpenMS/v3.6.0/src/tests/topp/FeatureFinderLFQ_1_output.featureXML"/>
+      <param name="write_hills" value="false"/>
+      <param name="mini" value="20.0"/>
+      <param name="minmz" value="350.0"/>
+      <param name="maxmz" value="1500.0"/>
+      <param name="htol" value="100.0"/>
+      <param name="itol" value="100.0"/>
+      <param name="hvf" value="1.3"/>
+      <param name="ivf" value="5.0"/>
+      <param name="minlh" value="2"/>
+      <param name="pasefmini" value="100.0"/>
+      <param name="pasefminlh" value="1"/>
+      <param name="cmin" value="2"/>
+      <param name="cmax" value="2"/>
+      <param name="iuse" value="0"/>
+      <param name="nm" value="false"/>
+      <param name="tof" value="false"/>
+      <param name="profile" value="false"/>
+      <param name="paseftol" value="0.05"/>
+      <param name="use_hill_calib" value="false"/>
+      <param name="ignore_iso_calib" value="false"/>
+      <param name="hrttol" value="10.0"/>
+      <param name="convex_hulls" value="bounding_box"/>
+      <param name="faims_merge_features" value="true"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+  </tests>
+  <help><![CDATA[Feature detection for LC-MS1 data (EXPERIMENTAL)
+
+
+For more information, visit http://www.openms.de/doxygen/release/3.6.0/html/TOPP_FeatureFinderLFQ.html]]></help>
+  <expand macro="references"/>
+</tool>

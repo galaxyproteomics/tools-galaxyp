@@ -1,0 +1,367 @@
+<!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
+<!--Proposed Tool Section: [Targeted Experiments and OpenSWATH]-->
+<tool id="TransitionListEvidenceFilter" name="TransitionListEvidenceFilter" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+  <description>Filter transition-list precursors by quick raw-data evidence</description>
+  <macros>
+    <token name="@EXECUTABLE@">TransitionListEvidenceFilter</token>
+    <import>macros.xml</import>
+  </macros>
+  <expand macro="requirements"/>
+  <expand macro="stdio"/>
+  <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
+@EXT_FOO@
+#import re
+
+## Preprocessing
+mkdir in_cond.in &&
+#if $in_cond.in_select == "no"
+mkdir ${' '.join(["'in_cond.in/%s'" % (i) for i, f in enumerate($in_cond.in) if f])} && 
+${' '.join(["cp '%s' 'in_cond.in/%s/%s.%s' && " % (f, i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in_cond.in) if f])}
+#else
+cp '$in_cond.in' 'in_cond.in/${re.sub("[^\w\-_]", "_", $in_cond.in.element_identifier)}.$gxy2omsext($in_cond.in.ext)' &&
+#end if
+mkdir tr &&
+cp '$tr' 'tr/${re.sub("[^\w\-_]", "_", $tr.element_identifier)}.$gxy2omsext($tr.ext)' &&
+mkdir out &&
+#if $swath_windows_file:
+  mkdir swath_windows_file &&
+  cp '$swath_windows_file' 'swath_windows_file/${re.sub("[^\w\-_]", "_", $swath_windows_file.element_identifier)}.$gxy2omsext($swath_windows_file.ext)' &&
+#end if
+
+## Main program call
+
+set -o pipefail &&
+@EXECUTABLE@ -write_ctd ./ &&
+python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
+@EXECUTABLE@ -ini @EXECUTABLE@.ctd
+-in
+#if $in_cond.in_select == "no"
+${' '.join(["'in_cond.in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in_cond.in) if f])}
+#else
+'in_cond.in/${re.sub("[^\w\-_]", "_", $in_cond.in.element_identifier)}.$gxy2omsext($in_cond.in.ext)'
+#end if
+-tr
+'tr/${re.sub("[^\w\-_]", "_", $tr.element_identifier)}.$gxy2omsext($tr.ext)'
+-out
+'out/output.${out_type}'
+#if $swath_windows_file:
+  -swath_windows_file
+  'swath_windows_file/${re.sub("[^\w\-_]", "_", $swath_windows_file.element_identifier)}.$gxy2omsext($swath_windows_file.ext)'
+#end if
+
+## Postprocessing
+&& mv 'out/output.${out_type}' '$out'
+#if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
+  && mv '@EXECUTABLE@.ctd' '$ctd_out'
+#end if]]></command>
+  <configfiles>
+    <inputs name="args_json" data_style="paths"/>
+    <configfile name="hardcoded_json"><![CDATA[{"tempDirectory": "\$TMP_DIR", "log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
+  </configfiles>
+  <inputs>
+    <conditional name="in_cond">
+      <param name="in_select" type="select" label="Run tool in batch mode for -in">
+        <option value="no">No: process all datasets jointly</option>
+        <option value="yes">Yes: process each dataset in an independent job</option>
+      </param>
+      <when value="no">
+        <param argument="-in" type="data" format="mzml,mzxml,sqmass" multiple="true" label="Input mzML/sqMass files" help="By default each file is treated as one run select mzml,mzxml,sqmass data sets(s)"/>
+      </when>
+      <when value="yes">
+        <param argument="-in" type="data" format="mzml,mzxml,sqmass" label="Input mzML/sqMass files" help="By default each file is treated as one run select mzml,mzxml,sqmass data sets(s)"/>
+      </when>
+    </conditional>
+    <param argument="-tr" type="data" format="pqp,tabular,traml" label="Input transition file ('TraML', 'tsv', 'pqp', or 'oswpq')" help=" select pqp,tabular,traml data sets(s)"/>
+    <param argument="-out_type" type="select" label="Output transition file type" help="Default: determined from file extension">
+      <option value="pqp">pqp</option>
+      <option value="tsv">tabular (tsv)</option>
+      <validator type="expression" message="A value needs to be selected">value != "select a value"</validator>
+      <expand macro="list_string_san" name="out_type"/>
+    </param>
+    <param argument="-pasef" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Data is PASEF data" help="If omitted, the tool auto-detects ion mobility SWATH windows"/>
+    <param argument="-swath_windows_file" type="data" format="txt" optional="true" label="Optional tab-separated file containing SWATH windows for extraction: lower_offset upper_offset" help="The first line is a header and will be skipped select txt data sets(s)"/>
+    <param argument="-keep_cached_files" type="boolean" truevalue="true" falsevalue="false" checked="false" label="If set, do not remove cached files created in tempDirectory" help=""/>
+    <section name="Algorithm" title="Raw-data precursor evidence filtering parameters" help="" expanded="false">
+      <param name="evidence_sources" argument="-Algorithm:evidence_sources" type="select" label="Evidence source used to keep precursor candidates: 'ms1', 'ms2', or 'hybrid' (MS1 OR MS2)" help="">
+        <option value="hybrid" selected="true">hybrid</option>
+        <option value="ms1">ms1</option>
+        <option value="ms2">ms2</option>
+        <expand macro="list_string_san" name="evidence_sources"/>
+      </param>
+      <param name="ms1_top_peaks_per_spectrum" argument="-Algorithm:ms1_top_peaks_per_spectrum" type="integer" min="1" value="1000" label="Number of most intense MS1 peaks to keep per spectrum before precursor m/z matching" help=""/>
+      <param name="ms2_top_peaks_per_spectrum" argument="-Algorithm:ms2_top_peaks_per_spectrum" type="integer" min="1" value="1000" label="Number of most intense MS2 peaks to keep per spectrum before fragment m/z matching" help=""/>
+      <param name="ms2_top_transitions_per_precursor" argument="-Algorithm:ms2_top_transitions_per_precursor" type="integer" min="1" max="64" value="6" label="Number of highest library-intensity fragment transitions to index per precursor for MS2 evidence" help=""/>
+      <param name="ms2_min_fragment_hits" argument="-Algorithm:ms2_min_fragment_hits" type="integer" min="1" max="64" value="4" label="Minimum number of distinct indexed fragments that must match in one MS2 spectrum to support a precurso" help=""/>
+      <param name="min_supported_precursors" argument="-Algorithm:min_supported_precursors" type="integer" min="1" value="3" label="Minimum number of supported precursors required when the prefilter is enabled" help=""/>
+      <section name="peak_picking" title="" help="" expanded="false">
+        <param name="enabled" argument="-Algorithm:peak_picking:enabled" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Run PeakPickerHiRes on spectra before top-N matching" help="This is intended for profile data and is disabled by default"/>
+        <param name="use_gauss" argument="-Algorithm:peak_picking:use_gauss" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Use Gaussian smoothing before PeakPickerHiRes" help="If false, use Savitzky-Golay smoothing"/>
+        <section name="PeakPickerHiRes" title="" help="" expanded="false">
+          <param name="signal_to_noise" argument="-Algorithm:peak_picking:PeakPickerHiRes:signal_to_noise" type="float" min="0.0" value="0.0" label="Minimal signal-to-noise ratio for a peak to be picked (0.0 disables SNT estimation!)" help=""/>
+          <param name="spacing_difference_gap" argument="-Algorithm:peak_picking:PeakPickerHiRes:spacing_difference_gap" type="float" min="0.0" value="4.0" label="The extension of a peak is stopped if the spacing between two subsequent data points exceeds 'spacing_difference_gap * min_spacing'" help="'min_spacing' is the smaller of the two spacings from the peak apex to its two neighboring points. '0' to disable the constraint. Not applicable to chromatograms"/>
+          <param name="spacing_difference" argument="-Algorithm:peak_picking:PeakPickerHiRes:spacing_difference" type="float" min="0.0" value="1.5" label="Maximum allowed difference between points during peak extension, in multiples of the minimal difference between the peak apex and its two neighboring points" help="If this difference is exceeded a missing point is assumed (see parameter 'missing'). A higher value implies a less stringent peak definition, since individual signals within the peak are allowed to be further apart. '0' to disable the constraint. Not applicable to chromatograms"/>
+          <param name="missing" argument="-Algorithm:peak_picking:PeakPickerHiRes:missing" type="integer" min="0" value="1" label="Maximum number of missing points allowed when extending a peak to the left or to the right" help="A missing data point occurs if the spacing between two subsequent data points exceeds 'spacing_difference * min_spacing'. 'min_spacing' is the smaller of the two spacings from the peak apex to its two neighboring points. Not applicable to chromatograms"/>
+          <param name="ms_levels" argument="-Algorithm:peak_picking:PeakPickerHiRes:ms_levels" type="text" optional="true" value="" label="List of MS levels for which the peak picking is applied" help="If empty, auto mode is enabled, all peaks which aren't picked yet will get picked. Other scans are copied to the output without changes (space separated list, in order to allow for spaces in list items surround them by single quotes)">
+            <expand macro="list_integer_valsan" name="ms_levels">
+              <validator type="expression" message="a space separated list of integer values in the range 1: is required"><![CDATA[len(value.split(' ')) == len([_ for _ in value.split(' ') if  1 <= int(_)])
+]]></validator>
+            </expand>
+          </param>
+          <param name="report_FWHM" argument="-Algorithm:peak_picking:PeakPickerHiRes:report_FWHM" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Add metadata for FWHM (as floatDataArray named 'FWHM' or 'FWHM_ppm', depending on param 'report_FWHM_unit') for each picked peak" help=""/>
+          <param name="report_FWHM_unit" argument="-Algorithm:peak_picking:PeakPickerHiRes:report_FWHM_unit" type="select" label="Unit of FWHM" help="Either absolute in the unit of input, e.g. 'm/z' for spectra, or relative as ppm (only sensible for spectra, not chromatograms)">
+            <option value="absolute">absolute</option>
+            <option value="relative" selected="true">relative</option>
+            <expand macro="list_string_san" name="report_FWHM_unit"/>
+          </param>
+          <param name="allow_missing_flank" argument="-Algorithm:peak_picking:PeakPickerHiRes:allow_missing_flank" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Allow peaks without flanking data points on both sides" help="This is useful for TimsTOF data where profile peaks may be missing the leading or trailing edge"/>
+          <section name="SignalToNoise" title="" help="" expanded="false">
+            <param name="max_intensity" argument="-Algorithm:peak_picking:PeakPickerHiRes:SignalToNoise:max_intensity" type="integer" min="-1" value="-1" label="maximal intensity considered for histogram construction" help="By default, it will be calculated automatically (see auto_mode). Only provide this parameter if you know what you are doing (and change 'auto_mode' to '-1')! All intensities EQUAL/ABOVE 'max_intensity' will be added to the LAST histogram bin. If you choose 'max_intensity' too small, the noise estimate might be too small as well.  If chosen too big, the bins become quite large (which you could counter by increasing 'bin_count', which increases runtime). In general, the Median-S/N estimator is more robust to a manual max_intensity than the MeanIterative-S/N"/>
+            <param name="auto_max_stdev_factor" argument="-Algorithm:peak_picking:PeakPickerHiRes:SignalToNoise:auto_max_stdev_factor" type="float" min="0.0" max="999.0" value="3.0" label="parameter for 'max_intensity' estimation (if 'auto_mode' == 0): mean + 'auto_max_stdev_factor' * stdev" help=""/>
+            <param name="auto_max_percentile" argument="-Algorithm:peak_picking:PeakPickerHiRes:SignalToNoise:auto_max_percentile" type="integer" min="0" max="100" value="95" label="parameter for 'max_intensity' estimation (if 'auto_mode' == 1): auto_max_percentile th percentile" help=""/>
+            <param name="auto_mode" argument="-Algorithm:peak_picking:PeakPickerHiRes:SignalToNoise:auto_mode" type="integer" min="-1" max="1" value="0" label="method to use to determine maximal intensity: -1 --&gt; use 'max_intensity'; 0 --&gt; 'auto_max_stdev_factor' method (default); 1 --&gt; 'auto_max_percentile' method" help=""/>
+            <param name="win_len" argument="-Algorithm:peak_picking:PeakPickerHiRes:SignalToNoise:win_len" type="float" min="1.0" value="200.0" label="window length in Thomson" help=""/>
+            <param name="bin_count" argument="-Algorithm:peak_picking:PeakPickerHiRes:SignalToNoise:bin_count" type="integer" min="3" value="30" label="number of bins for intensity values" help=""/>
+            <param name="min_required_elements" argument="-Algorithm:peak_picking:PeakPickerHiRes:SignalToNoise:min_required_elements" type="integer" min="1" value="10" label="minimum number of elements required in a window (otherwise it is considered sparse)" help=""/>
+            <param name="noise_for_empty_window" argument="-Algorithm:peak_picking:PeakPickerHiRes:SignalToNoise:noise_for_empty_window" type="float" value="1e+20" label="noise value used for sparse windows" help=""/>
+            <param name="write_log_messages" argument="-Algorithm:peak_picking:PeakPickerHiRes:SignalToNoise:write_log_messages" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Write out log messages in case of sparse windows or median in rightmost histogram bin" help=""/>
+          </section>
+        </section>
+      </section>
+    </section>
+    <section name="Library" title="Transition TSV/PQP parsing parameters" help="" expanded="false">
+      <param name="retentionTimeInterpretation" argument="-Library:retentionTimeInterpretation" type="select" label="How to interpret the provided retention time (the retention time column can either be interpreted to be in iRT, minutes or seconds)" help="">
+        <option value="iRT" selected="true">iRT</option>
+        <option value="minutes">minutes</option>
+        <option value="seconds">seconds</option>
+        <expand macro="list_string_san" name="retentionTimeInterpretation"/>
+      </param>
+      <param name="override_group_label_check" argument="-Library:override_group_label_check" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Override an internal check that assures that all members of the same PeptideGroupLabel have the same PeptideSequence (this ensures that only different isotopic forms of the same peptide can be grouped together in the same label group)" help="Only turn this off if you know what you are doing"/>
+      <param name="force_invalid_mods" argument="-Library:force_invalid_mods" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Force reading even if invalid modifications are encountered (OpenMS may not recognize the modification)" help=""/>
+    </section>
+    <expand macro="adv_opts_macro">
+      <param argument="-aggregation_method" type="select" label="How to combine evidence across multiple input runs" help="'any' keeps a target if it is supported in at least one run; 'all' requires support in every run">
+        <option value="all">all</option>
+        <option value="any" selected="true">any</option>
+        <expand macro="list_string_san" name="aggregation_method"/>
+      </param>
+      <param argument="-decoy_handling" type="select" label="How to handle decoys in the output" help="'remove' writes target-only output. 'keep_all' keeps all original decoys. 'keep_matching' keeps decoys whose peptide_ref maps to a kept target after removing decoy_prefix">
+        <option value="keep_all">keep_all</option>
+        <option value="keep_matching">keep_matching</option>
+        <option value="remove" selected="true">remove</option>
+        <expand macro="list_string_san" name="decoy_handling"/>
+      </param>
+      <param argument="-decoy_prefix" type="text" value="DECOY_" label="Prefix used by decoy_handling=keep_matching to map decoy peptide_ref values back to target peptide_ref values" help="">
+        <expand macro="list_string_san" name="decoy_prefix"/>
+      </param>
+      <param argument="-min_upper_edge_dist" type="float" min="0.0" value="0.0" label="Minimal distance to the upper edge of a SWATH window to still consider a precursor, in Thomson" help=""/>
+      <param argument="-prm" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Data is targeted DIA / PRM-like data with potentially overlapping DIA windows" help=""/>
+      <param argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
+      <param argument="-sort_swath_maps" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Sort input SWATH files when matching to SWATH windows from swath_windows_file" help=""/>
+      <param argument="-split_file_input" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Treat all input files as one split SWATH run, with each file containing one SWATH window" help=""/>
+      <param argument="-readOptions" type="select" label="Whether to run directly on input data or cache data to disk first" help="If 'cache', set tempDirectory as needed">
+        <option value="cache">cache</option>
+        <option value="normal" selected="true">normal</option>
+        <expand macro="list_string_san" name="readOptions"/>
+      </param>
+      <param argument="-outer_loop_threads" type="integer" value="-1" label="How many threads the evidence filter should use (-1 uses the OpenMP maximum)" help=""/>
+      <param argument="-mz_extraction_window_ms1" type="float" min="0.0" value="50.0" label="MS1 precursor m/z extraction window full width, in Thomson or ppm" help=""/>
+      <param argument="-mz_extraction_window_ms1_unit" type="select" label="Unit of mz_extraction_window_ms1" help="">
+        <option value="Th">Th</option>
+        <option value="ppm" selected="true">ppm</option>
+        <expand macro="list_string_san" name="mz_extraction_window_ms1_unit"/>
+      </param>
+      <param argument="-im_extraction_window_ms1" type="float" value="-1.0" label="MS1 ion mobility extraction window full width" help="-1 disables MS1 IM filtering"/>
+      <param argument="-mz_extraction_window_ms2" type="float" min="0.0" value="50.0" label="MS2 fragment m/z extraction window full width, in Thomson or ppm" help=""/>
+      <param argument="-mz_extraction_window_ms2_unit" type="select" label="Unit of mz_extraction_window_ms2" help="">
+        <option value="Th">Th</option>
+        <option value="ppm" selected="true">ppm</option>
+        <expand macro="list_string_san" name="mz_extraction_window_ms2_unit"/>
+      </param>
+      <param argument="-im_extraction_window_ms2" type="float" value="-1.0" label="MS2 ion mobility extraction window full width" help="-1 disables MS2 IM filtering"/>
+      <param argument="-test" type="hidden" value="False" label="Enables the test mode (needed for internal use only)" help="" optional="true">
+        <expand macro="list_string_san" name="test"/>
+      </param>
+    </expand>
+    <param name="OPTIONAL_OUTPUTS" type="select" optional="true" multiple="true" label="Optional outputs">
+      <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+    </param>
+  </inputs>
+  <outputs>
+    <data name="out" label="${tool.name} on ${on_string}: out" format="pqp">
+      <change_format>
+        <when input="out_type" value="tsv" format="tabular"/>
+      </change_format>
+    </data>
+    <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
+      <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+  </outputs>
+  <tests>
+    <!-- TOPP_TransitionListEvidenceFilter_test_1 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="aggregation_method" value="any"/>
+        <param name="decoy_handling" value="remove"/>
+        <param name="decoy_prefix" value="DECOY_"/>
+        <param name="min_upper_edge_dist" value="0.0"/>
+        <param name="prm" value="false"/>
+        <param name="force" value="false"/>
+        <param name="sort_swath_maps" value="false"/>
+        <param name="split_file_input" value="false"/>
+        <param name="readOptions" value="normal"/>
+        <param name="outer_loop_threads" value="-1"/>
+        <param name="mz_extraction_window_ms1" value="100000.0"/>
+        <param name="mz_extraction_window_ms1_unit" value="ppm"/>
+        <param name="im_extraction_window_ms1" value="-1.0"/>
+        <param name="mz_extraction_window_ms2" value="100.0"/>
+        <param name="mz_extraction_window_ms2_unit" value="Th"/>
+        <param name="im_extraction_window_ms2" value="-1.0"/>
+        <param name="test" value="true"/>
+      </section>
+      <conditional name="in_cond">
+        <param name="in" value="OpenSwathWorkflow_1_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/v3.6.0/src/tests/topp/OpenSwathWorkflow_1_input.mzML"/>
+      </conditional>
+      <param name="tr" value="OpenSwathWorkflow_1_input.TraML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/v3.6.0/src/tests/topp/OpenSwathWorkflow_1_input.TraML"/>
+      <output name="out" ftype="tabular">
+        <assert_contents>
+          <has_size min="727" max="4122"/>
+          <has_n_lines min="9" max="39"/>
+        </assert_contents>
+      </output>
+      <param name="out_type" value="tsv"/>
+      <param name="pasef" value="false"/>
+      <param name="keep_cached_files" value="false"/>
+      <section name="Algorithm">
+        <param name="evidence_sources" value="hybrid"/>
+        <param name="ms1_top_peaks_per_spectrum" value="1000"/>
+        <param name="ms2_top_peaks_per_spectrum" value="1000"/>
+        <param name="ms2_top_transitions_per_precursor" value="6"/>
+        <param name="ms2_min_fragment_hits" value="1"/>
+        <param name="min_supported_precursors" value="1"/>
+        <section name="peak_picking">
+          <param name="enabled" value="false"/>
+          <param name="use_gauss" value="true"/>
+          <section name="PeakPickerHiRes">
+            <param name="signal_to_noise" value="0.0"/>
+            <param name="spacing_difference_gap" value="4.0"/>
+            <param name="spacing_difference" value="1.5"/>
+            <param name="missing" value="1"/>
+            <param name="report_FWHM" value="false"/>
+            <param name="report_FWHM_unit" value="relative"/>
+            <param name="allow_missing_flank" value="false"/>
+            <section name="SignalToNoise">
+              <param name="max_intensity" value="-1"/>
+              <param name="auto_max_stdev_factor" value="3.0"/>
+              <param name="auto_max_percentile" value="95"/>
+              <param name="auto_mode" value="0"/>
+              <param name="win_len" value="200.0"/>
+              <param name="bin_count" value="30"/>
+              <param name="min_required_elements" value="10"/>
+              <param name="noise_for_empty_window" value="1e+20"/>
+              <param name="write_log_messages" value="true"/>
+            </section>
+          </section>
+        </section>
+      </section>
+      <section name="Library">
+        <param name="retentionTimeInterpretation" value="iRT"/>
+        <param name="override_group_label_check" value="false"/>
+        <param name="force_invalid_mods" value="false"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_TransitionListEvidenceFilter_prefixed_decoy -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="aggregation_method" value="any"/>
+        <param name="decoy_handling" value="keep_matching"/>
+        <param name="decoy_prefix" value="DECOY_"/>
+        <param name="min_upper_edge_dist" value="0.0"/>
+        <param name="prm" value="false"/>
+        <param name="force" value="false"/>
+        <param name="sort_swath_maps" value="false"/>
+        <param name="split_file_input" value="false"/>
+        <param name="readOptions" value="normal"/>
+        <param name="outer_loop_threads" value="-1"/>
+        <param name="mz_extraction_window_ms1" value="100000.0"/>
+        <param name="mz_extraction_window_ms1_unit" value="ppm"/>
+        <param name="im_extraction_window_ms1" value="-1.0"/>
+        <param name="mz_extraction_window_ms2" value="100.0"/>
+        <param name="mz_extraction_window_ms2_unit" value="Th"/>
+        <param name="im_extraction_window_ms2" value="-1.0"/>
+        <param name="test" value="true"/>
+      </section>
+      <conditional name="in_cond">
+        <param name="in" value="OpenSwathWorkflow_21_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/v3.6.0/src/tests/topp/OpenSwathWorkflow_21_input.mzML"/>
+      </conditional>
+      <param name="tr" value="TransitionListEvidenceFilter_prefixed_decoy_input.tsv" ftype="tabular" location="https://raw.githubusercontent.com/OpenMS/OpenMS/v3.6.0/src/tests/topp/TransitionListEvidenceFilter_prefixed_decoy_input.tsv"/>
+      <output name="out" ftype="pqp">
+        <assert_contents>
+          <has_size min="24576" max="139264"/>
+        </assert_contents>
+      </output>
+      <param name="out_type" value="pqp"/>
+      <param name="pasef" value="false"/>
+      <param name="keep_cached_files" value="false"/>
+      <section name="Algorithm">
+        <param name="evidence_sources" value="hybrid"/>
+        <param name="ms1_top_peaks_per_spectrum" value="1000"/>
+        <param name="ms2_top_peaks_per_spectrum" value="1000"/>
+        <param name="ms2_top_transitions_per_precursor" value="6"/>
+        <param name="ms2_min_fragment_hits" value="1"/>
+        <param name="min_supported_precursors" value="1"/>
+        <section name="peak_picking">
+          <param name="enabled" value="false"/>
+          <param name="use_gauss" value="true"/>
+          <section name="PeakPickerHiRes">
+            <param name="signal_to_noise" value="0.0"/>
+            <param name="spacing_difference_gap" value="4.0"/>
+            <param name="spacing_difference" value="1.5"/>
+            <param name="missing" value="1"/>
+            <param name="report_FWHM" value="false"/>
+            <param name="report_FWHM_unit" value="relative"/>
+            <param name="allow_missing_flank" value="false"/>
+            <section name="SignalToNoise">
+              <param name="max_intensity" value="-1"/>
+              <param name="auto_max_stdev_factor" value="3.0"/>
+              <param name="auto_max_percentile" value="95"/>
+              <param name="auto_mode" value="0"/>
+              <param name="win_len" value="200.0"/>
+              <param name="bin_count" value="30"/>
+              <param name="min_required_elements" value="10"/>
+              <param name="noise_for_empty_window" value="1e+20"/>
+              <param name="write_log_messages" value="true"/>
+            </section>
+          </section>
+        </section>
+      </section>
+      <section name="Library">
+        <param name="retentionTimeInterpretation" value="iRT"/>
+        <param name="override_group_label_check" value="false"/>
+        <param name="force_invalid_mods" value="false"/>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+  </tests>
+  <help><![CDATA[Filter transition-list precursors by quick raw-data evidence.
+
+
+For more information, visit http://www.openms.de/doxygen/release/3.6.0/html/TOPP_TransitionListEvidenceFilter.html]]></help>
+  <expand macro="references"/>
+</tool>

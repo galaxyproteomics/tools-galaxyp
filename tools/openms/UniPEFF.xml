@@ -1,0 +1,102 @@
+<!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
+<!--Proposed Tool Section: [File Converter]-->
+<tool id="UniPEFF" name="UniPEFF" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+  <description>Convert a UniProtKB XML protein database to PEFF 1.0 with rich annotations</description>
+  <macros>
+    <token name="@EXECUTABLE@">UniPEFF</token>
+    <import>macros.xml</import>
+  </macros>
+  <expand macro="requirements"/>
+  <expand macro="stdio"/>
+  <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
+@EXT_FOO@
+#import re
+
+## Preprocessing
+mkdir in &&
+cp '$in' 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)' &&
+mkdir out &&
+#if $ptmlist:
+  mkdir ptmlist &&
+  cp '$ptmlist' 'ptmlist/${re.sub("[^\w\-_]", "_", $ptmlist.element_identifier)}.$gxy2omsext($ptmlist.ext)' &&
+#end if
+#if $psimod_obo:
+  mkdir psimod_obo &&
+  cp '$psimod_obo' 'psimod_obo/${re.sub("[^\w\-_]", "_", $psimod_obo.element_identifier)}.$gxy2omsext($psimod_obo.ext)' &&
+#end if
+#if $unimod_obo:
+  mkdir unimod_obo &&
+  cp '$unimod_obo' 'unimod_obo/${re.sub("[^\w\-_]", "_", $unimod_obo.element_identifier)}.$gxy2omsext($unimod_obo.ext)' &&
+#end if
+
+## Main program call
+
+set -o pipefail &&
+@EXECUTABLE@ -write_ctd ./ &&
+python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
+@EXECUTABLE@ -ini @EXECUTABLE@.ctd
+-in
+'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
+-out
+'out/output.${gxy2omsext("peff")}'
+#if $ptmlist:
+  -ptmlist
+  'ptmlist/${re.sub("[^\w\-_]", "_", $ptmlist.element_identifier)}.$gxy2omsext($ptmlist.ext)'
+#end if
+#if $psimod_obo:
+  -psimod_obo
+  'psimod_obo/${re.sub("[^\w\-_]", "_", $psimod_obo.element_identifier)}.$gxy2omsext($psimod_obo.ext)'
+#end if
+#if $unimod_obo:
+  -unimod_obo
+  'unimod_obo/${re.sub("[^\w\-_]", "_", $unimod_obo.element_identifier)}.$gxy2omsext($unimod_obo.ext)'
+#end if
+
+## Postprocessing
+&& mv 'out/output.${gxy2omsext("peff")}' '$out'
+#if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
+  && mv '@EXECUTABLE@.ctd' '$ctd_out'
+#end if]]></command>
+  <configfiles>
+    <inputs name="args_json" data_style="paths"/>
+    <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
+  </configfiles>
+  <inputs>
+    <param argument="-in" type="data" format="xml" label="Input UniProtKB XML file (plain or gzip; gzip is auto-detected)" help=" select xml data sets(s)"/>
+    <param argument="-ptmlist" type="data" format="txt" optional="true" label="UniProt ptmlist.txt; defaults to the bundled snapshot" help=" select txt data sets(s)"/>
+    <param argument="-psimod_obo" type="data" format="obo" optional="true" label="PSI-MOD.obo for canonical modification names; defaults to the bundled OpenMS PSI-MOD.obo" help=" select obo data sets(s)"/>
+    <param argument="-unimod_obo" type="data" format="obo" optional="true" label="Optional unimod.obo for canonical Unimod names; if absent, names fall back to the UniProt ptmlist IDs" help=" select obo data sets(s)"/>
+    <param argument="-prefix" type="text" optional="true" value="" label="Force a single PEFF prefix for every entry" help="(e.g. 'sp'); if empty, sp/tr is derived from the UniProt dataset">
+      <expand macro="list_string_san" name="prefix"/>
+    </param>
+    <param argument="-dbversion" type="text" value="unknown" label="Value for the mandatory '# DbVersion=' PEFF header line" help="">
+      <expand macro="list_string_san" name="dbversion"/>
+    </param>
+    <param argument="-annotation_identifiers" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Emit PEFF Option B: assign a global sequential id: prefix to every annotation tuple, referenced by \DisulfideBond" help="By default only the \DisulfideBond tuples and the half-cystines they reference get ids: of K bonds, bond k (counting from 0) labels its half-cystines 2k and 2k+1 and is itself labeled 2K+k"/>
+    <param argument="-omit_molecular_processing" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Skip the \Processed annotations (initiator methionine, signal/transit peptide, propeptide, chain)" help=""/>
+    <param argument="-omit_amino_acid_modifications" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Skip \ModResPsi / \ModResUnimod / \ModRes and \DisulfideBond; ptmlist is not read" help=""/>
+    <param argument="-omit_sequence_variations" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Skip \VariantSimple and \VariantComplex annotations" help=""/>
+    <param argument="-omit_isoforms" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Skip the additional PEFF entries for UniProt isoforms (alternative products whose sequences are reconstructed from splice-variant features)" help=""/>
+    <expand macro="adv_opts_macro">
+      <param argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
+      <param argument="-test" type="hidden" value="False" label="Enables the test mode (needed for internal use only)" help="" optional="true">
+        <expand macro="list_string_san" name="test"/>
+      </param>
+    </expand>
+    <param name="OPTIONAL_OUTPUTS" type="select" optional="true" multiple="true" label="Optional outputs">
+      <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+    </param>
+  </inputs>
+  <outputs>
+    <data name="out" label="${tool.name} on ${on_string}: out" format="peff"/>
+    <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
+      <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+  </outputs>
+  <tests/>
+  <help><![CDATA[Convert a UniProtKB XML protein database to PEFF 1.0 with rich annotations.
+
+
+For more information, visit http://www.openms.de/doxygen/release/3.6.0/html/TOPP_UniPEFF.html]]></help>
+  <expand macro="references"/>
+</tool>

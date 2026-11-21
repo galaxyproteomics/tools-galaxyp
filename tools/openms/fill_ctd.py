@@ -7,7 +7,10 @@ import subprocess
 import sys
 from functools import reduce  # forward compatibility for Python 3
 
+import xml.etree.ElementTree as ET
+
 from CTDopts.CTDopts import (
+    CTDTYPE_TO_TYPE,
     _Choices,
     _InFile,
     _Null,
@@ -122,7 +125,53 @@ def fix_underscores(args):
                 fix_underscores(args[i])
 
 
-input_ctd = sys.argv[1]
+# CTD types that CTDopts cannot parse but that are equivalent to one it can.
+# "output-dir" is what OpenMS 3.6 writes for a parameter that names a directory;
+# for CTDopts it is a string exactly like "output-prefix" (a prefix that ends with
+# a separator, see aux/retype_output_dirs.py).  Retyping keeps the parameter
+# instead of dropping it, so the wrapper can pass -out_txt:directory.
+RETYPE = {"output-dir": "output-prefix"}
+
+
+def normalise_ctd_types(path):
+    """Retype, and only as a last resort drop, CTD parameters of unknown type.
+
+    OpenMS 3.6 writes parameters of type "output-dir" and CTDopts aborts with
+
+        KeyError: 'output-dir'
+
+    for the whole model, i.e. for the whole tool.  The CTDs used for the
+    generation get the same treatment (aux/retype_output_dirs.py), but the
+    wrapper asks the binary for a *fresh* CTD at run time, so the normalisation
+    has to happen here as well.  Known types are taken from CTDopts itself, so a
+    future OpenMS parameter type is dropped without touching this script.
+    """
+    tree = ET.parse(path)
+    changed = []
+    for parent in tree.iter():
+        for child in list(parent):
+            if child.tag not in ("ITEM", "ITEMLIST"):
+                continue
+            child_type = child.get("type")
+            if child_type in CTDTYPE_TO_TYPE:
+                continue
+            if child_type in RETYPE:
+                child.set("type", RETYPE[child_type])
+                changed.append("{} (type {} -> {})".format(child.get("name"), child_type, RETYPE[child_type]))
+            else:
+                changed.append("{} (type {} dropped)".format(child.get("name"), child_type))
+                parent.remove(child)
+    if not changed:
+        return path
+    sys.stderr.write("fill_ctd.py: normalised CTD parameters: %s\n" % ", ".join(changed))
+    normalised = path + ".normalised.ctd"
+    tree.write(normalised, encoding="utf-8", xml_declaration=True)
+    return normalised
+
+
+# the CTD to rewrite at the end (the wrapper hands it to -ini)
+output_ctd = sys.argv[1]
+input_ctd = normalise_ctd_types(output_ctd)
 
 # load user specified parameters from json
 with open(sys.argv[2]) as fh:
@@ -194,4 +243,4 @@ for p in model.get_parameters():
         if v in [[], ""]:
             setInDict(args, p.get_lineage(name_only=True), p.default)
 
-model.write_ctd(input_ctd, arg_dict=args)
+model.write_ctd(output_ctd, arg_dict=args)
