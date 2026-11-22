@@ -21,7 +21,14 @@ export tmp="${tmp:-/tmp/openms-stuff/}"
 # here, never into the tool directory (see test-data.sh)
 export ARTIFACTS="${ARTIFACTS:-$tmp/generated}"
 mkdir -p "$ARTIFACTS"
-# export CTDCONVERTER="$tmp/CTDConverter"
+# CTDConverter is a separate project: the checkout normally lives next to the
+# repository root (so it survives a scratch/cache wipe), otherwise it is cloned
+# into $tmp on first use. Override with CTDCONVERTER=/somewhere/CTDConverter.
+if [ -z "$CTDCONVERTER" ]; then
+	_repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
+	export CTDCONVERTER="$_repo_root/CTDConverter"
+	[ -d "$CTDCONVERTER" ] || export CTDCONVERTER="$tmp/CTDConverter"
+fi
 ###############################################################################
 ## reset old data
 ###############################################################################

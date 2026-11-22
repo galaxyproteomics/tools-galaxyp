@@ -33,7 +33,11 @@ export OPENMSENV="${OPENMSENV:-OpenMS$VERSION-env}"
 type conda >/dev/null 2>&1 || source "$(conda info --base)/etc/profile.d/conda.sh"
 
 if [ -z "$CTDCONVERTER" ]; then
-    export CTDCONVERTER="$tmp/CTDConverter"
+    # same rule as aux/generate.sh: prefer the checkout next to the repository
+    # root, fall back to the scratch directory
+    CTDCONVERTER=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/CTDConverter
+    [ -d "$CTDCONVERTER" ] || CTDCONVERTER="$tmp/CTDConverter"
+    export CTDCONVERTER
 fi
 
 if [[ -z "$1" ]]; then

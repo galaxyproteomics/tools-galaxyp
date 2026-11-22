@@ -84,8 +84,10 @@ semantic change, but it makes regeneration non-reproducible), which is why
 sees it (D28 in `UPGRADE_LEDGER.md`). Do not "fix" a diff that only moves
 `<option>` lines by refreshing the wrappers.
 
-`aux/generate.sh` clones the converter branch `topic/fix-selects2` from
-`bernt-matthias/CTDConverter` if `$CTDCONVERTER` is not already a checkout, so a
+`aux/generate.sh` uses the checkout `$CTDCONVERTER` — by default
+`CTDConverter` next to the repository root (`tools-galaxyp/CTDConverter`), else
+`$tmp/CTDConverter` — and clones the branch `topic/fix-selects2` from
+`bernt-matthias/CTDConverter` only when neither exists, so a
 regeneration is only reproducible against a branch that carries the fixes the
 wrappers rely on.  The branch needs at least
 

@@ -738,8 +738,11 @@ Summary:
   name from them.
 * Mechanism: `aux/parquet_bundles.py`, a post-processor over the generated
   XML inside `aux/generate.sh`, **not** a third commit on
-  `CTDConverter@topic/fix-selects2` (two of its commits are already unpushed,
-  so a third would make regeneration depend on push access).
+  `CTDConverter@topic/fix-selects2` (two of its commits are unpushed, so a
+  third would make regeneration depend on push access). The checkout now lives
+  at `tools-galaxyp/CTDConverter` (next to the repository root, so it survives
+  a scratch/cache wipe); `aux/generate.sh` falls back to `$tmp/CTDConverter`
+  and only clones when neither exists.
 * Producers: the output params get an *additional optional* output
   `out_<kind>` behind the existing `OPTIONAL_OUTPUTS` multi-select, plus
   `mkdir -p`/`#if` in the command line. Nothing existing moves - not one of
