@@ -850,17 +850,34 @@ Summary:
 
 ## Pre-existing gaps (carried over, not caused by this upgrade)
 
-* 108 empty `manutest_*` stubs; `.lint_skip: TestsMissing` is global. Narrowing
-  this is deliberately out of scope (deferred item 4).
-* `aux/hardcoded_params.json` still contains host-specific paths
-  (`maracluster_executable` → `/home/berntm/...`), `mascot_directory: TODO`, and
-  entries for tools removed long ago (`xtandem_executable`, `fido_*`,
-  `algorithm:tryptic_only` → `CompNovo`, `xml_out` → `XTandemAdapter`,
-  `separator` → `IDMassAccuracy`). Round 2 should prune what `ctd_diff.py` flags
-  as `STALE ENTRY`.
-* `get_tests.py` `SKIP_LIST` still references removed tools
-  (`TOPP_SiriusAdapter_*`), and `test-data.sh` carries commented `TOFCalibration`
-  symlinks plus a `SiriusAdapter` sed hack.
+* `.lint_skip: TestsMissing` is global. The empty `manutest_*` stubs that make
+  the lint pass are *not* in the repo: `aux/macros_test.xml` holds the 42
+  hand-written blocks (48 tests in 36 wrappers), and CTDConverter's
+  `check_test_macros()` appends an empty `<xml name="manutest_<Tool>"/>` for
+  every tool that has none to the *generated* copy of the macros file
+  (`$ARTIFACTS/macros_test.xml`, `converter.py:322`), only so that the later
+  `add_macros()` does not fail iterating `None`. 117 such stubs accompany the
+  42 real blocks in a 3.6 run. Narrowing the lint is therefore a matter of
+  writing real tests for the 19 test-less wrappers, not of pruning stubs
+  (deferred item 4).
+* `aux/hardcoded_params.json` names no parameter that 3.6 does not define:
+  the 12 entries of tools/parameters removed upstream (`comet_version`,
+  `crux_executable`, `fido_executable`, `fidocp_executable`,
+  `myrimatch_executable`, `sirius_executable`, `xtandem_executable`,
+  `mascot_directory`, `temp_data_directory`,
+  `algorithm:Preprocessing:tmp_dir`, `sirius:cores`,
+  `out_workspace_directory`) were pruned. The wrappers regenerate byte for
+  byte, i.e. all 12 were inert. The three entries that only MaRaClusterAdapter
+  uses (`maracluster_executable`, `consensus_out`, `output_directory`) are the
+  only ones left for a blacklisted tool without a wrapper (D3: not in conda).
+* `get_tests.py` `SKIP_LIST` no longer mentions `TOPP_SiriusAdapter_*`, and
+  `test-data.sh` no longer carries the commented `TOFCalibration` symlinks,
+  the `TOFCalibration` / `SiriusAdapter` seds (neither pattern matches anything
+  in the 3.6 `src/tests/topp/CMakeLists.txt`, which also has no
+  `SiriusAdapter` test at all) or the `*_BINARY` exports that 3.6 never
+  expands (`CRUX_BINARY`, `FIDO_BINARY`, `FIDOCHOOSEPARAMS_BINARY`,
+  `MYRIMATCH_BINARY`, `SIRIUS_BINARY`, `XTANDEM_BINARY`,
+  `THERMORAWFILEPARSER_BINARY`).
 
 ## Round 1.5 (3.6 regeneration) — closed
 

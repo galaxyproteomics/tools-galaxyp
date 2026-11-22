@@ -261,9 +261,6 @@ fi
 echo "Annotate the manually curated tests"
 python3 aux/remote_test_data.py aux/macros_test.xml -o "$ARTIFACTS/macros_test.xml" || exit 1
 
-#TODO remove? ln -fs TOFCalibration_ref_masses test-data/TOFCalibration_ref_masses.txt
-#TODO remove? ln -fs TOFCalibration_const test-data/TOFCalibration_const.csv
-
 # if [ ! -d test-data/pepnovo_models/ ]; then
 #     mkdir -p /tmp/pepnovo
 #     wget -nc http://proteomics.ucsd.edu/Software/PepNovo/PepNovo.20120423.zip
@@ -364,7 +361,6 @@ function prepare_test_data {
     grep -v "^#\|^$" aux/tools_blacklist.txt > $BL
 
     OLD_OSW_PARAM=$(cat $OPENMSGIT/src/tests/topp/CMakeLists.txt |sed 's/#.*$//'| sed 's/^\s*//; s/\s*$//' |awk '{printf("%s@NEWLINE@", $0)}' |  sed 's/)@NEWLINE@/)\n/g' | sed 's/@NEWLINE@/ /g' | grep OLD_OSW_PARAM | head -n 1 | sed 's/^[^"]\+//; s/)$//; s/"//g')
-    # TODO SiriusAdapter depends on online service which may timeout .. so keep disabled https://github.com/OpenMS/OpenMS/pull/5010
     cat $OPENMSGIT/src/tests/topp/CMakeLists.txt  $OPENMSGIT/src/tests/topp/THIRDPARTY/third_party_tests.cmake |
         sed "s/\${OLD_OSW_PARAM}/$OLD_OSW_PARAM/" |
         grep -v "\.ini\.json" |
@@ -395,8 +391,6 @@ function prepare_test_data {
         # negative tests which check that a missing parameter is rejected
         grep -v 'requires_'|
         sed 's@${TMP_RIP_PATH}@./@g'|
-        sed 's@TOFCalibration_ref_masses @TOFCalibration_ref_masses.txt @g; s@TOFCalibration_const @TOFCalibration_const.csv @'| 
-	sed 's/\("TOPP_SiriusAdapter_4".*\)-sirius:database all\(.*\)/\1-sirius:database pubchem\2/' |
     while read line
     do
         test_id=$(echo "$line" | sed 's/add_test(//; s/"//g;  s/)[^)]*$//; s/\${TOPP_BIN_PATH}\///g;s/\${DATA_DIR_TOPP}\///g; s#THIRDPARTY/##g' | cut -d" " -f1)
@@ -437,9 +431,6 @@ echo "Create test shell script"
 prep="$ARTIFACTS/prepare_test_data.sh"
 echo -n "" > "$prep"
 echo 'export COMET_BINARY="comet"' >> "$prep"
-echo 'export CRUX_BINARY="crux"' >> "$prep"
-echo 'export FIDOCHOOSEPARAMS_BINARY="FidoChooseParameters"' >> "$prep"
-echo 'export FIDO_BINARY="Fido"' >> "$prep"
 echo 'export LUCIPHOR_BINARY="$(dirname $(realpath $(which luciphor2)))/luciphor2.jar"' >> "$prep"
 
 echo 'export MARACLUSTER_BINARY="'"$OPENMSGIT"'/THIRDPARTY/Linux/64bit/MaRaCluster/maracluster"'>> "$prep"
@@ -447,13 +438,9 @@ echo 'export MARACLUSTER_BINARY="'"$OPENMSGIT"'/THIRDPARTY/Linux/64bit/MaRaClust
 # loudly if it is missing)
 echo 'export MSFRAGGER_BINARY="MSFragger.jar"'>> "$prep"
 echo 'export MSGFPLUS_BINARY="$(msgf_plus -get_jar_path)"' >> "$prep"
-echo 'export MYRIMATCH_BINARY="myrimatch"'>> "$prep"
 echo 'export NOVOR_BINARY="novor.jar"' >> "$prep"
 echo 'export PERCOLATOR_BINARY="percolator"'>> "$prep"
-echo 'export SIRIUS_BINARY="$(which sirius)"' >> "$prep"
 echo 'export SPECTRAST_BINARY="'"$OPENMSGIT"'/THIRDPARTY/Linux/64bit/SpectraST/spectrast"' >> "$prep"
-echo 'export XTANDEM_BINARY="xtandem"' >> "$prep"
-echo 'export THERMORAWFILEPARSER_BINARY="ThermoRawFileParser.exe"' >> "$prep"
 echo 'export SAGE_BINARY=sage' >> "$prep"
 
 prepare_test_data >> "$prep" #tmp_test_data.sh
