@@ -850,16 +850,20 @@ Summary:
 
 ## Pre-existing gaps (carried over, not caused by this upgrade)
 
-* `.lint_skip: TestsMissing` is global. The empty `manutest_*` stubs that make
-  the lint pass are *not* in the repo: `aux/macros_test.xml` holds the 42
-  hand-written blocks (48 tests in 36 wrappers), and CTDConverter's
-  `check_test_macros()` appends an empty `<xml name="manutest_<Tool>"/>` for
-  every tool that has none to the *generated* copy of the macros file
-  (`$ARTIFACTS/macros_test.xml`, `converter.py:322`), only so that the later
-  `add_macros()` does not fail iterating `None`. 117 such stubs accompany the
-  42 real blocks in a 3.6 run. Narrowing the lint is therefore a matter of
-  writing real tests for the 19 test-less wrappers, not of pruning stubs
-  (deferred item 4).
+* `.lint_skip: TestsMissing` is global because 19 wrappers have no `<test>` at
+  all (upstream 3.6 defines none for them). `aux/macros_test.xml` is hand
+  maintained and holds 41 `manutest_<Tool>` blocks — 36 with 48 tests, 5 that are
+  only a `<!--TODO ...-->` note (MRMPairFinder, QCEmbedder, QCExporter,
+  QCExtractor, QCImporter) — plus 111 self-closing
+  `<xml name="manutest_<Tool>"/>` stubs, one per wrapper without a manual test.
+  The stubs are *not required*: CTDConverter's `check_test_macros()` appends one
+  for every CTD tool that has none to the generated copy it converts
+  (`$ARTIFACTS/macros_test.xml`, `converter.py:322`), so it only matters that
+  `add_macros()` never iterates `None`. Round 8 cleaned seven of them plus one
+  block (IDMassAccuracy, MascotAdapter, OpenPepXLLF, SpecLibCreator,
+  SpecLibSearcher, TriqlerConverter, XTandemAdapter) that belonged to tools
+  OpenMS removed; `convert.err` now reports neither `missing` nor `Unnecessary
+  macros`.
 * `aux/hardcoded_params.json` names no parameter that 3.6 does not define:
   the 12 entries of tools/parameters removed upstream (`comet_version`,
   `crux_executable`, `fido_executable`, `fidocp_executable`,
