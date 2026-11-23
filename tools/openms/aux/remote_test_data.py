@@ -45,6 +45,7 @@ import argparse
 import os
 import re
 import sys
+import xml.etree.ElementTree as ET
 
 # fixtures whose content is text: a line count is a meaningful assertion
 TEXT_FTYPES = {
@@ -59,7 +60,8 @@ XML_FTYPES = {
 }
 # attributes that describe a comparison against a reference file: pointless
 # (and confusing) once the reference is replaced by an assertion
-DROP_ON_ASSERT = {"value", "compare", "delta", "delta_frac", "lines_diff", "sort"}
+DROP_ON_ASSERT = {"value", "file", "compare", "delta", "delta_frac", "lines_diff",
+                  "sort"}
 
 FILE_SUFFIX = re.compile(r"\.[A-Za-z][A-Za-z0-9]{1,15}$")
 ELEMENT = re.compile(r"<(param|output)\b([^>]*?)/>")
@@ -86,19 +88,60 @@ def read_tsv(path):
     return rows
 
 
-def fixture_key(value):
-    """The manifest key of a test reference, or None.
+def _key(value):
+    """The manifest key of a single file reference, or None."""
+    if not value:
+        return None
+    name = os.path.basename(value)
+    return name if FILE_SUFFIX.search(name) else None
+
+
+def fixture_keys(value):
+    """The manifest keys of a test reference, or None: one or several.
 
     A `<param value="CHEMISTRY/XLMOD.obo">` is a single file that happens to
     carry the directory test-data.sh copied it to; the manifest is keyed by
     basename (that is what the wrapper has always referenced and what a
-    download can be named after).  A comma separated value is several files
-    for one flag - those stay local, one URL cannot stand for them.
+    download can be named after).
+
+    A comma separated value is several files for one `multiple="true"` data
+    parameter, and there Galaxy takes one URL per file in `location`
+    (`tool_util/verify/parse.py`, `_process_raw_inputs`, Galaxy >= 24.2).
     """
-    if not value or "," in value or "\n" in value or "\t" in value:
+    if not value or "\n" in value or "\t" in value:
         return None
-    name = os.path.basename(value)
-    return name if FILE_SUFFIX.search(name) else None
+    keys = []
+    for part in value.split(","):
+        key = _key(part.strip())
+        if key is None:
+            return None
+        keys.append(key)
+    return keys
+
+
+def fixture_key(value):
+    """The manifest key of a single-file reference, or None."""
+    keys = fixture_keys(value)
+    return keys[0] if keys and len(keys) == 1 else None
+
+
+def multiple_param_names(xml):
+    """The names of the `multiple="true"` data parameters of one wrapper."""
+    names = set()
+    try:
+        root = ET.fromstring(xml)
+    except ET.ParseError:
+        return names
+    for param in root.iter("param"):
+        if param.get("type") not in ("data", "data_collection"):
+            continue
+        if param.get("multiple", "").lower() not in ("true", "1"):
+            continue
+        for attribute in ("name", "argument"):
+            name = param.get(attribute)
+            if name:
+                names.add(name.lstrip("-"))
+    return names
 
 
 def assertions(name, expectation):
@@ -149,26 +192,33 @@ def with_delta(tag, attrs_text, adict, fixtures, key):
     return '%s delta="%d"' % (attrs_text, delta)
 
 
-def rewrite(match, fixtures, expectations):
+def rewrite(match, fixtures, expectations, multiple=frozenset()):
     """A self-closing <param>/<output .../> element."""
-    return _rewrite(match.group(1), match.group(2), match.group(0), fixtures, expectations)
+    return _rewrite(match.group(1), match.group(2), match.group(0), fixtures,
+                    expectations, multiple)
 
 
-def _rewrite(tag, attrs_text, original, fixtures, expectations, children=None):
+def _rewrite(tag, attrs_text, original, fixtures, expectations, multiple,
+             children=None):
     """Annotate one element; `children` is set for <output ...>...</output>."""
     attrs = ATTR.findall(attrs_text)
     adict = dict(attrs)
-    value = adict.get("value", "")
-    key = fixture_key(value)
-    if key is None:
+    # Galaxy reads the reference of an <output> from `file=` as well as from
+    # `value=` (`tool_util/verify/parse.py`, `__parse_test_attributes`)
+    value = adict.get("value") or adict.get("file", "")
+    keys = fixture_keys(value)
+    if keys is None:
         return original
+    key = keys[0]
     closing = "" if children is None else ">%s</%s>" % (children, tag)
+    if len(keys) > 1:
+        return _urls_for_all(attrs_text, adict, original, keys, fixtures, multiple)
     # an expectation row wins over the manifest for an OUTPUT: the row exists
     # because the upstream file is not what the tool produces (AccurateMassSearch_1
     # is compared upstream with -whitelist "", i.e. not at all, and the committed
     # copy is stale).  Asserting on the output is the honest check.
     if tag == "output" and expectations.get(value, expectations.get(key)) is not None:
-        return _assert_on(tag, attrs, adict, value, key, expectations, children)
+        return _assert_on(tag, attrs, adict, original, expectations, children)
     if key in fixtures:
         if "location" in adict:
             return original
@@ -180,8 +230,35 @@ def _rewrite(tag, attrs_text, original, fixtures, expectations, children=None):
     return original
 
 
-def _assert_on(tag, attrs, adict, value, key, expectations, children):
+def _urls_for_all(attrs_text, adict, original, keys, fixtures, multiple):
+    """`<param name="in" value="a.xml,b.xml"/>` for a multiple data parameter.
+
+    One flag, several files: Galaxy hands the uploaded datasets over one by one,
+    which is what the multiple parameter is for.  A single valued parameter
+    would receive a list of files where OpenMS expects one, so those references
+    (OpenSwathWorkflow:in) stay local - `get_tests.py` skips such a test
+    entirely (`check_multi_inputs`).
+
+    A test which hands the *same* file to a parameter twice cannot be moved
+    off the local fixtures: `get_tests.py` renames the second copy
+    (`X_0.mzML`, `X_1.mzML`) because Galaxy cannot hand one dataset over twice,
+    and two URLs naming the same upstream file would give Galaxy two datasets
+    with the same name - OpenMS then writes one output per input name and the
+    second one is lost (FileMerger's `-rt_concat:trafo_out`).
+    """
+    name = adict.get("name", "").rsplit("|", 1)[-1]
+    if name not in multiple or "location" in adict:
+        return original
+    urls = [fixtures.get(key, [None])[0] for key in keys]
+    if not all(urls) or len(set(urls)) != len(urls):
+        return original
+    return '<param%s location="%s"/>' % (attrs_text, ",".join(urls))
+
+
+def _assert_on(tag, attrs, adict, original, expectations, children):
     """Replace the comparison of an <output> with an assertion on its content."""
+    value = adict.get("value") or adict.get("file", "")
+    key = _key(value)
     expectation = expectations.get(value, expectations.get(key))
     if children is None:
         body = assertions(value, expectation)
@@ -198,15 +275,17 @@ def _assert_on(tag, attrs, adict, value, key, expectations, children):
 
 
 def annotate(xml, fixtures, expectations, stats):
+    multiple = multiple_param_names(xml)
+
     def repl(match):
-        new = rewrite(match, fixtures, expectations)
+        new = rewrite(match, fixtures, expectations, multiple)
         if new != match.group(0):
             stats["location" if 'location="' in new else "assert"] += 1
         return new
 
     def repl_children(match):
         new = _rewrite(match.group(1), match.group(2), match.group(0), fixtures,
-                       expectations, children=match.group(3))
+                       expectations, multiple, children=match.group(3))
         if new != match.group(0):
             stats["location" if 'location="' in new else "assert"] += 1
         return new

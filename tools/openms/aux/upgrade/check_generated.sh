@@ -197,6 +197,13 @@ if ! python3 aux/parquet_bundles.py --check; then
     fail "a parquet bundle output is missing (aux/parquet_bundles.py --check)"
 fi
 
+# 11. an output which mirrors its input must name it unambiguously: CTDConverter
+#    writes the bare name, which fails `planemo lint --fail_level warn` when the
+#    input sits in a conditional (ConsensusID) and stops the CI lint job
+if ! python3 aux/qualify_format_source.py --check ./*.xml; then
+    fail "an output reference is not qualified (aux/qualify_format_source.py --check)"
+fi
+
 if [ "$failures" -ne 0 ]; then
     printf '\n%d check(s) failed\n' "$failures" >&2
     exit 1

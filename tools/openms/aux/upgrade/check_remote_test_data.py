@@ -18,14 +18,16 @@ Broken states this catches:
   * an `<output>` asserting on a reference which no longer has a row in the
     expectation table (stale assertion, silently weaker than intended)
 
-Inputs are reported but not failed: a multi-file value (`value="a,b"`) cannot
-carry a single location - such a test keeps depending on `test-data.sh` (which
-CI runs, see .github/workflows/pr.yaml) - and a hand-added input (random.fa) is
-tracked in this repository anyway.
+A multi-file value (`value="a,b"` for a `multiple="true"` data parameter) gets
+one URL per file in `location`; Galaxy splits it (`tool_util/verify/parse.py`,
+`_process_raw_inputs`, since release 24.2).  A hand-added input (random.fa) is
+tracked in this repository and stays local by design.
+
+No step of the CI populates `test-data/` any more, so a test that still needs a
+local fixture fails there - which is why the local references are counted.
 """
 import glob
 import os
-import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -35,7 +37,7 @@ AUX = os.path.dirname(HERE)
 TOOLS = os.path.dirname(AUX)
 
 sys.path.insert(0, AUX)
-from remote_test_data import fixture_key  # noqa: E402  (the annotator's rule)
+from remote_test_data import fixture_keys  # noqa: E402  (the annotator's rule)
 
 
 def read_table(path):
@@ -48,11 +50,21 @@ def read_table(path):
     return rows
 
 
-def is_multi_file(value):
-    """`value="a.dta,b.dta"`: several files for one flag, no single location."""
-    if not value or "," not in value:
-        return False
-    return any(fixture_key(part.strip()) for part in value.split(","))
+def reference(element):
+    """The file a test element points at; Galaxy takes `value` or `file`."""
+    return element.get("value") or element.get("file") or ""
+
+
+def keys(element, tag):
+    """The manifest keys of one reference, or None if it is not a fixture.
+
+    An `<output>` stands for exactly one file, so a comma separated value there
+    is not remote-able even though a `multiple="true"` input is.
+    """
+    found = fixture_keys(reference(element))
+    if not found or (tag == "output" and len(found) > 1):
+        return None
+    return found
 
 
 def tracked():
@@ -78,17 +90,20 @@ def main():
         root = ET.parse(path).getroot()
         for test in root.iter("test"):
             for output in test.iter("output"):
-                value = output.get("value")
+                value = reference(output)
                 assert_contents = output.find("assert_contents") is not None
                 if not value:
                     if assert_contents:
                         counts["asserted"] += 1
                     continue
-                key = fixture_key(value)
-                if key is None:
-                    if is_multi_file(value):
+                found = keys(output, "output")
+                if found is None:
+                    # several files for one output: one file per <output>, so
+                    # those cannot be fetched by URL
+                    if any(k in fixtures for k in fixture_keys(value) or []):
                         counts["multi"] += 1
                     continue
+                key = found[0]
                 if key in fixtures:
                     if not output.get("location"):
                         problems.append("%s: %s has an upstream file but no location="
@@ -105,24 +120,26 @@ def main():
                     problems.append("%s: %s has no upstream file, no expectation and "
                                     "is not committed" % (name, value))
             for param in test.iter("param"):
-                value = param.get("value")
-                key = fixture_key(value or "")
-                if key is None:
-                    if is_multi_file(value):
-                        counts["multi"] += 1
+                value = reference(param)
+                found = keys(param, "param")
+                if found is None:
                     continue
+                key = found[0]
                 if param.get("location"):
                     counts["remote"] += 1
-                elif key in fixtures:
+                elif value in in_git or key in in_git:
+                    counts["committed"] += 1
+                elif not all(k in fixtures for k in found):
+                    # every file of the list has to be downloadable, or the
+                    # reference stays local as a whole (a file used twice has
+                    # no second URL, see remote_test_data.py:_urls_for_all)
+                    counts["multi" if len(found) > 1 else "local"] += 1
+                else:
                     # the annotator adds location= to every reference it can
                     # resolve - not having one means the wrapper was generated
                     # against a stale manifest or lost it in a merge
                     problems.append("%s: %s has an upstream file but no location="
                                     % (name, value))
-                elif value in in_git or key in in_git:
-                    counts["committed"] += 1
-                else:
-                    counts["local"] += 1
     for problem in problems:
         print("FAIL: " + problem, file=sys.stderr)
     print("remote test data: %(remote)d reference(s) by URL, %(asserted)d assertion(s), "

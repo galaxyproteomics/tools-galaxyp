@@ -91,6 +91,19 @@ conda deactivate
 
 sed -i -e 's@http://www.openms.de/doxygen/nightly/html/@https://openms.de/doxygen/release/'$VERSION'.0/html/@' ./*xml
 
+# CTDConverter names the input of a mirroring output by its bare name, which is
+# ambiguous when the input sits in a conditional (ConsensusID: `in_cond|in`)
+# and fails `planemo lint --fail_level warn`.
+python3 aux/qualify_format_source.py ./*xml || { >&2 echo 'qualifying the output references failed'; exit 1; }
+
+# get_tests.py annotates the test bodies it writes, but it can not see which
+# input is a list (the wrapper does not exist yet), so an input parameter that
+# takes several files is left without a `location=`.  Galaxy splits a
+# comma-separated `location` for `multiple="true"` since 24.2, so the whole
+# wrapper is annotated again here: multi-file references get one URL per file,
+# everything already annotated stays as it is.
+python3 aux/remote_test_data.py ./*xml || { >&2 echo 'annotating the test inputs failed'; exit 1; }
+
 # Parquet-directory outputs cannot be a single <data>; CTDConverter knows nothing
 # about the bundle layout, so the collections are added afterwards (D30).
 python3 aux/parquet_bundles.py || { >&2 echo 'adding the parquet bundle outputs failed'; exit 1; }
