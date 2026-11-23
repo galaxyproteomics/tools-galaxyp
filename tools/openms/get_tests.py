@@ -796,6 +796,10 @@ def process_test_line(
     # "Ill formated test line" -> sys.exit() -> the whole tool lost its tests
     re_test_id = re.compile(r"add_test\(\"([^\"]+)\"\s+([^ ]+)\s*(.*)")
     re_id_out_test = re.compile(r"_out_?[0-9]?")
+    # hoisted out of the f-string below: a backslash inside an f-string
+    # expression is a SyntaxError before 3.12 (PEP 701) and the CI lint job
+    # runs Python 3.11, where flake8 then reports E999 for this whole file
+    tmp_value = re.compile(r'value="([^"]*tmp_path/[^"]*)"')
 
     # TODO auto extract from  set(OLD_OSW_PARAM ... lin
     line = line.replace(
@@ -1008,9 +1012,12 @@ def process_test_line(
             )
             return
         if "tmp_path/" in body:
+            # a backslash inside an f-string expression is a SyntaxError before
+            # Python 3.12 (PEP 701), and the CI lint job runs 3.11
+            tmp_values = tmp_value.findall(body)
             sys.stderr.write(
                 f"    skip {test_id} (output is a build temporary: "
-                f"{', '.join(re.findall(r'value=\"([^\"]*tmp_path/[^\"]*)\"', body))})\n"
+                f"{', '.join(tmp_values)})\n"
             )
             return
         test.append(body)
