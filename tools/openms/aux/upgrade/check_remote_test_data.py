@@ -37,7 +37,7 @@ AUX = os.path.dirname(HERE)
 TOOLS = os.path.dirname(AUX)
 
 sys.path.insert(0, AUX)
-from remote_test_data import fixture_keys  # noqa: E402  (the annotator's rule)
+from remote_test_data import _fixture_url, fixture_keys  # noqa: E402
 
 
 def read_table(path):
@@ -69,82 +69,65 @@ def keys(element, tag):
 
 def tracked():
     """Files of test-data/ that are part of this repository."""
-    try:
-        out = subprocess.run(["git", "ls-files", "test-data"], cwd=TOOLS,
-                             capture_output=True, text=True, check=True).stdout
-    except (OSError, subprocess.CalledProcessError):
-        return set()
+    out = subprocess.run(["git", "ls-files", "test-data"], cwd=TOOLS,
+                         capture_output=True, text=True, check=True).stdout
     return {os.path.basename(line) for line in out.splitlines() if line}
+
+
+ASSERTIONS = ("assert_contents", "has_size", "has_n_lines", "has_text",
+              "is_valid_xml")
 
 
 def main():
     fixtures = read_table(os.path.join(AUX, "upstream-fixtures.tsv"))
     expectations = read_table(os.path.join(AUX, "output_expectations.tsv"))
     in_git = tracked()
-    problems, counts = [], {"remote": 0, "asserted": 0, "committed": 0, "local": 0,
-                            "multi": 0}
+    problems, counts = [], {"remote": 0, "asserted": 0, "committed": 0}
     for path in sorted(glob.glob(os.path.join(TOOLS, "*.xml"))):
         name = os.path.basename(path)
         if name.startswith("macros"):
             continue
-        root = ET.parse(path).getroot()
-        for test in root.iter("test"):
-            for output in test.iter("output"):
-                value = reference(output)
-                assert_contents = output.find("assert_contents") is not None
+        for test in ET.parse(path).getroot().iter("test"):
+            for element in test.iter():
+                if element.tag not in ("param", "output", "element"):
+                    continue
+                value = reference(element)
                 if not value:
-                    if assert_contents:
+                    if element.find("assert_contents") is not None:
                         counts["asserted"] += 1
                     continue
-                found = keys(output, "output")
-                if found is None:
-                    # several files for one output: one file per <output>, so
-                    # those cannot be fetched by URL
-                    if any(k in fixtures for k in fixture_keys(value) or []):
-                        counts["multi"] += 1
-                    continue
-                key = found[0]
-                if key in fixtures:
-                    if not output.get("location"):
-                        problems.append("%s: %s has an upstream file but no location="
-                                        % (name, value))
-                    else:
-                        counts["remote"] += 1
-                elif value in expectations or key in expectations:
-                    problems.append("%s: %s should be asserted on, it still compares "
-                                    "against a generated fixture" % (name, value))
-                elif value in in_git or key in in_git:
-                    counts["committed"] += 1
-                else:
-                    counts["local"] += 1
-                    problems.append("%s: %s has no upstream file, no expectation and "
-                                    "is not committed" % (name, value))
-            for param in test.iter("param"):
-                value = reference(param)
-                found = keys(param, "param")
+                # `keys()` is the annotator's own rule: a comma separated value
+                # of a multiple parameter is several files, one output is one
+                found = keys(element, "output" if element.tag != "param"
+                             else "param")
                 if found is None:
                     continue
-                key = found[0]
-                if param.get("location"):
+                if element.get("location"):
                     counts["remote"] += 1
-                elif value in in_git or key in in_git:
+                elif any(element.find(tag) is not None for tag in ASSERTIONS):
+                    counts["asserted"] += 1
+                elif element.tag != "param" and (value in expectations
+                                                 or found[0] in expectations):
+                    problems.append("%s: %s should be asserted on, it still "
+                                    "compares against a generated fixture"
+                                    % (name, value))
+                elif all(key in in_git for key in found):
+                    # a committed copy wins over the upstream file: the test
+                    # rewrites the reference in place (INIUpdater_1_noupdate_0)
                     counts["committed"] += 1
-                elif not all(k in fixtures for k in found):
-                    # every file of the list has to be downloadable, or the
-                    # reference stays local as a whole (a file used twice has
-                    # no second URL, see remote_test_data.py:_urls_for_all)
-                    counts["multi" if len(found) > 1 else "local"] += 1
-                else:
-                    # the annotator adds location= to every reference it can
-                    # resolve - not having one means the wrapper was generated
-                    # against a stale manifest or lost it in a merge
+                elif any(_fixture_url(key, fixtures, name[:-len(".xml")])
+                         for key in found):
+                    # the annotator resolves every reference it can - no
+                    # location= here means a stale manifest or a lost attribute
                     problems.append("%s: %s has an upstream file but no location="
                                     % (name, value))
+                else:
+                    problems.append("%s: %s has no upstream file, is not asserted "
+                                    "on and is not committed" % (name, value))
     for problem in problems:
         print("FAIL: " + problem, file=sys.stderr)
-    print("remote test data: %(remote)d reference(s) by URL, %(asserted)d assertion(s), "
-          "%(committed)d committed fixture(s), %(multi)d multi-file reference(s) "
-          "(local), %(local)d local reference(s)" % counts)
+    print("remote test data: %(remote)d reference(s) by URL, %(asserted)d "
+          "assertion(s), %(committed)d committed fixture(s)" % counts)
     return 1 if problems else 0
 
 

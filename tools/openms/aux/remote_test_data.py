@@ -44,6 +44,7 @@ Usage:
 import argparse
 import os
 import re
+import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
@@ -64,13 +65,46 @@ DROP_ON_ASSERT = {"value", "file", "compare", "delta", "delta_frac", "lines_diff
                   "sort"}
 
 FILE_SUFFIX = re.compile(r"\.[A-Za-z][A-Za-z0-9]{1,15}$")
-ELEMENT = re.compile(r"<(param|output)\b([^>]*?)/>")
+# `get_tests.py:unique_files()` renames a file a test uses twice by appending its
+# occurrence number (Galaxy cannot hand one dataset over twice and OpenMS cannot
+# write two outputs of one name), and `fix_tmp_files()` does the same for the
+# intermediate of a reference.  Such an alias is the same bytes as the file it
+# aliases, so the base name's URL is the right reference - but only for an
+# INPUT: an output called `X_1.xml` is a different file that the tool wrote.
+ALIAS_SUFFIX = re.compile(r"_\d+(?=\.[A-Za-z][A-Za-z0-9]{1,15}$)")
+# `<element name="…" file="…"/>` of an output_collection carries its reference in
+# `file=` and takes a `location=` like any other (tool_util/parser/xml.py routes
+# it through __parse_test_attributes)
+ELEMENT = re.compile(r"<(param|output|element)\b([^>]*?)/>")
 # an <output> with children (e.g. a hand-written <assert_contents>) is a second
 # form: only its comparison attributes have to go, the assertions stay
 # (the open tag must not end with "/", otherwise the non-greedy children
 # match would swallow the next element's closing tag)
 ELEMENT_WITH_CHILDREN = re.compile(r"<(output)\b([^>]*?[^/>])>(.*?)</output>", re.S)
 ATTR = re.compile(r'\s+([\w:.-]+)="([^"]*)"')
+# Tools which derive an output file name from the name of an input file: handing
+# the same upstream file to a multiple parameter twice would give Galaxy two
+# datasets of one name, OpenMS would write one output per input name and the
+# second one would be lost (FileMerger's `-rt_concat:trafo_out`).  Every other
+# multiple input is merged into one output, so duplicate URLs are harmless there
+# and the alias of a file may resolve to its base name's URL.
+PER_INPUT_OUTPUT_TOOLS = {"FileMerger"}
+
+
+def tracked(directory="test-data"):
+    """The files of `directory` that are part of this repository.
+
+    A committed fixture pins its reference locally: the test compares against
+    what `prepare_test_data.sh` produced (`IDRipper_3_input1.idXML` is the
+    output of IDRipper while the upstream file of that name is the input of a
+    different test) or rewrites the file in place.
+    """
+    try:
+        out = subprocess.run(["git", "ls-files", directory],
+                             capture_output=True, text=True, check=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return frozenset()
+    return frozenset(os.path.basename(line) for line in out.splitlines() if line)
 
 
 def read_tsv(path):
@@ -192,14 +226,15 @@ def with_delta(tag, attrs_text, adict, fixtures, key):
     return '%s delta="%d"' % (attrs_text, delta)
 
 
-def rewrite(match, fixtures, expectations, multiple=frozenset()):
+def rewrite(match, fixtures, expectations, multiple=frozenset(), tool=None,
+            local=frozenset()):
     """A self-closing <param>/<output .../> element."""
     return _rewrite(match.group(1), match.group(2), match.group(0), fixtures,
-                    expectations, multiple)
+                    expectations, multiple, tool=tool, local=local)
 
 
 def _rewrite(tag, attrs_text, original, fixtures, expectations, multiple,
-             children=None):
+             children=None, tool=None, local=frozenset()):
     """Annotate one element; `children` is set for <output ...>...</output>."""
     attrs = ATTR.findall(attrs_text)
     adict = dict(attrs)
@@ -212,13 +247,24 @@ def _rewrite(tag, attrs_text, original, fixtures, expectations, multiple,
     key = keys[0]
     closing = "" if children is None else ">%s</%s>" % (children, tag)
     if len(keys) > 1:
-        return _urls_for_all(attrs_text, adict, original, keys, fixtures, multiple)
+        return _urls_for_all(attrs_text, adict, original, keys, fixtures,
+                             multiple, tool, local)
     # an expectation row wins over the manifest for an OUTPUT: the row exists
     # because the upstream file is not what the tool produces (AccurateMassSearch_1
     # is compared upstream with -whitelist "", i.e. not at all, and the committed
     # copy is stale).  Asserting on the output is the honest check.
     if tag == "output" and expectations.get(value, expectations.get(key)) is not None:
         return _assert_on(tag, attrs, adict, original, expectations, children)
+    if key not in fixtures and tag == "param":
+        # only an *input* alias is a renamed copy of an upstream file.  An
+        # output named `IDRipper_3_input1.idXML` is not the alias of
+        # `IDRipper_3_input.idXML`, it is a different file (IDRipper wrote it)
+        base = ALIAS_SUFFIX.sub("", key)
+        if base != key:
+            key = base
+    if key in local:
+        # a committed fixture wins over an upstream file of the same name
+        return original
     if key in fixtures:
         if "location" in adict:
             return original
@@ -230,7 +276,8 @@ def _rewrite(tag, attrs_text, original, fixtures, expectations, multiple,
     return original
 
 
-def _urls_for_all(attrs_text, adict, original, keys, fixtures, multiple):
+def _urls_for_all(attrs_text, adict, original, keys, fixtures, multiple,
+                  tool=None, local=frozenset()):
     """`<param name="in" value="a.xml,b.xml"/>` for a multiple data parameter.
 
     One flag, several files: Galaxy hands the uploaded datasets over one by one,
@@ -239,20 +286,32 @@ def _urls_for_all(attrs_text, adict, original, keys, fixtures, multiple):
     (OpenSwathWorkflow:in) stay local - `get_tests.py` skips such a test
     entirely (`check_multi_inputs`).
 
-    A test which hands the *same* file to a parameter twice cannot be moved
-    off the local fixtures: `get_tests.py` renames the second copy
-    (`X_0.mzML`, `X_1.mzML`) because Galaxy cannot hand one dataset over twice,
-    and two URLs naming the same upstream file would give Galaxy two datasets
-    with the same name - OpenMS then writes one output per input name and the
-    second one is lost (FileMerger's `-rt_concat:trafo_out`).
+    A test which hands the *same* file to a parameter twice gets both copies
+    under one name from `get_tests.py` (`X.mzML`, `X_0.mzML`, `X_1.mzML`): the
+    alias resolves to the base name's URL, and Galaxy downloads the file twice.
+    That is only wrong for a tool which names its outputs after its inputs (see
+    PER_INPUT_OUTPUT_TOOLS); for those the reference stays local.
     """
     name = adict.get("name", "").rsplit("|", 1)[-1]
     if name not in multiple or "location" in adict:
         return original
-    urls = [fixtures.get(key, [None])[0] for key in keys]
-    if not all(urls) or len(set(urls)) != len(urls):
+    if any(key in local for key in keys):
+        return original
+    urls = [_fixture_url(key, fixtures, tool) for key in keys]
+    if not all(urls):
+        return original
+    if len(set(urls)) != len(urls) and tool in PER_INPUT_OUTPUT_TOOLS:
         return original
     return '<param%s location="%s"/>' % (attrs_text, ",".join(urls))
+
+
+def _fixture_url(key, fixtures, tool=None):
+    """The URL of one reference: the alias of a file is that file."""
+    if key in fixtures:
+        return fixtures[key][0]
+    if tool in PER_INPUT_OUTPUT_TOOLS:
+        return None
+    return fixtures.get(ALIAS_SUFFIX.sub("", key), [None])[0]
 
 
 def _assert_on(tag, attrs, adict, original, expectations, children):
@@ -274,18 +333,19 @@ def _assert_on(tag, attrs, adict, original, expectations, children):
                                         children or "")
 
 
-def annotate(xml, fixtures, expectations, stats):
+def annotate(xml, fixtures, expectations, stats, tool=None, local=frozenset()):
     multiple = multiple_param_names(xml)
 
     def repl(match):
-        new = rewrite(match, fixtures, expectations, multiple)
+        new = rewrite(match, fixtures, expectations, multiple, tool, local)
         if new != match.group(0):
             stats["location" if 'location="' in new else "assert"] += 1
         return new
 
     def repl_children(match):
         new = _rewrite(match.group(1), match.group(2), match.group(0), fixtures,
-                       expectations, multiple, children=match.group(3))
+                       expectations, multiple, children=match.group(3),
+                       tool=tool, local=local)
         if new != match.group(0):
             stats["location" if 'location="' in new else "assert"] += 1
         return new
@@ -306,12 +366,16 @@ def main(argv=None):
                         default=os.environ.get("OPENMS_EXPECTATIONS_TSV")
                         or "aux/output_expectations.tsv",
                         help="references to assert on instead of comparing")
+    parser.add_argument("--local", nargs="*", metavar="FILE",
+                        help="references which must stay local: committed files "
+                             "(default: git ls-files test-data)")
     parser.add_argument("--check", action="store_true",
                         help="report what would change instead of writing")
     args = parser.parse_args(argv)
 
     fixtures = read_tsv(args.fixtures)
     expectations = read_tsv(args.expectations)
+    local = tracked() if args.local is None else frozenset(args.local)
     if not fixtures:
         sys.stderr.write("%s: no fixtures read - the wrappers would lose their "
                          "remote test data\n" % args.fixtures)
@@ -320,7 +384,8 @@ def main(argv=None):
         with open(path) as fh:
             xml = fh.read()
         stats = {"location": 0, "assert": 0}
-        new = annotate(xml, fixtures, expectations, stats)
+        tool = os.path.basename(path)[:-len(".xml")]
+        new = annotate(xml, fixtures, expectations, stats, tool, local)
         where = args.output or path
         if args.output:
             with open(where, "w") as fh:

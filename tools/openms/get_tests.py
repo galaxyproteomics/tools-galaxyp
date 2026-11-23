@@ -530,12 +530,14 @@ UPSTREAM_FIXTURES = _upstream_fixtures()
 
 FIXTURE_URLS: Dict[str, List[str]] = {}
 EXPECTATIONS: Dict[str, List[str]] = {}
+LOCAL_FIXTURES = frozenset()
 
 
-def annotate(body: str) -> str:
+def annotate(body: str, tool_id: str = "") -> str:
     """Add location="..." / assert_contents to one generated <test> body."""
     stats = {"location": 0, "assert": 0}
-    return remote_test_data.annotate(body, FIXTURE_URLS, EXPECTATIONS, stats)
+    return remote_test_data.annotate(body, FIXTURE_URLS, EXPECTATIONS, stats,
+                                     tool_id, LOCAL_FIXTURES)
 
 
 def is_fixture(token: str) -> bool:
@@ -1004,7 +1006,7 @@ def process_test_line(
         body = fix_expect_num_outputs(body)
         # point Galaxy at the upstream fixture / assert on what cannot be
         # downloaded (last: the previous steps rewrite `value=`)
-        body = annotate(body)
+        body = annotate(body, tool_id)
         if multi and not check_multi_inputs(body, multi):
             sys.stderr.write(
                 f"    skip {test_id} (more than one file for a single input "
@@ -1045,6 +1047,7 @@ EXPECTATIONS.update(
         or os.path.join(AUX, "output_expectations.tsv")
     )
 )
+LOCAL_FIXTURES = remote_test_data.tracked()
 
 re_comment = re.compile("#.*")
 re_empty_prefix = re.compile(r"^\s*")
