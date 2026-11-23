@@ -301,7 +301,9 @@ def render_md(old_snap, new_snap, diffs, old_ver, new_ver, hardcoded, filetypes)
     ignored_total = 0
     for tool in sorted(diffs):
         d = diffs[tool]
-        keep = lambda name: not is_ignored(hardcoded, tool, name)
+
+        def keep(name, _tool=tool):
+            return not is_ignored(hardcoded, _tool, name)
         d = {"added": [n for n in d["added"] if keep(n)],
              "removed": [n for n in d["removed"] if keep(n)],
              "changed": [x for x in d["changed"] if keep(x[0])],

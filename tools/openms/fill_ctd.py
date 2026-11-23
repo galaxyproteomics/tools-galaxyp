@@ -5,17 +5,16 @@ import os
 import re
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 from functools import reduce  # forward compatibility for Python 3
 
-import xml.etree.ElementTree as ET
-
 from CTDopts.CTDopts import (
-    CTDTYPE_TO_TYPE,
     _Choices,
     _InFile,
     _Null,
     _NumericRange,
-    CTDModel
+    CTDModel,
+    CTDTYPE_TO_TYPE,
 )
 
 

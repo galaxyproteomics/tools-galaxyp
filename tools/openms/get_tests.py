@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import argparse
-import json
 import os
 import os.path
 import re
@@ -18,18 +17,25 @@ from typing import (
     Tuple,
 )
 
-from ctdconverter.common.utils import (
+# Remote test data: instead of shipping every fixture, the generated tests point
+# Galaxy at the upstream file ("location"), and references which only exist
+# because prepare_test_data.sh ran the tool locally become assertions.  Both
+# tables live in aux/ and are committed; see aux/remote_test_data.py.
+AUX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aux")
+sys.path.insert(0, AUX)
+import remote_test_data  # noqa: E402  (the path has to be set up first)
+from ctdconverter.common.utils import (  # noqa: E402
     ParameterHardcoder,
     parse_hardcoded_parameters,
     parse_input_ctds,
 )
-from ctdconverter.galaxy.converter import convert_models
-from CTDopts.CTDopts import (
+from ctdconverter.galaxy.converter import convert_models  # noqa: E402
+from CTDopts.CTDopts import (  # noqa: E402
+    _OutPrefix,
     CTDModel,
     ModelTypeError,
     Parameter,
     Parameters,
-    _OutPrefix,
 )
 
 SKIP_LIST = [
@@ -522,14 +528,6 @@ def _upstream_fixtures() -> Optional[Set[str]]:
 UPSTREAM_FIXTURES = _upstream_fixtures()
 
 
-# Remote test data: instead of shipping every fixture, the generated tests point
-# Galaxy at the upstream file ("location"), and references which only exist
-# because prepare_test_data.sh ran the tool locally become assertions.  Both
-# tables live in aux/ and are committed; see aux/remote_test_data.py.
-AUX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aux")
-sys.path.insert(0, AUX)
-import remote_test_data  # noqa: E402  (the path has to be set up first)
-
 FIXTURE_URLS: Dict[str, List[str]] = {}
 EXPECTATIONS: Dict[str, List[str]] = {}
 
@@ -538,7 +536,6 @@ def annotate(body: str) -> str:
     """Add location="..." / assert_contents to one generated <test> body."""
     stats = {"location": 0, "assert": 0}
     return remote_test_data.annotate(body, FIXTURE_URLS, EXPECTATIONS, stats)
-
 
 
 def is_fixture(token: str) -> bool:

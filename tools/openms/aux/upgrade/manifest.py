@@ -361,7 +361,7 @@ def cmd_import_summary(args):
         parts = line.split("\t")
         if len(parts) < 4 or parts[1] == "passed":
             continue
-        tool, passed, failed, errors = parts[0], int(parts[1]), int(parts[2]), int(parts[3])
+        tool, failed, errors = parts[0], int(parts[2]), int(parts[3])
         old = rows.get(tool, {})
         problems = failed + errors
         cause = ""
