@@ -175,7 +175,7 @@ cp $OPENMSGIT/src/tests/class_tests/openms/data/MSPGenericFile_input.msp test-da
 # only exists as class-test data (OPENSWATH_SHARED_INFERENCE_OSW, CMakeLists.txt)
 cp $OPENMSGIT/src/tests/class_tests/openms/data/PyProphet_inference_test.osw test-data/ 2> /dev/null
 if [ ! -f test-data/MetaboliteSpectralDB.mzML ]; then
-    DB_URL=https://raw.githubusercontent.com/sneumann/OpenMS/master/share/OpenMS/CHEMISTRY/MetaboliteSpectralDB.mzML
+    DB_URL=https://raw.githubusercontent.com/sneumann/OpenMS/8ede4b6916edddabdda743413b9739d351ef2ca9/share/OpenMS/CHEMISTRY/MetaboliteSpectralDB.mzML
     # not every machine has wget (this one does not)
     if command -v wget > /dev/null; then
         wget -nc "$DB_URL"
@@ -239,10 +239,12 @@ for name, ps in paths.items():
         rows[name] = topp[name][0]
 # not in the OpenMS tree (the spectral library is 30 MB and lives in a fork)
 rows["MetaboliteSpectralDB.mzML"] = None
+PIN = "8ede4b6916edddabdda743413b9739d351ef2ca9"
 with open(out, "w") as fh:
     for name in sorted(rows):
-        url = ("https://raw.githubusercontent.com/sneumann/OpenMS/master/"
-               "share/OpenMS/CHEMISTRY/MetaboliteSpectralDB.mzML" if rows[name] is None
+        # pinned: a branch would silently change what the test compares against
+        url = ("https://raw.githubusercontent.com/sneumann/OpenMS/%s/"
+               "share/OpenMS/CHEMISTRY/MetaboliteSpectralDB.mzML" % PIN if rows[name] is None
                else base + rows[name])
         # the size lets the wrapper compare a remote reference by size at all:
         # Galaxy checks an absolute `delta` (default 10000) *before* `delta_frac`
