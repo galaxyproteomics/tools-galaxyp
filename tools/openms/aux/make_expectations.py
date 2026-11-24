@@ -14,7 +14,7 @@ tools produce today.  Recreating it silently on every regeneration would mean
 that a regression in a wrapper rewrites its own expectation - the same trap the
 wrappers' `sim_size` references were meant to avoid.  Regenerate it only on
 purpose (OpenMS version bump, or a reviewed change of an output), and say why in
-the upgrade ledger.
+the commit message.
 
 Usage:  ./make_expectations.py [-o FILE] [--fixtures FILE] [--testdata DIR]
 Columns: name <TAB> ftype <TAB> size <TAB> lines   ('-' where there is no line
@@ -22,10 +22,10 @@ count: binary formats and files too large to count quickly)
 
 The names are the *content* of the table, not what can be rediscovered: after
 the first annotation pass the wrappers no longer carry `value=` for these
-outputs (that is the point), so a row is only dropped by deleting it here.  New
-references show up as a failure of `check_generated.sh` (check 9) and are added
-by this script; a row whose fixture is not in test-data/ keeps its recorded
-numbers.
+outputs (that is the point), so a row is only dropped by deleting it here.  A
+reference that is neither a URL nor an assertion has no fixture to be compared
+against, so it fails the annotation pass and its row is added by this script; a
+row whose fixture is not in test-data/ keeps its recorded numbers.
 """
 import argparse
 import glob
@@ -133,7 +133,7 @@ def main(argv=None):
         fh.write("#\n")
         fh.write("# Written by aux/make_expectations.py from test-data/ and the wrappers.\n")
         fh.write("# Regenerate deliberately (OpenMS version bump or a reviewed output\n")
-        fh.write("# change) and record the reason in aux/upgrade/UPGRADE_LEDGER.md: the\n")
+        fh.write("# change) and record the reason in the commit message: the\n")
         fh.write("# numbers are the current behaviour, so an automatic refresh would let a\n")
         fh.write("# regression rewrite its own expectation.\n")
         for row in rows:
