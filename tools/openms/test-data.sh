@@ -201,15 +201,22 @@ export OPENMS_UPSTREAM_FIXTURES="$ARTIFACTS/.upstream-fixtures.txt"
 ## get_tests.py must not depend on the runtime state of test-data/ - or on this
 ## clone existing - when the wrappers are generated.
 ##
-##   basename <TAB> https://raw.githubusercontent.com/OpenMS/OpenMS/<tag>/<path> <TAB> bytes
+##   basename <TAB> https://raw.githubusercontent.com/OpenMS/OpenMS/<commit>/<path> <TAB> bytes
+##
+## The commit, not the tag: raw.githubusercontent.com serves whatever a tag points
+## at, so a re-tagged v3.6.0 would silently change what ~1400 references compare
+## against.  The tag stays the handle for the clone, `git rev-parse` below turns
+## it into the immutable commit.
 ##
 ## Baselining by name is safe: the wrapper test attributes reference fixtures by
 ## basename, and every referenced name resolves to exactly one file here (the
 ## few ambiguous ones - the parquet tables of the blacklisted parquet tools, the
 ## SIRIUS project files - are dropped, they stay local fixtures).
 echo "Write the upstream fixture manifest"
+GITSHA=$(git -C "$OPENMSGIT" rev-parse "$GITTAG^{commit}") || exit 1
+echo "  fixtures of $GITTAG ($GITSHA)"
 python3 - "$OPENMSGIT" "$ARTIFACTS/upstream-fixtures.tsv" \
-    "https://raw.githubusercontent.com/OpenMS/OpenMS/$GITTAG/" <<'PY' || exit 1
+    "https://raw.githubusercontent.com/OpenMS/OpenMS/$GITSHA/" <<'PY' || exit 1
 import collections, os, sys
 root, out, base = sys.argv[1], sys.argv[2], sys.argv[3]
 # the directories test-data.sh copies from (share/) or picks single files out of
