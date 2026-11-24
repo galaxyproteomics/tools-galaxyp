@@ -943,6 +943,15 @@ Remote test data, second pass - the round-7 limit ("one `<param>`, one
   serves whatever the tag points at, so a re-tagged release would silently change
   1441 references. `test-data.sh` derives the revision with
   `git rev-parse "$GITTAG^{commit}"`, so 3.6.1 needs no edit.
+* Two annotator passes, two manifest readings: `get_tests.py` annotates the test
+  body it writes (single-file references), `aux/generate.sh` annotates the
+  finished wrappers (a `multiple="true"` input is only recognisable then).  Both
+  read the committed `aux/upstream-fixtures.tsv` - the `import` in test-data.sh
+  does not reach them, because test-data.sh runs as a child process - so the
+  manifest has to be committed before the wrappers are regenerated, and the
+  warning `aux/upstream-fixtures.tsv differs from the manifest just written` is
+  the only signal.  Getting that wrong leaves the multi-file references on the
+  old revision (`8ba20a8d` did, `616aaff2` fixes the 14 wrappers).
 * check 9 now demands exactly that of every reference (URL, assertion, or
   committed file) and covers `<element>`.
 
@@ -956,7 +965,7 @@ fixtures. Static checks green, `--regen` idempotent, `planemo lint
 Commits: `0da44d12` (test data), `da889bf3` (flake8), `3b6b5b83` (format_source +
 multi-file), `7a2bc847` (CI branch), `cfc16dba` (3.11 `E999`), `f23e4126`
 (`<element>`, aliases, committed fixtures), `1a681ff5` (profile 25.1),
-`02aecb26` (ParquetDiff bundles), `8ba20a8d` (pinned revision).
+`02aecb26` (ParquetDiff bundles), `8ba20a8d`/`616aaff2` (pinned revision).
 
 ## Round 1.5 (3.6 regeneration) — closed
 
