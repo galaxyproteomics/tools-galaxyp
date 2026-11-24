@@ -19,6 +19,7 @@ later round does not re-litigate it.
 | 7b | 2026-11-18 | make the wrapper independent of the order OpenMS writes its value lists in | 142 | **0** | `check_generated.sh` 9 checks green, `--regen` byte-identical (twice) | D28; 81 wrappers change, and every changed line is an `<option>` element moving - the set of options, their `value=`, their text and their `selected=` are untouched; the 81 changed wrappers were re-tested (73 with tests: 483 tests, 0 failed, 0 errors; plus `XFDR` 7/7 - the 8 remaining ones define no test at all, so only their fingerprint was re-stamped) |
 | 7c | 2026-11-19 | `output-dir` parameters: retype instead of drop | 142 | **0** | `check_generated.sh` 9 checks green, `--regen` byte-identical, the 5 changed wrappers re-tested in Galaxy (38/38), `manifest.py report --gate`: GATE PASSED | D29; the 11 directory outputs of the 3.6 CTDs become `<collection type="list">` outputs (`out_qpx`/`out_parquet` as `format="parquet"`, `QualityControl`'s `out_txt:directory` as `txt`) instead of being deleted; 5 wrappers change (`IsobaricWorkflow`, `MS1LabeledWorkflow`, `ProSE`, `ProteinQuantifier`, `QualityControl`) plus the parquet extension in `macros.xml`; 3 new upstream tests come back (`MS1LabeledWorkflow_qpx`, `MS1LabeledWorkflow_6_ratios_qpx`, `ProSE_3_qpx`), 2 existing ones gain the new output (`ProteinQuantifier_18_qpx`/`_19_qpx`); test count 623 -> 626 |
 | 8a | 2026-11-20 | parquet bundles, producer side (D30) | 142 | **0** (`report --gate`: 142 tools, 123 pass, 0 fail, 0 untested, 0 stale, `GATE PASSED`) | `check_generated.sh` 10 checks green (`all static checks passed`, 45 manual tests in 34 wrappers); `parquet_bundles.py --check` 7 checked / 0 problems, a second patch run changes nothing; a fresh `aux/generate.sh` reproduces all 7 wrappers and `aux/macros_test.xml` byte-identically; **92/92 tests** of the 7 wrappers pass in Galaxy (CometAdapter 5, FileConverter 37, IDFileConverter 37, MSGFPlusAdapter 3, PSMFeatureExtractor 3, PercolatorAdapter 5, SageAdapter 2), including the 8 new bundle tests | D30; `aux/parquet_bundles.{json,py}` add **8** optional `<collection type="list">` outputs (`out_idparquet` x6, `out_featureparquet`/`out_consensusparquet` for `FileConverter`) behind `OPTIONAL_OUTPUTS`, each with a committed structural test in `aux/macros_test.xml` - no default command line, no existing test moves. **The CTD inventory was wrong**: only 7 of the 19 producers can write a bundle at all, the other 10 (plus `IDMerger`) derive the output type from the input and are mirror-only (8c). Details and evidence in the round-8 notes below |
+| 9b | 2026-11-24 | CTDConverter pairing fix: the MapAligners get `-trafo_out` back (D7 → D32) | 146 | **0** | `check_generated.sh` 10 checks green (`all static checks passed`: `expect_num_outputs: 146 wrappers checked, 0 problem(s)`, `remote test data: 1445 reference(s) by URL, 738 assertion(s), 25 committed fixture(s)`, `parquet_bundles: 7 wrapper(s) checked, 0 problem(s)`); a second `aux/generate.sh` reproduces all 146 wrappers byte-identically; **15/15 tests** of the 3 changed wrappers pass in Galaxy from a pristine worktree | D32; 3 wrappers change (`MapAlignerIdentification`, `MapAlignerPoseClustering`, `MapAlignerTreeGuided`), 3 upstream tests come back that pass `-trafo_out` (`MapAlignerIdentification_6`, `MapAlignerPoseClustering_4`, `MapAlignerTreeGuided_2`) and 2 existing ones gain `trafo_out_FLAG` + `expect_num_outputs` 2 → 3 (`MapAlignerIdentification_7`/`_8`); 641 → 644 tests; `aux/hardcoded_params.json` 44 → 43 entries (the `trafo_out` blacklist and its comment are gone) |
 | 8b | 2026-11-21 | parquet bundles, directory-output tools un-blacklisted (D30) | 146 | **0** | `check_generated.sh` 10 checks green (`all static checks passed`, 48 manual tests in 36 wrappers); `parquet_bundles.py --check` 7 checked / 0 problems; a fresh `aux/generate.sh` reproduces the 4 new wrappers byte-identically; **7/7 tests** of the 4 new wrappers pass in Galaxy (ParquetDiff 3, ParquetConverter 2, OpenSwathExport 1, OpenSwathPeakMapExtractor 1) | `ParquetConverter`, `ParquetDiff`, `OpenSwathExport` and `OpenSwathPeakMapExtractor` leave `aux/tools_blacklist.txt` (the block comment went too - it had become wrong) and get generated wrappers: `ParquetConverter.out` (export direction only, featureXML/consensusXML -> 5-table bundle) and `OpenSwathExport.out_dir` (both format params pinned to parquet) are `list` collections of `parquet`, `OpenSwathPeakMapExtractor.out_dir` is a collection of `.xipm` (new `xipm -> parquet` in `aux/filetypes.txt`, `macros.xml` regenerated); `ParquetDiff` is single-file in/out and needed only the format patches. `aux/ctd_patches.json` carries the restrictions, `test-data.sh` copies the bundle fixtures *as directories* and the class-test OSW. 12 -> 12 tests: 3 generated (`TOPP_ParquetDiff_1/2/6`, the 5 negative ones are `WILL_FAIL` by design) + 2 manual tests in `aux/macros_test.xml` (`ParquetConverter`, `OpenSwathExport` - neither has a usable upstream test). 142 -> 146 wrappers, 634 -> 641 tests |
 
 ## Decisions
@@ -29,7 +30,7 @@ later round does not re-litigate it.
 | D2 | `ParquetConverter`, `ParquetDiff`, `*-out_qpx` | blacklist / do not wrap | their outputs are *directories* of parquet files; Galaxy datasets are single files. Needs collection-in/collection-out support before it can be wrapped. |
 | D3 | `Decharger`, `MetaboliteAdductDecharger`, `MaRaClusterAdapter`, `FLASHDeconv`, `IDDecoyProbability`, `ProteomicsLFQ` | keep blacklisted | pre-existing reasons in `aux/tools_blacklist.txt`, unrelated to the version jump. |
 | D6 | layout of `deprecated/` | one subdirectory per archived suite state (`3.1/`, `3.2/`), each with its own `macros.xml` + `fill_ctd.py` | a wrapper's `<requirement>` pin must match the suite it was generated from. The 7 wrappers dropped in this upgrade are 3.2-generated, the 15 older ones are 3.1-generated; one shared `macros.xml` would have made one of the two groups install the wrong OpenMS. `<import>` resolves relative to the importing file, so this needs no edit to any wrapper. |
-| D5 | nested/stale `hardcoded_params.json` entries | **partly done** (round 5): only entries naming tools that no longer exist are pruned (`separator`/`IDMassAccuracy`, `xml_out`/`XTandemAdapter`, `algorithm:tryptic_only`/`CompNovo`+`CompNovoCID`); the rest are kept | `ctd_diff.py` lists 18 parameters that vanished from the 3.6 CTDs, but most of those entries are *deliberate* blacklists whose parameter is now *retyped* rather than hidden (`out_qpx`), dropped for a reason (`trafo_out`, D7) or re-typed rather than removed (`in`/`OpenSwathWorkflow`, `test`). Only a `tools` list naming a tool that is not in the 3.6 snapshot is unambiguously dead. `check_generated.sh --regen` proves the three removals leave every wrapper byte-identical. The host-path rule is flipped from `warn` to `fail` (no wrapper contains `/home/<user>/` any more). |
+| D5 | nested/stale `hardcoded_params.json` entries | **partly done** (round 5): only entries naming tools that no longer exist are pruned (`separator`/`IDMassAccuracy`, `xml_out`/`XTandemAdapter`, `algorithm:tryptic_only`/`CompNovo`+`CompNovoCID`); the rest are kept | `ctd_diff.py` lists 18 parameters that vanished from the 3.6 CTDs, but most of those entries are *deliberate* blacklists whose parameter is now *retyped* rather than hidden (`out_qpx`), hidden for a reason (`in_type`, `out_mod_analysis_dir`) or re-typed rather than removed (`in`/`OpenSwathWorkflow`, `test`). Only a `tools` list naming a tool that is not in the 3.6 snapshot is unambiguously dead. `check_generated.sh --regen` proves the three removals leave every wrapper byte-identical. The host-path rule is flipped from `warn` to `fail` (no wrapper contains `/home/<user>/` any more). |
 | D13 | what a fixture fingerprint may hash | timestamps and runtime footers are washed out, four fixtures are hashed as "unstable" | `test-data.sh` does not ship a dozen fixtures, it **generates** them by running the tools, and OpenMS stamps them with the clock (`<IdentificationRun date=...>`, `creationDate=...`, the `took 0.09 s (wall) ... Peak Memory Usage` footer, and in the binary `.oms` a plain `2026-11-15 18:40:55`). Hashing those bytes made the gate report **15 phantom stale tools** after every regeneration. `sha256_fixture()` now normalises the stamp tokens (an actual fixture change is still caught byte for byte), and `unstable_fixtures.txt` names the four fixtures that are not reproducible at all (Epifany's EM scores, `-threads 4` feature order) - exactly the ones the wrappers assert with `compare="sim_size" delta_frac="0.7"`. Verified: two full regenerations in a row move **0** fingerprints. |
 | D14 | `MSGFPlusAdapter -tasks` | **blacklisted** (`"value": "@"` for `MSGFPlusAdapter`) - the wrapper neither shows it nor passes it, OpenMS computes it | `-tasks` is OpenMS' internal split of the spectra over the thread pool (`tasks = 0` = `min(threads*3, numSpectra/250)`, `tasks < 0` = `abs(tasks)*threads`). It is not a scientific decision, it is a memory/speed trade-off inside the search, and the CTD marks it `advanced="false"`, so it landed in the main section with all four sentences of OpenMS help text as its label. Threads are already `${GALAXY_SLOTS:-1}` (`threads` in `aux/hardcoded_params.json`); leaving `-tasks` unset is the CTD default and lets OpenMS scale it to the inputs. `MSGFPlusAdapter` has no tests either way, so the regeneration diff is exactly the one deleted `<param>` line. |
 | D15 | wrapper `profile` | **a token**, `@PROFILE@` = `24.1` in `macros.xml`, passed to CTDConverter as the literal token | every wrapper said `profile="23.0"` while the CI tests on Galaxy `release_24.1` (`.github/workflows/pr.yaml`: `GALAXY_BRANCH`). A tool profile newer than the Galaxy that loads it only produces a warning, so 25.1 would have been noise. As a token the bump is one line; `MascotAdapterOnline.xml` is hand-maintained and carries the same token. |
@@ -49,6 +50,7 @@ later round does not re-litigate it.
 | D30 | the internal Parquet bundles (`.idparquet`, `.featureparquet`, `.consensusparquet`) on both sides | **a `list` collection of `parquet` datasets**, with the inner file names as element designations, produced by a **repo-local post-processor** (`aux/parquet_bundles.py`, run inside `generate.sh` after CTDConverter) rather than by a third CTDConverter commit | a Parquet *file* holds exactly one table (one `FileMetaData` header, one schema) and an OpenMS map/IdXML is 4-5 relations, so the bundle is a directory by construction and the reader requires the file names verbatim (`PSMArrowIO.h:26-35`). A collection is the only Galaxy shape that keeps one logical object, one output chip and the free designations; N separate `<data>` outputs would multiply every output list and lose the names. Route: `aux/generate.sh` clones `topic/fix-selects2`, which already has two unpushed commits (`dd7dc95`, `ae3635e`) - a third would make the wrappers reproducible only with push access. Producers get an *additional optional* output `out_<kind>` behind `OPTIONAL_OUTPUTS`, so no existing command line or test moves; consumers need a `<conditional>` and are staged separately. Design, inventory and staging: `.openms-tests/PLAN-parquet-bundles.md`. **Stage 8a (producers) is implemented for the 7 tools that can actually write a bundle** - round 8a; the CTD-declared inventory of 27 params was wrong, see the round-8 notes. |
 | D29 | the 11 `type="output-dir"` parameters of the 3.6 CTDs | **retyped to `output-prefix`**, not deleted (`aux/retype_output_dirs.py`, and `fill_ctd.py` for the CTD a wrapper writes at run time) | supersedes the strip rationale of D2/D3 for these parameters. `output-dir` is an OpenMS-private type (introduced in 3.3.0 for `QualityControl`, #7497) which CTDopts predates - it raises `KeyError: 'output-dir'` and kills the conversion of the whole suite. `output-prefix` is the legacy CTDopts type for the same thing: the value is a path the tool appends its own file names to, i.e. a prefix that happens to end with a separator. Retyping keeps the parameter (a user may want the parquet export) and lets CTDConverter declare a collection for it, which deleting the parameter made impossible. The directory is `mkdir`ed in the preprocessing block and passed as `<param>/`, so the wrapper's `discover_datasets` sees exactly the files the tool wrote. `ProSE.out_mod_analysis_dir` stays hidden: it is a mixture of tables and plots with no single datatype. |
 | D31 | the `-test` parameter (TOPPBase's internal switch, in 105 wrappers) | **stays hidden, not blacklisted** (`CTD:type: text`, `XML:type: hidden`, `XML:optional: true` in `aux/hardcoded_params.json`) | the blacklist was tried and works - `"test": [{"value": "@"}]` regenerates 145 wrappers, removes the `<param>` *and* the 609 `<param name="test" value="true"/>` test lines (`get_tests.py` grew `strip_blacklisted_params()`, because `create_test_only()` re-emits a blacklisted param into the tests), and all 10 static checks stay green - but it changes what the outputs *contain*: outside `test_mode_` `TOPPBase::getProcessingInfo_()` writes every ini parameter as a `parameter: <name>` UserParam into `DataProcessing` (`TOPPBase.cpp:646-677`), ~2.3 kB per processing block, and the upstream references are test-mode outputs without that dump. Of the first 171 tests re-run, 157 passed and 14 failed on `sim_size` alone, all of them small fixtures: `FeatureLinkerUnlabeled_2` (2693 -> 4990 b), `FeatureLinkerUnlabeledKD_7` (1664 -> 5106 b), `FileConverter_9/14/15`, `FileFilter_4/5/7/12/13/19/38/41/43`. The honest options were to relax those 14+ size assertions (the dump is legitimate output, so `sim_size` can never match again) or to pin `"test": [{"value": "true"}]` in the ini (invisible, but then *every* output carries `version_string`, the fixed 1999-12-31 completion time and `parameter: mode: test_mode`). Neither is worth it: `-test` affects nothing a user chooses, the hidden param is the status quo, and tests need it to reproduce the upstream references. Revert verified: `git checkout` of the three files + one `aux/generate.sh` reproduces HEAD `0dabb379` with **0** changed files, `all static checks passed`, `GATE PASSED`. |
+| D32 | how CTDConverter pairs a list output when a tool has **several input lists** (D7's `TypeError`) | **a name-family tie-breaker inside the existing precedence** (`get_pairing_key`/`narrow_candidates_by_name`, third commit on `topic/fix-selects2`) | `get_input_with_same_restrictions()` walks four levels — (same arity, same formats) → (any arity, same formats) → (same arity, any format) → (any arity, any format) — and demands exactly one match per level. `trafo_out` is `*.trafoXML` and no input is, so the two format-aware levels find nothing and the last one matches both `in` and `in_spectra_files`; `get_corresponding_input()` returns `None` and `create_command()`'s list branch does `"mkdir " + None` (`converter.py:715`), which `convert.py:143` (`"Reason: " + e.msg`) then masks as `AttributeError: 'TypeError' object has no attribute 'msg'`. The rule: `in`↔`out`, `in_X`↔`out_X`, `X_in`↔`X_out`; if that leaves several, the plain `in`; otherwise unchanged. It **only runs when more than one candidate is left**, so it can never overrule a unique (format-based) pairing — the failure mode of a name rule is a silently renamed output dataset (names come from the paired input's `element_identifier`), and this rule cannot reach that state. Measured over all 152 CTDs (245 `output-file` params): **0 pairings change**; two full 145-wrapper conversions (with/without the patch, blacklist removed for both) differ **only** in the three MapAligner wrappers, 16 lines each. 16 list outputs exist; 13 pair by format, the 3 remaining are exactly these `trafo_out`s. The wrappers regain the 3.2 block (enumerated `mkdir trafo_out/<i>`, `-trafo_out <one per -in>`, `mv -n` onto the designation, `<collection type="list" name="trafo_out" format="trafoxml">` behind `OPTIONAL_OUTPUTS`). Help texts do not help: only 9 of 245 outputs name another parameter, and `trafo_out`'s (`"This option or 'out' has to be provided"`) names an *output*. Upstream proposal: let OpenMS annotate the pairing (`tags="corresponds_to=in"` — the CTDs already carry `tags="is_executable"`), which needs no heuristic at all; and make both this function and `convert.py:143` degrade with a real message instead of dying. |
 | D4 | `FileConverter` raw path | open | 3.6 moved raw handling into `RawToMzML:*` and added `-RawToMzML:reader` (`inprocess` default on Linux). The hardcoded `RawToMzML:NET_executable=mono` / `ThermoRaw_executable=ThermoRawFileParser.exe` are ignored unless `reader=external`, and `mono` is no longer a recipe dependency. Decide in round 2. |
 
 ### D11 — `MascotAdapterOnline` keeps its tests only as a comment
@@ -967,6 +969,89 @@ multi-file), `7a2bc847` (CI branch), `cfc16dba` (3.11 `E999`), `f23e4126`
 (`<element>`, aliases, committed fixtures), `1a681ff5` (profile 25.1),
 `02aecb26` (ParquetDiff bundles), `8ba20a8d`/`616aaff2` (pinned revision).
 
+## Round 9b — the MapAligner transformations come back (D7 → D32)
+
+`-trafo_out` was the only casualty that the blacklist in `aux/hardcoded_params.json`
+had reduced to "we cannot convert this". Re-examined after the CI round, the crash
+turned out to be one missing tie-breaker, not an unresolvable ambiguity.
+
+**Reproduction** (the installed `ctdconverter` in the generation env is a copy of the
+`<repo>/CTDConverter` checkout, refreshed to the same file): converting
+`MapAlignerIdentification.ctd` with an
+empty `-p` fails in `converter.py:715`, `create_command`, on the list branch
+`"mkdir " + str(<input>)` with `TypeError: can only concatenate str (not "NoneType")
+to str`; `convert.py:143` (`"Reason: " + e.msg`) then turns that into
+`AttributeError: 'TypeError' object has no attribute 'msg'`, so the message the user
+sees is not the bug. The `None` comes from `get_corresponding_input()` →
+`get_input_with_same_restrictions()`, which tries four levels — (same arity, same
+formats) → (any arity, same formats) → (same arity, any format) → (any arity, any
+format) — and returns a pairing only if a level yields **exactly one** candidate.
+`trafo_out` is `*.trafoXML`, no input is, so the two format-aware levels are empty
+and the format-blind level matches `in` *and* `in_spectra_files` → two → `None`.
+
+**Rule** (`converter.py`, `get_pairing_key` + `narrow_candidates_by_name`, called
+only where more than one candidate is left): `in`↔`out`, `in_X`↔`out_X`,
+`X_in`↔`X_out`, and if that still leaves several, the plain `in` — a transformation
+is per input file. Because it only runs at an already-ambiguous level, it cannot
+overrule a pairing that the formats decide; that matters, since a wrong pairing is
+silent (the output dataset is *named* after the paired input's `element_identifier`).
+
+**Why a name rule is safe here, and where it would not be**: a naive
+"longest common suffix" rule applied as a *replacement* would repartner 13 of the
+245 outputs (`Epifany.out → exp_design`, `MaRaClusterAdapter.out →
+maracluster_executable`, `LuciphorAdapter.out → in`, `QCExporter.out_csv → mapping`,
+…), rewriting `format_source` and the element names of wrappers that work today.
+Inside the existing precedence the same rule changes **0** of 245 pairings: the
+formats still decide first.
+
+**Help texts were checked and do not carry the information**: only 9 of the 245
+outputs mention another parameter at all, and the promising ones name an *output*
+(`trafo_out`: "This option or 'out' has to be provided") or a size constraint
+(`in_spectra_files`). The one machine-readable channel that does exist is the CTD's
+`tags=` attribute (already used 13× upstream as `tags="is_executable"`); a
+`tags="corresponds_to=in"` would let the converter pair without any heuristic —
+that is the upstream proposal, together with "degrade with a real message instead
+of dying" for both this function and `convert.py:143`.
+
+**Evidence**
+
+* full conversion A/B over all 152 CTDs (wrapper skeletons; the test macros are
+  annotated afterwards and were identical too): unpatched + blacklist → 145 wrappers;
+  patched + blacklist removed → 145 wrappers, `diff -rq` differs **only** in the
+  three MapAligners, 16 changed lines each, and that delta is exactly the 3.2 block
+  (`mkdir trafo_out/<i>`, `-trafo_out` one file per `-in`, `mv -n`, the
+  `<collection>` with its `filter`, `+1` `OPTIONAL_OUTPUTS` option);
+  unpatched + no blacklist → `rc=1`, 64 wrappers, dies at `converter.py:715`;
+* the wrappers now pass the upstream tests that actually use the flag:
+  `TOPP_MapAligner{PoseClustering_1,4,5,6,Identification_6,7,8,TreeGuided_2}` use
+  `-trafo_out` upstream, of which 3 had become unreachable and 2 lost the flag;
+* Galaxy, pristine worktree at this commit (`ci-sim`, `test-data/` of a fresh
+  clone): **15/15** — MapAlignerIdentification 8, MapAlignerPoseClustering 4,
+  MapAlignerTreeGuided 3, including the 3 new trafo tests;
+* `check_generated.sh`: `all static checks passed` (with
+  `expect_num_outputs: 146 wrappers checked, 0 problem(s)` and
+  `remote test data: 1445 reference(s) by URL, 738 assertion(s), 25 committed
+  fixture(s)`), and a second full `aux/generate.sh` leaves **0** changed files.
+
+**Dependency**: generation now needs `topic/fix-selects2` at the pairing commit.
+`aux/generate.sh` clones that branch when `$tmp/CTDConverter` is absent, so a fresh
+clone is correct as soon as the branch is pushed; until then
+`check_generated.sh --regen` reports the three wrappers instead of failing silently.
+The `trafo_out` entry and its `"#"` comment are gone from `hardcoded_params.json`
+(44 → 43 parsed keys).
+
+**`manifest.py report --gate` is fingerprint-stale, not red** — and it was stale
+before this round: 123 of the 146 tools carry a fingerprint from before round 9's
+remote-test-data commits, which rewrote the `<test>` of 136 wrappers but only
+re-stamped the ones it re-tested (§ "the second pass over the test data"). This
+round re-stamped the three MapAligners it actually ran (120 remain). Closing the
+gate needs the full suite (`run_tests.sh --all`, `batch3.sh` chunked, one Galaxy at
+a time under the 8 GB cap), not more bookkeeping: stamping an untested wrapper is
+exactly what the fingerprint exists to prevent.
+
+Commits: `topic/fix-selects2` `22064a2` (the tie-breaker) and `d1b43aa3`
+(regenerated wrappers + the blacklist removal).
+
 ## Round 1.5 (3.6 regeneration) — closed
 
 Generation now runs end to end against the 3.6.0 CTDs: 152 CTDs -> 141 wrappers
@@ -982,6 +1067,10 @@ the jump 3.2 -> 3.6 needed a decision, all recorded here:
   `-trafo_out` for those three tools (spectra in/out kept) and file the proper fix
   upstream (skip hardcoded/blacklisted params when pairing) — better than patching
   the fork locally, which would make the pipeline unreproducible for others.
+  **Superseded in round 9b (D32)**: the fork *is* patched now — the ambiguity is
+  resolved by the parameter names instead of by dropping the output, and the
+  blacklist is gone again. The original objection stands only in that the third
+  CTDConverter commit has to be pushed with the wrappers.
 * **D8 (formats)**: CTDConverter crashes with `KeyError: 'xic'` when an output has
   several formats of which one is unmapped (`o2g[choice]` in `create_inputs`).
   `aux/filetypes.txt` now maps the 3.6 formats that have an obvious Galaxy type:
