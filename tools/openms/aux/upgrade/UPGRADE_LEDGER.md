@@ -886,6 +886,78 @@ Summary:
   `MYRIMATCH_BINARY`, `SIRIUS_BINARY`, `XTANDEM_BINARY`,
   `THERMORAWFILEPARSER_BINARY`).
 
+## Round 9 — CI triage and the second pass over the test data (PR review, 2026-11-22)
+
+The PR's five red jobs (run `45031045774`/`45031045956`, sha `5ce58bfd`) were one
+cause plus two housekeeping items:
+
+* `Combine chunked test results` / `Check workflow success` - 57 tests still fell
+  back to `test-data/`, and `pr.yaml` lost the step that populated it (upstream
+  `5e992cf5`). See the remote-test-data part below.
+* `Lint Python scripts (3.11)` - `E999` in `get_tests.py` (a backslash inside an
+  f-string expression, legal only from 3.12/PEP 701; the sandbox lints with 3.14,
+  where it is invisible) and `F821` (`original` not a parameter of `_assert_on`).
+* `Lint tool-list (3.11)` - `ConsensusID`'s ambiguous `format_source="in"`, fixed
+  by the post-processor `aux/qualify_format_source.py`: rewrite to the expanded
+  state name only when the bare name is not a top-level input and all matches
+  agree.
+* `Check file sizes` - two `unimod.xml` copies (2.4 MB each) added by accident in
+  `3db9ec64`.
+* `pca.sh:301-306` is the mechanism behind the first bullet: *any* test whose
+  status is not `success` fails the combine job, so the test failures and the two
+  workflow checks were the same signal.
+
+Remote test data, second pass - the round-7 limit ("one `<param>`, one
+`location`, so multi-file references stay local") was wrong:
+
+* A comma-separated value on a `multiple="true"` input takes one URL per file;
+  Galaxy splits it since 24.2 (`tool_util/verify/parse.py`,
+  `_process_raw_inputs`, `split_if_str`). The tool profile does not matter - that
+  is the *test* parser - so `@PROFILE@` did not have to move for it.
+* `<element file="..."/>` was never annotated (the regex only knew `<param>` and
+  `<output>`). Galaxy reads an element's reference through
+  `tool_util/parser/xml.py::__parse_test_attributes`, like an output, so
+  `location=` applies. Same for `<output file="...">` (FileConverter test 34).
+* `get_tests.py` renames the second copy of a file a test uses twice
+  (`X.mzML` -> `X_0.mzML`), so the alias had no manifest row and the whole list
+  stayed local. An alias is the same bytes as its base name, so the base URL is
+  the right reference - **for an input only**: an output `X_1.xml` is what the
+  tool wrote (`IDRipper_3_input1.idXML` is IDRipper's output, while upstream's
+  file of that name is the input of the neighbouring test - comparing them fails
+  by 48 bytes). For `PER_INPUT_OUTPUT_TOOLS = {"FileMerger"}` even an input alias
+  stays local: OpenMS writes one output per input name (`-rt_concat:trafo_out`),
+  and two datasets of one name lose the second output.
+* A committed fixture pins its reference locally (`remote_test_data.tracked()`,
+  `git ls-files test-data`), since some content no URL serves. 25 files, 348 kB:
+  the three files a test rewrites in place (`INIUpdater`, `MapAlignerIdentification`,
+  `PeptideIndexer`), the four `ParquetDiff` bundle directories (a bundle is a
+  directory), `psms.parquet`, IDRipper's ripped files, MzMLSplitter's produced
+  references, the SeedListGenerator/QC/QCCalculator intermediates of
+  `prepare_test_data.sh`, and the two materialised FileMerger copies (a symlink
+  dangles in a checkout that never ran `test-data.sh`).
+* The two-input `OpenSwathDIAPreScoring` test uploaded two symlinks to the same
+  mzML - one dataset name twice; it now uses two different upstream files, which
+  is what `swath_files_select=yes` is about.
+* Fixture URLs are pinned to the commit `v3.6.0` resolves to
+  (`5d5cbff4053b281763a1a79bf69e81c27967cfdf`): `raw.githubusercontent.com`
+  serves whatever the tag points at, so a re-tagged release would silently change
+  1441 references. `test-data.sh` derives the revision with
+  `git rev-parse "$GITTAG^{commit}"`, so 3.6.1 needs no edit.
+* check 9 now demands exactly that of every reference (URL, assertion, or
+  committed file) and covers `<element>`.
+
+Verification from a **pristine worktree** (`git worktree` at `8ba20a8d`: the
+`test-data/` of a fresh clone, no `test-data.sh`): 36 wrappers, 201 tests, 0
+failures - every wrapper named in the review plus the readers of the committed
+fixtures. Static checks green, `--regen` idempotent, `planemo lint
+--fail_level warn` rc=0, flake8 over the tracked sources rc=0 (3.14) and
+`ast.parse` under 3.11 for every tracked `.py`.
+
+Commits: `0da44d12` (test data), `da889bf3` (flake8), `3b6b5b83` (format_source +
+multi-file), `7a2bc847` (CI branch), `cfc16dba` (3.11 `E999`), `f23e4126`
+(`<element>`, aliases, committed fixtures), `1a681ff5` (profile 25.1),
+`02aecb26` (ParquetDiff bundles), `8ba20a8d` (pinned revision).
+
 ## Round 1.5 (3.6 regeneration) — closed
 
 Generation now runs end to end against the 3.6.0 CTDs: 152 CTDs -> 141 wrappers
