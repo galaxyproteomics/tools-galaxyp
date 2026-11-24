@@ -17,10 +17,12 @@ which can be fine tuned via the `hardcoded_params.json` file. This file allows
 to blacklist and hardcode parameters and to modify or set arbitrary
 CTD/XML attributes.
 
-Note that, due to its size, the test data is excluded from this repository. In
-order to generate the test data call `./aux/test-data.sh` (from the tool
-directory or from the repository root, the script changes into the tool
-directory itself).
+Note that, due to its size, the test data is excluded from this repository — and
+none of the tests needs it: every reference a test makes is either a URL from
+`aux/upstream-fixtures.tsv`, an assertion on the produced content, or one of the
+few fixtures committed in `test-data/`. For local work `./aux/test-data.sh`
+still generates the full set (from the tool directory or from the repository
+root, the script changes into the tool directory itself).
 
 Manual updates should only be done to
 
