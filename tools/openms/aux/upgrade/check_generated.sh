@@ -23,7 +23,7 @@ fail() { printf 'FAIL: %s\n' "$*" >&2; failures=$((failures + 1)); }
 
 # the wrappers are the only files that carry a tool definition; the macros files
 # are shared includes (macros_discarded_auto.xml is an intentionally malformed
-# fragment file, see the discard step in test-data.sh)
+# fragment file, see the discard step in aux/test-data.sh)
 mapfile -t TOOLS < <(ls -1 *.xml | grep -v '^macros')
 
 case "${1:-}" in
@@ -69,7 +69,7 @@ if [ -f "$PATTERNS" ]; then
     while IFS=$'\t' read -r label pattern severity; do
         case "$label" in ''|'#'*) continue ;; esac
         severity=${severity:-fail}
-        hits=$(grep -lE "$pattern" "${TOOLS[@]}" test-data.sh 2>/dev/null | tr '\n' ' ')
+        hits=$(grep -lE "$pattern" "${TOOLS[@]}" aux/test-data.sh 2>/dev/null | tr '\n' ' ')
         [ -z "$hits" ] && continue
         if [ "$severity" = warn ]; then
             warn "$label: $hits"
@@ -94,19 +94,19 @@ VERSION=$(grep -oP '<token name="@TOOL_VERSION@">\K[^<]+' macros.xml | head -1)
 # the scripts read the version from macros.xml (single source of truth); a hard
 # coded version is also accepted but must agree with macros.xml
 GEN_VERSION=$(grep -oP '^VERSION=\K.*' aux/generate.sh | head -1)
-TD_VERSION=$(grep -oP '^VERSION=\K.*' test-data.sh | head -1)
+TD_VERSION=$(grep -oP '^VERSION=\K.*' aux/test-data.sh | head -1)
 for _v in GEN_VERSION TD_VERSION; do
     case "${!_v}" in
         *'macros.xml'*) printf -v "$_v" '%s' "$VERSION";;
     esac
 done
 GEN_PROFILE=$(grep -oP '^PROFILE="\K[^"]+' aux/generate.sh | head -1)
-note "version: macros.xml=${VERSION:-?} generate.sh=${GEN_VERSION:-?} test-data.sh=${TD_VERSION:-?}"
+note "version: macros.xml=${VERSION:-?} generate.sh=${GEN_VERSION:-?} aux/test-data.sh=${TD_VERSION:-?}"
 agrees() { # $1 = the assignment found in the script
     [ "$1" = "$VERSION" ] || case "$1" in *macros.xml*) return 0;; *) return 1;; esac
 }
 agrees "$GEN_VERSION" && agrees "$TD_VERSION" \
-    || fail "OpenMS version differs between macros.xml ($VERSION), aux/generate.sh ($GEN_VERSION) and test-data.sh ($TD_VERSION)"
+    || fail "OpenMS version differs between macros.xml ($VERSION), aux/generate.sh ($GEN_VERSION) and aux/test-data.sh ($TD_VERSION)"
 
 profiles=$(grep -hoP '^<tool [^>]*profile="\K[^"]+' "${TOOLS[@]}" | sort -u)
 [ "$(printf '%s\n' $profiles | wc -l)" -eq 1 ] \
@@ -149,7 +149,7 @@ esac
 #    something; check them against test-data/ (skip when it was not populated)
 if [ -d test-data ] && [ -n "$(ls -A test-data 2>/dev/null)" ]; then
     if ! python3 aux/upgrade/check_manual_tests.py; then
-        fail "manual tests reference fixtures which test-data.sh does not produce"
+        fail "manual tests reference fixtures which aux/test-data.sh does not produce"
     fi
 else
     note "test-data/ is empty, skipping the manual-test fixture check"

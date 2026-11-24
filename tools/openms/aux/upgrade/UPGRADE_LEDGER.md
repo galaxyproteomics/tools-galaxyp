@@ -28,7 +28,7 @@ later round does not re-litigate it.
 |---|---|---|---|
 | D1 | `MascotAdapterOnline` | **restored to `tools/openms/`** (was moved to `deprecated/` in `b5c3d845`), normalised to `profile="@PROFILE@"` (D15) + docs 3.2.0 | it is *not* removed: `MascotAdapter` went away in 3.4.0, `MascotAdapterOnline` exists through 3.6.0 (`src/topp/executables.cmake`). It stays in `aux/tools_blacklist.txt` (broken upstream, #4412) and is therefore **not regenerated** — the file is hand-maintained until round 3 re-evaluates un-blacklisting it. |
 | D2 | `ParquetConverter`, `ParquetDiff`, `*-out_qpx` | blacklist / do not wrap | their outputs are *directories* of parquet files; Galaxy datasets are single files. Needs collection-in/collection-out support before it can be wrapped. |
-| D3 | `Decharger`, `MetaboliteAdductDecharger`, `MaRaClusterAdapter`, `FLASHDeconv`, `IDDecoyProbability`, `ProteomicsLFQ` | keep blacklisted | pre-existing reasons in `aux/tools_blacklist.txt`, unrelated to the version jump. |
+| D3 | `Decharger`, `MetaboliteAdductDecharger`, `MaRaClusterAdapter`, `FLASHDeconv`, `IDDecoyProbability`, `ProteomicsLFQ` | keep blacklisted | pre-existing reasons in `aux/tools_blacklist.txt`, unrelated to the version jump. **Partly superseded by D33**: `Decharger` and `MetaboliteAdductDecharger` (the bioconda stack smashing bug is gone) and `FLASHDeconv` (skipped TOPP test + manual test) are wrapped again; `MaRaClusterAdapter`, `IDDecoyProbability`, `ProteomicsLFQ` stay. |
 | D6 | layout of `deprecated/` | one subdirectory per archived suite state (`3.1/`, `3.2/`), each with its own `macros.xml` + `fill_ctd.py` | a wrapper's `<requirement>` pin must match the suite it was generated from. The 7 wrappers dropped in this upgrade are 3.2-generated, the 15 older ones are 3.1-generated; one shared `macros.xml` would have made one of the two groups install the wrong OpenMS. `<import>` resolves relative to the importing file, so this needs no edit to any wrapper. |
 | D5 | nested/stale `hardcoded_params.json` entries | **partly done** (round 5): only entries naming tools that no longer exist are pruned (`separator`/`IDMassAccuracy`, `xml_out`/`XTandemAdapter`, `algorithm:tryptic_only`/`CompNovo`+`CompNovoCID`); the rest are kept | `ctd_diff.py` lists 18 parameters that vanished from the 3.6 CTDs, but most of those entries are *deliberate* blacklists whose parameter is now *retyped* rather than hidden (`out_qpx`), hidden for a reason (`in_type`, `out_mod_analysis_dir`) or re-typed rather than removed (`in`/`OpenSwathWorkflow`, `test`). Only a `tools` list naming a tool that is not in the 3.6 snapshot is unambiguously dead. `check_generated.sh --regen` proves the three removals leave every wrapper byte-identical. The host-path rule is flipped from `warn` to `fail` (no wrapper contains `/home/<user>/` any more). |
 | D13 | what a fixture fingerprint may hash | timestamps and runtime footers are washed out, four fixtures are hashed as "unstable" | `test-data.sh` does not ship a dozen fixtures, it **generates** them by running the tools, and OpenMS stamps them with the clock (`<IdentificationRun date=...>`, `creationDate=...`, the `took 0.09 s (wall) ... Peak Memory Usage` footer, and in the binary `.oms` a plain `2026-11-15 18:40:55`). Hashing those bytes made the gate report **15 phantom stale tools** after every regeneration. `sha256_fixture()` now normalises the stamp tokens (an actual fixture change is still caught byte for byte), and `unstable_fixtures.txt` names the four fixtures that are not reproducible at all (Epifany's EM scores, `-threads 4` feature order) - exactly the ones the wrappers assert with `compare="sim_size" delta_frac="0.7"`. Verified: two full regenerations in a row move **0** fingerprints. |
@@ -48,9 +48,10 @@ later round does not re-litigate it.
 | D27 | upgrading the test data's `.ini` files | **`aux/ini_keep_original.txt` names the four fixtures which keep their original**; every other file is still converted, but `aux/check_ini_conversion.py` reports a changed value as a warning | `test-data.sh` upgrades every `*.ini` with `<tool> -ini <old> -write_ini <new>`, and that upgrade is needed: the shipped inis have moved nodes (`MassTraceExtractor_2` carries `mtd:min_trace_length`, 3.6 reads `epd:min_trace_length`) and OpenMS repairs them at runtime, which the generator has to see. But `-write_ini` writes the *defaults* of the tool - `-ini` only selects the parameter set which gets augmented - so a value the tool fills in itself does not survive. `IsobaricAnalyzer:type` is one: `TMTTenPlexMethod_test.ini` came back as `itraq4plex`, the generated test pinned that value, and the tool wrote an iTRAQ consensusXML (2611 b) where the upstream reference is a TMT one (12327 b), which `sim_size` rejects; upstream never sees it because `TOPP_IsobaricAnalyzer_2` compares with `-whitelist "id=" "<map" "?xml-stylesheet"`. The other three are `PPHiRes_invalidValue{,Section}` - they exist *because* their value is invalid. Not listed, and therefore converted: `FeatureLinkerUnlabeledKD_4` (`None` is not in the 3.6 restrictions of `adduct_merging`/`charge_merging`, so the default is what the tool uses) and `MassTraceExtractor_2` (an obsolete node, same argument). The report compares the values under their `NODE/…/ITEM` path and numerically (`1` -> `1.0`, `10000000` -> `1.0e07` are not changes). |
 | D28 | the order of `<option>`s in a `select` | **the CTD's `restrictions` list is sorted** by `patch_ctds.py`, so the wrapper does not inherit the order of OpenMS' container | the CTD repeats the enumerable values of a parameter as a comma separated `restrictions` attribute, and OpenMS produces that list in the iteration order of its own container: the enzyme select of `NucleicAcidSearchEngine` came out as `colicin_E5,no cleavage,...,RNase_T1` in one environment and `RNase_T1,colicin_E5,...,RNase_A` in the next - the same fourteen names, rotated. Three different rotations of that one list were observed for the same 3.6.0 package (the committed wrappers, the regeneration of 14:07, and the regeneration of 21:20), none of them reproducible from the input, and CTDConverter turns the list into the wrapper's options, so `check_generated.sh --regen` reported 13 changed wrappers whose diff was nothing but `<option>` elements moving. Sorting in the CTD (the layer that already exists for exactly this kind of upstream omission, D16) rather than in the converter keeps the conversion mechanical: it applies to all 710 multi-value restrictions of the 152 CTDs, of which 81 wrappers show the result, and it makes the wrapper a function of the *set* of values. An empty entry is a value of its own (`<option value=""/>`, `ProteinInference -Algorithm:score_type`) and survives the sort. |
 | D30 | the internal Parquet bundles (`.idparquet`, `.featureparquet`, `.consensusparquet`) on both sides | **a `list` collection of `parquet` datasets**, with the inner file names as element designations, produced by a **repo-local post-processor** (`aux/parquet_bundles.py`, run inside `generate.sh` after CTDConverter) rather than by a third CTDConverter commit | a Parquet *file* holds exactly one table (one `FileMetaData` header, one schema) and an OpenMS map/IdXML is 4-5 relations, so the bundle is a directory by construction and the reader requires the file names verbatim (`PSMArrowIO.h:26-35`). A collection is the only Galaxy shape that keeps one logical object, one output chip and the free designations; N separate `<data>` outputs would multiply every output list and lose the names. Route: `aux/generate.sh` clones `topic/fix-selects2`, which already has two unpushed commits (`dd7dc95`, `ae3635e`) - a third would make the wrappers reproducible only with push access. Producers get an *additional optional* output `out_<kind>` behind `OPTIONAL_OUTPUTS`, so no existing command line or test moves; consumers need a `<conditional>` and are staged separately. Design, inventory and staging: `.openms-tests/PLAN-parquet-bundles.md`. **Stage 8a (producers) is implemented for the 7 tools that can actually write a bundle** - round 8a; the CTD-declared inventory of 27 params was wrong, see the round-8 notes. |
-| D29 | the 11 `type="output-dir"` parameters of the 3.6 CTDs | **retyped to `output-prefix`**, not deleted (`aux/retype_output_dirs.py`, and `fill_ctd.py` for the CTD a wrapper writes at run time) | supersedes the strip rationale of D2/D3 for these parameters. `output-dir` is an OpenMS-private type (introduced in 3.3.0 for `QualityControl`, #7497) which CTDopts predates - it raises `KeyError: 'output-dir'` and kills the conversion of the whole suite. `output-prefix` is the legacy CTDopts type for the same thing: the value is a path the tool appends its own file names to, i.e. a prefix that happens to end with a separator. Retyping keeps the parameter (a user may want the parquet export) and lets CTDConverter declare a collection for it, which deleting the parameter made impossible. The directory is `mkdir`ed in the preprocessing block and passed as `<param>/`, so the wrapper's `discover_datasets` sees exactly the files the tool wrote. `ProSE.out_mod_analysis_dir` stays hidden: it is a mixture of tables and plots with no single datatype. |
+| D29 | the 11 `type="output-dir"` parameters of the 3.6 CTDs | **retyped to `output-prefix`**, not deleted (`aux/retype_output_dirs.py`, and `fill_ctd.py` for the CTD a wrapper writes at run time) | supersedes the strip rationale of D2/D3 for these parameters. `output-dir` is an OpenMS-private type (introduced in 3.3.0 for `QualityControl`, #7497) which CTDopts predates - it raises `KeyError: 'output-dir'` and kills the conversion of the whole suite. `output-prefix` is the legacy CTDopts type for the same thing: the value is a path the tool appends its own file names to, i.e. a prefix that happens to end with a separator. Retyping keeps the parameter (a user may want the parquet export) and lets CTDConverter declare a collection for it, which deleting the parameter made impossible. The directory is `mkdir`ed in the preprocessing block and passed as `<param>/`, so the wrapper's `discover_datasets` sees exactly the files the tool wrote. `ProSE.out_mod_analysis_dir` stays hidden: it is a mixture of tables and plots with no single datatype. **Superseded by D33** (round 10): the directory holds only tables (`*.tsv`), so it became an optional collection. |
 | D31 | the `-test` parameter (TOPPBase's internal switch, in 105 wrappers) | **stays hidden, not blacklisted** (`CTD:type: text`, `XML:type: hidden`, `XML:optional: true` in `aux/hardcoded_params.json`) | the blacklist was tried and works - `"test": [{"value": "@"}]` regenerates 145 wrappers, removes the `<param>` *and* the 609 `<param name="test" value="true"/>` test lines (`get_tests.py` grew `strip_blacklisted_params()`, because `create_test_only()` re-emits a blacklisted param into the tests), and all 10 static checks stay green - but it changes what the outputs *contain*: outside `test_mode_` `TOPPBase::getProcessingInfo_()` writes every ini parameter as a `parameter: <name>` UserParam into `DataProcessing` (`TOPPBase.cpp:646-677`), ~2.3 kB per processing block, and the upstream references are test-mode outputs without that dump. Of the first 171 tests re-run, 157 passed and 14 failed on `sim_size` alone, all of them small fixtures: `FeatureLinkerUnlabeled_2` (2693 -> 4990 b), `FeatureLinkerUnlabeledKD_7` (1664 -> 5106 b), `FileConverter_9/14/15`, `FileFilter_4/5/7/12/13/19/38/41/43`. The honest options were to relax those 14+ size assertions (the dump is legitimate output, so `sim_size` can never match again) or to pin `"test": [{"value": "true"}]` in the ini (invisible, but then *every* output carries `version_string`, the fixed 1999-12-31 completion time and `parameter: mode: test_mode`). Neither is worth it: `-test` affects nothing a user chooses, the hidden param is the status quo, and tests need it to reproduce the upstream references. Revert verified: `git checkout` of the three files + one `aux/generate.sh` reproduces HEAD `0dabb379` with **0** changed files, `all static checks passed`, `GATE PASSED`. |
 | D32 | how CTDConverter pairs a list output when a tool has **several input lists** (D7's `TypeError`) | **a name-family tie-breaker inside the existing precedence** (`get_pairing_key`/`narrow_candidates_by_name`, third commit on `topic/fix-selects2`) | `get_input_with_same_restrictions()` walks four levels — (same arity, same formats) → (any arity, same formats) → (same arity, any format) → (any arity, any format) — and demands exactly one match per level. `trafo_out` is `*.trafoXML` and no input is, so the two format-aware levels find nothing and the last one matches both `in` and `in_spectra_files`; `get_corresponding_input()` returns `None` and `create_command()`'s list branch does `"mkdir " + None` (`converter.py:715`), which `convert.py:143` (`"Reason: " + e.msg`) then masks as `AttributeError: 'TypeError' object has no attribute 'msg'`. The rule: `in`↔`out`, `in_X`↔`out_X`, `X_in`↔`X_out`; if that leaves several, the plain `in`; otherwise unchanged. It **only runs when more than one candidate is left**, so it can never overrule a unique (format-based) pairing — the failure mode of a name rule is a silently renamed output dataset (names come from the paired input's `element_identifier`), and this rule cannot reach that state. Measured over all 152 CTDs (245 `output-file` params): **0 pairings change**; two full 145-wrapper conversions (with/without the patch, blacklist removed for both) differ **only** in the three MapAligner wrappers, 16 lines each. 16 list outputs exist; 13 pair by format, the 3 remaining are exactly these `trafo_out`s. The wrappers regain the 3.2 block (enumerated `mkdir trafo_out/<i>`, `-trafo_out <one per -in>`, `mv -n` onto the designation, `<collection type="list" name="trafo_out" format="trafoxml">` behind `OPTIONAL_OUTPUTS`). Help texts do not help: only 9 of 245 outputs name another parameter, and `trafo_out`'s (`"This option or 'out' has to be provided"`) names an *output*. Upstream proposal: let OpenMS annotate the pairing (`tags="corresponds_to=in"` — the CTDs already carry `tags="is_executable"`), which needs no heuristic at all; and make both this function and `convert.py:143` degrade with a real message instead of dying. |
+| D33 | the 7 entries of `aux/tools_blacklist.txt` | **re-evaluated: 4 remain**, and each carries its reason plus the way to re-check it as a comment in the file | the list had become a graveyard - an entry was added when a tool could not be converted and never revisited, so three tools stayed out long after their reason had gone. `Decharger`/`MetaboliteAdductDecharger` were blacklisted for a bioconda stack smashing bug (OpenMS#7149) that the 3.6 build does not have, and `FLASHDeconv` for "needs tests and uses an output prefix", which 3.6 no longer does - but its upstream test cannot be expressed (`TOPP_FLASHDeconv_1` deconvolves nothing on the sample input, so the tool skips the whole output block, `FLASHDeconv.cpp:305`, and the reference TSV is stale against the current header), hence a `SKIP_LIST` entry plus a `-keep_empty_out` manual test instead of a blacklist entry. What remains is a *reason*, not a habit: `MaRaClusterAdapter` (executable not in the bioconda recipe, `${MARACLUSTER_BINARY}` unset), `IDDecoyProbability` (deprecated, no TOPP test), `ProteomicsLFQ` (ITEMLIST parameters + the `check_multi_inputs()` gap, i.e. a generator fix, not a wrapper decision) and `MascotAdapterOnline` (THIRDPARTY `with_mascot` tests, OFF in 3.6; the wrapper stays with no active test). 146 -> 149 wrappers, 644 -> 649 tests. |
 | D4 | `FileConverter` raw path | open | 3.6 moved raw handling into `RawToMzML:*` and added `-RawToMzML:reader` (`inprocess` default on Linux). The hardcoded `RawToMzML:NET_executable=mono` / `ThermoRaw_executable=ThermoRawFileParser.exe` are ignored unless `reader=external`, and `mono` is no longer a recipe dependency. Decide in round 2. |
 
 ### D11 — `MascotAdapterOnline` keeps its tests only as a comment
@@ -1051,6 +1052,111 @@ exactly what the fingerprint exists to prevent.
 
 Commits: `topic/fix-selects2` `22064a2` (the tie-breaker) and `d1b43aa3`
 (regenerated wrappers + the blacklist removal).
+
+## Round 10 — the blacklist re-evaluated, and one workaround withdrawn (D33)
+
+Second review pass over the PR (`6036370467`, seven inline comments). Five were
+housekeeping, one was a question about option order that needed no change, and two
+changed the generator's input files.
+
+**Blacklist 7 → 4 (`4678300352`, D33).** The file was a graveyard: an entry was
+added when a tool could not be converted and never re-examined, so a tool stayed
+out long after the reason had gone. Every remaining entry now carries a comment
+that says *why*, and how to check it:
+
+| tool | why it is still out |
+| --- | --- |
+| `MaRaClusterAdapter` | `maracluster` not in the bioconda package; tests pass `${MARACLUSTER_BINARY}` |
+| `IDDecoyProbability` | deprecated upstream, no TOPP test |
+| `ProteomicsLFQ` | `-in`/`-ids` are ITEMLIST; `check_multi_inputs()` would skip 25/33 tests |
+| `MascotAdapterOnline` | 3 THIRDPARTY `with_mascot` tests, OFF in 3.6; OpenMS#4412 |
+
+`Decharger` and `MetaboliteAdductDecharger` came back (the recorded reason was a
+bioconda stack smashing bug, OpenMS#7149, gone in the 3.6 build): 1 and 2
+generated tests, the other upstream tests pass several files to one input and hit
+the `check_multi_inputs()` guard. `FLASHDeconv` came back as a **skipped** TOPP
+test plus a manual one — see below.
+
+**FLASHDeconv: the reference, not the wrapper, was the problem.** On the sample
+input nothing is deconvolved, so 3.6 skips the whole output block
+(`FLASHDeconv.cpp:305`) and writes no table; the generated test asserted one
+anyway. `-keep_empty_out true` makes the tool write the table — header only, and
+the header (`FeatureIndex MSLevel MonoisotopicMass … Qscore2D`) no longer matches
+the upstream reference (`MaxQscore`, no `MSLevel`). Refreshing a reference whose
+content is "emptiness" would pin nothing, so `TOPP_FLASHDeconv_1` is on
+`SKIP_LIST` and `manutest_FLASHDeconv` asserts the header instead. A trap worth
+recording: the assert must not name the output *file* as a `<param>` — a
+`<param name="out" value="…"/>` is a parameter, not an output element, and the gate
+rejected the fixture it implied.
+
+**`out_mod_analysis_dir` is an optional collection now (`4677838487`).** The old
+`"@"` blacklist entry claimed a mixed datatype directory, which was wrong: ProSE
+writes only `.tsv` there (`OpenSearchModificationAnalysis.cpp:501-584`). So
+`aux/ctd_patches.json` narrows `supported_formats` to `*.tsv`, the parameter is
+exposed as a `list` collection of `tabular` behind `OPTIONAL_OUTPUTS` (D30's
+shape, applied to a tool without parquet), and `manutest_ProSE` produces it:
+3000 ppm enters open search mode (`ProSE.cpp:234`), 3 tables land in the directory.
+The designations are `<staged file name>_ModificationAnalysis_<table>` and they
+come out in file name order — both bit me once, the test now asserts exactly that.
+`mkdir out_mod_analysis_dir &&` sits in front of `set -o pipefail` like every
+other output directory.
+
+**`spectra:in` — the workaround is withdrawn (`4678111266`).** `hardcoded_params.json`
+renamed IDMapper's section parameter to `DEDUP_1_DEDUP_in` because the comment in
+`2f85411c` said a `format_source` cannot refer to a parameter inside a section
+(galaxyproject/galaxy#9493). Two claims, both checkable:
+
+* a full path *is* accepted — `format_source="spectra|in"`, `|` as separator, as
+  in Galaxy's own `test/functional/tools/format_source_in_conditional.xml:25`;
+* the rename was not needed even without a path: input datasets are collected into
+  a `LegacyUnprefixedDict` (`tools/actions/__init__.py:173`) whose canonical keys
+  are the qualified names, with a bare alias registered as a *fallback*
+  (`set_legacy_alias`, `:280-281`; `tools/parameters/wrapped.py:46-67`), so
+  `format_source="in"` finds the top level `in` while the section's `in` lives at
+  `spectra|in`.
+
+Verified by a purpose-built tool (top level `in` = txt, section `in` = bed,
+`format_source="in"` vs `format_source="sec|in"` → txt vs bed, 1/1 passed) rather
+than by reading the code. IDMapper now has `<param name="in" argument="-spectra:in">`
+in the section and `format_source="in"` on `out`, and its 6 tests pass. What *did*
+land from #9493 is the `type_source` qualification
+(`tools/__init__.py:1893-1897`), which does not touch `format_source`.
+
+**`test-data.sh` → `aux/test-data.sh` (`4677735570`).** It `cd`s to the tool
+directory itself now, so it runs from either place, and it stops being shipped to
+the ToolShed (`.shed.yml` does not include `aux/`). A moved script leaves the
+paths of everything that *reads* it stale: `aux/upgrade/check_generated.sh` had six
+hard-coded references (the version consistency check, the fixture production check
+and the manual-test check), and the CI manual-test step in `pr.yaml` had one.
+
+**`ci.yaml` `GALAXY_BRANCH` (`4677684484`)** was still `release_24.1` while
+`pr.yaml` said `release_26.1`; both say `release_26.1` now. **`.gitignore`
+(`4677694472`)** reverted to the merge base, byte for byte; my scratch paths moved
+to `.git/info/exclude`. **Option order (`4677757290`)** needs no change, but the answer is not the obvious
+one: CTDConverter does not sort `<option>` lists (its only `sorted()` calls are the
+format ones, `converter.py:1179/:1198/:1967`), the sort happens one layer earlier
+in `aux/patch_ctds.py` (D28), and *that* is why the list moved relative to 3.1.
+The order is a function of the set of values, and `selected` follows the CTD
+default rather than the position, so nothing a user relies on moved.
+
+**Evidence**
+
+* `aux/generate.sh` three times (`gen29`, `gen30`, `gen31`), `EXIT=0` each, then
+  `git checkout -- MascotAdapterOnline.xml` (a blacklisted tool's wrapper is
+  *deleted* by every run);
+* `check_generated.sh`: `all static checks passed` — `version: … aux/test-data.sh=3.6`,
+  `manual tests: 25 fixtures produced, 50 test(s) in 38 wrappers, 0 problems`,
+  `expect_num_outputs: 149 wrappers checked`, `remote test data: 1457 reference(s)
+  by URL, 743 assertion(s), 25 committed fixture(s)`, `parquet_bundles: 7
+  wrapper(s) checked, 0 problem(s)`;
+* CI-sim on a pristine worktree (no populated `test-data/`): IDMapper 6/6,
+  Decharger 1/1, MetaboliteAdductDecharger 2/2, FLASHDeconv 1/1, ProSE 12/12;
+* `hardcoded_params.json` 43 → 41 parsed keys (the `out_mod_analysis_dir` and
+  `spectra:in` blocks, each with its comment, are gone).
+
+Wrappers 146 → 149, tests 644 → 649 (counted as `<test>` elements, the convention of
+the earlier rows; two of them are the commented-out `MascotAdapterOnline` tests, so
+Galaxy sees 647 runnable ones).
 
 ## Round 1.5 (3.6 regeneration) — closed
 

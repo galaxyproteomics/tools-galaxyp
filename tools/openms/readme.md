@@ -18,7 +18,9 @@ to blacklist and hardcode parameters and to modify or set arbitrary
 CTD/XML attributes.
 
 Note that, due to its size, the test data is excluded from this repository. In
-order to generate the test data on call `test-data.sh`.
+order to generate the test data call `./aux/test-data.sh` (from the tool
+directory or from the repository root, the script changes into the tool
+directory itself).
 
 Manual updates should only be done to
 

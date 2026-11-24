@@ -107,6 +107,14 @@ SKIP_LIST = [
     # test-data repository either - it lives in the OpenMS source tree - so the
     # three tests cannot be expressed (see D12 in the ledger).
     r'^TOPP_AssayGeneratorMetaboSirius_',
+    # FLASHDeconv writes its required -out table only if it found a feature or
+    # -keep_empty_out is set (FLASHDeconv.cpp:303).  On the sample input 3.6
+    # finds none, and upstream's TOPP_FLASHDeconv_1 has no DIFF step either, so
+    # the only thing it checks is the exit code and the generated Galaxy test
+    # asserts a table which is never written.  The manual test in
+    # aux/macros_test.xml runs the same command with -keep_empty_out and asserts
+    # the header of the table instead.
+    r'^TOPP_FLASHDeconv_1$',
 ]
 
 

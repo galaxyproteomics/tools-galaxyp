@@ -39,6 +39,9 @@ cp '$database' 'database/${re.sub("[^\w\-_]", "_", $database.element_identifier)
   mkdir out_pin &&
   mkdir ${' '.join(["'out_pin/%s'" % (i) for i, f in enumerate($in_cond.in) if f])} && 
 #end if
+#if "out_mod_analysis_dir_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir out_mod_analysis_dir &&
+#end if
 #if "summary_out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
   mkdir summary_out &&
 #end if
@@ -76,6 +79,10 @@ ${' '.join(["'in_cond.in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identi
 #if "out_pin_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
   -out_pin
   ${' '.join(["'out_pin/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext("tabular")) for i, f in enumerate($in_cond.in) if f])}
+#end if
+#if "out_mod_analysis_dir_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  -out_mod_analysis_dir
+  out_mod_analysis_dir/
 #end if
 #if "summary_out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
   -summary_out
@@ -6362,6 +6369,7 @@ ${' '.join(["'in_cond.in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identi
       <option value="out_parquet_FLAG">out_parquet (Output directory for OpenMS internal format Parquet files)</option>
       <option value="out_merged_FLAG">out_merged (Optional merged output file containing all PSMs pooled across input files with cross-file protein inference (BasicProteinInferenceAlgorithm) and optional picked-protein FDR (FDR:protein))</option>
       <option value="out_pin_FLAG">out_pin (Output Percolator input (.pin/.tsv) file(s) for external rescoring)</option>
+      <option value="out_mod_analysis_dir_FLAG">out_mod_analysis_dir (Optional directory to write modification-analysis tables (delta-mass, PTM stats) when running in open-search mode)</option>
       <option value="summary_out_FLAG">summary_out (Optional YAML file capturing the end-of-search report (per-file identification statistics, shared configuration/database/index facts, timing and output manifest) for pipeline ingestion)</option>
       <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
     </param>
@@ -6385,6 +6393,10 @@ ${' '.join(["'in_cond.in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identi
     <collection type="list" name="out_pin" label="${tool.name} on ${on_string}: out_pin">
       <discover_datasets directory="out_pin" recurse="true" format="tabular" pattern="__name__"/>
       <filter>OPTIONAL_OUTPUTS is not None and "out_pin_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </collection>
+    <collection type="list" name="out_mod_analysis_dir" label="${tool.name} on ${on_string}: out_mod_analysis_dir">
+      <discover_datasets directory="out_mod_analysis_dir" recurse="true" format="tabular" pattern="_?(?P&lt;designation&gt;.*)\.[^.]*"/>
+      <filter>OPTIONAL_OUTPUTS is not None and "out_mod_analysis_dir_FLAG" in OPTIONAL_OUTPUTS</filter>
     </collection>
     <data name="summary_out" label="${tool.name} on ${on_string}: summary_out" format="yaml">
       <filter>OPTIONAL_OUTPUTS is not None and "summary_out_FLAG" in OPTIONAL_OUTPUTS</filter>
@@ -7469,6 +7481,44 @@ ${' '.join(["'in_cond.in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identi
       <assert_stdout>
         <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
       </assert_stdout>
+    </test>
+    <!-- The open-search modification analysis (D33).  ProSE only writes
+       out_mod_analysis_dir when it runs in open search mode, i.e. when a
+       precursor tolerance is above 1 Da / 1000 ppm (ProSE.cpp:234,
+       FragmentIndex::isOpenSearchMode); every upstream test uses 5-20 ppm, so
+       none of them covers it.  3000 ppm enters that mode, and the report names
+       three tables (OpenSearchModificationAnalysis.cpp:501-584), one per file
+       plus an aggregate one for several files: with a single input file the
+       tables land directly in the directory.  Their names are
+       `<staged file name>_ModificationAnalysis_<table>`, and the staging name
+       is the dataset name plus the OpenMS extension
+       (`SimpleSearchEngine_1_mzML`), so the elements depend on the fixture
+       name like the bundle ones do; the collection is listed in file name
+       order, which is what `discover_datasets` produces. -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="no_summary" value="false"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <conditional name="in_cond">
+        <param name="in" value="SimpleSearchEngine_1.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/SimpleSearchEngine_1.mzML"/>
+      </conditional>
+      <param name="database" value="SimpleSearchEngine_1.fasta" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/SimpleSearchEngine_1.fasta"/>
+      <section name="Search">
+        <section name="precursor">
+          <param name="mass_tolerance_lower" value="3000"/>
+          <param name="mass_tolerance_upper" value="3000"/>
+          <param name="mass_tolerance_unit" value="ppm"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="out_idxml_FLAG,out_mod_analysis_dir_FLAG"/>
+      <output_collection name="out_idxml" count="1"/>
+      <output_collection name="out_mod_analysis_dir" type="list" min="3" max="3">
+        <element name="SimpleSearchEngine_1_mzML_ModificationAnalysis_DeltaMassStats" ftype="tabular"/>
+        <element name="SimpleSearchEngine_1_mzML_ModificationAnalysis_OutputTable" ftype="tabular"/>
+        <element name="SimpleSearchEngine_1_mzML_ModificationAnalysis_PTMStats" ftype="tabular"/>
+      </output_collection>
     </test>
   </tests>
   <help><![CDATA[Annotates bottom-up MS/MS spectra using ProSE.

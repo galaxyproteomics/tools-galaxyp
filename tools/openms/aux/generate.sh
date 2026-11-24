@@ -41,9 +41,9 @@ rm $(ls *xml |grep -v macros)
 ## - the git clone of OpenMS (for generating the tests)
 ## - ctd files
 ###############################################################################
-# test-data.sh curates the test macros; when it fails halfway the wrappers are
-# generated from a partial state (and silently lose or gain tests), so stop.
-bash ./test-data.sh "$ARTIFACTS/macros_autotest.xml" || exit 1
+# aux/test-data.sh curates the test macros; when it fails halfway the wrappers
+# are generated from a partial state (and silently lose or gain tests), so stop.
+bash aux/test-data.sh "$ARTIFACTS/macros_autotest.xml" || exit 1
 
 ###############################################################################
 ## get the 

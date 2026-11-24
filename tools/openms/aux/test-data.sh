@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 
+# The script reads macros.xml, writes test-data/ and calls ./get_tests.py, so it
+# works relative to the tool directory; it lives in aux/ and is called from
+# there (aux/generate.sh) and from the CI job, which only knows the repository
+# path - so establish the tool directory instead of assuming the caller did.
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
+
 # single source of truth: the version the wrappers declare
 VERSION=$(grep -oP '<token name="@TOOL_VERSION@">\K[^<]+' macros.xml)
 [ -n "$VERSION" ] || { echo "cannot read @TOOL_VERSION@ from macros.xml" >&2; exit 1; }
@@ -34,8 +40,9 @@ type conda >/dev/null 2>&1 || source "$(conda info --base)/etc/profile.d/conda.s
 
 if [ -z "$CTDCONVERTER" ]; then
     # same rule as aux/generate.sh: prefer the checkout next to the repository
-    # root, fall back to the scratch directory
-    CTDCONVERTER=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/CTDConverter
+    # root (the tool directory is tools/openms), fall back to the scratch
+    # directory
+    CTDCONVERTER=$(cd ../.. && pwd)/CTDConverter
     [ -d "$CTDCONVERTER" ] || CTDCONVERTER="$tmp/CTDConverter"
     export CTDCONVERTER
 fi
