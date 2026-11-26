@@ -108,6 +108,12 @@ python3 aux/remote_test_data.py ./*xml || { >&2 echo 'annotating the test inputs
 # about the bundle layout, so the collections are added afterwards (D30).
 python3 aux/parquet_bundles.py || { >&2 echo 'adding the parquet bundle outputs failed'; exit 1; }
 
+# A Parquet-directory *input* is the same layout read the other way: a list
+# collection of tables that the command reassembles into one directory.  Galaxy
+# cannot turn a <data> into a <data_collection>, so the input and every test
+# that sets it get a <conditional> (D30, stage 8c).
+python3 aux/parquet_inputs.py || { >&2 echo 'adding the parquet bundle inputs failed'; exit 1; }
+
 # the build artefacts in $ARTIFACTS are kept for inspection; remove them with
 #   rm -rf "$ARTIFACTS"
 # or let test-data.sh delete them via `tmp=$(mktemp -d)`

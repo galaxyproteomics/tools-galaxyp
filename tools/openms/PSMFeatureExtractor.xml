@@ -14,8 +14,15 @@
 #import re
 
 ## Preprocessing
+#if $input_kind.input_kind == 'bundle'
+mkdir -p 'in_bundle/in.idparquet' &&
+#for $e in $input_kind.in_bundle
+ln -s '$e' 'in_bundle/in.idparquet/${e.element_identifier}' &&
+#end for
+#else
 mkdir in &&
 cp '$in' 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)' &&
+#end if
 mkdir out &&
 
 ## Main program call
@@ -27,8 +34,13 @@ set -o pipefail &&
 @EXECUTABLE@ -write_ctd ./ &&
 python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
 @EXECUTABLE@ -ini @EXECUTABLE@.ctd
+#if $input_kind.input_kind == 'bundle'
+-in
+'in_bundle/in.idparquet'
+#else
 -in
 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
+#end if
 #if "out_idparquet_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
 -out_type
 idparquet
@@ -52,7 +64,18 @@ idparquet
     <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
   </configfiles>
   <inputs>
-    <param argument="-in" type="data" format="idxml,mzid" label="Input file" help=" select idxml,mzid data sets(s)"/>
+    <conditional name="input_kind">
+      <param name="input_kind" type="select" label="Input kind" help="A Parquet bundle is a list collection holding the tables of one bundle directory; the element names must be the file names inside it">
+        <option value="file" selected="true">Single file</option>
+        <option value="bundle">Parquet bundle</option>
+      </param>
+      <when value="file">
+        <param argument="-in" type="data" format="idxml,mzid" label="Input file" help=" select idxml,mzid data sets(s)"/>
+      </when>
+      <when value="bundle">
+        <param name="in_bundle" type="data_collection" collection_type="list" label="Input as a Parquet bundle" help="the tables of one bundle directory, one dataset per table"/>
+      </when>
+    </conditional>
     <param argument="-out_type" type="select" label="Output file type -- default: determined from file extension or content" help="">
       <option value="idXML">idxml</option>
       <option value="mzid">mzid</option>
@@ -96,7 +119,10 @@ idparquet
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="MSGFPlusAdapter_1_out.idXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/THIRDPARTY/MSGFPlusAdapter_1_out.idXML"/>
+      <conditional name="input_kind">
+        <param name="input_kind" value="file"/>
+        <param name="in" value="MSGFPlusAdapter_1_out.idXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/THIRDPARTY/MSGFPlusAdapter_1_out.idXML"/>
+      </conditional>
       <output name="out" value="PSMFeatureExtractor_1_out.idXML" compare="sim_size" delta_frac="0.7" ftype="idxml" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/PSMFeatureExtractor_1_out.idXML"/>
       <param name="out_type" value="idXML"/>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
@@ -115,7 +141,10 @@ idparquet
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="MSGFPlusAdapter_1_out.idXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/THIRDPARTY/MSGFPlusAdapter_1_out.idXML"/>
+      <conditional name="input_kind">
+        <param name="input_kind" value="file"/>
+        <param name="in" value="MSGFPlusAdapter_1_out.idXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/THIRDPARTY/MSGFPlusAdapter_1_out.idXML"/>
+      </conditional>
       <output name="out" value="PSMFeatureExtractor_2_out.mzid" compare="sim_size" delta_frac="0.7" ftype="mzid" delta="14119" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/PSMFeatureExtractor_2_out.mzid"/>
       <param name="out_type" value="mzid"/>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
@@ -133,7 +162,10 @@ idparquet
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="MSGFPlusAdapter_1_out.idXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/THIRDPARTY/MSGFPlusAdapter_1_out.idXML"/>
+      <conditional name="input_kind">
+        <param name="input_kind" value="file"/>
+        <param name="in" value="MSGFPlusAdapter_1_out.idXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/THIRDPARTY/MSGFPlusAdapter_1_out.idXML"/>
+      </conditional>
       <param name="out_type" value="idXML"/>
       <param name="OPTIONAL_OUTPUTS" value="out_idparquet_FLAG"/>
       <output_collection name="out_idparquet" type="list" min="4" max="4">
@@ -158,6 +190,30 @@ idparquet
           </assert_contents>
         </element>
       </output_collection>
+    </test>
+    <!-- D30 stage 8c: a bundle *input*, i.e. the tables of one bundle
+       directory reassembled by the wrapper.  The tool has no mirror rule, so
+       a bundle goes in and a plain file comes out - and the file holds what
+       the XML path produces. -->
+    <test expect_num_outputs="1">
+      <conditional name="input_kind">
+        <param name="input_kind" value="bundle"/>
+        <param name="in_bundle">
+          <collection type="list">
+            <element name="psms.parquet" value="MSGFPlusAdapter_1_out.idparquet/psms.parquet"/>
+            <element name="proteins.parquet" value="MSGFPlusAdapter_1_out.idparquet/proteins.parquet"/>
+            <element name="protein_groups.parquet" value="MSGFPlusAdapter_1_out.idparquet/protein_groups.parquet"/>
+            <element name="search_params.parquet" value="MSGFPlusAdapter_1_out.idparquet/search_params.parquet"/>
+          </collection>
+        </param>
+      </conditional>
+      <param name="out_type" value="idXML"/>
+      <output name="out" ftype="idxml">
+        <assert_contents>
+          <has_text text="&lt;PeptideIdentification "/>
+          <has_text text="PSMFeatureExtractor"/>
+        </assert_contents>
+      </output>
     </test>
   </tests>
   <help><![CDATA[Computes extra features for each input PSM.

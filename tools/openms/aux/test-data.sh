@@ -173,6 +173,16 @@ for bundle in $OPENMSGIT/src/tests/topp/*.idparquet/ \
         cp -r "$bundle" test-data/
     fi
 done
+# The bundle *input* fixtures of stage 8c are produced from the OpenMS test data
+# with IDFileConverter / FileConverter, so they are not part of the OpenMS
+# sources and the `find -delete` above removes them.  Restore them from the
+# committed copies - the wrappers' bundle-input tests reference their members
+# by name (e.g. IDRipper_3_input1.idparquet/psms.parquet).
+git checkout HEAD -- \
+    test-data/IDRipper_3_input1.idparquet \
+    test-data/MSGFPlusAdapter_1_out.idparquet \
+    test-data/FeatureFinderCentroided_1_1_output.featureparquet \
+    test-data/ConsensusMapNormalizer_output.consensusparquet
 cp -r $OPENMSGIT/share/OpenMS/MAPPING/ test-data/
 cp -r $OPENMSGIT/share/OpenMS/CHEMISTRY test-data/
 cp -r $OPENMSGIT/share/OpenMS/examples/ test-data/
