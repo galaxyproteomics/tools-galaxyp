@@ -17,8 +17,12 @@ which can be fine tuned via the `hardcoded_params.json` file. This file allows
 to blacklist and hardcode parameters and to modify or set arbitrary
 CTD/XML attributes.
 
-Note that, due to its size, the test data is excluded from this repository. In
-order to generate the test data on call `test-data.sh`.
+Note that, due to its size, the test data is excluded from this repository — and
+none of the tests needs it: every reference a test makes is either a URL from
+`aux/upstream-fixtures.tsv`, an assertion on the produced content, or one of the
+few fixtures committed in `test-data/`. For local work `./aux/test-data.sh`
+still generates the full set (from the tool directory or from the repository
+root, the script changes into the tool directory itself).
 
 Manual updates should only be done to
 
@@ -123,6 +127,11 @@ Whats happening:
 
    - From these CMake files Galaxy tests are auto generated and stored in `macros_autotest.xml`
    - The command lines are stored in `prepare_test_data.sh` for regeneration of test data
+
+   Both are build artefacts, together with the CTD snapshot (`ctd/`) and the
+   list of real upstream fixtures: `test-data.sh` writes them to `$ARTIFACTS`
+   (default: `$tmp/generated`, i.e. outside this directory), so the tool
+   directory itself contains only the wrappers, the macros and the scripts.
 
 More details can be found in the comments of the shell script.
 

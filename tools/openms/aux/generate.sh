@@ -2,21 +2,37 @@
 
 # set -x
 
-VERSION=3.1
+# single source of truth: the version the wrappers declare
+VERSION=$(grep -oP '<token name="@TOOL_VERSION@">\K[^<]+' macros.xml)
+[ -n "$VERSION" ] || { echo "cannot read @TOOL_VERSION@ from macros.xml" >&2; exit 1; }
 FILETYPES="aux/filetypes.txt"
-PROFILE="21.05"
+# same trick: the profile is a token, so the wrappers carry '@PROFILE@' and a
+# bump is one line in macros.xml (Galaxy expands the token when it loads the
+# tool, CTDConverter writes the attribute verbatim)
+PROFILE=$(grep -oP '<token name="@PROFILE@">\K[^<]+' macros.xml)
+[ -n "$PROFILE" ] || { echo "cannot read @PROFILE@ from macros.xml" >&2; exit 1; }
 ## FILETYPES_RE=$(grep -v "^#" $FILETYPES | grep -v "^$" | cut -f 1 -d" " | tr '\n' '|' | sed 's/|$//'| sed 's/|/\\|/g')
 
 # export tmp=$(mktemp -d)
-export tmp="/tmp/openms-stuff/"
-# export CTDCONVERTER="$tmp/CTDConverter"
+# override for hosts where /tmp is small
+# export tmp="/tmp/openms-stuff/"
+export tmp="${tmp:-/tmp/openms-stuff/}"
+# build artefacts (CTD snapshot, generated test macros, test shell script) go
+# here, never into the tool directory (see test-data.sh)
+export ARTIFACTS="${ARTIFACTS:-$tmp/generated}"
+mkdir -p "$ARTIFACTS"
+# CTDConverter is a separate project: the checkout normally lives next to the
+# repository root (so it survives a scratch/cache wipe), otherwise it is cloned
+# into $tmp on first use. Override with CTDCONVERTER=/somewhere/CTDConverter.
+if [ -z "$CTDCONVERTER" ]; then
+	_repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
+	export CTDCONVERTER="$_repo_root/CTDConverter"
+	[ -d "$CTDCONVERTER" ] || export CTDCONVERTER="$tmp/CTDConverter"
+fi
 ###############################################################################
 ## reset old data
 ###############################################################################
 rm $(ls *xml |grep -v macros)
-rm -rf ctd
-mkdir -p ctd
-echo "" > prepare_test_data.sh
 
 ###############################################################################
 ## generate tests
@@ -25,7 +41,9 @@ echo "" > prepare_test_data.sh
 ## - the git clone of OpenMS (for generating the tests)
 ## - ctd files
 ###############################################################################
-bash ./test-data.sh ./macros_autotest.xml
+# aux/test-data.sh curates the test macros; when it fails halfway the wrappers
+# are generated from a partial state (and silently lose or gain tests), so stop.
+bash aux/test-data.sh "$ARTIFACTS/macros_autotest.xml" || exit 1
 
 ###############################################################################
 ## get the 
@@ -55,17 +73,47 @@ fi
 ## conversion ctd->xml 
 ###############################################################################
 
+# correct the CTD parameters which upstream left unannotated (e.g. the FASTA
+# outputs of DecoyDatabase), before CTDConverter turns them into Galaxy types
+python3 aux/patch_ctds.py "$ARTIFACTS"/ctd/ || >&2 echo 'patching the CTDs failed'
+
 >&2 echo "generate tool xml from ctd files"
 find . -maxdepth 0 -name "[A-Z]*xml" -delete
 source $(dirname $(which conda))/../etc/profile.d/conda.sh
-conda activate OpenMS$VERSION-env
-CTDConverter galaxy -i ctd/*ctd -o ./ -s aux/tools_blacklist.txt -f "$FILETYPES" \
+conda activate "${OPENMSENV:-OpenMS$VERSION-env}"
+CTDConverter galaxy -i "$ARTIFACTS"/ctd/*ctd -o ./ -s aux/tools_blacklist.txt -f "$FILETYPES" \
 	-m macros.xml -p aux/hardcoded_params.json \
-	--test-macros macros_autotest.xml --test-macros-prefix autotest_  --test-macros aux/macros_test.xml --test-macros-prefix manutest_ \
-	--tool-version $VERSION --tool-profile $PROFILE --bump-file aux/bump.json > convert.out 2> convert.err
-if [[ "$?" -ne "0" ]]; then >&2 echo 'CTD -> XML conversion failed'; >&2 echo -e "stderr:\n$(cat convert.err)"; fi
+	--test-macros "$ARTIFACTS"/macros_autotest.xml --test-macros-prefix autotest_  --test-macros "$ARTIFACTS"/macros_test.xml --test-macros-prefix manutest_ \
+	--tool-version $VERSION --tool-profile '@PROFILE@' --bump-file aux/bump.json \
+	> "$ARTIFACTS"/convert.out 2> "$ARTIFACTS"/convert.err
+if [[ "$?" -ne "0" ]]; then >&2 echo 'CTD -> XML conversion failed'; >&2 echo -e "stderr:\n$(cat "$ARTIFACTS"/convert.err)"; fi
 conda deactivate
 
 sed -i -e 's@http://www.openms.de/doxygen/nightly/html/@https://openms.de/doxygen/release/'$VERSION'.0/html/@' ./*xml
 
-# rm -rf macros_autotest.xml macros_discarded_auto.xml prepare_test_data.sh ctd
+# CTDConverter names the input of a mirroring output by its bare name, which is
+# ambiguous when the input sits in a conditional (ConsensusID: `in_cond|in`)
+# and fails `planemo lint --fail_level warn`.
+python3 aux/qualify_format_source.py ./*xml || { >&2 echo 'qualifying the output references failed'; exit 1; }
+
+# get_tests.py annotates the test bodies it writes, but it can not see which
+# input is a list (the wrapper does not exist yet), so an input parameter that
+# takes several files is left without a `location=`.  Galaxy splits a
+# comma-separated `location` for `multiple="true"` since 24.2, so the whole
+# wrapper is annotated again here: multi-file references get one URL per file,
+# everything already annotated stays as it is.
+python3 aux/remote_test_data.py ./*xml || { >&2 echo 'annotating the test inputs failed'; exit 1; }
+
+# Parquet-directory outputs cannot be a single <data>; CTDConverter knows nothing
+# about the bundle layout, so the collections are added afterwards (D30).
+python3 aux/parquet_bundles.py || { >&2 echo 'adding the parquet bundle outputs failed'; exit 1; }
+
+# A Parquet-directory *input* is the same layout read the other way: a list
+# collection of tables that the command reassembles into one directory.  Galaxy
+# cannot turn a <data> into a <data_collection>, so the input and every test
+# that sets it get a <conditional> (D30, stage 8c).
+python3 aux/parquet_inputs.py || { >&2 echo 'adding the parquet bundle inputs failed'; exit 1; }
+
+# the build artefacts in $ARTIFACTS are kept for inspection; remove them with
+#   rm -rf "$ARTIFACTS"
+# or let test-data.sh delete them via `tmp=$(mktemp -d)`

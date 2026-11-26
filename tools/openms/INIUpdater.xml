@@ -1,0 +1,146 @@
+<!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
+<!--Proposed Tool Section: [Misc]-->
+<tool id="INIUpdater" name="INIUpdater" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+  <description>Update INI and TOPPAS files to new OpenMS version</description>
+  <macros>
+    <token name="@EXECUTABLE@">INIUpdater</token>
+    <import>macros.xml</import>
+  </macros>
+  <expand macro="requirements"/>
+  <expand macro="required_files"/>
+  <expand macro="stdio"/>
+  <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
+@EXT_FOO@
+#import re
+
+## Preprocessing
+mkdir in_cond.in &&
+#if $in_cond.in_select == "no"
+mkdir ${' '.join(["'in_cond.in/%s'" % (i) for i, f in enumerate($in_cond.in) if f])} && 
+${' '.join(["cp '%s' 'in_cond.in/%s/%s.%s' && " % (f, i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in_cond.in) if f])}
+#else
+cp '$in_cond.in' 'in_cond.in/${re.sub("[^\w\-_]", "_", $in_cond.in.element_identifier)}.$gxy2omsext($in_cond.in.ext)' &&
+#end if
+#if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir out &&
+  mkdir ${' '.join(["'out/%s'" % (i) for i, f in enumerate($in_cond.in) if f])} && 
+#end if
+
+## Main program call
+
+set -o pipefail &&
+@EXECUTABLE@ -write_ctd ./ &&
+python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
+@EXECUTABLE@ -ini @EXECUTABLE@.ctd
+-in
+#if $in_cond.in_select == "no"
+${' '.join(["'in_cond.in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in_cond.in) if f])}
+#else
+'in_cond.in/${re.sub("[^\w\-_]", "_", $in_cond.in.element_identifier)}.$gxy2omsext($in_cond.in.ext)'
+#end if
+#if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  -out
+  ${' '.join(["'out/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext("paramxml")) for i, f in enumerate($in_cond.in) if f])}
+#end if
+#if len(str($OPTIONAL_OUTPUTS).split(',')) == 0
+  | tee '$stdout'
+#end if
+
+## Postprocessing
+#if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  ${' '.join(["&& mv -n 'out/%(bn)s/%(id)s.%(gext)s' 'out/%(bn)s/%(id)s'"%{"bn": i, "id": re.sub('[^\w\-_]', '_', f.element_identifier), "gext": $gxy2omsext("paramxml")} for i, f in enumerate($in_cond.in) if f])}
+#end if
+#if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
+  && mv '@EXECUTABLE@.ctd' '$ctd_out'
+#end if]]></command>
+  <configfiles>
+    <inputs name="args_json" data_style="paths"/>
+    <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
+  </configfiles>
+  <inputs>
+    <conditional name="in_cond">
+      <param name="in_select" type="select" label="Run tool in batch mode for -in">
+        <option value="no">No: process all datasets jointly</option>
+        <option value="yes">Yes: process each dataset in an independent job</option>
+      </param>
+      <when value="no">
+        <param argument="-in" type="data" format="paramxml" multiple="true" label="INI/TOPPAS files that need updating" help=" select paramxml data sets(s)"/>
+      </when>
+      <when value="yes">
+        <param argument="-in" type="data" format="paramxml" label="INI/TOPPAS files that need updating" help=" select paramxml data sets(s)"/>
+      </when>
+    </conditional>
+    <param argument="-i" type="boolean" truevalue="true" falsevalue="false" checked="false" label="in-place: Override given INI/TOPPAS files with new content (not compatible with -out)" help=""/>
+    <expand macro="adv_opts_macro">
+      <param argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
+      <param argument="-test" type="hidden" value="False" label="Enables the test mode (needed for internal use only)" help="" optional="true">
+        <expand macro="list_string_san" name="test"/>
+      </param>
+    </expand>
+    <param name="OPTIONAL_OUTPUTS" type="select" optional="true" multiple="true" label="Optional outputs">
+      <option value="out_FLAG">out (Optional list of output files (not compatible with -i))</option>
+      <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+    </param>
+  </inputs>
+  <outputs>
+    <collection type="list" name="out" label="${tool.name} on ${on_string}: out">
+      <discover_datasets directory="out" recurse="true" format="paramxml" pattern="__name__"/>
+      <filter>OPTIONAL_OUTPUTS is not None and "out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </collection>
+    <data name="stdout" format="txt" label="${tool.name} on ${on_string}: stdout">
+      <filter>OPTIONAL_OUTPUTS is None</filter>
+    </data>
+    <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
+      <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+  </outputs>
+  <tests>
+    <!-- TOPP_INIUpdater_1 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <conditional name="in_cond">
+        <param name="in" value="INIUpdater_1_noupdate_0.toppas" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/INIUpdater_1_noupdate.toppas"/>
+      </conditional>
+      <param name="i" value="false"/>
+      <output_collection name="out" count="1"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG,out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_INIUpdater_3 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <conditional name="in_cond">
+        <param name="in" value="INIUpdater_3_old.toppas" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/INIUpdater_3_old.toppas"/>
+      </conditional>
+      <param name="i" value="false"/>
+      <output_collection name="out" count="1"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG,out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+  </tests>
+  <help><![CDATA[Update INI and TOPPAS files to new OpenMS version.
+
+
+For more information, visit https://www.openms.de/doxygen/release/3.6.0/html/TOPP_INIUpdater.html]]></help>
+  <expand macro="references"/>
+</tool>

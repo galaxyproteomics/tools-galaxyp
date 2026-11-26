@@ -1,12 +1,13 @@
 <!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
-<!--Proposed Tool Section: [Identification of Proteins/Peptides (SearchEngines)]-->
-<tool id="MSGFPlusAdapter" name="MSGFPlusAdapter" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="21.05">
+<!--Proposed Tool Section: [Identification of Proteins and Peptides (SearchEngines)]-->
+<tool id="MSGFPlusAdapter" name="MSGFPlusAdapter" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
   <description>MS/MS database search using MS-GF+</description>
   <macros>
     <token name="@EXECUTABLE@">MSGFPlusAdapter</token>
     <import>macros.xml</import>
   </macros>
   <expand macro="requirements"/>
+  <expand macro="required_files"/>
   <expand macro="stdio"/>
   <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
 @EXT_FOO@
@@ -30,15 +31,22 @@ cp '$database' 'database/${re.sub("[^\w\-_]", "_", $database.element_identifier)
 
 ## Main program call
 
+#if "out_idparquet_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir -p out_idparquet_bundle &&
+#end if
 set -o pipefail &&
 @EXECUTABLE@ -write_ctd ./ &&
 python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
 @EXECUTABLE@ -ini @EXECUTABLE@.ctd
 -in
 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
-#if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+#if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',') or "out_idparquet_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
   -out
+  #if "out_idparquet_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  'out_idparquet_bundle/out.idparquet'
+  #else
   'out/output.${gxy2omsext("idxml")}'
+  #end if
 #end if
 #if "mzid_out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
   -mzid_out
@@ -56,7 +64,9 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
 
 ## Postprocessing
 #if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  #if "out_idparquet_FLAG" not in str($OPTIONAL_OUTPUTS).split(',')
   && mv 'out/output.${gxy2omsext("idxml")}' '$out'
+  #end if
 #end if
 #if "mzid_out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
   && mv 'mzid_out/output.${gxy2omsext("mzid")}' '$mzid_out'
@@ -81,17 +91,17 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <expand macro="list_string_san" name="isotope_error_range"/>
     </param>
     <param argument="-fragment_method" type="select" label="Fragmentation method ('from_spectrum' relies on spectrum meta data and uses CID as fallback option; MS-GF+ parameter '-m')" help="">
-      <option value="from_spectrum" selected="true">from_spectrum</option>
       <option value="CID">CID</option>
       <option value="ETD">ETD</option>
       <option value="HCD">HCD</option>
+      <option value="from_spectrum" selected="true">from_spectrum</option>
       <expand macro="list_string_san" name="fragment_method"/>
     </param>
     <param argument="-instrument" type="select" label="Instrument that generated the data ('low_res'/'high_res' refer to LCQ and LTQ instruments; MS-GF+ parameter '-inst')" help="">
-      <option value="low_res" selected="true">low_res</option>
-      <option value="high_res">high_res</option>
-      <option value="TOF">TOF</option>
       <option value="Q_Exactive">Q_Exactive</option>
+      <option value="TOF">TOF</option>
+      <option value="high_res">high_res</option>
+      <option value="low_res" selected="true">low_res</option>
       <expand macro="list_string_san" name="instrument"/>
     </param>
     <param argument="-enzyme" type="select" label="Enzyme used for digestion, or type of cleavage" help="Note: MS-GF+ does not support blocking rules. (MS-GF+ parameter '-e')">
@@ -108,18 +118,18 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <expand macro="list_string_san" name="enzyme"/>
     </param>
     <param argument="-protocol" type="select" label="Labeling or enrichment protocol used, if any (MS-GF+ parameter '-p')" help="">
+      <option value="TMT">TMT</option>
       <option value="automatic" selected="true">automatic</option>
-      <option value="phospho">phospho</option>
       <option value="iTRAQ">iTRAQ</option>
       <option value="iTRAQ_phospho">iTRAQ_phospho</option>
-      <option value="TMT">TMT</option>
       <option value="none">none</option>
+      <option value="phospho">phospho</option>
       <expand macro="list_string_san" name="protocol"/>
     </param>
     <param argument="-tryptic" type="select" label="Level of cleavage specificity required (MS-GF+ parameter '-ntt')" help="">
+      <option value="fully" selected="true">fully</option>
       <option value="non">non</option>
       <option value="semi">semi</option>
-      <option value="fully" selected="true">fully</option>
       <expand macro="list_string_san" name="tryptic"/>
     </param>
     <param argument="-min_precursor_charge" type="integer" min="1" value="2" label="Minimum precursor ion charge (only used for spectra without charge information; MS-GF+ parameter '-minCharge')" help=""/>
@@ -127,24 +137,29 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
     <param argument="-min_peptide_length" type="integer" min="1" value="6" label="Minimum peptide length to consider (MS-GF+ parameter '-minLength')" help=""/>
     <param argument="-max_peptide_length" type="integer" min="1" value="40" label="Maximum peptide length to consider (MS-GF+ parameter '-maxLength')" help=""/>
     <param argument="-matches_per_spec" type="integer" min="1" value="1" label="Number of matches per spectrum to be reported (MS-GF+ parameter '-n')" help=""/>
+    <param argument="-min_peaks" type="integer" min="10" value="10" label="Minimum number of ions a spectrum must have to be examined" help=""/>
     <param argument="-add_features" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Output additional features (MS-GF+ parameter '-addFeatures')" help="This is required by Percolator and hence by default enabled"/>
     <param argument="-max_mods" type="integer" min="0" value="2" label="Maximum number of modifications per peptide" help="If this value is large, the search may take very long"/>
     <param argument="-max_missed_cleavages" type="integer" min="-1" value="-1" label="Maximum number of missed cleavages allowed for a peptide to be considered for scoring" help="(default: -1 meaning unlimited)"/>
-    <param argument="-tasks" type="integer" value="0" label="(Override the number of tasks to use on the threads; Default: (internally calculated based on inputs))" help="More tasks than threads will reduce the memory requirements of the search, but will be slower (how much depends on the inputs)..    1 &lt;= tasks &lt;= numThreads: will create one task per thread, which is the original behavior..    tasks = 0: use default calculation - minimum of: (threads*3) and (numSpectra/250)..    tasks &lt; 0: multiply number of threads by abs(tasks) to determine number of tasks (i.e., -2 means &quot;2 * numThreads&quot; tasks)..    One task per thread will use the most memory, but will usually finish the fastest..    2-3 tasks per thread will use comparably less memory, but may cause the search to take 1.5 to 2 times as long"/>
     <param argument="-fixed_modifications" type="select" multiple="true" optional="false" label="Fixed modifications, specified using Unimod (www.unimod.org) terms" help="e.g. 'Carbamidomethyl (C)' or 'Oxidation (M)'">
       <option value="15N-oxobutanoic (N-term C)">15N-oxobutanoic (N-term C)</option>
       <option value="15N-oxobutanoic (Protein N-term S)">15N-oxobutanoic (Protein N-term S)</option>
       <option value="15N-oxobutanoic (Protein N-term T)">15N-oxobutanoic (Protein N-term T)</option>
       <option value="2-dimethylsuccinyl (C)">2-dimethylsuccinyl (C)</option>
+      <option value="2-methylbutyryl (K)">2-methylbutyryl (K)</option>
       <option value="2-monomethylsuccinyl (C)">2-monomethylsuccinyl (C)</option>
       <option value="2-nitrobenzyl (Y)">2-nitrobenzyl (Y)</option>
       <option value="2-succinyl (C)">2-succinyl (C)</option>
       <option value="2HPG (R)">2HPG (R)</option>
+      <option value="2PCA-triazole-ethanethiol (N-term)">2PCA-triazole-ethanethiol (N-term)</option>
       <option value="3-deoxyglucosone (R)">3-deoxyglucosone (R)</option>
+      <option value="3-hydroxy-3-methylglutaryl (K)">3-hydroxy-3-methylglutaryl (K)</option>
       <option value="3-hydroxybenzyl-phosphate (K)">3-hydroxybenzyl-phosphate (K)</option>
       <option value="3-hydroxybenzyl-phosphate (S)">3-hydroxybenzyl-phosphate (S)</option>
       <option value="3-hydroxybenzyl-phosphate (T)">3-hydroxybenzyl-phosphate (T)</option>
       <option value="3-hydroxybenzyl-phosphate (Y)">3-hydroxybenzyl-phosphate (Y)</option>
+      <option value="3-methylglutaconyl (K)">3-methylglutaconyl (K)</option>
+      <option value="3-methylglutaryl (K)">3-methylglutaryl (K)</option>
       <option value="3-phosphoglyceryl (K)">3-phosphoglyceryl (K)</option>
       <option value="3sulfo (N-term)">3sulfo (N-term)</option>
       <option value="4-ONE (C)">4-ONE (C)</option>
@@ -154,9 +169,19 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="4-ONE+Delta:H(-2)O(-1) (H)">4-ONE+Delta:H(-2)O(-1) (H)</option>
       <option value="4-ONE+Delta:H(-2)O(-1) (K)">4-ONE+Delta:H(-2)O(-1) (K)</option>
       <option value="4AcAllylGal (C)">4AcAllylGal (C)</option>
+      <option value="6C-CysPAT (C)">6C-CysPAT (C)</option>
+      <option value="6C-CysPAT (D)">6C-CysPAT (D)</option>
+      <option value="6C-CysPAT (E)">6C-CysPAT (E)</option>
+      <option value="6C-CysPAT (H)">6C-CysPAT (H)</option>
+      <option value="6C-CysPAT (K)">6C-CysPAT (K)</option>
+      <option value="6C-CysPAT (N-term)">6C-CysPAT (N-term)</option>
+      <option value="6C-CysPAT (S)">6C-CysPAT (S)</option>
+      <option value="6C-CysPAT (T)">6C-CysPAT (T)</option>
+      <option value="6C-CysPAT (Y)">6C-CysPAT (Y)</option>
       <option value="a-type-ion (C-term)">a-type-ion (C-term)</option>
       <option value="AccQTag (K)">AccQTag (K)</option>
       <option value="AccQTag (N-term)">AccQTag (N-term)</option>
+      <option value="Acetoacetyl (K)">Acetoacetyl (K)</option>
       <option value="Acetyl (C)">Acetyl (C)</option>
       <option value="Acetyl (H)">Acetyl (H)</option>
       <option value="Acetyl (K)">Acetyl (K)</option>
@@ -337,8 +362,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Biotin-phenacyl (C)">Biotin-phenacyl (C)</option>
       <option value="Biotin-phenacyl (H)">Biotin-phenacyl (H)</option>
       <option value="Biotin-phenacyl (S)">Biotin-phenacyl (S)</option>
+      <option value="Biotin-tyramide (C)">Biotin-tyramide (C)</option>
+      <option value="Biotin-tyramide (W)">Biotin-tyramide (W)</option>
       <option value="Biotin-tyramide (Y)">Biotin-tyramide (Y)</option>
       <option value="Biotin:Aha-DADPS (M)">Biotin:Aha-DADPS (M)</option>
+      <option value="Biotin:Aha-PC (M)">Biotin:Aha-PC (M)</option>
       <option value="Biotin:Cayman-10013 (C)">Biotin:Cayman-10013 (C)</option>
       <option value="Biotin:Cayman-10141 (C)">Biotin:Cayman-10141 (C)</option>
       <option value="Biotin:Invitrogen-M1602 (C)">Biotin:Invitrogen-M1602 (C)</option>
@@ -776,6 +804,8 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Cytopiloyne+water (S)">Cytopiloyne+water (S)</option>
       <option value="Cytopiloyne+water (T)">Cytopiloyne+water (T)</option>
       <option value="Cytopiloyne+water (Y)">Cytopiloyne+water (Y)</option>
+      <option value="DABCYL-C2-maleimide (C)">DABCYL-C2-maleimide (C)</option>
+      <option value="DABCYL-C2-maleimide (K)">DABCYL-C2-maleimide (K)</option>
       <option value="DAET (S)">DAET (S)</option>
       <option value="DAET (T)">DAET (T)</option>
       <option value="Dansyl (K)">Dansyl (K)</option>
@@ -783,6 +813,8 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Dap-DSP (A)">Dap-DSP (A)</option>
       <option value="Dap-DSP (E)">Dap-DSP (E)</option>
       <option value="Dap-DSP (K)">Dap-DSP (K)</option>
+      <option value="DBIA (C)">DBIA (C)</option>
+      <option value="DCP (C)">DCP (C)</option>
       <option value="Deamidated (N)">Deamidated (N)</option>
       <option value="Deamidated (Protein N-term F)">Deamidated (Protein N-term F)</option>
       <option value="Deamidated (Q)">Deamidated (Q)</option>
@@ -1235,6 +1267,10 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="dHex(4)HexNAc(3)Kdn(1) (S)">dHex(4)HexNAc(3)Kdn(1) (S)</option>
       <option value="dHex(4)HexNAc(3)Kdn(1) (T)">dHex(4)HexNAc(3)Kdn(1) (T)</option>
       <option value="DHP (C)">DHP (C)</option>
+      <option value="Di_L-Gln_Ngamma-propargyl-L-Gln_desthiobiotin (D)">Di_L-Gln_Ngamma-propargyl-L-Gln_desthiobiotin (D)</option>
+      <option value="Di_L-Gln_Ngamma-propargyl-L-Gln_desthiobiotin (E)">Di_L-Gln_Ngamma-propargyl-L-Gln_desthiobiotin (E)</option>
+      <option value="Di_L-Glu_Ngamma-propargyl-L-Gln_desthiobiotin (D)">Di_L-Glu_Ngamma-propargyl-L-Gln_desthiobiotin (D)</option>
+      <option value="Di_L-Glu_Ngamma-propargyl-L-Gln_desthiobiotin (E)">Di_L-Glu_Ngamma-propargyl-L-Gln_desthiobiotin (E)</option>
       <option value="Diacylglycerol (C)">Diacylglycerol (C)</option>
       <option value="DiART6plex (K)">DiART6plex (K)</option>
       <option value="DiART6plex (N-term)">DiART6plex (N-term)</option>
@@ -1369,7 +1405,9 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="dNIC (N-term)">dNIC (N-term)</option>
       <option value="DNPS (C)">DNPS (C)</option>
       <option value="DNPS (W)">DNPS (W)</option>
+      <option value="DPIA (C)">DPIA (C)</option>
       <option value="DTT (C)">DTT (C)</option>
+      <option value="DVFQQQTGG (K)">DVFQQQTGG (K)</option>
       <option value="DyLight-maleimide (C)">DyLight-maleimide (C)</option>
       <option value="DYn-2 (C)">DYn-2 (C)</option>
       <option value="EDEDTIDVFQQQTGG (K)">EDEDTIDVFQQQTGG (K)</option>
@@ -1416,6 +1454,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="ethylsulfonylethyl (C)">ethylsulfonylethyl (C)</option>
       <option value="ethylsulfonylethyl (H)">ethylsulfonylethyl (H)</option>
       <option value="ethylsulfonylethyl (K)">ethylsulfonylethyl (K)</option>
+      <option value="Ethynyl (C)">Ethynyl (C)</option>
       <option value="ExacTagAmine (K)">ExacTagAmine (K)</option>
       <option value="ExacTagThiol (C)">ExacTagThiol (C)</option>
       <option value="FAD (C)">FAD (C)</option>
@@ -1550,11 +1589,14 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Gly-&gt;Xle (G)">Gly-&gt;Xle (G)</option>
       <option value="Gly-loss+Amide (C-term G)">Gly-loss+Amide (C-term G)</option>
       <option value="Glycerophospho (S)">Glycerophospho (S)</option>
+      <option value="Glyceroyl (K)">Glyceroyl (K)</option>
+      <option value="Glyceroyl (Protein N-term)">Glyceroyl (Protein N-term)</option>
       <option value="GlycerylPE (E)">GlycerylPE (E)</option>
       <option value="glycidamide (K)">glycidamide (K)</option>
       <option value="glycidamide (N-term)">glycidamide (N-term)</option>
       <option value="Glycosyl (P)">Glycosyl (P)</option>
       <option value="glyoxalAGE (R)">glyoxalAGE (R)</option>
+      <option value="Glyoxylyl (K)">Glyoxylyl (K)</option>
       <option value="GNLLFLACYCIGG (K)">GNLLFLACYCIGG (K)</option>
       <option value="GPIanchor (Protein C-term)">GPIanchor (Protein C-term)</option>
       <option value="Guanidinyl (K)">Guanidinyl (K)</option>
@@ -1948,6 +1990,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Hex(9)Phos(3) (T)">Hex(9)Phos(3) (T)</option>
       <option value="HexA(2)HexNAc(3) (S)">HexA(2)HexNAc(3) (S)</option>
       <option value="HexA(2)HexNAc(3) (T)">HexA(2)HexNAc(3) (T)</option>
+      <option value="Hexanoyl (K)">Hexanoyl (K)</option>
       <option value="HexN (K)">HexN (K)</option>
       <option value="HexN (N)">HexN (N)</option>
       <option value="HexN (S)">HexN (S)</option>
@@ -2021,6 +2064,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="HNE (H)">HNE (H)</option>
       <option value="HNE (K)">HNE (K)</option>
       <option value="HNE (L)">HNE (L)</option>
+      <option value="HNE (R)">HNE (R)</option>
       <option value="HNE+Delta:H(2) (C)">HNE+Delta:H(2) (C)</option>
       <option value="HNE+Delta:H(2) (H)">HNE+Delta:H(2) (H)</option>
       <option value="HNE+Delta:H(2) (K)">HNE+Delta:H(2) (K)</option>
@@ -2100,6 +2144,10 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Isopropylphospho (S)">Isopropylphospho (S)</option>
       <option value="Isopropylphospho (T)">Isopropylphospho (T)</option>
       <option value="Isopropylphospho (Y)">Isopropylphospho (Y)</option>
+      <option value="Isovaleryl (K)">Isovaleryl (K)</option>
+      <option value="iST-NHS specific cysteine modification (C)">iST-NHS specific cysteine modification (C)</option>
+      <option value="Itaconatyl (C)">Itaconatyl (C)</option>
+      <option value="Itaconyl (K)">Itaconyl (K)</option>
       <option value="iTRAQ4plex (C)">iTRAQ4plex (C)</option>
       <option value="iTRAQ4plex (H)">iTRAQ4plex (H)</option>
       <option value="iTRAQ4plex (K)">iTRAQ4plex (K)</option>
@@ -2128,10 +2176,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="iTRAQ8plex:13C(6)15N(2) (K)">iTRAQ8plex:13C(6)15N(2) (K)</option>
       <option value="iTRAQ8plex:13C(6)15N(2) (N-term)">iTRAQ8plex:13C(6)15N(2) (N-term)</option>
       <option value="iTRAQ8plex:13C(6)15N(2) (Y)">iTRAQ8plex:13C(6)15N(2) (Y)</option>
-      <option value="Kdo (S)">Kdo (S)</option>
-      <option value="Kdo (T)">Kdo (T)</option>
+      <option value="L-Gln (D)">L-Gln (D)</option>
+      <option value="L-Gln (E)">L-Gln (E)</option>
       <option value="Label:13C(1)2H(3) (M)">Label:13C(1)2H(3) (M)</option>
       <option value="Label:13C(1)2H(3)+Oxidation (M)">Label:13C(1)2H(3)+Oxidation (M)</option>
+      <option value="Label:13C(2)15N(1) (G)">Label:13C(2)15N(1) (G)</option>
       <option value="Label:13C(2)15N(2) (K)">Label:13C(2)15N(2) (K)</option>
       <option value="Label:13C(3) (A)">Label:13C(3) (A)</option>
       <option value="Label:13C(3)15N(1) (A)">Label:13C(3)15N(1) (A)</option>
@@ -2158,6 +2207,8 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Label:13C(6)15N(2)+Acetyl (K)">Label:13C(6)15N(2)+Acetyl (K)</option>
       <option value="Label:13C(6)15N(2)+Dimethyl (K)">Label:13C(6)15N(2)+Dimethyl (K)</option>
       <option value="Label:13C(6)15N(2)+GG (K)">Label:13C(6)15N(2)+GG (K)</option>
+      <option value="Label:13C(6)15N(2)+TMT6plex (K)">Label:13C(6)15N(2)+TMT6plex (K)</option>
+      <option value="Label:13C(6)15N(2)+TMTpro (K)">Label:13C(6)15N(2)+TMTpro (K)</option>
       <option value="Label:13C(6)15N(4) (R)">Label:13C(6)15N(4) (R)</option>
       <option value="Label:13C(6)15N(4)+Dimethyl (R)">Label:13C(6)15N(4)+Dimethyl (R)</option>
       <option value="Label:13C(6)15N(4)+Dimethyl:2H(6)13C(2) (R)">Label:13C(6)15N(4)+Dimethyl:2H(6)13C(2) (R)</option>
@@ -2208,6 +2259,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Label:2H(6)15N(1) (P)">Label:2H(6)15N(1) (P)</option>
       <option value="Label:2H(7)15N(4) (R)">Label:2H(7)15N(4) (R)</option>
       <option value="Label:2H(9)13C(6)15N(2) (K)">Label:2H(9)13C(6)15N(2) (K)</option>
+      <option value="Lactylation (K)">Lactylation (K)</option>
       <option value="lapachenole (C)">lapachenole (C)</option>
       <option value="Leu-&gt;MetOx (L)">Leu-&gt;MetOx (L)</option>
       <option value="LG-anhydrolactam (K)">LG-anhydrolactam (K)</option>
@@ -2252,6 +2304,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Lys-&gt;Tyr (K)">Lys-&gt;Tyr (K)</option>
       <option value="Lys-&gt;Val (K)">Lys-&gt;Val (K)</option>
       <option value="Lys-&gt;Xle (K)">Lys-&gt;Xle (K)</option>
+      <option value="Lys-loss (K)">Lys-loss (K)</option>
       <option value="Lys-loss (Protein C-term K)">Lys-loss (Protein C-term K)</option>
       <option value="Lysbiotinhydrazide (K)">Lysbiotinhydrazide (K)</option>
       <option value="maleimide (C)">maleimide (C)</option>
@@ -2386,6 +2439,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="MolybdopterinGD (D)">MolybdopterinGD (D)</option>
       <option value="MolybdopterinGD (U)">MolybdopterinGD (U)</option>
       <option value="MolybdopterinGD+Delta:S(-1)Se(1) (C)">MolybdopterinGD+Delta:S(-1)Se(1) (C)</option>
+      <option value="Mono_Ngamma-propargyl-L-Gln_desthiobiotin (C)">Mono_Ngamma-propargyl-L-Gln_desthiobiotin (C)</option>
       <option value="monomethylphosphothione (C)">monomethylphosphothione (C)</option>
       <option value="monomethylphosphothione (H)">monomethylphosphothione (H)</option>
       <option value="monomethylphosphothione (K)">monomethylphosphothione (K)</option>
@@ -2418,10 +2472,16 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Myristoyl (N-term G)">Myristoyl (N-term G)</option>
       <option value="Myristoyl+Delta:H(-4) (Protein N-term G)">Myristoyl+Delta:H(-4) (Protein N-term G)</option>
       <option value="N-dimethylphosphate (S)">N-dimethylphosphate (S)</option>
+      <option value="N6pAMP (S)">N6pAMP (S)</option>
+      <option value="N6pAMP (T)">N6pAMP (T)</option>
+      <option value="N6pAMP (Y)">N6pAMP (Y)</option>
       <option value="NA-LNO2 (C)">NA-LNO2 (C)</option>
       <option value="NA-LNO2 (H)">NA-LNO2 (H)</option>
       <option value="NA-OA-NO2 (C)">NA-OA-NO2 (C)</option>
       <option value="NA-OA-NO2 (H)">NA-OA-NO2 (H)</option>
+      <option value="NBF (C)">NBF (C)</option>
+      <option value="NBF (K)">NBF (K)</option>
+      <option value="NBF (R)">NBF (R)</option>
       <option value="NBS (W)">NBS (W)</option>
       <option value="NBS:13C(6) (W)">NBS:13C(6) (W)</option>
       <option value="NDA (K)">NDA (K)</option>
@@ -2462,6 +2522,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="NO_SMX_SIMD (C)">NO_SMX_SIMD (C)</option>
       <option value="NP40 (N-term)">NP40 (N-term)</option>
       <option value="NQIGG (K)">NQIGG (K)</option>
+      <option value="NQTGG (K)">NQTGG (K)</option>
       <option value="O-Dimethylphosphate (S)">O-Dimethylphosphate (S)</option>
       <option value="O-Dimethylphosphate (T)">O-Dimethylphosphate (T)</option>
       <option value="O-Dimethylphosphate (Y)">O-Dimethylphosphate (Y)</option>
@@ -2522,6 +2583,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Pent(1)HexNAc(1) (T)">Pent(1)HexNAc(1) (T)</option>
       <option value="Pent(2) (S)">Pent(2) (S)</option>
       <option value="Pent(2) (T)">Pent(2) (T)</option>
+      <option value="Pentanoyl (K)">Pentanoyl (K)</option>
       <option value="Pentose (S)">Pentose (S)</option>
       <option value="Pentose (T)">Pentose (T)</option>
       <option value="Pentylamine (Q)">Pentylamine (Q)</option>
@@ -2571,6 +2633,9 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="PhosphoCytidine (S)">PhosphoCytidine (S)</option>
       <option value="PhosphoCytidine (T)">PhosphoCytidine (T)</option>
       <option value="PhosphoCytidine (Y)">PhosphoCytidine (Y)</option>
+      <option value="PhosphoDecoy (A)">PhosphoDecoy (A)</option>
+      <option value="PhosphoDecoy (G)">PhosphoDecoy (G)</option>
+      <option value="PhosphoDecoy (L)">PhosphoDecoy (L)</option>
       <option value="Phosphogluconoylation (K)">Phosphogluconoylation (K)</option>
       <option value="Phosphogluconoylation (N-term)">Phosphogluconoylation (N-term)</option>
       <option value="Phosphoguanosine (H)">Phosphoguanosine (H)</option>
@@ -2597,6 +2662,8 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Phytochromobilin (C)">Phytochromobilin (C)</option>
       <option value="Piperidine (K)">Piperidine (K)</option>
       <option value="Piperidine (N-term)">Piperidine (N-term)</option>
+      <option value="pRBS-ID_4-thiouridine (F)">pRBS-ID_4-thiouridine (F)</option>
+      <option value="pRBS-ID_6-thioguanosine (W)">pRBS-ID_6-thioguanosine (W)</option>
       <option value="Pro+O(2) (H)">Pro+O(2) (H)</option>
       <option value="Pro-&gt;Ala (P)">Pro-&gt;Ala (P)</option>
       <option value="Pro-&gt;Arg (P)">Pro-&gt;Arg (P)</option>
@@ -2663,37 +2730,21 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Pyridylacetyl (N-term)">Pyridylacetyl (N-term)</option>
       <option value="Pyridylethyl (C)">Pyridylethyl (C)</option>
       <option value="Pyro-carbamidomethyl (N-term C)">Pyro-carbamidomethyl (N-term C)</option>
+      <option value="Pyro-QQTGG (K)">Pyro-QQTGG (K)</option>
       <option value="pyrophospho (S)">pyrophospho (S)</option>
       <option value="pyrophospho (T)">pyrophospho (T)</option>
       <option value="PyruvicAcidIminyl (K)">PyruvicAcidIminyl (K)</option>
       <option value="PyruvicAcidIminyl (Protein N-term C)">PyruvicAcidIminyl (Protein N-term C)</option>
       <option value="PyruvicAcidIminyl (Protein N-term V)">PyruvicAcidIminyl (Protein N-term V)</option>
+      <option value="Pyruvoyl (K)">Pyruvoyl (K)</option>
       <option value="QAT (C)">QAT (C)</option>
       <option value="QAT:2H(3) (C)">QAT:2H(3) (C)</option>
       <option value="QEQTGG (K)">QEQTGG (K)</option>
       <option value="QQQTGG (K)">QQQTGG (K)</option>
+      <option value="QQTGG (K)">QQTGG (K)</option>
       <option value="QTGG (K)">QTGG (K)</option>
       <option value="Quinone (W)">Quinone (W)</option>
       <option value="Quinone (Y)">Quinone (Y)</option>
-      <option value="RBS-ID_Uridine (A)">RBS-ID_Uridine (A)</option>
-      <option value="RBS-ID_Uridine (C)">RBS-ID_Uridine (C)</option>
-      <option value="RBS-ID_Uridine (D)">RBS-ID_Uridine (D)</option>
-      <option value="RBS-ID_Uridine (E)">RBS-ID_Uridine (E)</option>
-      <option value="RBS-ID_Uridine (F)">RBS-ID_Uridine (F)</option>
-      <option value="RBS-ID_Uridine (G)">RBS-ID_Uridine (G)</option>
-      <option value="RBS-ID_Uridine (H)">RBS-ID_Uridine (H)</option>
-      <option value="RBS-ID_Uridine (I)">RBS-ID_Uridine (I)</option>
-      <option value="RBS-ID_Uridine (K)">RBS-ID_Uridine (K)</option>
-      <option value="RBS-ID_Uridine (L)">RBS-ID_Uridine (L)</option>
-      <option value="RBS-ID_Uridine (M)">RBS-ID_Uridine (M)</option>
-      <option value="RBS-ID_Uridine (N)">RBS-ID_Uridine (N)</option>
-      <option value="RBS-ID_Uridine (P)">RBS-ID_Uridine (P)</option>
-      <option value="RBS-ID_Uridine (Q)">RBS-ID_Uridine (Q)</option>
-      <option value="RBS-ID_Uridine (R)">RBS-ID_Uridine (R)</option>
-      <option value="RBS-ID_Uridine (S)">RBS-ID_Uridine (S)</option>
-      <option value="RBS-ID_Uridine (T)">RBS-ID_Uridine (T)</option>
-      <option value="RBS-ID_Uridine (V)">RBS-ID_Uridine (V)</option>
-      <option value="RBS-ID_Uridine (W)">RBS-ID_Uridine (W)</option>
       <option value="RBS-ID_Uridine (Y)">RBS-ID_Uridine (Y)</option>
       <option value="Retinylidene (K)">Retinylidene (K)</option>
       <option value="RNPXL (N-term K)">RNPXL (N-term K)</option>
@@ -2722,6 +2773,8 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Ser-&gt;Tyr (S)">Ser-&gt;Tyr (S)</option>
       <option value="Ser-&gt;Val (S)">Ser-&gt;Val (S)</option>
       <option value="Ser-&gt;Xle (S)">Ser-&gt;Xle (S)</option>
+      <option value="Ser/Thr-KDO (S)">Ser/Thr-KDO (S)</option>
+      <option value="Ser/Thr-KDO (T)">Ser/Thr-KDO (T)</option>
       <option value="serotonylation (Q)">serotonylation (Q)</option>
       <option value="shTMT (K)">shTMT (K)</option>
       <option value="shTMT (N-term)">shTMT (N-term)</option>
@@ -2802,6 +2855,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Thr-&gt;Xle (T)">Thr-&gt;Xle (T)</option>
       <option value="Thrbiotinhydrazide (T)">Thrbiotinhydrazide (T)</option>
       <option value="Thyroxine (Y)">Thyroxine (Y)</option>
+      <option value="Tiglyl (K)">Tiglyl (K)</option>
       <option value="TMAB (K)">TMAB (K)</option>
       <option value="TMAB (N-term)">TMAB (N-term)</option>
       <option value="TMAB:2H(9) (K)">TMAB:2H(9) (K)</option>
@@ -2969,6 +3023,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Val-&gt;Trp (V)">Val-&gt;Trp (V)</option>
       <option value="Val-&gt;Tyr (V)">Val-&gt;Tyr (V)</option>
       <option value="Val-&gt;Xle (V)">Val-&gt;Xle (V)</option>
+      <option value="ValGly (K)">ValGly (K)</option>
       <option value="VFQQQTGG (K)">VFQQQTGG (K)</option>
       <option value="VIEVYQEQTGG (K)">VIEVYQEQTGG (K)</option>
       <option value="Withaferin (C)">Withaferin (C)</option>
@@ -3020,16 +3075,34 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Xlink:BS2G[96] (Protein N-term)">Xlink:BS2G[96] (Protein N-term)</option>
       <option value="Xlink:BuUrBu[111] (K)">Xlink:BuUrBu[111] (K)</option>
       <option value="Xlink:BuUrBu[111] (Protein N-term)">Xlink:BuUrBu[111] (Protein N-term)</option>
+      <option value="Xlink:BuUrBu[111] (S)">Xlink:BuUrBu[111] (S)</option>
+      <option value="Xlink:BuUrBu[111] (T)">Xlink:BuUrBu[111] (T)</option>
+      <option value="Xlink:BuUrBu[111] (Y)">Xlink:BuUrBu[111] (Y)</option>
       <option value="Xlink:BuUrBu[196] (K)">Xlink:BuUrBu[196] (K)</option>
       <option value="Xlink:BuUrBu[196] (Protein N-term)">Xlink:BuUrBu[196] (Protein N-term)</option>
+      <option value="Xlink:BuUrBu[196] (S)">Xlink:BuUrBu[196] (S)</option>
+      <option value="Xlink:BuUrBu[196] (T)">Xlink:BuUrBu[196] (T)</option>
+      <option value="Xlink:BuUrBu[196] (Y)">Xlink:BuUrBu[196] (Y)</option>
       <option value="Xlink:BuUrBu[213] (K)">Xlink:BuUrBu[213] (K)</option>
       <option value="Xlink:BuUrBu[213] (Protein N-term)">Xlink:BuUrBu[213] (Protein N-term)</option>
+      <option value="Xlink:BuUrBu[213] (S)">Xlink:BuUrBu[213] (S)</option>
+      <option value="Xlink:BuUrBu[213] (T)">Xlink:BuUrBu[213] (T)</option>
+      <option value="Xlink:BuUrBu[213] (Y)">Xlink:BuUrBu[213] (Y)</option>
       <option value="Xlink:BuUrBu[214] (K)">Xlink:BuUrBu[214] (K)</option>
       <option value="Xlink:BuUrBu[214] (Protein N-term)">Xlink:BuUrBu[214] (Protein N-term)</option>
+      <option value="Xlink:BuUrBu[214] (S)">Xlink:BuUrBu[214] (S)</option>
+      <option value="Xlink:BuUrBu[214] (T)">Xlink:BuUrBu[214] (T)</option>
+      <option value="Xlink:BuUrBu[214] (Y)">Xlink:BuUrBu[214] (Y)</option>
       <option value="Xlink:BuUrBu[317] (K)">Xlink:BuUrBu[317] (K)</option>
       <option value="Xlink:BuUrBu[317] (Protein N-term)">Xlink:BuUrBu[317] (Protein N-term)</option>
+      <option value="Xlink:BuUrBu[317] (S)">Xlink:BuUrBu[317] (S)</option>
+      <option value="Xlink:BuUrBu[317] (T)">Xlink:BuUrBu[317] (T)</option>
+      <option value="Xlink:BuUrBu[317] (Y)">Xlink:BuUrBu[317] (Y)</option>
       <option value="Xlink:BuUrBu[85] (K)">Xlink:BuUrBu[85] (K)</option>
       <option value="Xlink:BuUrBu[85] (Protein N-term)">Xlink:BuUrBu[85] (Protein N-term)</option>
+      <option value="Xlink:BuUrBu[85] (S)">Xlink:BuUrBu[85] (S)</option>
+      <option value="Xlink:BuUrBu[85] (T)">Xlink:BuUrBu[85] (T)</option>
+      <option value="Xlink:BuUrBu[85] (Y)">Xlink:BuUrBu[85] (Y)</option>
       <option value="Xlink:DFDNB (K)">Xlink:DFDNB (K)</option>
       <option value="Xlink:DFDNB (N)">Xlink:DFDNB (N)</option>
       <option value="Xlink:DFDNB (Q)">Xlink:DFDNB (Q)</option>
@@ -3042,6 +3115,14 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Xlink:DMP[140] (Protein N-term)">Xlink:DMP[140] (Protein N-term)</option>
       <option value="Xlink:DMP[154] (K)">Xlink:DMP[154] (K)</option>
       <option value="Xlink:DMP[154] (Protein N-term)">Xlink:DMP[154] (Protein N-term)</option>
+      <option value="Xlink:DSPP[210] (K)">Xlink:DSPP[210] (K)</option>
+      <option value="Xlink:DSPP[210] (Protein N-term)">Xlink:DSPP[210] (Protein N-term)</option>
+      <option value="Xlink:DSPP[226] (K)">Xlink:DSPP[226] (K)</option>
+      <option value="Xlink:DSPP[226] (Protein N-term)">Xlink:DSPP[226] (Protein N-term)</option>
+      <option value="Xlink:DSPP[228] (K)">Xlink:DSPP[228] (K)</option>
+      <option value="Xlink:DSPP[228] (Protein N-term)">Xlink:DSPP[228] (Protein N-term)</option>
+      <option value="Xlink:DSPP[331] (K)">Xlink:DSPP[331] (K)</option>
+      <option value="Xlink:DSPP[331] (Protein N-term)">Xlink:DSPP[331] (Protein N-term)</option>
       <option value="Xlink:DSS[138] (K)">Xlink:DSS[138] (K)</option>
       <option value="Xlink:DSS[138] (Protein N-term)">Xlink:DSS[138] (Protein N-term)</option>
       <option value="Xlink:DSS[155] (K)">Xlink:DSS[155] (K)</option>
@@ -3103,15 +3184,20 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="15N-oxobutanoic (Protein N-term S)">15N-oxobutanoic (Protein N-term S)</option>
       <option value="15N-oxobutanoic (Protein N-term T)">15N-oxobutanoic (Protein N-term T)</option>
       <option value="2-dimethylsuccinyl (C)">2-dimethylsuccinyl (C)</option>
+      <option value="2-methylbutyryl (K)">2-methylbutyryl (K)</option>
       <option value="2-monomethylsuccinyl (C)">2-monomethylsuccinyl (C)</option>
       <option value="2-nitrobenzyl (Y)">2-nitrobenzyl (Y)</option>
       <option value="2-succinyl (C)">2-succinyl (C)</option>
       <option value="2HPG (R)">2HPG (R)</option>
+      <option value="2PCA-triazole-ethanethiol (N-term)">2PCA-triazole-ethanethiol (N-term)</option>
       <option value="3-deoxyglucosone (R)">3-deoxyglucosone (R)</option>
+      <option value="3-hydroxy-3-methylglutaryl (K)">3-hydroxy-3-methylglutaryl (K)</option>
       <option value="3-hydroxybenzyl-phosphate (K)">3-hydroxybenzyl-phosphate (K)</option>
       <option value="3-hydroxybenzyl-phosphate (S)">3-hydroxybenzyl-phosphate (S)</option>
       <option value="3-hydroxybenzyl-phosphate (T)">3-hydroxybenzyl-phosphate (T)</option>
       <option value="3-hydroxybenzyl-phosphate (Y)">3-hydroxybenzyl-phosphate (Y)</option>
+      <option value="3-methylglutaconyl (K)">3-methylglutaconyl (K)</option>
+      <option value="3-methylglutaryl (K)">3-methylglutaryl (K)</option>
       <option value="3-phosphoglyceryl (K)">3-phosphoglyceryl (K)</option>
       <option value="3sulfo (N-term)">3sulfo (N-term)</option>
       <option value="4-ONE (C)">4-ONE (C)</option>
@@ -3121,9 +3207,19 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="4-ONE+Delta:H(-2)O(-1) (H)">4-ONE+Delta:H(-2)O(-1) (H)</option>
       <option value="4-ONE+Delta:H(-2)O(-1) (K)">4-ONE+Delta:H(-2)O(-1) (K)</option>
       <option value="4AcAllylGal (C)">4AcAllylGal (C)</option>
+      <option value="6C-CysPAT (C)">6C-CysPAT (C)</option>
+      <option value="6C-CysPAT (D)">6C-CysPAT (D)</option>
+      <option value="6C-CysPAT (E)">6C-CysPAT (E)</option>
+      <option value="6C-CysPAT (H)">6C-CysPAT (H)</option>
+      <option value="6C-CysPAT (K)">6C-CysPAT (K)</option>
+      <option value="6C-CysPAT (N-term)">6C-CysPAT (N-term)</option>
+      <option value="6C-CysPAT (S)">6C-CysPAT (S)</option>
+      <option value="6C-CysPAT (T)">6C-CysPAT (T)</option>
+      <option value="6C-CysPAT (Y)">6C-CysPAT (Y)</option>
       <option value="a-type-ion (C-term)">a-type-ion (C-term)</option>
       <option value="AccQTag (K)">AccQTag (K)</option>
       <option value="AccQTag (N-term)">AccQTag (N-term)</option>
+      <option value="Acetoacetyl (K)">Acetoacetyl (K)</option>
       <option value="Acetyl (C)">Acetyl (C)</option>
       <option value="Acetyl (H)">Acetyl (H)</option>
       <option value="Acetyl (K)">Acetyl (K)</option>
@@ -3304,8 +3400,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Biotin-phenacyl (C)">Biotin-phenacyl (C)</option>
       <option value="Biotin-phenacyl (H)">Biotin-phenacyl (H)</option>
       <option value="Biotin-phenacyl (S)">Biotin-phenacyl (S)</option>
+      <option value="Biotin-tyramide (C)">Biotin-tyramide (C)</option>
+      <option value="Biotin-tyramide (W)">Biotin-tyramide (W)</option>
       <option value="Biotin-tyramide (Y)">Biotin-tyramide (Y)</option>
       <option value="Biotin:Aha-DADPS (M)">Biotin:Aha-DADPS (M)</option>
+      <option value="Biotin:Aha-PC (M)">Biotin:Aha-PC (M)</option>
       <option value="Biotin:Cayman-10013 (C)">Biotin:Cayman-10013 (C)</option>
       <option value="Biotin:Cayman-10141 (C)">Biotin:Cayman-10141 (C)</option>
       <option value="Biotin:Invitrogen-M1602 (C)">Biotin:Invitrogen-M1602 (C)</option>
@@ -3743,6 +3842,8 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Cytopiloyne+water (S)">Cytopiloyne+water (S)</option>
       <option value="Cytopiloyne+water (T)">Cytopiloyne+water (T)</option>
       <option value="Cytopiloyne+water (Y)">Cytopiloyne+water (Y)</option>
+      <option value="DABCYL-C2-maleimide (C)">DABCYL-C2-maleimide (C)</option>
+      <option value="DABCYL-C2-maleimide (K)">DABCYL-C2-maleimide (K)</option>
       <option value="DAET (S)">DAET (S)</option>
       <option value="DAET (T)">DAET (T)</option>
       <option value="Dansyl (K)">Dansyl (K)</option>
@@ -3750,6 +3851,8 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Dap-DSP (A)">Dap-DSP (A)</option>
       <option value="Dap-DSP (E)">Dap-DSP (E)</option>
       <option value="Dap-DSP (K)">Dap-DSP (K)</option>
+      <option value="DBIA (C)">DBIA (C)</option>
+      <option value="DCP (C)">DCP (C)</option>
       <option value="Deamidated (N)">Deamidated (N)</option>
       <option value="Deamidated (Protein N-term F)">Deamidated (Protein N-term F)</option>
       <option value="Deamidated (Q)">Deamidated (Q)</option>
@@ -4202,6 +4305,10 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="dHex(4)HexNAc(3)Kdn(1) (S)">dHex(4)HexNAc(3)Kdn(1) (S)</option>
       <option value="dHex(4)HexNAc(3)Kdn(1) (T)">dHex(4)HexNAc(3)Kdn(1) (T)</option>
       <option value="DHP (C)">DHP (C)</option>
+      <option value="Di_L-Gln_Ngamma-propargyl-L-Gln_desthiobiotin (D)">Di_L-Gln_Ngamma-propargyl-L-Gln_desthiobiotin (D)</option>
+      <option value="Di_L-Gln_Ngamma-propargyl-L-Gln_desthiobiotin (E)">Di_L-Gln_Ngamma-propargyl-L-Gln_desthiobiotin (E)</option>
+      <option value="Di_L-Glu_Ngamma-propargyl-L-Gln_desthiobiotin (D)">Di_L-Glu_Ngamma-propargyl-L-Gln_desthiobiotin (D)</option>
+      <option value="Di_L-Glu_Ngamma-propargyl-L-Gln_desthiobiotin (E)">Di_L-Glu_Ngamma-propargyl-L-Gln_desthiobiotin (E)</option>
       <option value="Diacylglycerol (C)">Diacylglycerol (C)</option>
       <option value="DiART6plex (K)">DiART6plex (K)</option>
       <option value="DiART6plex (N-term)">DiART6plex (N-term)</option>
@@ -4336,7 +4443,9 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="dNIC (N-term)">dNIC (N-term)</option>
       <option value="DNPS (C)">DNPS (C)</option>
       <option value="DNPS (W)">DNPS (W)</option>
+      <option value="DPIA (C)">DPIA (C)</option>
       <option value="DTT (C)">DTT (C)</option>
+      <option value="DVFQQQTGG (K)">DVFQQQTGG (K)</option>
       <option value="DyLight-maleimide (C)">DyLight-maleimide (C)</option>
       <option value="DYn-2 (C)">DYn-2 (C)</option>
       <option value="EDEDTIDVFQQQTGG (K)">EDEDTIDVFQQQTGG (K)</option>
@@ -4383,6 +4492,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="ethylsulfonylethyl (C)">ethylsulfonylethyl (C)</option>
       <option value="ethylsulfonylethyl (H)">ethylsulfonylethyl (H)</option>
       <option value="ethylsulfonylethyl (K)">ethylsulfonylethyl (K)</option>
+      <option value="Ethynyl (C)">Ethynyl (C)</option>
       <option value="ExacTagAmine (K)">ExacTagAmine (K)</option>
       <option value="ExacTagThiol (C)">ExacTagThiol (C)</option>
       <option value="FAD (C)">FAD (C)</option>
@@ -4517,11 +4627,14 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Gly-&gt;Xle (G)">Gly-&gt;Xle (G)</option>
       <option value="Gly-loss+Amide (C-term G)">Gly-loss+Amide (C-term G)</option>
       <option value="Glycerophospho (S)">Glycerophospho (S)</option>
+      <option value="Glyceroyl (K)">Glyceroyl (K)</option>
+      <option value="Glyceroyl (Protein N-term)">Glyceroyl (Protein N-term)</option>
       <option value="GlycerylPE (E)">GlycerylPE (E)</option>
       <option value="glycidamide (K)">glycidamide (K)</option>
       <option value="glycidamide (N-term)">glycidamide (N-term)</option>
       <option value="Glycosyl (P)">Glycosyl (P)</option>
       <option value="glyoxalAGE (R)">glyoxalAGE (R)</option>
+      <option value="Glyoxylyl (K)">Glyoxylyl (K)</option>
       <option value="GNLLFLACYCIGG (K)">GNLLFLACYCIGG (K)</option>
       <option value="GPIanchor (Protein C-term)">GPIanchor (Protein C-term)</option>
       <option value="Guanidinyl (K)">Guanidinyl (K)</option>
@@ -4915,6 +5028,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Hex(9)Phos(3) (T)">Hex(9)Phos(3) (T)</option>
       <option value="HexA(2)HexNAc(3) (S)">HexA(2)HexNAc(3) (S)</option>
       <option value="HexA(2)HexNAc(3) (T)">HexA(2)HexNAc(3) (T)</option>
+      <option value="Hexanoyl (K)">Hexanoyl (K)</option>
       <option value="HexN (K)">HexN (K)</option>
       <option value="HexN (N)">HexN (N)</option>
       <option value="HexN (S)">HexN (S)</option>
@@ -4988,6 +5102,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="HNE (H)">HNE (H)</option>
       <option value="HNE (K)">HNE (K)</option>
       <option value="HNE (L)">HNE (L)</option>
+      <option value="HNE (R)">HNE (R)</option>
       <option value="HNE+Delta:H(2) (C)">HNE+Delta:H(2) (C)</option>
       <option value="HNE+Delta:H(2) (H)">HNE+Delta:H(2) (H)</option>
       <option value="HNE+Delta:H(2) (K)">HNE+Delta:H(2) (K)</option>
@@ -5067,6 +5182,10 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Isopropylphospho (S)">Isopropylphospho (S)</option>
       <option value="Isopropylphospho (T)">Isopropylphospho (T)</option>
       <option value="Isopropylphospho (Y)">Isopropylphospho (Y)</option>
+      <option value="Isovaleryl (K)">Isovaleryl (K)</option>
+      <option value="iST-NHS specific cysteine modification (C)">iST-NHS specific cysteine modification (C)</option>
+      <option value="Itaconatyl (C)">Itaconatyl (C)</option>
+      <option value="Itaconyl (K)">Itaconyl (K)</option>
       <option value="iTRAQ4plex (C)">iTRAQ4plex (C)</option>
       <option value="iTRAQ4plex (H)">iTRAQ4plex (H)</option>
       <option value="iTRAQ4plex (K)">iTRAQ4plex (K)</option>
@@ -5095,10 +5214,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="iTRAQ8plex:13C(6)15N(2) (K)">iTRAQ8plex:13C(6)15N(2) (K)</option>
       <option value="iTRAQ8plex:13C(6)15N(2) (N-term)">iTRAQ8plex:13C(6)15N(2) (N-term)</option>
       <option value="iTRAQ8plex:13C(6)15N(2) (Y)">iTRAQ8plex:13C(6)15N(2) (Y)</option>
-      <option value="Kdo (S)">Kdo (S)</option>
-      <option value="Kdo (T)">Kdo (T)</option>
+      <option value="L-Gln (D)">L-Gln (D)</option>
+      <option value="L-Gln (E)">L-Gln (E)</option>
       <option value="Label:13C(1)2H(3) (M)">Label:13C(1)2H(3) (M)</option>
       <option value="Label:13C(1)2H(3)+Oxidation (M)">Label:13C(1)2H(3)+Oxidation (M)</option>
+      <option value="Label:13C(2)15N(1) (G)">Label:13C(2)15N(1) (G)</option>
       <option value="Label:13C(2)15N(2) (K)">Label:13C(2)15N(2) (K)</option>
       <option value="Label:13C(3) (A)">Label:13C(3) (A)</option>
       <option value="Label:13C(3)15N(1) (A)">Label:13C(3)15N(1) (A)</option>
@@ -5125,6 +5245,8 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Label:13C(6)15N(2)+Acetyl (K)">Label:13C(6)15N(2)+Acetyl (K)</option>
       <option value="Label:13C(6)15N(2)+Dimethyl (K)">Label:13C(6)15N(2)+Dimethyl (K)</option>
       <option value="Label:13C(6)15N(2)+GG (K)">Label:13C(6)15N(2)+GG (K)</option>
+      <option value="Label:13C(6)15N(2)+TMT6plex (K)">Label:13C(6)15N(2)+TMT6plex (K)</option>
+      <option value="Label:13C(6)15N(2)+TMTpro (K)">Label:13C(6)15N(2)+TMTpro (K)</option>
       <option value="Label:13C(6)15N(4) (R)">Label:13C(6)15N(4) (R)</option>
       <option value="Label:13C(6)15N(4)+Dimethyl (R)">Label:13C(6)15N(4)+Dimethyl (R)</option>
       <option value="Label:13C(6)15N(4)+Dimethyl:2H(6)13C(2) (R)">Label:13C(6)15N(4)+Dimethyl:2H(6)13C(2) (R)</option>
@@ -5175,6 +5297,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Label:2H(6)15N(1) (P)">Label:2H(6)15N(1) (P)</option>
       <option value="Label:2H(7)15N(4) (R)">Label:2H(7)15N(4) (R)</option>
       <option value="Label:2H(9)13C(6)15N(2) (K)">Label:2H(9)13C(6)15N(2) (K)</option>
+      <option value="Lactylation (K)">Lactylation (K)</option>
       <option value="lapachenole (C)">lapachenole (C)</option>
       <option value="Leu-&gt;MetOx (L)">Leu-&gt;MetOx (L)</option>
       <option value="LG-anhydrolactam (K)">LG-anhydrolactam (K)</option>
@@ -5219,6 +5342,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Lys-&gt;Tyr (K)">Lys-&gt;Tyr (K)</option>
       <option value="Lys-&gt;Val (K)">Lys-&gt;Val (K)</option>
       <option value="Lys-&gt;Xle (K)">Lys-&gt;Xle (K)</option>
+      <option value="Lys-loss (K)">Lys-loss (K)</option>
       <option value="Lys-loss (Protein C-term K)">Lys-loss (Protein C-term K)</option>
       <option value="Lysbiotinhydrazide (K)">Lysbiotinhydrazide (K)</option>
       <option value="maleimide (C)">maleimide (C)</option>
@@ -5353,6 +5477,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="MolybdopterinGD (D)">MolybdopterinGD (D)</option>
       <option value="MolybdopterinGD (U)">MolybdopterinGD (U)</option>
       <option value="MolybdopterinGD+Delta:S(-1)Se(1) (C)">MolybdopterinGD+Delta:S(-1)Se(1) (C)</option>
+      <option value="Mono_Ngamma-propargyl-L-Gln_desthiobiotin (C)">Mono_Ngamma-propargyl-L-Gln_desthiobiotin (C)</option>
       <option value="monomethylphosphothione (C)">monomethylphosphothione (C)</option>
       <option value="monomethylphosphothione (H)">monomethylphosphothione (H)</option>
       <option value="monomethylphosphothione (K)">monomethylphosphothione (K)</option>
@@ -5385,10 +5510,16 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Myristoyl (N-term G)">Myristoyl (N-term G)</option>
       <option value="Myristoyl+Delta:H(-4) (Protein N-term G)">Myristoyl+Delta:H(-4) (Protein N-term G)</option>
       <option value="N-dimethylphosphate (S)">N-dimethylphosphate (S)</option>
+      <option value="N6pAMP (S)">N6pAMP (S)</option>
+      <option value="N6pAMP (T)">N6pAMP (T)</option>
+      <option value="N6pAMP (Y)">N6pAMP (Y)</option>
       <option value="NA-LNO2 (C)">NA-LNO2 (C)</option>
       <option value="NA-LNO2 (H)">NA-LNO2 (H)</option>
       <option value="NA-OA-NO2 (C)">NA-OA-NO2 (C)</option>
       <option value="NA-OA-NO2 (H)">NA-OA-NO2 (H)</option>
+      <option value="NBF (C)">NBF (C)</option>
+      <option value="NBF (K)">NBF (K)</option>
+      <option value="NBF (R)">NBF (R)</option>
       <option value="NBS (W)">NBS (W)</option>
       <option value="NBS:13C(6) (W)">NBS:13C(6) (W)</option>
       <option value="NDA (K)">NDA (K)</option>
@@ -5429,6 +5560,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="NO_SMX_SIMD (C)">NO_SMX_SIMD (C)</option>
       <option value="NP40 (N-term)">NP40 (N-term)</option>
       <option value="NQIGG (K)">NQIGG (K)</option>
+      <option value="NQTGG (K)">NQTGG (K)</option>
       <option value="O-Dimethylphosphate (S)">O-Dimethylphosphate (S)</option>
       <option value="O-Dimethylphosphate (T)">O-Dimethylphosphate (T)</option>
       <option value="O-Dimethylphosphate (Y)">O-Dimethylphosphate (Y)</option>
@@ -5489,6 +5621,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Pent(1)HexNAc(1) (T)">Pent(1)HexNAc(1) (T)</option>
       <option value="Pent(2) (S)">Pent(2) (S)</option>
       <option value="Pent(2) (T)">Pent(2) (T)</option>
+      <option value="Pentanoyl (K)">Pentanoyl (K)</option>
       <option value="Pentose (S)">Pentose (S)</option>
       <option value="Pentose (T)">Pentose (T)</option>
       <option value="Pentylamine (Q)">Pentylamine (Q)</option>
@@ -5538,6 +5671,9 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="PhosphoCytidine (S)">PhosphoCytidine (S)</option>
       <option value="PhosphoCytidine (T)">PhosphoCytidine (T)</option>
       <option value="PhosphoCytidine (Y)">PhosphoCytidine (Y)</option>
+      <option value="PhosphoDecoy (A)">PhosphoDecoy (A)</option>
+      <option value="PhosphoDecoy (G)">PhosphoDecoy (G)</option>
+      <option value="PhosphoDecoy (L)">PhosphoDecoy (L)</option>
       <option value="Phosphogluconoylation (K)">Phosphogluconoylation (K)</option>
       <option value="Phosphogluconoylation (N-term)">Phosphogluconoylation (N-term)</option>
       <option value="Phosphoguanosine (H)">Phosphoguanosine (H)</option>
@@ -5564,6 +5700,8 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Phytochromobilin (C)">Phytochromobilin (C)</option>
       <option value="Piperidine (K)">Piperidine (K)</option>
       <option value="Piperidine (N-term)">Piperidine (N-term)</option>
+      <option value="pRBS-ID_4-thiouridine (F)">pRBS-ID_4-thiouridine (F)</option>
+      <option value="pRBS-ID_6-thioguanosine (W)">pRBS-ID_6-thioguanosine (W)</option>
       <option value="Pro+O(2) (H)">Pro+O(2) (H)</option>
       <option value="Pro-&gt;Ala (P)">Pro-&gt;Ala (P)</option>
       <option value="Pro-&gt;Arg (P)">Pro-&gt;Arg (P)</option>
@@ -5630,37 +5768,21 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Pyridylacetyl (N-term)">Pyridylacetyl (N-term)</option>
       <option value="Pyridylethyl (C)">Pyridylethyl (C)</option>
       <option value="Pyro-carbamidomethyl (N-term C)">Pyro-carbamidomethyl (N-term C)</option>
+      <option value="Pyro-QQTGG (K)">Pyro-QQTGG (K)</option>
       <option value="pyrophospho (S)">pyrophospho (S)</option>
       <option value="pyrophospho (T)">pyrophospho (T)</option>
       <option value="PyruvicAcidIminyl (K)">PyruvicAcidIminyl (K)</option>
       <option value="PyruvicAcidIminyl (Protein N-term C)">PyruvicAcidIminyl (Protein N-term C)</option>
       <option value="PyruvicAcidIminyl (Protein N-term V)">PyruvicAcidIminyl (Protein N-term V)</option>
+      <option value="Pyruvoyl (K)">Pyruvoyl (K)</option>
       <option value="QAT (C)">QAT (C)</option>
       <option value="QAT:2H(3) (C)">QAT:2H(3) (C)</option>
       <option value="QEQTGG (K)">QEQTGG (K)</option>
       <option value="QQQTGG (K)">QQQTGG (K)</option>
+      <option value="QQTGG (K)">QQTGG (K)</option>
       <option value="QTGG (K)">QTGG (K)</option>
       <option value="Quinone (W)">Quinone (W)</option>
       <option value="Quinone (Y)">Quinone (Y)</option>
-      <option value="RBS-ID_Uridine (A)">RBS-ID_Uridine (A)</option>
-      <option value="RBS-ID_Uridine (C)">RBS-ID_Uridine (C)</option>
-      <option value="RBS-ID_Uridine (D)">RBS-ID_Uridine (D)</option>
-      <option value="RBS-ID_Uridine (E)">RBS-ID_Uridine (E)</option>
-      <option value="RBS-ID_Uridine (F)">RBS-ID_Uridine (F)</option>
-      <option value="RBS-ID_Uridine (G)">RBS-ID_Uridine (G)</option>
-      <option value="RBS-ID_Uridine (H)">RBS-ID_Uridine (H)</option>
-      <option value="RBS-ID_Uridine (I)">RBS-ID_Uridine (I)</option>
-      <option value="RBS-ID_Uridine (K)">RBS-ID_Uridine (K)</option>
-      <option value="RBS-ID_Uridine (L)">RBS-ID_Uridine (L)</option>
-      <option value="RBS-ID_Uridine (M)">RBS-ID_Uridine (M)</option>
-      <option value="RBS-ID_Uridine (N)">RBS-ID_Uridine (N)</option>
-      <option value="RBS-ID_Uridine (P)">RBS-ID_Uridine (P)</option>
-      <option value="RBS-ID_Uridine (Q)">RBS-ID_Uridine (Q)</option>
-      <option value="RBS-ID_Uridine (R)">RBS-ID_Uridine (R)</option>
-      <option value="RBS-ID_Uridine (S)">RBS-ID_Uridine (S)</option>
-      <option value="RBS-ID_Uridine (T)">RBS-ID_Uridine (T)</option>
-      <option value="RBS-ID_Uridine (V)">RBS-ID_Uridine (V)</option>
-      <option value="RBS-ID_Uridine (W)">RBS-ID_Uridine (W)</option>
       <option value="RBS-ID_Uridine (Y)">RBS-ID_Uridine (Y)</option>
       <option value="Retinylidene (K)">Retinylidene (K)</option>
       <option value="RNPXL (N-term K)">RNPXL (N-term K)</option>
@@ -5689,6 +5811,8 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Ser-&gt;Tyr (S)">Ser-&gt;Tyr (S)</option>
       <option value="Ser-&gt;Val (S)">Ser-&gt;Val (S)</option>
       <option value="Ser-&gt;Xle (S)">Ser-&gt;Xle (S)</option>
+      <option value="Ser/Thr-KDO (S)">Ser/Thr-KDO (S)</option>
+      <option value="Ser/Thr-KDO (T)">Ser/Thr-KDO (T)</option>
       <option value="serotonylation (Q)">serotonylation (Q)</option>
       <option value="shTMT (K)">shTMT (K)</option>
       <option value="shTMT (N-term)">shTMT (N-term)</option>
@@ -5769,6 +5893,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Thr-&gt;Xle (T)">Thr-&gt;Xle (T)</option>
       <option value="Thrbiotinhydrazide (T)">Thrbiotinhydrazide (T)</option>
       <option value="Thyroxine (Y)">Thyroxine (Y)</option>
+      <option value="Tiglyl (K)">Tiglyl (K)</option>
       <option value="TMAB (K)">TMAB (K)</option>
       <option value="TMAB (N-term)">TMAB (N-term)</option>
       <option value="TMAB:2H(9) (K)">TMAB:2H(9) (K)</option>
@@ -5936,6 +6061,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Val-&gt;Trp (V)">Val-&gt;Trp (V)</option>
       <option value="Val-&gt;Tyr (V)">Val-&gt;Tyr (V)</option>
       <option value="Val-&gt;Xle (V)">Val-&gt;Xle (V)</option>
+      <option value="ValGly (K)">ValGly (K)</option>
       <option value="VFQQQTGG (K)">VFQQQTGG (K)</option>
       <option value="VIEVYQEQTGG (K)">VIEVYQEQTGG (K)</option>
       <option value="Withaferin (C)">Withaferin (C)</option>
@@ -5987,16 +6113,34 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Xlink:BS2G[96] (Protein N-term)">Xlink:BS2G[96] (Protein N-term)</option>
       <option value="Xlink:BuUrBu[111] (K)">Xlink:BuUrBu[111] (K)</option>
       <option value="Xlink:BuUrBu[111] (Protein N-term)">Xlink:BuUrBu[111] (Protein N-term)</option>
+      <option value="Xlink:BuUrBu[111] (S)">Xlink:BuUrBu[111] (S)</option>
+      <option value="Xlink:BuUrBu[111] (T)">Xlink:BuUrBu[111] (T)</option>
+      <option value="Xlink:BuUrBu[111] (Y)">Xlink:BuUrBu[111] (Y)</option>
       <option value="Xlink:BuUrBu[196] (K)">Xlink:BuUrBu[196] (K)</option>
       <option value="Xlink:BuUrBu[196] (Protein N-term)">Xlink:BuUrBu[196] (Protein N-term)</option>
+      <option value="Xlink:BuUrBu[196] (S)">Xlink:BuUrBu[196] (S)</option>
+      <option value="Xlink:BuUrBu[196] (T)">Xlink:BuUrBu[196] (T)</option>
+      <option value="Xlink:BuUrBu[196] (Y)">Xlink:BuUrBu[196] (Y)</option>
       <option value="Xlink:BuUrBu[213] (K)">Xlink:BuUrBu[213] (K)</option>
       <option value="Xlink:BuUrBu[213] (Protein N-term)">Xlink:BuUrBu[213] (Protein N-term)</option>
+      <option value="Xlink:BuUrBu[213] (S)">Xlink:BuUrBu[213] (S)</option>
+      <option value="Xlink:BuUrBu[213] (T)">Xlink:BuUrBu[213] (T)</option>
+      <option value="Xlink:BuUrBu[213] (Y)">Xlink:BuUrBu[213] (Y)</option>
       <option value="Xlink:BuUrBu[214] (K)">Xlink:BuUrBu[214] (K)</option>
       <option value="Xlink:BuUrBu[214] (Protein N-term)">Xlink:BuUrBu[214] (Protein N-term)</option>
+      <option value="Xlink:BuUrBu[214] (S)">Xlink:BuUrBu[214] (S)</option>
+      <option value="Xlink:BuUrBu[214] (T)">Xlink:BuUrBu[214] (T)</option>
+      <option value="Xlink:BuUrBu[214] (Y)">Xlink:BuUrBu[214] (Y)</option>
       <option value="Xlink:BuUrBu[317] (K)">Xlink:BuUrBu[317] (K)</option>
       <option value="Xlink:BuUrBu[317] (Protein N-term)">Xlink:BuUrBu[317] (Protein N-term)</option>
+      <option value="Xlink:BuUrBu[317] (S)">Xlink:BuUrBu[317] (S)</option>
+      <option value="Xlink:BuUrBu[317] (T)">Xlink:BuUrBu[317] (T)</option>
+      <option value="Xlink:BuUrBu[317] (Y)">Xlink:BuUrBu[317] (Y)</option>
       <option value="Xlink:BuUrBu[85] (K)">Xlink:BuUrBu[85] (K)</option>
       <option value="Xlink:BuUrBu[85] (Protein N-term)">Xlink:BuUrBu[85] (Protein N-term)</option>
+      <option value="Xlink:BuUrBu[85] (S)">Xlink:BuUrBu[85] (S)</option>
+      <option value="Xlink:BuUrBu[85] (T)">Xlink:BuUrBu[85] (T)</option>
+      <option value="Xlink:BuUrBu[85] (Y)">Xlink:BuUrBu[85] (Y)</option>
       <option value="Xlink:DFDNB (K)">Xlink:DFDNB (K)</option>
       <option value="Xlink:DFDNB (N)">Xlink:DFDNB (N)</option>
       <option value="Xlink:DFDNB (Q)">Xlink:DFDNB (Q)</option>
@@ -6009,6 +6153,14 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="Xlink:DMP[140] (Protein N-term)">Xlink:DMP[140] (Protein N-term)</option>
       <option value="Xlink:DMP[154] (K)">Xlink:DMP[154] (K)</option>
       <option value="Xlink:DMP[154] (Protein N-term)">Xlink:DMP[154] (Protein N-term)</option>
+      <option value="Xlink:DSPP[210] (K)">Xlink:DSPP[210] (K)</option>
+      <option value="Xlink:DSPP[210] (Protein N-term)">Xlink:DSPP[210] (Protein N-term)</option>
+      <option value="Xlink:DSPP[226] (K)">Xlink:DSPP[226] (K)</option>
+      <option value="Xlink:DSPP[226] (Protein N-term)">Xlink:DSPP[226] (Protein N-term)</option>
+      <option value="Xlink:DSPP[228] (K)">Xlink:DSPP[228] (K)</option>
+      <option value="Xlink:DSPP[228] (Protein N-term)">Xlink:DSPP[228] (Protein N-term)</option>
+      <option value="Xlink:DSPP[331] (K)">Xlink:DSPP[331] (K)</option>
+      <option value="Xlink:DSPP[331] (Protein N-term)">Xlink:DSPP[331] (Protein N-term)</option>
       <option value="Xlink:DSS[138] (K)">Xlink:DSS[138] (K)</option>
       <option value="Xlink:DSS[138] (Protein N-term)">Xlink:DSS[138] (Protein N-term)</option>
       <option value="Xlink:DSS[155] (K)">Xlink:DSS[155] (K)</option>
@@ -6065,6 +6217,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <option value="ZQG (K)">ZQG (K)</option>
       <expand macro="list_string_san" name="variable_modifications"/>
     </param>
+    <param argument="-allow_dense_centroided_peaks" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Pass '-allowDenseCentroidedPeaks 1' to MS-GF+ to also search spectra whose median distance of consecutive peaks is below ~50 ppm" help="The MS-GF+ default treats such (centroided) spectra as profile spectra and skips them"/>
     <param argument="-conf" type="data" format="txt" optional="true" label="Optional MSGF+ configuration file (passed as -conf &lt;file&gt; to MSGF+)" help="See documentation for examples. Parameters of the adapter take precedence. Use conf file only for settings not available here (for example, any fixed/var modifications, in the conf file will be ignored, since they are provided via -mod flag) select txt data sets(s)"/>
     <param argument="-reindex" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Recalculate peptide to protein association using OpenMS" help="Annotates target-decoy information"/>
     <section name="PeptideIndexing" title="" help="" expanded="false">
@@ -6078,8 +6231,8 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       </param>
       <param name="missing_decoy_action" argument="-PeptideIndexing:missing_decoy_action" type="select" label="Action to take if NO peptide was assigned to a decoy protein (which indicates wrong database or decoy string): 'error' (exit with error, no output), 'warn' (exit with success, warning message), 'silent' (no action is taken, not even a warning)" help="">
         <option value="error">error</option>
-        <option value="warn" selected="true">warn</option>
         <option value="silent">silent</option>
+        <option value="warn" selected="true">warn</option>
         <expand macro="list_string_san" name="missing_decoy_action"/>
       </param>
       <param name="write_protein_sequence" argument="-PeptideIndexing:write_protein_sequence" type="boolean" truevalue="true" falsevalue="false" checked="false" label="If set, the protein sequences are stored as well" help=""/>
@@ -6087,8 +6240,8 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <param name="keep_unreferenced_proteins" argument="-PeptideIndexing:keep_unreferenced_proteins" type="boolean" truevalue="true" falsevalue="false" checked="false" label="If set, protein hits which are not referenced by any peptide are kept" help=""/>
       <param name="unmatched_action" argument="-PeptideIndexing:unmatched_action" type="select" label="If peptide sequences cannot be matched to any protein: 1) raise an error; 2) warn (unmatched PepHits will miss target/decoy annotation with downstream problems); 3) remove the hit" help="">
         <option value="error" selected="true">error</option>
-        <option value="warn">warn</option>
         <option value="remove">remove</option>
+        <option value="warn">warn</option>
         <expand macro="list_string_san" name="unmatched_action"/>
       </param>
       <param name="aaa_max" argument="-PeptideIndexing:aaa_max" type="integer" min="0" max="10" value="3" label="Maximal number of ambiguous amino acids (AAAs) allowed when matching to a protein database with AAAs" help="AAAs are 'B', 'J', 'Z' and 'X'"/>
@@ -6097,47 +6250,47 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <param name="allow_nterm_protein_cleavage" argument="-PeptideIndexing:allow_nterm_protein_cleavage" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Allow the protein N-terminus amino acid to clip" help=""/>
       <section name="enzyme" title="" help="" expanded="false">
         <param name="name" argument="-PeptideIndexing:enzyme:name" type="select" label="Enzyme which determines valid cleavage sites -" help="e.g. trypsin cleaves after lysine (K) or arginine (R), but not before proline (P). Default: deduce from input">
-          <option value="auto" selected="true">auto</option>
-          <option value="Trypsin">Trypsin</option>
-          <option value="Formic_acid">Formic_acid</option>
-          <option value="Lys-C">Lys-C</option>
-          <option value="Lys-N">Lys-N</option>
-          <option value="Glu-C+P">Glu-C+P</option>
-          <option value="PepsinA + P">PepsinA + P</option>
-          <option value="cyanogen-bromide">cyanogen-bromide</option>
-          <option value="Clostripain/P">Clostripain/P</option>
-          <option value="elastase-trypsin-chymotrypsin">elastase-trypsin-chymotrypsin</option>
-          <option value="no cleavage">no cleavage</option>
-          <option value="unspecific cleavage">unspecific cleavage</option>
-          <option value="Lys-C/P">Lys-C/P</option>
-          <option value="PepsinA">PepsinA</option>
-          <option value="TrypChymo">TrypChymo</option>
-          <option value="Trypsin/P">Trypsin/P</option>
-          <option value="Chymotrypsin">Chymotrypsin</option>
-          <option value="Chymotrypsin/P">Chymotrypsin/P</option>
-          <option value="CNBr">CNBr</option>
+          <option value="2-iodobenzoate">2-iodobenzoate</option>
+          <option value="Alpha-lytic protease">Alpha-lytic protease</option>
           <option value="Arg-C">Arg-C</option>
           <option value="Arg-C/P">Arg-C/P</option>
           <option value="Asp-N">Asp-N</option>
           <option value="Asp-N/B">Asp-N/B</option>
           <option value="Asp-N_ambic">Asp-N_ambic</option>
-          <option value="glutamyl endopeptidase">glutamyl endopeptidase</option>
-          <option value="Alpha-lytic protease">Alpha-lytic protease</option>
-          <option value="2-iodobenzoate">2-iodobenzoate</option>
-          <option value="iodosobenzoate">iodosobenzoate</option>
-          <option value="staphylococcal protease/D">staphylococcal protease/D</option>
-          <option value="proline-endopeptidase/HKR">proline-endopeptidase/HKR</option>
+          <option value="CNBr">CNBr</option>
+          <option value="Chymotrypsin">Chymotrypsin</option>
+          <option value="Chymotrypsin/P">Chymotrypsin/P</option>
+          <option value="Clostripain/P">Clostripain/P</option>
+          <option value="Formic_acid">Formic_acid</option>
+          <option value="Glu-C+P">Glu-C+P</option>
+          <option value="Lys-C">Lys-C</option>
+          <option value="Lys-C/P">Lys-C/P</option>
+          <option value="Lys-N">Lys-N</option>
+          <option value="PepsinA">PepsinA</option>
+          <option value="PepsinA + P">PepsinA + P</option>
+          <option value="TrypChymo">TrypChymo</option>
+          <option value="Trypsin">Trypsin</option>
+          <option value="Trypsin/P">Trypsin/P</option>
           <option value="V8-DE">V8-DE</option>
           <option value="V8-E">V8-E</option>
+          <option value="auto" selected="true">auto</option>
+          <option value="cyanogen-bromide">cyanogen-bromide</option>
+          <option value="elastase-trypsin-chymotrypsin">elastase-trypsin-chymotrypsin</option>
+          <option value="glutamyl endopeptidase">glutamyl endopeptidase</option>
+          <option value="iodosobenzoate">iodosobenzoate</option>
           <option value="leukocyte elastase">leukocyte elastase</option>
+          <option value="no cleavage">no cleavage</option>
           <option value="proline endopeptidase">proline endopeptidase</option>
+          <option value="proline-endopeptidase/HKR">proline-endopeptidase/HKR</option>
+          <option value="staphylococcal protease/D">staphylococcal protease/D</option>
+          <option value="unspecific cleavage">unspecific cleavage</option>
           <expand macro="list_string_san" name="name"/>
         </param>
         <param name="specificity" argument="-PeptideIndexing:enzyme:specificity" type="select" label="Specificity of the enzyme" help="Default: deduce from input..   'full': both internal cleavage sites must match..   'semi': one of two internal cleavage sites must match..   'none': allow all peptide hits no matter their context (enzyme is irrelevant)">
           <option value="auto" selected="true">auto</option>
           <option value="full">full</option>
-          <option value="semi">semi</option>
           <option value="none">none</option>
+          <option value="semi">semi</option>
           <expand macro="list_string_san" name="specificity"/>
         </param>
       </section>
@@ -6150,14 +6303,19 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       </param>
     </expand>
     <param name="OPTIONAL_OUTPUTS" type="select" optional="true" multiple="true" label="Optional outputs">
-      <option value="out_FLAG">out (Output file)</option>
+      <option value="out_FLAG">out (Output file (.idXML) or directory bundle (.idparquet) containing the search results)</option>
       <option value="mzid_out_FLAG">mzid_out (Alternative output file (MS-GF+ parameter '-o'))</option>
       <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+      <option value="out_idparquet_FLAG">out (idparquet bundle)</option>
     </param>
   </inputs>
   <outputs>
+    <collection type="list" name="out_idparquet" label="${tool.name} on ${on_string}: out (idparquet bundle)">
+      <discover_datasets directory="out_idparquet_bundle/out.idparquet" recurse="true" format="parquet" pattern="(?P&lt;designation&gt;.*\.parquet)"/>
+      <filter>OPTIONAL_OUTPUTS is not None and "out_idparquet_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </collection>
     <data name="out" label="${tool.name} on ${on_string}: out" format="idxml">
-      <filter>OPTIONAL_OUTPUTS is not None and "out_FLAG" in OPTIONAL_OUTPUTS</filter>
+      <filter>OPTIONAL_OUTPUTS is not None and "out_FLAG" in OPTIONAL_OUTPUTS and "out_idparquet_FLAG" not in OPTIONAL_OUTPUTS</filter>
     </data>
     <data name="mzid_out" label="${tool.name} on ${on_string}: mzid_out" format="mzid">
       <filter>OPTIONAL_OUTPUTS is not None and "mzid_out_FLAG" in OPTIONAL_OUTPUTS</filter>
@@ -6177,10 +6335,10 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="spectra.mzML"/>
-      <output name="out" value="MSGFPlusAdapter_1_out.idXML" compare="sim_size" delta_frac="0.7" ftype="idxml"/>
-      <output name="mzid_out" value="MSGFPlusAdapter_1_out.mzid" compare="sim_size" delta_frac="0.7" ftype="mzid"/>
-      <param name="database" value="proteins.fasta"/>
+      <param name="in" value="spectra.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/THIRDPARTY/spectra.mzML"/>
+      <output name="out" value="MSGFPlusAdapter_1_out.idXML" compare="sim_size" delta_frac="0.7" ftype="idxml" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/THIRDPARTY/MSGFPlusAdapter_1_out.idXML"/>
+      <output name="mzid_out" value="MSGFPlusAdapter_1_out.mzid" compare="sim_size" delta_frac="0.7" ftype="mzid" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/THIRDPARTY/MSGFPlusAdapter_1_out.mzid"/>
+      <param name="database" value="proteins.fasta" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/THIRDPARTY/proteins.fasta"/>
       <param name="precursor_mass_tolerance" value="10.0"/>
       <param name="precursor_error_units" value="ppm"/>
       <param name="isotope_error_range" value="0,1"/>
@@ -6194,11 +6352,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <param name="min_peptide_length" value="6"/>
       <param name="max_peptide_length" value="40"/>
       <param name="matches_per_spec" value="1"/>
+      <param name="min_peaks" value="10"/>
       <param name="add_features" value="false"/>
       <param name="max_mods" value="2"/>
       <param name="max_missed_cleavages" value="-1"/>
-      <param name="tasks" value="0"/>
       <param name="variable_modifications" value="Oxidation (M)"/>
+      <param name="allow_dense_centroided_peaks" value="false"/>
       <param name="reindex" value="true"/>
       <section name="PeptideIndexing">
         <param name="decoy_string" value=""/>
@@ -6227,10 +6386,137 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
       </assert_stdout>
     </test>
+    <!-- TOPP_MSGFPlusAdapter_2 -->
+    <test expect_num_outputs="3">
+      <section name="adv_opts">
+        <param name="legacy_conversion" value="false"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="spectra.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/THIRDPARTY/spectra.mzML"/>
+      <output name="out" value="MSGFPlusAdapter_1_out.idXML" compare="sim_size" delta_frac="0.7" ftype="idxml" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/THIRDPARTY/MSGFPlusAdapter_1_out.idXML"/>
+      <output name="mzid_out" value="MSGFPlusAdapter_1_out.mzid" compare="sim_size" delta_frac="0.7" ftype="mzid" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/THIRDPARTY/MSGFPlusAdapter_1_out.mzid"/>
+      <param name="database" value="proteins.fasta" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/THIRDPARTY/proteins.fasta"/>
+      <param name="precursor_mass_tolerance" value="10.0"/>
+      <param name="precursor_error_units" value="ppm"/>
+      <param name="isotope_error_range" value="0,1"/>
+      <param name="fragment_method" value="from_spectrum"/>
+      <param name="instrument" value="high_res"/>
+      <param name="enzyme" value="Trypsin/P"/>
+      <param name="protocol" value="none"/>
+      <param name="tryptic" value="fully"/>
+      <param name="min_precursor_charge" value="1"/>
+      <param name="max_precursor_charge" value="3"/>
+      <param name="min_peptide_length" value="6"/>
+      <param name="max_peptide_length" value="40"/>
+      <param name="matches_per_spec" value="1"/>
+      <param name="min_peaks" value="10"/>
+      <param name="add_features" value="false"/>
+      <param name="max_mods" value="2"/>
+      <param name="max_missed_cleavages" value="-1"/>
+      <param name="variable_modifications" value="Oxidation (M)"/>
+      <param name="allow_dense_centroided_peaks" value="true"/>
+      <param name="reindex" value="true"/>
+      <section name="PeptideIndexing">
+        <param name="decoy_string" value=""/>
+        <param name="decoy_string_position" value="prefix"/>
+        <param name="missing_decoy_action" value="warn"/>
+        <param name="write_protein_sequence" value="false"/>
+        <param name="write_protein_description" value="false"/>
+        <param name="keep_unreferenced_proteins" value="false"/>
+        <param name="unmatched_action" value="error"/>
+        <param name="aaa_max" value="3"/>
+        <param name="mismatches_max" value="0"/>
+        <param name="IL_equivalent" value="false"/>
+        <param name="allow_nterm_protein_cleavage" value="true"/>
+        <section name="enzyme">
+          <param name="name" value="auto"/>
+          <param name="specificity" value="auto"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG,out_FLAG,mzid_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <test expect_num_outputs="1">
+      <section name="adv_opts">
+        <param name="legacy_conversion" value="false"/>
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="spectra.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/THIRDPARTY/spectra.mzML"/>
+      <param name="database" value="proteins.fasta" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/THIRDPARTY/proteins.fasta"/>
+      <param name="precursor_mass_tolerance" value="10.0"/>
+      <param name="precursor_error_units" value="ppm"/>
+      <param name="isotope_error_range" value="0,1"/>
+      <param name="fragment_method" value="from_spectrum"/>
+      <param name="instrument" value="high_res"/>
+      <param name="enzyme" value="Trypsin/P"/>
+      <param name="protocol" value="none"/>
+      <param name="tryptic" value="fully"/>
+      <param name="min_precursor_charge" value="1"/>
+      <param name="max_precursor_charge" value="3"/>
+      <param name="min_peptide_length" value="6"/>
+      <param name="max_peptide_length" value="40"/>
+      <param name="matches_per_spec" value="1"/>
+      <param name="min_peaks" value="10"/>
+      <param name="add_features" value="false"/>
+      <param name="max_mods" value="2"/>
+      <param name="max_missed_cleavages" value="-1"/>
+      <param name="variable_modifications" value="Oxidation (M)"/>
+      <param name="allow_dense_centroided_peaks" value="false"/>
+      <param name="reindex" value="true"/>
+      <section name="PeptideIndexing">
+        <param name="decoy_string" value=""/>
+        <param name="decoy_string_position" value="prefix"/>
+        <param name="missing_decoy_action" value="warn"/>
+        <param name="write_protein_sequence" value="false"/>
+        <param name="write_protein_description" value="false"/>
+        <param name="keep_unreferenced_proteins" value="false"/>
+        <param name="unmatched_action" value="error"/>
+        <param name="aaa_max" value="3"/>
+        <param name="mismatches_max" value="0"/>
+        <param name="IL_equivalent" value="false"/>
+        <param name="allow_nterm_protein_cleavage" value="true"/>
+        <section name="enzyme">
+          <param name="name" value="auto"/>
+          <param name="specificity" value="auto"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="out_idparquet_FLAG"/>
+      <output_collection name="out_idparquet" type="list" min="4" max="4">
+        <element name="protein_groups.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+        <element name="proteins.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+        <element name="psms.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+        <element name="search_params.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+      </output_collection>
+    </test>
   </tests>
   <help><![CDATA[MS/MS database search using MS-GF+.
 
 
-For more information, visit https://openms.de/doxygen/release/3.1.0/html/TOPP_MSGFPlusAdapter.html]]></help>
+For more information, visit https://www.openms.de/doxygen/release/3.6.0/html/TOPP_MSGFPlusAdapter.html]]></help>
   <expand macro="references"/>
 </tool>

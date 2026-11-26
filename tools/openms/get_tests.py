@@ -1,28 +1,40 @@
 #!/usr/bin/env python
 
 import argparse
+import os
 import os.path
 import re
 import shlex
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
 from typing import (
     Dict,
     List,
     Optional,
+    Set,
     TextIO,
     Tuple,
 )
 
-from ctdconverter.common.utils import (
+# Remote test data: instead of shipping every fixture, the generated tests point
+# Galaxy at the upstream file ("location"), and references which only exist
+# because prepare_test_data.sh ran the tool locally become assertions.  Both
+# tables live in aux/ and are committed; see aux/remote_test_data.py.
+AUX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aux")
+sys.path.insert(0, AUX)
+import remote_test_data  # noqa: E402  (the path has to be set up first)
+from ctdconverter.common.utils import (  # noqa: E402
     ParameterHardcoder,
     parse_hardcoded_parameters,
     parse_input_ctds,
 )
-from ctdconverter.galaxy.converter import convert_models
-from CTDopts.CTDopts import (
+from ctdconverter.galaxy.converter import convert_models  # noqa: E402
+from CTDopts.CTDopts import (  # noqa: E402
+    _OutPrefix,
     CTDModel,
     ModelTypeError,
+    Parameter,
     Parameters,
 )
 
@@ -32,13 +44,77 @@ SKIP_LIST = [
     r"WRITEINI",
     r"WRITECTD",
     r"INVALIDVALUE",
+    r"\.flat\.json",
     r"\.ini\.json",
+    r"TOPP_FileConverter_29_back",  # -out FileConverter_29.back.tmp.mzML: no DIFF compares it, so there is no fixture to compare the wrapper output with
+    # MSFragger and Novor are licence-gated (the user has to download
+    # MSFragger.jar / novor.jar), no recipe ships them, and upstream guards
+    # their tests with `if (NOT (${MSFRAGGER_BINARY} STREQUAL "...-NOTFOUND"))`.
+    # Without the jar the fixture can not be produced, so a restored test could
+    # only fail (same shape as the CometAdapter case, different conclusion).
+    r"^TOPP_(MSFraggerAdapter|NovorAdapter)_",
+    # DatabaseSuitability calls CometAdapter through ExternalProcess::run(), i.e. a PATH
+    # lookup (comet.exe by default), which Galaxy cannot stage; upstream guards the
+    # three tests behind find_program(COMET_BINARY) and passes PATH via
+    # ENVIRONMENT ${TOPP_PATH_ENV}.  Even with Comet present they are only
+    # comparable through a relaxed FuzzyDiff (-ratio 1.05 -absdiff 0.05) because the
+    # correction factor is computed from a *random* subsampling of the FASTA
+    # (getSubsampledFasta_), so the numbers differ between runs.  Galaxy has no
+    # tolerance parameter for tabular content; the deterministic part (the tool
+    # runs, writes a tsv) would be a much weaker assertion than upstream makes.
+    r"^TOPP_DatabaseSuitability_[0-9]+$",
     r"OpenSwathMzMLFileCacher .*-convert_back",  # - OpenSwathMzMLFileCacher with -convert_back argument https://github.com/OpenMS/OpenMS/issues/4399
     r"MaRaClusterAdapter.*-consensus_out",  # - MaRaCluster with -consensus_out (parameter blacklister: https://github.com/OpenMS/OpenMS/issues/4456)
     r"FileMerger_1_input1.dta2d.*FileMerger_1_input2.dta ",  # - FileMerger with mixed dta dta2d input (ftype can not be specified in the test, dta can not be sniffed)
     r'^(TOPP_OpenSwathAnalyzer_test_3|TOPP_OpenSwathAnalyzer_test_4)$',  # no  suppert for cached mzML
-    r'TOPP_SiriusAdapter_[0-9]+$',  # Do not test SiriusAdapter https://github.com/OpenMS/OpenMS/issues/7000 .. will be removed anyway
-    r'TOPP_AssayGeneratorMetabo_(7|8|9|10|11|12|13|14|15|16|17|18)$'  # Skip AssayGeneratorMetabo tests using Sirius  https://github.com/OpenMS/OpenMS/issues/7150 (will be replaced by two tools)
+    r'TOPP_AssayGeneratorMetabo_(7|8|9|10|11|12|13|14|15|16|17|18)$',  # Skip AssayGeneratorMetabo tests using Sirius  https://github.com/OpenMS/OpenMS/issues/7150 (will be replaced by two tools)
+    # OpenMS' own FileDiff compares XML attributes as *numbers* when both sides
+    # look numeric, Galaxy's compare="diff" is a plain text diff: 3.6 writes
+    # significance_threshold="0.0" where the reference fixture (and 3.2) has
+    # "0", which OpenMS accepts and Galaxy can not express.  IDRipper_1 and
+    # IDRipper_3 cover the same code path.
+    r'^TOPP_IDRipper_2(_out[0-9]+|a|a_out[0-9]+)?$',
+    # UniPEFF needs its input staged as *.xml and writes *.peff, but Galaxy has
+    # no datatype for either name: macros.xml gxy2omsext() maps the Galaxy *xml*
+    # dataset to *.bioml (what the BioML readers need) and the Galaxy *peff*
+    # dataset to *.fasta (what the other tools need), so the tool gets
+    # 'in/UniPEFF_1_input_xml.bioml' ("Could not determine format of input
+    # file") and is asked to write 'out/output.fasta' ("Invalid output file
+    # extension").  Which extension a *.xml/*.peff dataset needs is a property
+    # of the *tool*, and filetypes.txt is a global first-wins map, so this
+    # needs a per-tool extension override in the generator (see the ledger).
+    r'^TOPP_UniPEFF_',
+    # -exp_design names its spectra files by *file name* (the wrapper stages a
+    # data set as '<sanitized element identifier>.<openms extension>' in a
+    # directory of its own), so OpenMS reports
+    #   Spectra file does not exist: 'TMTTenPlexMethod_test.mzML' in:
+    #   exp_design/IsobaricWorkflow_1_design_tsv.tsv
+    # The design file would have to be rewritten per test to point at the staged
+    # name, which Galaxy cannot do.  Applies to IsobaricWorkflow (_1,
+    # strictly_unique) and Epifany.
+    r"-exp_design",
+    # the percolator shipped in openms-thirdparty=3.6.0 aborts inside the
+    # external binary ("Setting an empty value for primary MS runs paths",
+    # exit 9) on the in-process tests as well, so there is nothing Galaxy or the
+    # wrapper can assert on
+    r'^TOPP_PercolatorAdapter_1_inproc',
+    # AssayGeneratorMetaboSirius reads a *directory* (a SIRIUS project:
+    # formula_identifications.tsv, canopus_formula_summary.tsv, report.mztab and
+    # one subdirectory per compound).  Its CTD calls the parameter input-file,
+    # which is why the wrapper offers a single data set, but passing one file
+    # makes the tool answer "SIRIUS project directory is empty." (verified with
+    # 3.6.0), and Galaxy can only stage single files.  The fixture is not in the
+    # test-data repository either - it lives in the OpenMS source tree - so the
+    # three tests cannot be expressed (see D12 in the ledger).
+    r'^TOPP_AssayGeneratorMetaboSirius_',
+    # FLASHDeconv writes its required -out table only if it found a feature or
+    # -keep_empty_out is set (FLASHDeconv.cpp:303).  On the sample input 3.6
+    # finds none, and upstream's TOPP_FLASHDeconv_1 has no DIFF step either, so
+    # the only thing it checks is the exit code and the generated Galaxy test
+    # asserts a table which is never written.  The manual test in
+    # aux/macros_test.xml runs the same command with -keep_empty_out and asserts
+    # the header of the table instead.
+    r'^TOPP_FLASHDeconv_1$',
 ]
 
 
@@ -46,13 +122,98 @@ def get_failing_tests(cmake: List[str]) -> List[str]:
     failing_tests = []
     re_fail = re.compile(r"set_tests_properties\(\"([^\"]+)\" PROPERTIES WILL_FAIL 1\)")
 
-    for cmake in args.cmake:
-        with open(cmake) as cmake_fh:
+    for path in cmake:
+        with open(path) as cmake_fh:
             for line in cmake_fh:
                 match = re_fail.search(line)
                 if match:
                     failing_tests.append(match.group(1))
     return failing_tests
+
+
+def get_message_tests(cmake: List[str]) -> List[str]:
+    """Tests which only assert a message, i.e. expect the tool to refuse to run.
+
+    Upstream writes e.g.
+
+        add_test("TOPP_EICExtractor_1" ${TOPP_BIN_PATH}/EICExtractor -rt_collect -1)
+        set_tests_properties("TOPP_EICExtractor_1" PROPERTIES PASS_REGULAR_EXPRESSION "rt_collect")
+
+    There is no input file and no output to compare, so there is nothing Galaxy
+    could check; the non-zero exit code is the point of the test.
+    """
+    message_tests = []
+    re_msg = re.compile(r"set_tests_properties\(\"([^\"]+)\" PROPERTIES [^)]*PASS_REGULAR_EXPRESSION")
+    for path in cmake:
+        with open(path) as cmake_fh:
+            for line in cmake_fh:
+                match = re_msg.search(line)
+                if match:
+                    message_tests.append(match.group(1))
+    return message_tests
+
+
+def disabled_tests(cmake: List[str]) -> List[str]:
+    """Tests inside `if (WITH_FOO)`, where `option(WITH_FOO ... OFF)`.
+
+    Upstream switches whole test families off by default and expects them to be
+    enabled by hand, e.g.
+
+        option(WITH_MASCOT_TEST "Runs the Mascot Online test (do not turn this
+        on unless you know what you are doing)" OFF)
+        if (WITH_MASCOT_TEST)
+          add_test("TOPP_MascotAdapterOnline_1" ...)
+
+    Those tests need a server or a licensed vendor library, so a generated
+    Galaxy test can only fail.  The option default is taken from the same CMake
+    file (no hardcoded option names), and `else()` branches are honoured.
+    """
+    re_option = re.compile(r"option\(\s*(\w+)\s+\"[^\"]*\"\s+(ON|OFF)\s*\)")
+    re_if = re.compile(r"^\s*if\s*\(([^)]*)\)")
+    re_else = re.compile(r"^\s*else\s*\(")
+    re_endif = re.compile(r"^\s*endif\s*\(")
+    re_add_test = re.compile(r"add_test\(\"([^\"]+)\"")
+    disabled = []
+    for path in cmake:
+        with open(path) as cmake_fh:
+            lines = cmake_fh.readlines()
+        off = {
+            match.group(1)
+            for line in lines
+            if (match := re_option.search(line)) and match.group(2) == "OFF"
+        }
+        if not off:
+            continue
+        # one frame per open if(): is the region disabled, and is the branch
+        # enabled (flipped by `else`)
+        stack: List[bool] = []
+        own_stack: List[bool] = []
+        for line in lines:
+            match_if = re_if.match(line)
+            if match_if:
+                parent = stack[-1] if stack else False
+                own = match_if.group(1).strip() in off
+                stack.append(parent or own)
+                own_stack.append(own)
+                continue
+            if re_else.match(line):
+                if own_stack:
+                    # the else branch of `if (WITH_FOO)` is enabled
+                    own_stack[-1] = not own_stack[-1]
+                    stack[-1] = (
+                        stack[-2] if len(stack) > 1 else False
+                    ) or own_stack[-1]
+                continue
+            if re_endif.match(line):
+                if stack:
+                    stack.pop()
+                    own_stack.pop()
+                continue
+            if stack and stack[-1]:
+                match_test = re_add_test.search(line)
+                if match_test:
+                    disabled.append(match_test.group(1))
+    return disabled
 
 
 def fix_tmp_files(line: str, diff_pairs: Dict[str, str]) -> str:
@@ -65,14 +226,433 @@ def fix_tmp_files(line: str, diff_pairs: Dict[str, str]) -> str:
     """
     cmd = shlex.split(line)
     for i, e in enumerate(cmd):
+        # never rewrite an input: X.tmp.ext as an input means "chained test",
+        # not "compare with the reference"
+        if i > 0 and cmd[i - 1].startswith("-in"):
+            continue
         if e in diff_pairs:
             dst = os.path.join("test-data", diff_pairs[e])
-            if os.path.exists(dst):
+            cmd[i] = diff_pairs[e]
+            if os.path.exists(dst) and not os.path.islink(dst):
+                # the OpenMS checkout already brought this reference file: it is
+                # the committed expectation, and the intermediate written by
+                # prepare_test_data.sh is only a build artifact.  Do not replace
+                # it - the two can disagree (IsobaricAnalyzer's TMT10plex test
+                # feeds a stale .ini, upstream hides the difference with
+                # "-whitelist <map", so the artifact is an iTRAQ output while
+                # the reference is a TMT one).  The wrapper test then compares
+                # against the reference (or downloads it, see `location`).
+                continue
+            if os.path.exists(dst) or os.path.islink(dst):
                 os.unlink(dst)
             sys.stderr.write(f"symlink {e} {dst}\n")
-            os.symlink(e, dst)
-            cmd[i] = diff_pairs[e]
+            try:
+                os.symlink(e, dst)
+            except FileExistsError:
+                # a re-run over a test-data/ which test-data.sh did not clean
+                pass
     return shlex.join(cmd)
+
+
+def map_output_references(xml: str, diff_pairs: Dict[str, str]) -> str:
+    """Point an <output value=...> at the reference file it is compared with.
+
+    Tests which pass an -ini file get their parameters (and therefore their
+    output file names) from that ini, which fix_tmp_files() never sees: the ini
+    of a migrated fixture still names the build intermediate
+    ("tmp_path/TextExporter_2_consensus_tsv.tmp.tsv") whose reference is
+    "TextExporter_2_consensus_tsv.tsv".  Apply the same mapping here.
+    """
+
+    def replace(match):
+        value = match.group(2)
+        reference = diff_pairs.get(os.path.basename(value))
+        if not reference:
+            return match.group(0)
+        return f"{match.group(1)}{reference}\""
+
+    return re.sub(r'(<output [^>]*value=")([^"]*)"', replace, xml)
+
+
+# Outputs which may only be checked for existence and format, as
+# "<tool>": {"<output>"}.  Upstream compares these with FuzzyDiff, which parses
+# numbers with a relative tolerance; Galaxy compares by size (or byte equality),
+# so a formatting change alone makes the test fail although the content agrees.
+PUBLISH_ONLY_OUTPUTS = {
+    # OpenMS 3.6 writes doubles with full precision and in scientific notation
+    #   "826.031"                -> "826.030999999999949"
+    #   "928753024"              -> "9.28753e08"
+    # which grows these 2011 era references by ~75%.
+    "TextExporter": {"consensus_centroids", "consensus_elements", "consensus_features"},
+}
+
+
+def strip_uncomparable_outputs(
+    xml: str, uncomparable: Set[str], tool_id: str = ""
+) -> str:
+    """Turn an output into a presence/format check checks only.
+
+    Some outputs are compared upstream with a whitelist that removes the whole
+    payload: `${ZLIB_NG_MZML_WHITELIST}` ("encodedLength", "<binary>", "<offset")
+    exists because zlib-ng produces byte different but functionally equivalent
+    compressed mzML, and FuzzyDiff then compares the surrounding structure
+    only.  Galaxy can compare such a file by size, content or nothing; neither
+    size nor content is a function of what the tool computed, so assert only
+    that the output exists and is valid mzML.
+    """
+    def replace(match):
+        tag = match.group(0)
+        reference = re.search(r'value="([^"]*)"', tag)
+        if not reference:
+            return tag
+        name = re.search(r'name="([^"]*)"', tag).group(1)
+        if (os.path.basename(reference.group(1)) not in uncomparable
+                and name not in PUBLISH_ONLY_OUTPUTS.get(tool_id, ())):
+            return tag
+        ftype = re.search(r'ftype="([^"]*)"', tag)
+        ftype = f' ftype="{ftype.group(1)}"' if ftype else ""
+        return f'<output name="{name}"{ftype}/>'
+
+    return re.sub(r'<output [^>]*?/>', replace, xml)
+
+
+def fix_empty_collection_count(xml: str) -> str:
+    """Replace a `count` that CTDConverter could not fill in.
+
+    When the members of an output collection are compared upstream through a
+    templated file name (MzMLSplitter writes `<prefix>_part<N>of<M>.mzML` and
+    the DIFF steps name them one by one), CTDConverter cannot map the references
+    and emits `<output_collection name="out" count=""/>`, which is not a valid
+    Galaxy test (`count` must be an integer).  Without the attribute the test
+    can express neither: Galaxy's test parser rejects an empty `count`, while its
+    linter rejects a collection without `count`/`min`/`max`/`element`.  `min="1"`
+    says exactly what is known - the collection was produced and is not empty.
+    """
+    return re.sub(r'(<output_collection\b[^>]*?)\s+count=""', r'\1 min="1"', xml)
+
+
+def fix_expect_num_outputs(xml: str) -> str:
+    """Make `expect_num_outputs` agree with the outputs the test declares.
+
+    CTDConverter counts the outputs it could resolve, so a collection whose
+    members are unknown (see fix_empty_collection_count) leaves the number one
+    too low and Galaxy fails the job with
+
+        Incorrect number of outputs - expected 1, found 2
+        (dataset(s): ctd_out collection(s): out)
+
+    The number is only ever *raised*: every `<output>` and `<output_collection>`
+    the test declares is produced (that is what makes it a failure the first
+    time), while the opposite - a test that declares fewer outputs than the tool
+    writes, e.g. `TOPP_FileInfo_12`, which compares only the CTD dump and leaves
+    `-out` unchecked - is a legitimate assertion and must be left alone.
+    """
+    match = re.search(r'<test[^>]*\sexpect_num_outputs="([0-9]+)"[^>]*>', xml)
+    if not match:
+        return xml
+    declared = len(re.findall(r'<output(?:_collection)?\s', xml[match.end():]))
+    if declared <= int(match.group(1)):
+        return xml
+    tag = match.group(0).replace(match.group(1), str(declared))
+    return xml[:match.start()] + tag + xml[match.end():]
+
+
+def check_multi_inputs(xml: str, multi: Dict[str, List[str]]) -> bool:
+    """Check that a multi file parameter carries all of its files in the test.
+
+    A CTD ITEMLIST becomes a multiple data parameter and CTDConverter writes its
+    files as one comma separated `value`, which Galaxy splits.  When the wrapper
+    deliberately declares the parameter as single valued - `OpenSwathWorkflow:in`
+    is forced by `aux/hardcoded_params.json` (`CTD:is_list: false`), because the
+    workflow takes one run per invocation - the generated test can only carry
+    the first file and the tool would silently process half of its input.
+    Returns False in that case, so that the caller skips the test.
+    """
+    for name, files in multi.items():
+        pattern = re.compile(r'<param\s+name="%s"[^>]*?/>' % re.escape(name))
+        match = pattern.search(xml)
+        if not match:
+            return False
+        value = re.search(r'value="([^"]*)"', match.group(0))
+        if not value:
+            return False
+        emitted = [os.path.basename(v) for v in value.group(1).split(",")]
+        if sorted(emitted) != sorted(files):
+            return False
+    return True
+
+
+def pin_mz_name(line: str) -> str:
+    """Make a `-mz_file` test independent of the name Galaxy gives the copy.
+
+    ID converters look up the run in a pepXML by the *file name* of the spectra
+    file ("Found no experiment with name 'PepXMLFile_test_mzML.mzML'. It has to
+    match the end of a run's 'base_name' ... (IDFileConverter: 'mz_name')"),
+    and Galaxy stages the upload as <dataset name>.<ext>, i.e.
+    `<tool>_<element_identifier>.mzML`.  Pin `-mz_name` to the stem of the
+    fixture the way upstream names the file.
+    """
+    cmd = shlex.split(line)
+    if "-mz_file" not in cmd or "-mz_name" in cmd:
+        return line
+    mz_file = cmd[cmd.index("-mz_file") + 1]
+    cmd += ["-mz_name", os.path.basename(mz_file).rsplit(".", 1)[0]]
+    return shlex.join(cmd)
+
+
+FILE_CTD_TYPES = {"input-file", "input-dir", "output-file", "output-dir",
+                  "output-prefix"}
+
+
+def ctd_arguments(path: str) -> Dict[str, str]:
+    """Map the command line argument of every CTD <ITEM> to its CTD type."""
+    arguments = {}
+
+    def walk(node, prefix: List[str]):
+        # ITEMLIST declares a list-valued parameter (e.g. OpenSwathWorkflow -in
+        # "Input files separated by blank") whose CTD type is still input-file
+        for item in node.findall("ITEM") + node.findall("ITEMLIST"):
+            name = item.get("name")
+            if name:
+                arguments["-" + ":".join(prefix + [name])] = item.get("type")
+        for child in node.findall("NODE"):
+            name = child.get("name")
+            if not name or name.isdigit():
+                # the tool itself and the unnamed parameter groups
+                walk(child, prefix)
+            else:
+                walk(child, prefix + [name])
+
+    parameters = ET.parse(path).getroot().find("PARAMETERS")
+    if parameters is None:
+        return arguments
+    for tool in parameters.findall("NODE"):
+        # the first NODE is the tool itself: its name is not part of an argument
+        walk(tool, [])
+    return arguments
+
+
+def text_params_with_files(line: str, tool_id: str) -> List[str]:
+    """Fixture files handed to a parameter which is not a file parameter.
+
+    A CTD parameter of type string is passed to the tool as given, so the
+    generated test would hand OpenMS a bare file name which Galaxy never
+    stages ("Error: File not found (the file 'X.trafoXML' could not be
+    found)").  OpenMS declares such parameters upstream, e.g.
+    -Calibration:files:linear_irt_file is a string holding a space separated
+    list of iRT files.  Either the CTD is patched (aux/ctd_patches.json, as
+    done for -Calibration:rt_norm) or the test is skipped here.
+    """
+    ctd = os.path.join(CTD_DIR, f"{tool_id}.ctd")
+    if not os.path.exists(ctd):
+        return []
+    types = ctd_arguments(ctd)
+
+    cmd = shlex.split(line)
+    bad: List[str] = []
+    for i, argument in enumerate(cmd):
+        if i == 0 or not argument.startswith("-") or i + 1 >= len(cmd):
+            continue
+        if argument not in types or types[argument] in FILE_CTD_TYPES:
+            continue
+        # the value may be one file or a quoted, space separated list of files
+        values = [v for v in shlex.split(cmd[i + 1]) if not v.startswith("-")]
+        if any(is_fixture(v) for v in values):
+            bad.append(f"{argument} ({types[argument]})")
+    return bad
+
+
+def multi_value_arguments(line: str, tool_id: str) -> Dict[str, List[str]]:
+    """File parameters which receive more than one file on the command line.
+
+    An ITEMLIST (or a plain space separated list, as in
+    TOPP_OpenSwathWorkflow_25 which passes two chromatograms to -in) becomes a
+    single data parameter in the wrapper, and CTDConverter puts only the first
+    file into the test, so the tool silently processed half of the input.  The
+    files are returned as {parameter: [file, ...]}, so that the caller can emit
+    <param name="in" values="a,b"/> instead (Galaxy splits `values` on commas).
+    """
+    ctd = os.path.join(CTD_DIR, f"{tool_id}.ctd")
+    if not os.path.exists(ctd):
+        return []
+    types = ctd_arguments(ctd)
+
+    cmd = shlex.split(line)
+    bad: Dict[str, List[str]] = {}
+    for i, argument in enumerate(cmd):
+        if i == 0 or not argument.startswith("-"):
+            continue
+        # only inputs: an ITEMLIST of output files becomes an output
+        # collection, not a data parameter
+        if types.get(argument) != "input-file":
+            continue
+        values = []
+        for token in cmd[i + 1:]:
+            if token.startswith("-"):
+                break
+            values.extend(shlex.split(token))
+        files = [v for v in values if is_fixture(v)]
+        if len(files) > 1:
+            bad[argument.lstrip("-")] = files
+    return bad
+
+
+def chained_inputs(line: str) -> List[str]:
+    """Intermediates ("*.tmp.*") which are passed as inputs."""
+    tokens = line.split()
+    return [
+        val
+        for opt, val in zip(tokens, tokens[1:])
+        if opt.startswith("-in") and ".tmp." in val
+    ]
+
+
+# test-data.sh records the fixtures it copied from the OpenMS source tree before
+# prepare_test_data.sh adds the intermediates of the tests themselves.  A test
+# which consumes an intermediate (FLU_parquet_in1.featureparquet is written by
+# the FileConverter prep tests, MSGFPlusAdapter_1_out.mzid by the MSGF+ test)
+# cannot be expressed in Galaxy: it would upload a directory or a file which
+# does not exist.  Without the list (get_tests.py run by hand) fall back to
+# checking that the file exists at all.
+_UPSTREAM_LIST = os.environ.get("OPENMS_UPSTREAM_FIXTURES") or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), ".upstream-fixtures.txt"
+)
+# the CTD snapshot is a build artefact (tools/openms/ctd/ by default, or whatever
+# test-data.sh generated into $tmp/generated/ctd); the generator must not depend
+# on files inside the tool directory
+CTD_DIR = os.environ.get("OPENMS_CTD_DIR") or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "ctd"
+)
+
+
+def _upstream_fixtures() -> Optional[Set[str]]:
+    try:
+        with open(_UPSTREAM_LIST) as handle:
+            return {line.strip() for line in handle if line.strip()}
+    except FileNotFoundError:
+        return None
+
+
+UPSTREAM_FIXTURES = _upstream_fixtures()
+
+
+FIXTURE_URLS: Dict[str, List[str]] = {}
+EXPECTATIONS: Dict[str, List[str]] = {}
+LOCAL_FIXTURES = frozenset()
+
+
+def annotate(body: str, tool_id: str = "") -> str:
+    """Add location="..." / assert_contents to one generated <test> body."""
+    stats = {"location": 0, "assert": 0}
+    return remote_test_data.annotate(body, FIXTURE_URLS, EXPECTATIONS, stats,
+                                     tool_id, LOCAL_FIXTURES)
+
+
+def is_fixture(token: str) -> bool:
+    if UPSTREAM_FIXTURES is not None:
+        return token in UPSTREAM_FIXTURES or os.path.basename(token) in UPSTREAM_FIXTURES
+    path = os.path.join("test-data", token)
+    return os.path.isfile(path)
+
+
+def missing_inputs(line: str, tool_id: str) -> List[str]:
+    """Input files which are not available in test-data/.
+
+    Those are either intermediates of a previous test of the same tool or
+    fixtures which are not part of the source tree (e.g. generated at build
+    time).  Galaxy cannot produce them, so tests using them are skipped.
+
+    Only *inputs* count.  An output is written by the test itself and has no
+    fixture unless a FuzzyDiff compares it - reading the CTD types is the only
+    reliable way to tell them apart, because the flag names are not uniform
+    (`-out`, `-out1`, but also `-pin_out`, which the `-out` prefix test in this
+    function missed and which cost CometAdapter its four tests).
+    """
+    ctd = os.path.join(CTD_DIR, f"{tool_id}.ctd")
+    types = ctd_arguments(ctd) if os.path.exists(ctd) else {}
+    tokens = shlex.split(line)
+    missing = []
+    for i, tok in enumerate(tokens):
+        # one option can carry a whitespace-separated file list in a single
+        # (quoted) token, e.g.
+        #   -Calibration:files:linear_irt_file "a.irt.TraML a.irt.TraML ..."
+        # (TOPP_OpenSwathWorkflow_27 passes the same file six times)
+        for part in tok.split():
+            # a file name: an alphabetic extension, and not a number like "0.05"
+            # (the value of an unrelated option, which looks deceptively similar)
+            looks_like_file = re.search(r"\.[A-Za-z][A-Za-z0-9]{1,9}$", part) is not None
+            is_input_value = i > 0 and re.fullmatch(r"-in[0-9]*", tokens[i - 1]) is not None
+            if part.startswith("-") or not (looks_like_file or is_input_value):
+                continue
+            if i > 0 and tokens[i - 1].startswith("-out"):
+                continue
+            if i > 0 and str(types.get(tokens[i - 1], "")).startswith("output"):
+                continue
+            if not is_fixture(part):
+                missing.append(part)
+    return missing
+
+
+# OpenMS 3.6 moved the parquet format into the (blacklisted) Parquet* tools and
+# the remaining readers cannot open the files the 3.6 tests ship, so tests
+# feeding them can only fail (FeatureLinkerUnlabeled: "ZIP archive contains 5
+# file entries; expected exactly 1").
+# the parquet family: 3.6 moved the readers into the blacklisted Parquet* tools
+# (.oswpq is the OpenSWATH parquet flavour, see TOPP_OpenSwathAssayGenerator_parquet)
+UNREADABLE_SUFFIXES = (".parquet", ".featureparquet", ".idparquet",
+                       ".consensusparquet", ".oswpq")
+
+
+HARDCODER = parse_hardcoded_parameters(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "aux", "hardcoded_params.json")
+)
+
+
+def only_blacklisted_outputs(line: str, tool_id: str) -> List[str]:
+    """Outputs of a test which are all blacklisted, i.e. the test is pointless.
+
+    MapAlignerIdentification_6 only writes -trafo_out, and -trafo_out is
+    blacklisted for the MapAligners (see aux/hardcoded_params.json), so the
+    generated test has no output at all and the tool stops with "Data output or
+    transformation output files have to be provided".
+    """
+    outputs = re.findall(r"-(\w*out\w*)\b", line)
+    if outputs and all(HARDCODER.get_blacklist(o, tool_id) for o in outputs):
+        return outputs
+    return []
+
+
+PARQUET_FORMATS = tuple(s.lstrip(".") for s in UNREADABLE_SUFFIXES)
+
+# ... except for the readers 3.6 moved the parquet support *into*: those open the
+# tables of a bundle directory, so a test feeding them one is exactly the test
+# the wrapper needs (ParquetDiff compares two tables - the fixtures are the
+# psms.parquet members of IDMerger_idparquet_input1.idparquet/ & input2)
+PARQUET_READERS = {
+    "ParquetDiff": {".parquet"},
+}
+
+
+def unsupported_inputs(line: str, tool_id: str = "") -> List[str]:
+    """Files in the parquet family, on either side of the command line.
+
+    3.6 moved the parquet readers into the (blacklisted) Parquet* tools, so a
+    test reading `X.featureparquet` fails with "ZIP archive contains 5 file
+    entries; expected exactly 1", and `FileConverter -out X.tmp.featureparquet`
+    fails earlier still: the format is gone from the tool's `-out`, so the
+    wrapper does not even offer `out_type=featureparquet`.
+    """
+    readable = PARQUET_READERS.get(tool_id, frozenset())
+    tokens = shlex.split(line)
+    unsupported = []
+    for i, tok in enumerate(tokens):
+        if tok.endswith(UNREADABLE_SUFFIXES) or tok in PARQUET_FORMATS:
+            if os.path.splitext(tok)[1] in readable:
+                continue
+            unsupported.append(tok)
+        elif i > 0 and tokens[i - 1] == "-out_type" and tok in PARQUET_FORMATS:
+            unsupported.append(tok)
+    return unsupported
 
 
 def get_ini(line: str, tool_id: str) -> Tuple[str, str]:
@@ -90,7 +670,7 @@ def get_ini(line: str, tool_id: str) -> Tuple[str, str]:
     if ini:
         return os.path.join("test-data", ini), shlex.join(cmd)
     else:
-        return os.path.join("ctd", f"{tool_id}.ctd"), line
+        return os.path.join(CTD_DIR, f"{tool_id}.ctd"), line
 
 
 def unique_files(line: str):
@@ -123,12 +703,42 @@ def unique_files(line: str):
             sys.stderr.write(
                 f'\tsymlink {os.path.join("test-data", new_f)} {f}\n'
             )
+            # a fixture inside a bundle directory keeps its directory
+            # (…_0.idparquet/psms.parquet), which has to exist for the link;
+            # the link then lives one level deeper than the file it points at,
+            # so its target has to be relative to the link's own directory
+            # (a bare `f` would resolve inside the new directory and dangle)
+            new_path = os.path.join("test-data", new_f)
+            os.makedirs(os.path.dirname(new_path), exist_ok=True)
             try:
-                os.symlink(f, os.path.join("test-data", new_f))
+                os.symlink(os.path.relpath(os.path.join("test-data", f),
+                                           os.path.dirname(new_path)), new_path)
             except FileExistsError:
                 pass
             cmd[idx] = new_f
     return shlex.join(cmd)
+
+
+# ParamTags.h: TAG_OUTPUT_DIR, the tag OpenMS writes for a parameter that names
+# a directory (`output-dir` in the CTD, see aux/retype_output_dirs.py)
+_OUTPUT_DIR_TAG = "output dir"
+
+
+def retype_ini_output_dirs(ini_model: Parameters) -> None:
+    """Retype the output directories of a model parsed from an .ini file.
+
+    An .ini file only carries values, not the type a CTD declares: OpenMS writes
+    `output-dir` as `type="string"` plus `tags="output dir"`, so the parameter
+    comes back as a plain string and the generated test would pass a directory
+    name as the value of a text field instead of selecting the output - the
+    collection would then never be produced.  Re-typing it here (exactly like
+    aux/retype_output_dirs.py does for the CTDs) keeps the two paths in sync.
+    """
+    for param in ini_model.get_parameters(nodes=True):
+        # get_parameters(nodes=True) also yields the sections, which are
+        # ParameterGroups: they have no tags (and no value to retype)
+        if isinstance(param, Parameter) and _OUTPUT_DIR_TAG in (param.tags or []):
+            param.type = _OutPrefix
 
 
 def fill_ctd_clargs(ini: str, line: str, ctd_tmp: TextIO) -> None:
@@ -147,11 +757,37 @@ def fill_ctd_clargs(ini: str, line: str, ctd_tmp: TextIO) -> None:
     assert ini_model is not None, "Could not parse %s, seems to be no CTD/PARAMS" % (
         args.ini_file
     )
+    if isinstance(ini_model, Parameters):
+        retype_ini_output_dirs(ini_model)
 
     # get a dictionary of the ctd arguments where the values of the parameters
     # given on the command line are overwritten
     ini_values = ini_model.parse_cl_args(cl_args=cmd, ignore_required=True)
     ini_model.write_ctd(ctd_tmp, ini_values)
+
+
+# `-comet_executable "${COMET_BINARY}"` and the eight other adapters that take
+# the path of an external binary on the command line.  The variable is set by
+# prepare_test_data.sh for the OpenMS test run only, so the generator saw an
+# unresolved `${COMET_BINARY}` and dropped the test - which is how CometAdapter
+# lost all six of its tests.  In Galaxy the binary comes from the wrapper:
+# aux/hardcoded_params.json pins each of them (`"comet_executable": "comet"`,
+# `"executable": ...` per tool), and the recipe (openms-thirdparty) puts them on
+# PATH.  So drop the flag and let the wrapper decide.
+_BINARY_ARGUMENT = re.compile(
+    r'\s+-[A-Za-z0-9_:]*executable\s+"?\$\{[A-Za-z_][A-Za-z0-9_]*_BINARY\}"?'
+)
+
+
+def drop_binary_arguments(line: str, test_id: str) -> str:
+    """Remove `-<x>_executable "${<X>_BINARY}"` from a test command line."""
+    dropped = _BINARY_ARGUMENT.findall(line)
+    for argument in dropped:
+        sys.stderr.write(
+            f"    drop {test_id}:{argument.rstrip()} "
+            f"(the wrapper pins the executable)\n"
+        )
+    return _BINARY_ARGUMENT.sub("", line)
 
 
 def process_test_line(
@@ -160,10 +796,20 @@ def process_test_line(
     failing_tests: List[str],
     skip_list: List[str],
     diff_pairs: Dict[str, str],
+    version: str,
+    uncomparable: Optional[Set[str]] = None
 ) -> Optional[str]:
 
-    re_test_id = re.compile(r"add_test\(\"([^\"]+)\" ([^ ]+) (.*)")
+    # NOT every add_test() is well formatted: 3.6 has
+    #   add_test("TOPP_CometAdapter_6"  CometAdapter -test ...
+    # (two spaces), which the single-space pattern turned into
+    # "Ill formated test line" -> sys.exit() -> the whole tool lost its tests
+    re_test_id = re.compile(r"add_test\(\"([^\"]+)\"\s+([^ ]+)\s*(.*)")
     re_id_out_test = re.compile(r"_out_?[0-9]?")
+    # hoisted out of the f-string below: a backslash inside an f-string
+    # expression is a SyntaxError before 3.12 (PEP 701) and the CI lint job
+    # runs Python 3.11, where flake8 then reports E999 for this whole file
+    tmp_value = re.compile(r'value="([^"]*tmp_path/[^"]*)"')
 
     # TODO auto extract from  set(OLD_OSW_PARAM ... lin
     line = line.replace(
@@ -173,8 +819,17 @@ def process_test_line(
 
     line = line.replace("${TOPP_BIN_PATH}/", "")
     line = line.replace("${DATA_DIR_TOPP}/", "")
+    # since 3.6 the tests write their intermediate output to ${TESTS_TEMP_DIR}
+    # (src/tests/topp/CMakeLists.txt: set(TESTS_TEMP_DIR "${PROJECT_BINARY_DIR}/tmp_path"))
+    # and FuzzyDiff compares it to the reference in ${DATA_DIR_TOPP}. Strip the
+    # prefix like the other path variables: diff_pairs is keyed by basename, so
+    # without this fix_tmp_files() cannot map X.tmp.ext to the reference X.ext
+    line = line.replace("${TESTS_TEMP_DIR}/", "")
     line = line.replace("THIRDPARTY/", "")
     line = line.replace("${DATA_DIR_SHARE}/", "")
+    line = line.replace("${DATA_DIR_CLASS_TESTS}/", "")
+    # a few tests name the build directory directly instead of ${TESTS_TEMP_DIR}
+    line = re.sub(r"(?<![\w/])tmp_path/", "", line)
     # IDRipper PATH gets empty causing problems. TODO But overall the option needs to be handled differently
     line = line.replace("${TMP_RIP_PATH}/", "")
     # some input files are originally in a subdir (degenerated cases/), but not in test-data
@@ -187,8 +842,15 @@ def process_test_line(
     tool_id = match.group(2)
 
     line = f"{match.group(2)} {match.group(3)}"
+    line = drop_binary_arguments(line, test_id)
+
+    if test_id in DISABLED:
+        sys.stderr.write(f"    skip disabled {test_id} (with_* option is OFF)\n")
+        return
 
     if test_id in failing_tests:
+        # WILL_FAIL or PASS_REGULAR_EXPRESSION: the test asserts that the tool
+        # refuses the input, there is no output Galaxy could compare
         sys.stderr.write(f"    skip failing {test_id} {line}\n")
         return
 
@@ -205,11 +867,66 @@ def process_test_line(
             return
         if re.search(skip, test_id):
             return
-
+    # CMake loops (e.g. `foreach(format mzML mzXML)` around
+    # add_test("TOPP_ConsensusID_no_ids_${format}" ...)) are expanded at
+    # configure time; this plain parser only sees the template, so the
+    # reference file ConsensusID_no_ids_input_0.${format} does not exist.
+    unresolved = sorted(set(re.findall(r"\$\{[A-Za-z_][A-Za-z0-9_]*\}", line)))
+    if unresolved:
+        sys.stderr.write(
+            f"    skip {test_id} (unresolved variable(s): {', '.join(unresolved)})\n"
+        )
+        return
+    # .tmp. files on the *input* side are intermediates produced by another test
+    # of the same tool (upstream chains them with set_tests_properties(... DEPENDS
+    # ...), see e.g. TOPP_IDMerger_idparquet_convert which consumes the output of
+    # TOPP_IDMerger_idparquet).  Galaxy tests cannot express such a dependency and
+    # the intermediate is never uploaded, so skip these tests instead of emitting
+    # tests which can only fail.  Detect them *before* fix_tmp_files(), which maps
+    # every known intermediate onto the reference name it is compared with - that
+    # mapping is meant for outputs only (TOPP_FileFilter_43_read_again then looked
+    # like a test reading FileFilter_43_output.mzML while writing an uncompared
+    # FileFilter_43.dummy.tmp.mzML, which no fixture backs).
+    chained = chained_inputs(line)
+    if chained:
+        sys.stderr.write(
+            f"    skip chained {test_id} (input is the output of another test: {', '.join(sorted(chained))})\n"
+        )
+        return
+    # map each intermediate output onto the reference file it is compared with
+    # (and symlink it into test-data/): the temp extension is a build artefact,
+    # the reference name is what the wrapper has to declare as its output
     line = fix_tmp_files(line, diff_pairs)
+    blacklisted_outputs = only_blacklisted_outputs(line, tool_id)
+    if blacklisted_outputs:
+        sys.stderr.write(
+            f"    skip {test_id} (only blacklisted outputs: {', '.join(sorted(set(blacklisted_outputs)))})\n"
+        )
+        return
+    line = pin_mz_name(line)
+    text_files = text_params_with_files(line, tool_id)
+    if text_files:
+        sys.stderr.write(
+            f"    skip {test_id} (fixture handed to a non-file parameter: {', '.join(text_files)})\n"
+        )
+        return
+    unsupported = unsupported_inputs(line, tool_id)
+    if unsupported:
+        sys.stderr.write(
+            f"    skip {test_id} (format not readable in 3.6: {', '.join(sorted(set(unsupported)))})\n"
+        )
+        return
+    missing = missing_inputs(line, tool_id)
+    if missing:
+        sys.stderr.write(
+            f"    skip {test_id} (input not in test-data: {', '.join(sorted(set(missing)))})\n"
+        )
+        return
     # print(f"fix {line=}")
     line = unique_files(line)
-    # print(f"unq {line=}")
+    # needs the renamed files of unique_files(): the same fixture used twice in
+    # one command line becomes <name>_0.<ext> / <name>_1.<ext>
+    multi = multi_value_arguments(line, tool_id)
     ini, line = get_ini(line, tool_id)
 
     from dataclasses import dataclass, field
@@ -245,7 +962,20 @@ def process_test_line(
     ) as ctd_tmp, tempfile.NamedTemporaryFile(
         mode="w+", delete_on_close=False
     ) as xml_tmp:
-        fill_ctd_clargs(ini, line, ctd_tmp)
+        try:
+            fill_ctd_clargs(ini, line, ctd_tmp)
+        except SystemExit:
+            # e.g. TOPP_IDRipper_1 ... -out tmp_path/ : stripping the build
+            # directory leaves an option without a value and the CTD's own
+            # parser aborts the *whole* run, which silently dropped every test
+            # of that tool.  Galaxy cannot express an output directory anyway
+            # (the tool writes a set of files whose names it chooses), so skip
+            # the test instead of dying.
+            sys.stderr.write(
+                f"    skip unparseable {test_id} (an option lost its value when "
+                f"the build paths were stripped) {line}\n"
+            )
+            return
         ctd_tmp.close()
         xml_tmp.close()
         parsed_ctd = parse_input_ctds(None, [ctd_tmp.name], xml_tmp.name, "xml")
@@ -257,7 +987,7 @@ def process_test_line(
             formats_file="aux/filetypes.txt",
             # tool_conf_destination = "tool.conf",
             hardcoded_parameters="aux/hardcoded_params.json",
-            tool_version="3.1",
+            tool_version=version,
             test_only=True,
             test_unsniffable=[
                 "csv",
@@ -266,6 +996,8 @@ def process_test_line(
                 "dta",
                 "dta2d",
                 "edta",
+                "psms",
+                "msp",
                 "mrm",
                 "splib",
             ],
@@ -275,9 +1007,30 @@ def process_test_line(
             ctd_args.hardcoded_parameters
         )
         convert_models(ctd_args, parsed_ctd)
-        xml_tmp = open(xml_tmp.name, "r")
-        for l in xml_tmp:
-            test.append(l)
+        with open(xml_tmp.name, "r") as xml_fh:
+            body = map_output_references(xml_fh.read(), diff_pairs)
+        body = strip_uncomparable_outputs(body, uncomparable or set(), tool_id)
+        body = fix_empty_collection_count(body)
+        body = fix_expect_num_outputs(body)
+        # point Galaxy at the upstream fixture / assert on what cannot be
+        # downloaded (last: the previous steps rewrite `value=`)
+        body = annotate(body, tool_id)
+        if multi and not check_multi_inputs(body, multi):
+            sys.stderr.write(
+                f"    skip {test_id} (more than one file for a single input "
+                f"parameter: {', '.join(multi)})\n"
+            )
+            return
+        if "tmp_path/" in body:
+            # a backslash inside an f-string expression is a SyntaxError before
+            # Python 3.12 (PEP 701), and the CI lint job runs 3.11
+            tmp_values = tmp_value.findall(body)
+            sys.stderr.write(
+                f"    skip {test_id} (output is a build temporary: "
+                f"{', '.join(tmp_values)})\n"
+            )
+            return
+        test.append(body)
 
     return "".join(test)
 
@@ -285,15 +1038,32 @@ def process_test_line(
 parser = argparse.ArgumentParser(description="Create Galaxy tests for a OpenMS tools")
 parser.add_argument("--id", dest="id", help="tool id")
 parser.add_argument("--cmake", nargs="+", help="OpenMS test CMake files")
+parser.add_argument("--version", dest="version", help="OpenMS Version")
 args = parser.parse_args()
 sys.stderr.write(f"generate tests for {args.id}\n")
+
+# the remote-test-data tables (committed, see aux/remote_test_data.py); the
+# environment can point elsewhere, e.g. to preview a different manifest
+FIXTURE_URLS.update(
+    remote_test_data.read_tsv(
+        os.environ.get("OPENMS_FIXTURES_TSV") or os.path.join(AUX, "upstream-fixtures.tsv")
+    )
+)
+EXPECTATIONS.update(
+    remote_test_data.read_tsv(
+        os.environ.get("OPENMS_EXPECTATIONS_TSV")
+        or os.path.join(AUX, "output_expectations.tsv")
+    )
+)
+LOCAL_FIXTURES = remote_test_data.tracked()
 
 re_comment = re.compile("#.*")
 re_empty_prefix = re.compile(r"^\s*")
 re_empty_suffix = re.compile(r"\s*$")
 re_add_test = re.compile(r"add_test\(\"(TOPP|UTILS)_.*/" + args.id)
 re_diff = re.compile(r"\$\{DIFF\}.* -in1 ([^ ]+) -in2 ([^ ]+)")
-failing_tests = get_failing_tests(args.cmake)
+DISABLED = disabled_tests(args.cmake)
+failing_tests = get_failing_tests(args.cmake) + get_message_tests(args.cmake)
 tests = []
 
 # process the given CMake files and compile lists of
@@ -302,6 +1072,8 @@ tests = []
 jline = ""
 test_lines = []
 diff_pairs = {}
+uncomparable = set()
+re_payload_whitelist = re.compile(r"ZLIB_NG_MZML_WHITELIST|<binary>|<offset\b")
 for cmake in args.cmake:
     with open(cmake) as cmake_fh:
         for line in cmake_fh:
@@ -313,24 +1085,35 @@ for cmake in args.cmake:
             if line == "":
                 continue
 
-            # join test statements that are split over multiple lines
-            if line.endswith(")"):
-                jline += " " + line[:-1]
-            else:
-                jline = line
+            # join test statements that are split over multiple lines.  3.6
+            # reformatted many of them as
+            #   add_test("TOPP_ProSE_1" ${TOPP_BIN_PATH}/ProSE -test
+            #   -ini ${DATA_DIR_TOPP}/ProSE_1.ini -in
+            #   ${DATA_DIR_TOPP}/SimpleSearchEngine_1.mzML -out_idxml ...
+            #   )
+            # (the closing parenthesis on a line of its own), so keep
+            # accumulating until a line closes the statement instead of
+            # resetting the buffer with every continuation line.
+            jline = f"{jline} {line}".strip()
+            if line != ")" and not line.endswith(")"):
                 continue
-            line, jline = jline.strip(), ""
+            # drop the closing parenthesis of the add_test(...) call
+            line = jline[:-1].strip() if jline.endswith(")") else jline.strip()
+            jline = ""
             match = re_diff.search(line)
             if match:
                 in1 = match.group(1).split("/")[-1]
                 in2 = match.group(2).split("/")[-1]
                 if in1 != in2:
                     diff_pairs[in1] = in2
+                if re_payload_whitelist.search(line):
+                    uncomparable.add(in2)
             elif re_add_test.match(line):
                 test_lines.append(line)
 
 for line in test_lines:
-    test = process_test_line(args.id, line, failing_tests, SKIP_LIST, diff_pairs)
+    test = process_test_line(args.id, line, failing_tests, SKIP_LIST, diff_pairs,
+                             args.version, uncomparable)
     if test:
         tests.append(test)
 

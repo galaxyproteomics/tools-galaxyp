@@ -1,12 +1,13 @@
 <!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
-<!--Proposed Tool Section: [File Filtering / Extraction / Merging]-->
-<tool id="FileFilter" name="FileFilter" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="21.05">
+<!--Proposed Tool Section: [File Filtering, Extraction and Merging]-->
+<tool id="FileFilter" name="FileFilter" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
   <description>Extracts or manipulates portions of data from peak, feature or consensus-feature files</description>
   <macros>
     <token name="@EXECUTABLE@">FileFilter</token>
     <import>macros.xml</import>
   </macros>
   <expand macro="requirements"/>
+  <expand macro="required_files"/>
   <expand macro="stdio"/>
   <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
 @EXT_FOO@
@@ -70,8 +71,14 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <validator type="expression" message="A value needs to be selected">value != "select a value"</validator>
       <expand macro="list_string_san" name="out_type"/>
     </param>
-    <param argument="-rt" type="text" value=":" label="Retention time range to extract" help="">
+    <param argument="-rt" type="text" value=":" label="Retention time range to extract [s]" help="">
       <expand macro="list_string_san" name="rt"/>
+    </param>
+    <param argument="-rt_block_mode" type="select" label="RT filtering mode: 'as_is' uses RT range as given in '-rt'; 'extend_to_preserve_full_cycle' extends RT range to keep complete spectrum blocks intact, 'shrink_to_preserve_full_cycle' only keeps complete blocks within the given RT range" help="">
+      <option value="as_is" selected="true">as_is</option>
+      <option value="extend_to_preserve_full_cycle">extend_to_preserve_full_cycle</option>
+      <option value="shrink_to_preserve_full_cycle">shrink_to_preserve_full_cycle</option>
+      <expand macro="list_string_san" name="rt_block_mode"/>
     </param>
     <param argument="-mz" type="text" value=":" label="m/z range to extract (applies to ALL ms levels!)" help="">
       <expand macro="list_string_san" name="mz"/>
@@ -98,6 +105,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       <param name="no_chromatograms" argument="-peak_options:no_chromatograms" type="boolean" truevalue="true" falsevalue="false" checked="false" label="No conversion to space-saving real chromatograms" help="e.g. from SRM scans"/>
       <param name="remove_chromatograms" argument="-peak_options:remove_chromatograms" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Removes chromatograms stored in a file" help=""/>
       <param name="remove_empty" argument="-peak_options:remove_empty" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Removes spectra and chromatograms without peaks" help=""/>
+      <param name="remove_metadataarrays" argument="-peak_options:remove_metadataarrays" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Remove all binary data" help="(e.g. ion mobility), except m/z and intensity"/>
       <param name="mz_precision" argument="-peak_options:mz_precision" type="select" label="Store base64 encoded m/z data using 32 or 64 bit precision" help="">
         <option value="32">32</option>
         <option value="64" selected="true">64</option>
@@ -110,25 +118,26 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       </param>
       <param name="indexed_file" argument="-peak_options:indexed_file" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Whether to add an index to the file when writing" help=""/>
       <param name="zlib_compression" argument="-peak_options:zlib_compression" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Whether to store data with zlib compression (lossless compression)" help=""/>
+      <param name="zstd_compression" argument="-peak_options:zstd_compression" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Whether to store data with Zstandard (zstd) compression instead of zlib (lossless compression; mzML only)" help="Attention: not all external tools can read zstd-compressed mzML files yet"/>
       <section name="numpress" title="Numpress compression for peak data" help="" expanded="false">
         <param name="masstime" argument="-peak_options:numpress:masstime" type="select" label="Apply MS Numpress compression algorithms in m/z or rt dimension (recommended: linear)" help="">
-          <option value="none" selected="true">none</option>
           <option value="linear">linear</option>
+          <option value="none" selected="true">none</option>
           <option value="pic">pic</option>
           <option value="slof">slof</option>
           <expand macro="list_string_san" name="masstime"/>
         </param>
         <param name="lossy_mass_accuracy" argument="-peak_options:numpress:lossy_mass_accuracy" type="float" value="-1.0" label="Desired (absolute) m/z accuracy for lossy compression" help="(e.g. use 0.0001 for a mass accuracy of 0.2 ppm at 500 m/z, default uses -1.0 for maximal accuracy)"/>
         <param name="intensity" argument="-peak_options:numpress:intensity" type="select" label="Apply MS Numpress compression algorithms in intensity dimension (recommended: slof or pic)" help="">
-          <option value="none" selected="true">none</option>
           <option value="linear">linear</option>
+          <option value="none" selected="true">none</option>
           <option value="pic">pic</option>
           <option value="slof">slof</option>
           <expand macro="list_string_san" name="intensity"/>
         </param>
         <param name="float_da" argument="-peak_options:numpress:float_da" type="select" label="Apply MS Numpress compression algorithms for the float data arrays (recommended: slof or pic)" help="">
-          <option value="none" selected="true">none</option>
           <option value="linear">linear</option>
+          <option value="none" selected="true">none</option>
           <option value="pic">pic</option>
           <option value="slof">slof</option>
           <expand macro="list_string_san" name="float_da"/>
@@ -138,41 +147,43 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
     <section name="spectra" title="Remove spectra or select spectra (removing all others) with certain properties" help="" expanded="false">
       <param name="remove_zoom" argument="-spectra:remove_zoom" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Remove zoom (enhanced resolution) scans" help=""/>
       <param name="remove_mode" argument="-spectra:remove_mode" type="select" optional="true" label="Remove scans by scan mode" help="">
-        <option value="Unknown">Unknown</option>
-        <option value="MassSpectrum">MassSpectrum</option>
-        <option value="MS1Spectrum">MS1Spectrum</option>
-        <option value="MSnSpectrum">MSnSpectrum</option>
-        <option value="SelectedIonMonitoring">SelectedIonMonitoring</option>
-        <option value="SelectedReactionMonitoring">SelectedReactionMonitoring</option>
+        <option value="Absorption">Absorption</option>
         <option value="ConsecutiveReactionMonitoring">ConsecutiveReactionMonitoring</option>
         <option value="ConstantNeutralGain">ConstantNeutralGain</option>
         <option value="ConstantNeutralLoss">ConstantNeutralLoss</option>
-        <option value="Precursor">Precursor</option>
-        <option value="EnhancedMultiplyCharged">EnhancedMultiplyCharged</option>
-        <option value="TimeDelayedFragmentation">TimeDelayedFragmentation</option>
         <option value="ElectromagneticRadiation">ElectromagneticRadiation</option>
         <option value="Emission">Emission</option>
-        <option value="Absorption">Absorption</option>
+        <option value="EnhancedMultiplyCharged">EnhancedMultiplyCharged</option>
+        <option value="MS1Spectrum">MS1Spectrum</option>
+        <option value="MSnSpectrum">MSnSpectrum</option>
+        <option value="MassSpectrum">MassSpectrum</option>
+        <option value="Precursor">Precursor</option>
+        <option value="SelectedIonMonitoring">SelectedIonMonitoring</option>
+        <option value="SelectedReactionMonitoring">SelectedReactionMonitoring</option>
+        <option value="TimeDelayedFragmentation">TimeDelayedFragmentation</option>
+        <option value="Unknown">Unknown</option>
         <expand macro="list_string_san" name="remove_mode"/>
       </param>
       <param name="remove_activation" argument="-spectra:remove_activation" type="select" optional="true" label="Remove MSn scans where any of its precursors features a certain activation method" help="">
-        <option value="Collision-induced dissociation">Collision-induced dissociation</option>
-        <option value="Post-source decay">Post-source decay</option>
-        <option value="Plasma desorption">Plasma desorption</option>
-        <option value="Surface-induced dissociation">Surface-induced dissociation</option>
         <option value="Blackbody infrared radiative dissociation">Blackbody infrared radiative dissociation</option>
+        <option value="Bruker proprietary method">Bruker proprietary method</option>
+        <option value="Collision-induced dissociation">Collision-induced dissociation</option>
         <option value="Electron capture dissociation">Electron capture dissociation</option>
-        <option value="Infrared multiphoton dissociation">Infrared multiphoton dissociation</option>
-        <option value="Sustained off-resonance irradiation">Sustained off-resonance irradiation</option>
+        <option value="Electron transfer and collision-induced dissociation">Electron transfer and collision-induced dissociation</option>
+        <option value="Electron transfer and higher-energy collision dissociation">Electron transfer and higher-energy collision dissociation</option>
+        <option value="Electron transfer dissociation">Electron transfer dissociation</option>
         <option value="High-energy collision-induced dissociation">High-energy collision-induced dissociation</option>
+        <option value="Infrared multiphoton dissociation">Infrared multiphoton dissociation</option>
         <option value="Low-energy collision-induced dissociation">Low-energy collision-induced dissociation</option>
         <option value="Photodissociation">Photodissociation</option>
-        <option value="Electron transfer dissociation">Electron transfer dissociation</option>
+        <option value="Plasma desorption">Plasma desorption</option>
+        <option value="Post-source decay">Post-source decay</option>
         <option value="Pulsed q dissociation">Pulsed q dissociation</option>
-        <option value="trap-type collision-induced dissociation">trap-type collision-induced dissociation</option>
+        <option value="Surface-induced dissociation">Surface-induced dissociation</option>
+        <option value="Sustained off-resonance irradiation">Sustained off-resonance irradiation</option>
         <option value="beam-type collision-induced dissociation">beam-type collision-induced dissociation</option>
         <option value="in-source collision-induced dissociation">in-source collision-induced dissociation</option>
-        <option value="Bruker proprietary method">Bruker proprietary method</option>
+        <option value="trap-type collision-induced dissociation">trap-type collision-induced dissociation</option>
         <expand macro="list_string_san" name="remove_activation"/>
       </param>
       <param name="remove_collision_energy" argument="-spectra:remove_collision_energy" type="text" value=":" label="Remove MSn scans with a collision energy in the given interval" help="">
@@ -183,41 +194,43 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
       </param>
       <param name="select_zoom" argument="-spectra:select_zoom" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Select zoom (enhanced resolution) scans" help=""/>
       <param name="select_mode" argument="-spectra:select_mode" type="select" optional="true" label="Selects scans by scan mode." help="">
-        <option value="Unknown">Unknown</option>
-        <option value="MassSpectrum">MassSpectrum</option>
-        <option value="MS1Spectrum">MS1Spectrum</option>
-        <option value="MSnSpectrum">MSnSpectrum</option>
-        <option value="SelectedIonMonitoring">SelectedIonMonitoring</option>
-        <option value="SelectedReactionMonitoring">SelectedReactionMonitoring</option>
+        <option value="Absorption">Absorption</option>
         <option value="ConsecutiveReactionMonitoring">ConsecutiveReactionMonitoring</option>
         <option value="ConstantNeutralGain">ConstantNeutralGain</option>
         <option value="ConstantNeutralLoss">ConstantNeutralLoss</option>
-        <option value="Precursor">Precursor</option>
-        <option value="EnhancedMultiplyCharged">EnhancedMultiplyCharged</option>
-        <option value="TimeDelayedFragmentation">TimeDelayedFragmentation</option>
         <option value="ElectromagneticRadiation">ElectromagneticRadiation</option>
         <option value="Emission">Emission</option>
-        <option value="Absorption">Absorption</option>
+        <option value="EnhancedMultiplyCharged">EnhancedMultiplyCharged</option>
+        <option value="MS1Spectrum">MS1Spectrum</option>
+        <option value="MSnSpectrum">MSnSpectrum</option>
+        <option value="MassSpectrum">MassSpectrum</option>
+        <option value="Precursor">Precursor</option>
+        <option value="SelectedIonMonitoring">SelectedIonMonitoring</option>
+        <option value="SelectedReactionMonitoring">SelectedReactionMonitoring</option>
+        <option value="TimeDelayedFragmentation">TimeDelayedFragmentation</option>
+        <option value="Unknown">Unknown</option>
         <expand macro="list_string_san" name="select_mode"/>
       </param>
       <param name="select_activation" argument="-spectra:select_activation" type="select" optional="true" label="Retain MSn scans where any of its precursors features a certain activation method" help="">
-        <option value="Collision-induced dissociation">Collision-induced dissociation</option>
-        <option value="Post-source decay">Post-source decay</option>
-        <option value="Plasma desorption">Plasma desorption</option>
-        <option value="Surface-induced dissociation">Surface-induced dissociation</option>
         <option value="Blackbody infrared radiative dissociation">Blackbody infrared radiative dissociation</option>
+        <option value="Bruker proprietary method">Bruker proprietary method</option>
+        <option value="Collision-induced dissociation">Collision-induced dissociation</option>
         <option value="Electron capture dissociation">Electron capture dissociation</option>
-        <option value="Infrared multiphoton dissociation">Infrared multiphoton dissociation</option>
-        <option value="Sustained off-resonance irradiation">Sustained off-resonance irradiation</option>
+        <option value="Electron transfer and collision-induced dissociation">Electron transfer and collision-induced dissociation</option>
+        <option value="Electron transfer and higher-energy collision dissociation">Electron transfer and higher-energy collision dissociation</option>
+        <option value="Electron transfer dissociation">Electron transfer dissociation</option>
         <option value="High-energy collision-induced dissociation">High-energy collision-induced dissociation</option>
+        <option value="Infrared multiphoton dissociation">Infrared multiphoton dissociation</option>
         <option value="Low-energy collision-induced dissociation">Low-energy collision-induced dissociation</option>
         <option value="Photodissociation">Photodissociation</option>
-        <option value="Electron transfer dissociation">Electron transfer dissociation</option>
+        <option value="Plasma desorption">Plasma desorption</option>
+        <option value="Post-source decay">Post-source decay</option>
         <option value="Pulsed q dissociation">Pulsed q dissociation</option>
-        <option value="trap-type collision-induced dissociation">trap-type collision-induced dissociation</option>
+        <option value="Surface-induced dissociation">Surface-induced dissociation</option>
+        <option value="Sustained off-resonance irradiation">Sustained off-resonance irradiation</option>
         <option value="beam-type collision-induced dissociation">beam-type collision-induced dissociation</option>
         <option value="in-source collision-induced dissociation">in-source collision-induced dissociation</option>
-        <option value="Bruker proprietary method">Bruker proprietary method</option>
+        <option value="trap-type collision-induced dissociation">trap-type collision-induced dissociation</option>
         <expand macro="list_string_san" name="select_activation"/>
       </param>
       <param name="select_collision_energy" argument="-spectra:select_collision_energy" type="text" value=":" label="Select MSn scans with a collision energy in the given interval" help="">
@@ -227,9 +240,9 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <expand macro="list_string_san" name="select_isolation_window_width"/>
       </param>
       <param name="select_polarity" argument="-spectra:select_polarity" type="select" optional="true" label="Retain MSn scans with a certain scan polarity" help="">
-        <option value="unknown">unknown</option>
-        <option value="positive">positive</option>
         <option value="negative">negative</option>
+        <option value="positive">positive</option>
+        <option value="unknown">unknown</option>
         <expand macro="list_string_san" name="select_polarity"/>
       </param>
       <param name="replace_pc_charge" argument="-spectra:replace_pc_charge" type="text" value=":" label="Replaces in_charge with out_charge in all precursors" help="">
@@ -288,8 +301,8 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <expand macro="list_string_san" name="sequences_whitelist"/>
       </param>
       <param name="sequence_comparison_method" argument="-id:sequence_comparison_method" type="select" label="Comparison method used to determine if a feature is whitelisted" help="">
-        <option value="substring" selected="true">substring</option>
         <option value="exact">exact</option>
+        <option value="substring" selected="true">substring</option>
         <expand macro="list_string_san" name="sequence_comparison_method"/>
       </param>
       <param name="accessions_whitelist" argument="-id:accessions_whitelist" type="text" optional="true" value="" label="keep only features with white listed accessions" help="e.g. sp|P02662|CASA1_BOVIN (space separated list, in order to allow for spaces in list items surround them by single quotes)">
@@ -345,10 +358,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_1_input.mzML"/>
-      <output name="out" value="FileFilter_1_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_1_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_1_input.mzML"/>
+      <output name="out" value="FileFilter_1_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="21236" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_1_output.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":30"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":1000"/>
       <param name="int" value=":20000"/>
       <param name="sort" value="false"/>
@@ -360,10 +374,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -444,10 +460,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_1_input.mzML"/>
-      <output name="out" value="FileFilter_2_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_1_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_1_input.mzML"/>
+      <output name="out" value="FileFilter_2_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_2_output.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value="30:"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value="1000:"/>
       <param name="int" value="100:"/>
       <param name="sort" value="false"/>
@@ -459,10 +476,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -543,10 +562,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_1_input.mzML"/>
-      <output name="out" value="FileFilter_3_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_1_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_1_input.mzML"/>
+      <output name="out" value="FileFilter_3_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="10676" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_3_output.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -558,10 +578,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -642,10 +664,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_4_input.mzML"/>
-      <output name="out" value="FileFilter_4_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_4_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_4_input.mzML"/>
+      <output name="out" value="FileFilter_4_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="31282" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_4_output.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -657,10 +680,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -741,10 +766,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_5_input.featureXML"/>
-      <output name="out" value="FileFilter_5_out.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <param name="in" value="FileFilter_5_input.featureXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_5_input.featureXML"/>
+      <output name="out" value="FileFilter_5_out.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_5_out.featureXML"/>
       <param name="out_type" value="featureXML"/>
       <param name="rt" value=":1000"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":480"/>
       <param name="int" value=":79000"/>
       <param name="sort" value="false"/>
@@ -756,10 +782,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -840,10 +868,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_5_input.featureXML"/>
-      <output name="out" value="FileFilter_6_out.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <param name="in" value="FileFilter_5_input.featureXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_5_input.featureXML"/>
+      <output name="out" value="FileFilter_6_out.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_6_out.featureXML"/>
       <param name="out_type" value="featureXML"/>
       <param name="rt" value="1000:"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value="440:"/>
       <param name="int" value="70000:"/>
       <param name="sort" value="false"/>
@@ -855,10 +884,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -939,10 +970,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_7_input.mzML"/>
-      <output name="out" value="FileFilter_7_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_7_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_7_input.mzML"/>
+      <output name="out" value="FileFilter_7_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_7_output.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value="7000:"/>
       <param name="sort" value="false"/>
@@ -954,10 +986,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -1038,10 +1072,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_8_input.consensusXML"/>
-      <output name="out" value="FileFilter_8_output.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
+      <param name="in" value="FileFilter_8_input.consensusXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_8_input.consensusXML"/>
+      <output name="out" value="FileFilter_8_output.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_8_output.consensusXML"/>
       <param name="out_type" value="consensusXML"/>
       <param name="rt" value="600:1400"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value="700:2300"/>
       <param name="int" value="1100:6000"/>
       <param name="sort" value="false"/>
@@ -1053,10 +1088,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -1137,10 +1174,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_9_input.mzML"/>
-      <output name="out" value="FileFilter_9_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_9_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_9_input.mzML"/>
+      <output name="out" value="FileFilter_9_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="31282" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_9_output.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -1152,10 +1190,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -1237,10 +1277,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_10_input.mzML"/>
-      <output name="out" value="FileFilter_10_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_10_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_10_input.mzML"/>
+      <output name="out" value="FileFilter_10_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="22829" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_10_output.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -1252,10 +1293,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -1337,10 +1380,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_11_input.mzML"/>
-      <output name="out" value="FileFilter_11_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_11_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_11_input.mzML"/>
+      <output name="out" value="FileFilter_11_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="28295" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_11_output.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -1352,10 +1396,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -1437,10 +1483,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_12_input.mzML"/>
-      <output name="out" value="FileFilter_12_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_12_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_12_input.mzML"/>
+      <output name="out" value="FileFilter_12_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="23508" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_12_output.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -1452,10 +1499,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="true"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -1536,10 +1585,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_13_input.consensusXML"/>
-      <output name="out" value="FileFilter_13_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <param name="in" value="FileFilter_13_input.consensusXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_13_input.consensusXML"/>
+      <output name="out" value="FileFilter_13_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_13_output.featureXML"/>
       <param name="out_type" value="featureXML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -1551,10 +1601,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -1636,10 +1688,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_14_input.consensusXML"/>
-      <output name="out" value="FileFilter_14_output.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
+      <param name="in" value="FileFilter_14_input.consensusXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_14_input.consensusXML"/>
+      <output name="out" value="FileFilter_14_output.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_14_output.consensusXML"/>
       <param name="out_type" value="consensusXML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -1651,10 +1704,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -1736,10 +1791,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_15_input.featureXML"/>
-      <output name="out" value="FileFilter_15_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <param name="in" value="FileFilter_15_input.featureXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_15_input.featureXML"/>
+      <output name="out" value="FileFilter_15_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml" delta="30888" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_15_output.featureXML"/>
       <param name="out_type" value="featureXML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -1751,10 +1807,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -1836,10 +1894,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_15_input.featureXML"/>
-      <output name="out" value="FileFilter_16_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <param name="in" value="FileFilter_15_input.featureXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_15_input.featureXML"/>
+      <output name="out" value="FileFilter_16_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml" delta="16280" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_16_output.featureXML"/>
       <param name="out_type" value="featureXML"/>
       <param name="rt" value="3000:4000"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value="400:600"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -1851,10 +1910,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -1936,10 +1997,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_15_input.featureXML"/>
-      <output name="out" value="FileFilter_17_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <param name="in" value="FileFilter_15_input.featureXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_15_input.featureXML"/>
+      <output name="out" value="FileFilter_17_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml" delta="13405" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_17_output.featureXML"/>
       <param name="out_type" value="featureXML"/>
       <param name="rt" value="3000:4000"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value="400:600"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -1951,10 +2013,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -2035,10 +2099,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_18_input.consensusXML"/>
-      <output name="out" value="FileFilter_18_output.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
+      <param name="in" value="FileFilter_18_input.consensusXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_18_input.consensusXML"/>
+      <output name="out" value="FileFilter_18_output.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml" delta="23407" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_18_output.consensusXML"/>
       <param name="out_type" value="consensusXML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -2050,10 +2115,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -2135,10 +2202,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_18_input.consensusXML"/>
-      <output name="out" value="FileFilter_19_output.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
+      <param name="in" value="FileFilter_18_input.consensusXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_18_input.consensusXML"/>
+      <output name="out" value="FileFilter_19_output.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml" delta="28073" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_19_output.consensusXML"/>
       <param name="out_type" value="consensusXML"/>
       <param name="rt" value="3000:4000"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value="400:600"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -2150,10 +2218,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -2234,10 +2304,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_15_input.featureXML"/>
-      <output name="out" value="FileFilter_20_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <param name="in" value="FileFilter_15_input.featureXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_15_input.featureXML"/>
+      <output name="out" value="FileFilter_20_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_20_output.featureXML"/>
       <param name="out_type" value="featureXML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -2249,10 +2320,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -2334,10 +2407,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_15_input.featureXML"/>
-      <output name="out" value="FileFilter_21_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <param name="in" value="FileFilter_15_input.featureXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_15_input.featureXML"/>
+      <output name="out" value="FileFilter_21_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml" delta="79601" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_21_output.featureXML"/>
       <param name="out_type" value="featureXML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -2349,10 +2423,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -2433,10 +2509,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_22_input.consensusXML"/>
-      <output name="out" value="FileFilter_22_output.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
+      <param name="in" value="FileFilter_22_input.consensusXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_22_input.consensusXML"/>
+      <output name="out" value="FileFilter_22_output.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml" delta="408573" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_22_output.consensusXML"/>
       <param name="out_type" value="consensusXML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -2448,10 +2525,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -2533,10 +2612,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_22_input.consensusXML"/>
-      <output name="out" value="FileFilter_22_output.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
+      <param name="in" value="FileFilter_22_input.consensusXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_22_input.consensusXML"/>
+      <output name="out" value="FileFilter_22_output.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml" delta="408573" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_22_output.consensusXML"/>
       <param name="out_type" value="consensusXML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -2548,10 +2628,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -2633,10 +2715,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_22_input.consensusXML"/>
-      <output name="out" value="FileFilter_24_output.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml"/>
+      <param name="in" value="FileFilter_22_input.consensusXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_22_input.consensusXML"/>
+      <output name="out" value="FileFilter_24_output.consensusXML" compare="sim_size" delta_frac="0.7" ftype="consensusxml" delta="588907" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_24_output.consensusXML"/>
       <param name="out_type" value="consensusXML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -2648,10 +2731,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -2733,10 +2818,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_25_input.mzML.gz"/>
-      <output name="out" value="FileFilter_25_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_25_input.mzML.gz" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_25_input.mzML.gz"/>
+      <output name="out" value="FileFilter_25_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="3393724" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_25_output.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -2748,10 +2834,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -2799,7 +2887,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="remove_annotated_features" value="false"/>
         <param name="remove_unannotated_features" value="false"/>
         <param name="remove_unassigned_ids" value="false"/>
-        <param name="blacklist" value="FileFilter_25_input.idXML"/>
+        <param name="blacklist" value="FileFilter_25_input.idXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_25_input.idXML"/>
         <param name="rt" value="1.0"/>
         <param name="mz" value="0.05"/>
         <param name="blacklist_imperfect" value="true"/>
@@ -2833,10 +2921,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_25_input.mzML.gz"/>
-      <output name="out" value="FileFilter_25_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_25_input.mzML.gz" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_25_input.mzML.gz"/>
+      <output name="out" value="FileFilter_25_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="3393724" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_25_output.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -2848,10 +2937,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -2899,7 +2990,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="remove_annotated_features" value="false"/>
         <param name="remove_unannotated_features" value="false"/>
         <param name="remove_unassigned_ids" value="false"/>
-        <param name="blacklist" value="FileFilter_25_input.idXML"/>
+        <param name="blacklist" value="FileFilter_25_input.idXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_25_input.idXML"/>
         <param name="rt" value="0.1"/>
         <param name="mz" value="0.001"/>
         <param name="blacklist_imperfect" value="true"/>
@@ -2933,10 +3024,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_28_input.mzML.gz"/>
-      <output name="out" value="FileFilter_28_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_28_input.mzML.gz" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_28_input.mzML.gz"/>
+      <output name="out" value="FileFilter_28_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="37340" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_28_output.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -2948,10 +3040,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -3032,10 +3126,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_28_input.mzML.gz"/>
-      <output name="out" value="FileFilter_29_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_28_input.mzML.gz" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_28_input.mzML.gz"/>
+      <output name="out" value="FileFilter_29_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="156064" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_29_output.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -3047,10 +3142,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -3131,10 +3228,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_28_input.mzML.gz"/>
-      <output name="out" value="FileFilter_30_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_28_input.mzML.gz" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_28_input.mzML.gz"/>
+      <output name="out" value="FileFilter_30_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="156064" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_30_output.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -3146,10 +3244,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -3230,10 +3330,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_31_34_input.mzML"/>
-      <output name="out" value="FileFilter_31_remove_collision_energy.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_31_34_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_31_34_input.mzML"/>
+      <output name="out" value="FileFilter_31_remove_collision_energy.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="44988" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_31_remove_collision_energy.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -3245,10 +3346,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -3329,10 +3432,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_31_34_input.mzML"/>
-      <output name="out" value="FileFilter_32_select_collision_energy.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_31_34_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_31_34_input.mzML"/>
+      <output name="out" value="FileFilter_32_select_collision_energy.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="73938" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_32_select_collision_energy.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -3344,10 +3448,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -3428,10 +3534,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_31_34_input.mzML"/>
-      <output name="out" value="FileFilter_33_remove_isolation_window.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_31_34_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_31_34_input.mzML"/>
+      <output name="out" value="FileFilter_33_remove_isolation_window.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="44988" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_33_remove_isolation_window.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -3443,10 +3550,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -3527,10 +3636,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_31_34_input.mzML"/>
-      <output name="out" value="FileFilter_34_select_isolation_window.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_31_34_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_31_34_input.mzML"/>
+      <output name="out" value="FileFilter_34_select_isolation_window.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="73938" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_34_select_isolation_window.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -3542,10 +3652,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -3626,10 +3738,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_1_input.mzML"/>
-      <output name="out" value="FileFilter_35_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_1_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_1_input.mzML"/>
+      <output name="out" value="FileFilter_35_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="49899" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_35_output.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -3641,10 +3754,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -3725,10 +3840,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_1_input.mzML"/>
-      <output name="out" value="FileFilter_36_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_1_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_1_input.mzML"/>
+      <output name="out" value="FileFilter_36_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="49336" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_36_output.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -3740,10 +3856,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="false"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -3824,10 +3942,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_1_input.mzML"/>
-      <output name="out" value="FileFilter_37_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_1_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_1_input.mzML"/>
+      <output name="out" value="FileFilter_37_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="27184" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_37_output.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -3839,10 +3958,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="linear"/>
           <param name="lossy_mass_accuracy" value="0.0001"/>
@@ -3923,10 +4044,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_1_input.mzML"/>
-      <output name="out" value="FileFilter_38_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_1_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_1_input.mzML"/>
+      <output name="out" value="FileFilter_38_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="26676" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_38_output.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -3938,10 +4060,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="linear"/>
           <param name="lossy_mass_accuracy" value="0.0001"/>
@@ -4022,10 +4146,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_40_input.mzML"/>
-      <output name="out" value="FileFilter_40_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_40_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_40_input.mzML"/>
+      <output name="out" value="FileFilter_40_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="47669" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_40_output.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -4037,10 +4162,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -4122,10 +4249,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_40_input.mzML"/>
-      <output name="out" value="FileFilter_41_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_40_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_40_input.mzML"/>
+      <output name="out" value="FileFilter_41_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_41_output.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -4137,10 +4265,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -4222,10 +4352,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_40_input.mzML"/>
-      <output name="out" value="FileFilter_42_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_40_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_40_input.mzML"/>
+      <output name="out" value="FileFilter_42_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="49946" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_42_output.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -4237,10 +4368,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -4321,10 +4454,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_43_input.mzML"/>
-      <output name="out" value="FileFilter_43_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_43_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_43_input.mzML"/>
+      <output name="out" value="FileFilter_43_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="107804" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_43_output.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -4336,109 +4470,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
-        <section name="numpress">
-          <param name="masstime" value="none"/>
-          <param name="lossy_mass_accuracy" value="-1.0"/>
-          <param name="intensity" value="none"/>
-          <param name="float_da" value="none"/>
-        </section>
-      </section>
-      <section name="spectra">
-        <param name="remove_zoom" value="false"/>
-        <param name="remove_collision_energy" value=":"/>
-        <param name="remove_isolation_window_width" value=":"/>
-        <param name="select_zoom" value="false"/>
-        <param name="select_collision_energy" value=":"/>
-        <param name="select_isolation_window_width" value=":"/>
-        <param name="replace_pc_charge" value=":"/>
-        <section name="blackorwhitelist">
-          <param name="similarity_threshold" value="-1.0"/>
-          <param name="rt" value="0.01"/>
-          <param name="mz" value="0.01"/>
-          <param name="use_ppm_tolerance" value="false"/>
-          <param name="blacklist" value="true"/>
-        </section>
-      </section>
-      <section name="feature">
-        <param name="q" value=":"/>
-      </section>
-      <section name="consensus">
-        <param name="map_and" value="false"/>
-        <section name="blackorwhitelist">
-          <param name="blacklist" value="true"/>
-          <param name="rt" value="60.0"/>
-          <param name="mz" value="0.01"/>
-          <param name="use_ppm_tolerance" value="false"/>
-        </section>
-      </section>
-      <section name="f_and_c">
-        <param name="charge" value=":"/>
-        <param name="size" value=":"/>
-        <param name="remove_hull" value="false"/>
-      </section>
-      <section name="id">
-        <param name="remove_clashes" value="false"/>
-        <param name="keep_best_score_id" value="false"/>
-        <param name="sequence_comparison_method" value="substring"/>
-        <param name="remove_annotated_features" value="false"/>
-        <param name="remove_unannotated_features" value="false"/>
-        <param name="remove_unassigned_ids" value="false"/>
-        <param name="rt" value="0.1"/>
-        <param name="mz" value="0.001"/>
-        <param name="blacklist_imperfect" value="false"/>
-      </section>
-      <section name="algorithm">
-        <section name="SignalToNoise">
-          <param name="max_intensity" value="-1"/>
-          <param name="auto_max_stdev_factor" value="3.0"/>
-          <param name="auto_max_percentile" value="95"/>
-          <param name="auto_mode" value="0"/>
-          <param name="win_len" value="200.0"/>
-          <param name="bin_count" value="30"/>
-          <param name="min_required_elements" value="10"/>
-          <param name="noise_for_empty_window" value="1e+20"/>
-          <param name="write_log_messages" value="true"/>
-        </section>
-      </section>
-      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
-      <output name="ctd_out" ftype="xml">
-        <assert_contents>
-          <is_valid_xml/>
-        </assert_contents>
-      </output>
-      <assert_stdout>
-        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
-      </assert_stdout>
-    </test>
-    <!-- TOPP_FileFilter_43_read_again -->
-    <test expect_num_outputs="2">
-      <section name="adv_opts">
-        <param name="force" value="false"/>
-        <param name="test" value="true"/>
-      </section>
-      <param name="in" value="FileFilter_43_output.mzML"/>
-      <output name="out" value="FileFilter_43.dummy.tmp" compare="sim_size" delta_frac="0.7"/>
-      <param name="out_type" value="mzML"/>
-      <param name="rt" value=":"/>
-      <param name="mz" value=":"/>
-      <param name="int" value=":"/>
-      <param name="sort" value="false"/>
-      <section name="peak_options">
-        <param name="sn" value="0.0"/>
-        <param name="pc_mz_range" value=":"/>
-        <param name="level" value="1 2 3"/>
-        <param name="sort_peaks" value="false"/>
-        <param name="no_chromatograms" value="false"/>
-        <param name="remove_chromatograms" value="false"/>
-        <param name="remove_empty" value="false"/>
-        <param name="mz_precision" value="64"/>
-        <param name="int_precision" value="32"/>
-        <param name="indexed_file" value="true"/>
-        <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -4519,10 +4556,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_44_input.mzML"/>
-      <output name="out" value="FileFilter_44_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_44_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_44_input.mzML"/>
+      <output name="out" value="FileFilter_44_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_44_output.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -4534,10 +4572,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -4618,10 +4658,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_45_input.featureXML"/>
-      <output name="out" value="FileFilter_45_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <param name="in" value="FileFilter_45_input.featureXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_45_input.featureXML"/>
+      <output name="out" value="FileFilter_45_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml" delta="11318" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_45_output.featureXML"/>
       <param name="out_type" value="featureXML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -4633,10 +4674,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -4718,10 +4761,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_46_input.featureXML"/>
-      <output name="out" value="FileFilter_46_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml"/>
+      <param name="in" value="FileFilter_46_input.featureXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_46_input.featureXML"/>
+      <output name="out" value="FileFilter_46_output.featureXML" compare="sim_size" delta_frac="0.7" ftype="featurexml" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_46_output.featureXML"/>
       <param name="out_type" value="featureXML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -4733,10 +4777,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -4818,10 +4864,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_47_input.mzML"/>
-      <output name="out" value="FileFilter_47_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_47_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_47_input.mzML"/>
+      <output name="out" value="FileFilter_47_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="23175" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_47_output.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -4833,10 +4880,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -4853,7 +4902,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="select_isolation_window_width" value=":"/>
         <param name="replace_pc_charge" value=":"/>
         <section name="blackorwhitelist">
-          <param name="file" value="FileFilter_47_input_select.mzML"/>
+          <param name="file" value="FileFilter_47_input_select.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_47_input_select.mzML"/>
           <param name="similarity_threshold" value="0.9"/>
           <param name="rt" value="0.01"/>
           <param name="mz" value="0.01"/>
@@ -4918,10 +4967,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_47_input.mzML"/>
-      <output name="out" value="FileFilter_48_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_47_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_47_input.mzML"/>
+      <output name="out" value="FileFilter_48_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="12740" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_48_output.mzML"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -4933,10 +4983,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="none"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -4953,7 +5005,7 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="select_isolation_window_width" value=":"/>
         <param name="replace_pc_charge" value=":"/>
         <section name="blackorwhitelist">
-          <param name="file" value="FileFilter_47_input_select.mzML"/>
+          <param name="file" value="FileFilter_47_input_select.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_47_input_select.mzML"/>
           <param name="similarity_threshold" value="0.9"/>
           <param name="rt" value="0.01"/>
           <param name="mz" value="0.01"/>
@@ -5018,10 +5070,11 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <param name="in" value="FileFilter_49_input.mzML"/>
-      <output name="out" value="FileFilter_49_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml"/>
+      <param name="in" value="FileFilter_49_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_49_input.mzML"/>
+      <output name="out" ftype="mzml"/>
       <param name="out_type" value="mzML"/>
       <param name="rt" value=":"/>
+      <param name="rt_block_mode" value="as_is"/>
       <param name="mz" value=":"/>
       <param name="int" value=":"/>
       <param name="sort" value="false"/>
@@ -5033,10 +5086,12 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <param name="no_chromatograms" value="false"/>
         <param name="remove_chromatograms" value="false"/>
         <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
         <param name="mz_precision" value="64"/>
         <param name="int_precision" value="32"/>
         <param name="indexed_file" value="true"/>
         <param name="zlib_compression" value="true"/>
+        <param name="zstd_compression" value="false"/>
         <section name="numpress">
           <param name="masstime" value="linear"/>
           <param name="lossy_mass_accuracy" value="-1.0"/>
@@ -5111,10 +5166,418 @@ python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hard
         <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
       </assert_stdout>
     </test>
+    <!-- TOPP_FileFilter_50 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="FileFilter_1_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_1_input.mzML"/>
+      <output name="out" value="FileFilter_50_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="17144" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_50_output.mzML"/>
+      <param name="out_type" value="mzML"/>
+      <param name="rt" value="28:35"/>
+      <param name="rt_block_mode" value="as_is"/>
+      <param name="mz" value=":"/>
+      <param name="int" value=":"/>
+      <param name="sort" value="false"/>
+      <section name="peak_options">
+        <param name="sn" value="0.0"/>
+        <param name="pc_mz_range" value=":"/>
+        <param name="level" value="1 2 3"/>
+        <param name="sort_peaks" value="false"/>
+        <param name="no_chromatograms" value="false"/>
+        <param name="remove_chromatograms" value="false"/>
+        <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
+        <param name="mz_precision" value="64"/>
+        <param name="int_precision" value="32"/>
+        <param name="indexed_file" value="true"/>
+        <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
+        <section name="numpress">
+          <param name="masstime" value="none"/>
+          <param name="lossy_mass_accuracy" value="-1.0"/>
+          <param name="intensity" value="none"/>
+          <param name="float_da" value="none"/>
+        </section>
+      </section>
+      <section name="spectra">
+        <param name="remove_zoom" value="false"/>
+        <param name="remove_collision_energy" value=":"/>
+        <param name="remove_isolation_window_width" value=":"/>
+        <param name="select_zoom" value="false"/>
+        <param name="select_collision_energy" value=":"/>
+        <param name="select_isolation_window_width" value=":"/>
+        <param name="replace_pc_charge" value=":"/>
+        <section name="blackorwhitelist">
+          <param name="similarity_threshold" value="-1.0"/>
+          <param name="rt" value="0.01"/>
+          <param name="mz" value="0.01"/>
+          <param name="use_ppm_tolerance" value="false"/>
+          <param name="blacklist" value="true"/>
+        </section>
+      </section>
+      <section name="feature">
+        <param name="q" value=":"/>
+      </section>
+      <section name="consensus">
+        <param name="map_and" value="false"/>
+        <section name="blackorwhitelist">
+          <param name="blacklist" value="true"/>
+          <param name="rt" value="60.0"/>
+          <param name="mz" value="0.01"/>
+          <param name="use_ppm_tolerance" value="false"/>
+        </section>
+      </section>
+      <section name="f_and_c">
+        <param name="charge" value=":"/>
+        <param name="size" value=":"/>
+        <param name="remove_hull" value="false"/>
+      </section>
+      <section name="id">
+        <param name="remove_clashes" value="false"/>
+        <param name="keep_best_score_id" value="false"/>
+        <param name="sequence_comparison_method" value="substring"/>
+        <param name="remove_annotated_features" value="false"/>
+        <param name="remove_unannotated_features" value="false"/>
+        <param name="remove_unassigned_ids" value="false"/>
+        <param name="rt" value="0.1"/>
+        <param name="mz" value="0.001"/>
+        <param name="blacklist_imperfect" value="false"/>
+      </section>
+      <section name="algorithm">
+        <section name="SignalToNoise">
+          <param name="max_intensity" value="-1"/>
+          <param name="auto_max_stdev_factor" value="3.0"/>
+          <param name="auto_max_percentile" value="95"/>
+          <param name="auto_mode" value="0"/>
+          <param name="win_len" value="200.0"/>
+          <param name="bin_count" value="30"/>
+          <param name="min_required_elements" value="10"/>
+          <param name="noise_for_empty_window" value="1e+20"/>
+          <param name="write_log_messages" value="true"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_FileFilter_51 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="FileFilter_1_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_1_input.mzML"/>
+      <output name="out" value="FileFilter_51_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="30386" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_51_output.mzML"/>
+      <param name="out_type" value="mzML"/>
+      <param name="rt" value="28:35"/>
+      <param name="rt_block_mode" value="extend_to_preserve_full_cycle"/>
+      <param name="mz" value=":"/>
+      <param name="int" value=":"/>
+      <param name="sort" value="false"/>
+      <section name="peak_options">
+        <param name="sn" value="0.0"/>
+        <param name="pc_mz_range" value=":"/>
+        <param name="level" value="1 2 3"/>
+        <param name="sort_peaks" value="false"/>
+        <param name="no_chromatograms" value="false"/>
+        <param name="remove_chromatograms" value="false"/>
+        <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
+        <param name="mz_precision" value="64"/>
+        <param name="int_precision" value="32"/>
+        <param name="indexed_file" value="true"/>
+        <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
+        <section name="numpress">
+          <param name="masstime" value="none"/>
+          <param name="lossy_mass_accuracy" value="-1.0"/>
+          <param name="intensity" value="none"/>
+          <param name="float_da" value="none"/>
+        </section>
+      </section>
+      <section name="spectra">
+        <param name="remove_zoom" value="false"/>
+        <param name="remove_collision_energy" value=":"/>
+        <param name="remove_isolation_window_width" value=":"/>
+        <param name="select_zoom" value="false"/>
+        <param name="select_collision_energy" value=":"/>
+        <param name="select_isolation_window_width" value=":"/>
+        <param name="replace_pc_charge" value=":"/>
+        <section name="blackorwhitelist">
+          <param name="similarity_threshold" value="-1.0"/>
+          <param name="rt" value="0.01"/>
+          <param name="mz" value="0.01"/>
+          <param name="use_ppm_tolerance" value="false"/>
+          <param name="blacklist" value="true"/>
+        </section>
+      </section>
+      <section name="feature">
+        <param name="q" value=":"/>
+      </section>
+      <section name="consensus">
+        <param name="map_and" value="false"/>
+        <section name="blackorwhitelist">
+          <param name="blacklist" value="true"/>
+          <param name="rt" value="60.0"/>
+          <param name="mz" value="0.01"/>
+          <param name="use_ppm_tolerance" value="false"/>
+        </section>
+      </section>
+      <section name="f_and_c">
+        <param name="charge" value=":"/>
+        <param name="size" value=":"/>
+        <param name="remove_hull" value="false"/>
+      </section>
+      <section name="id">
+        <param name="remove_clashes" value="false"/>
+        <param name="keep_best_score_id" value="false"/>
+        <param name="sequence_comparison_method" value="substring"/>
+        <param name="remove_annotated_features" value="false"/>
+        <param name="remove_unannotated_features" value="false"/>
+        <param name="remove_unassigned_ids" value="false"/>
+        <param name="rt" value="0.1"/>
+        <param name="mz" value="0.001"/>
+        <param name="blacklist_imperfect" value="false"/>
+      </section>
+      <section name="algorithm">
+        <section name="SignalToNoise">
+          <param name="max_intensity" value="-1"/>
+          <param name="auto_max_stdev_factor" value="3.0"/>
+          <param name="auto_max_percentile" value="95"/>
+          <param name="auto_mode" value="0"/>
+          <param name="win_len" value="200.0"/>
+          <param name="bin_count" value="30"/>
+          <param name="min_required_elements" value="10"/>
+          <param name="noise_for_empty_window" value="1e+20"/>
+          <param name="write_log_messages" value="true"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_FileFilter_52 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="FileFilter_1_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_1_input.mzML"/>
+      <output name="out" value="FileFilter_52_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_52_output.mzML"/>
+      <param name="out_type" value="mzML"/>
+      <param name="rt" value="28:35"/>
+      <param name="rt_block_mode" value="shrink_to_preserve_full_cycle"/>
+      <param name="mz" value=":"/>
+      <param name="int" value=":"/>
+      <param name="sort" value="false"/>
+      <section name="peak_options">
+        <param name="sn" value="0.0"/>
+        <param name="pc_mz_range" value=":"/>
+        <param name="level" value="1 2 3"/>
+        <param name="sort_peaks" value="false"/>
+        <param name="no_chromatograms" value="false"/>
+        <param name="remove_chromatograms" value="false"/>
+        <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
+        <param name="mz_precision" value="64"/>
+        <param name="int_precision" value="32"/>
+        <param name="indexed_file" value="true"/>
+        <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
+        <section name="numpress">
+          <param name="masstime" value="none"/>
+          <param name="lossy_mass_accuracy" value="-1.0"/>
+          <param name="intensity" value="none"/>
+          <param name="float_da" value="none"/>
+        </section>
+      </section>
+      <section name="spectra">
+        <param name="remove_zoom" value="false"/>
+        <param name="remove_collision_energy" value=":"/>
+        <param name="remove_isolation_window_width" value=":"/>
+        <param name="select_zoom" value="false"/>
+        <param name="select_collision_energy" value=":"/>
+        <param name="select_isolation_window_width" value=":"/>
+        <param name="replace_pc_charge" value=":"/>
+        <section name="blackorwhitelist">
+          <param name="similarity_threshold" value="-1.0"/>
+          <param name="rt" value="0.01"/>
+          <param name="mz" value="0.01"/>
+          <param name="use_ppm_tolerance" value="false"/>
+          <param name="blacklist" value="true"/>
+        </section>
+      </section>
+      <section name="feature">
+        <param name="q" value=":"/>
+      </section>
+      <section name="consensus">
+        <param name="map_and" value="false"/>
+        <section name="blackorwhitelist">
+          <param name="blacklist" value="true"/>
+          <param name="rt" value="60.0"/>
+          <param name="mz" value="0.01"/>
+          <param name="use_ppm_tolerance" value="false"/>
+        </section>
+      </section>
+      <section name="f_and_c">
+        <param name="charge" value=":"/>
+        <param name="size" value=":"/>
+        <param name="remove_hull" value="false"/>
+      </section>
+      <section name="id">
+        <param name="remove_clashes" value="false"/>
+        <param name="keep_best_score_id" value="false"/>
+        <param name="sequence_comparison_method" value="substring"/>
+        <param name="remove_annotated_features" value="false"/>
+        <param name="remove_unannotated_features" value="false"/>
+        <param name="remove_unassigned_ids" value="false"/>
+        <param name="rt" value="0.1"/>
+        <param name="mz" value="0.001"/>
+        <param name="blacklist_imperfect" value="false"/>
+      </section>
+      <section name="algorithm">
+        <section name="SignalToNoise">
+          <param name="max_intensity" value="-1"/>
+          <param name="auto_max_stdev_factor" value="3.0"/>
+          <param name="auto_max_percentile" value="95"/>
+          <param name="auto_mode" value="0"/>
+          <param name="win_len" value="200.0"/>
+          <param name="bin_count" value="30"/>
+          <param name="min_required_elements" value="10"/>
+          <param name="noise_for_empty_window" value="1e+20"/>
+          <param name="write_log_messages" value="true"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_FileFilter_53 -->
+    <test expect_num_outputs="2">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <param name="in" value="FileFilter_1_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_1_input.mzML"/>
+      <output name="out" value="FileFilter_53_output.mzML" compare="sim_size" delta_frac="0.7" ftype="mzml" delta="27894" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/FileFilter_53_output.mzML"/>
+      <param name="out_type" value="mzML"/>
+      <param name="rt" value="28:40"/>
+      <param name="rt_block_mode" value="shrink_to_preserve_full_cycle"/>
+      <param name="mz" value=":"/>
+      <param name="int" value=":"/>
+      <param name="sort" value="false"/>
+      <section name="peak_options">
+        <param name="sn" value="0.0"/>
+        <param name="pc_mz_range" value=":"/>
+        <param name="level" value="1 2 3"/>
+        <param name="sort_peaks" value="false"/>
+        <param name="no_chromatograms" value="false"/>
+        <param name="remove_chromatograms" value="false"/>
+        <param name="remove_empty" value="false"/>
+        <param name="remove_metadataarrays" value="false"/>
+        <param name="mz_precision" value="64"/>
+        <param name="int_precision" value="32"/>
+        <param name="indexed_file" value="true"/>
+        <param name="zlib_compression" value="false"/>
+        <param name="zstd_compression" value="false"/>
+        <section name="numpress">
+          <param name="masstime" value="none"/>
+          <param name="lossy_mass_accuracy" value="-1.0"/>
+          <param name="intensity" value="none"/>
+          <param name="float_da" value="none"/>
+        </section>
+      </section>
+      <section name="spectra">
+        <param name="remove_zoom" value="false"/>
+        <param name="remove_collision_energy" value=":"/>
+        <param name="remove_isolation_window_width" value=":"/>
+        <param name="select_zoom" value="false"/>
+        <param name="select_collision_energy" value=":"/>
+        <param name="select_isolation_window_width" value=":"/>
+        <param name="replace_pc_charge" value=":"/>
+        <section name="blackorwhitelist">
+          <param name="similarity_threshold" value="-1.0"/>
+          <param name="rt" value="0.01"/>
+          <param name="mz" value="0.01"/>
+          <param name="use_ppm_tolerance" value="false"/>
+          <param name="blacklist" value="true"/>
+        </section>
+      </section>
+      <section name="feature">
+        <param name="q" value=":"/>
+      </section>
+      <section name="consensus">
+        <param name="map_and" value="false"/>
+        <section name="blackorwhitelist">
+          <param name="blacklist" value="true"/>
+          <param name="rt" value="60.0"/>
+          <param name="mz" value="0.01"/>
+          <param name="use_ppm_tolerance" value="false"/>
+        </section>
+      </section>
+      <section name="f_and_c">
+        <param name="charge" value=":"/>
+        <param name="size" value=":"/>
+        <param name="remove_hull" value="false"/>
+      </section>
+      <section name="id">
+        <param name="remove_clashes" value="false"/>
+        <param name="keep_best_score_id" value="false"/>
+        <param name="sequence_comparison_method" value="substring"/>
+        <param name="remove_annotated_features" value="false"/>
+        <param name="remove_unannotated_features" value="false"/>
+        <param name="remove_unassigned_ids" value="false"/>
+        <param name="rt" value="0.1"/>
+        <param name="mz" value="0.001"/>
+        <param name="blacklist_imperfect" value="false"/>
+      </section>
+      <section name="algorithm">
+        <section name="SignalToNoise">
+          <param name="max_intensity" value="-1"/>
+          <param name="auto_max_stdev_factor" value="3.0"/>
+          <param name="auto_max_percentile" value="95"/>
+          <param name="auto_mode" value="0"/>
+          <param name="win_len" value="200.0"/>
+          <param name="bin_count" value="30"/>
+          <param name="min_required_elements" value="10"/>
+          <param name="noise_for_empty_window" value="1e+20"/>
+          <param name="write_log_messages" value="true"/>
+        </section>
+      </section>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
   </tests>
   <help><![CDATA[Extracts or manipulates portions of data from peak, feature or consensus-feature files.
 
 
-For more information, visit https://openms.de/doxygen/release/3.1.0/html/TOPP_FileFilter.html]]></help>
+For more information, visit https://www.openms.de/doxygen/release/3.6.0/html/TOPP_FileFilter.html]]></help>
   <expand macro="references"/>
 </tool>

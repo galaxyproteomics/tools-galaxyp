@@ -1,0 +1,195 @@
+<!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
+<!--Proposed Tool Section: [Quality Control]-->
+<tool id="DIAuditor" name="DIAuditor" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+  <description>Computes quality metrics of data-independent acquisition (DIA) runs, per run and per isolation window</description>
+  <macros>
+    <token name="@EXECUTABLE@">DIAuditor</token>
+    <import>macros.xml</import>
+  </macros>
+  <expand macro="requirements"/>
+  <expand macro="required_files"/>
+  <expand macro="stdio"/>
+  <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
+@EXT_FOO@
+#import re
+
+## Preprocessing
+mkdir in_cond.in &&
+#if $in_cond.in_select == "no"
+mkdir ${' '.join(["'in_cond.in/%s'" % (i) for i, f in enumerate($in_cond.in) if f])} && 
+${' '.join(["cp '%s' 'in_cond.in/%s/%s.%s' && " % (f, i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in_cond.in) if f])}
+#else
+cp '$in_cond.in' 'in_cond.in/${re.sub("[^\w\-_]", "_", $in_cond.in.element_identifier)}.$gxy2omsext($in_cond.in.ext)' &&
+#end if
+#if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir out &&
+#end if
+#if "out_windows_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir out_windows &&
+#end if
+#if "out_mzqc_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir out_mzqc &&
+#end if
+
+## Main program call
+
+set -o pipefail &&
+@EXECUTABLE@ -write_ctd ./ &&
+python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
+@EXECUTABLE@ -ini @EXECUTABLE@.ctd
+-in
+#if $in_cond.in_select == "no"
+${' '.join(["'in_cond.in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in_cond.in) if f])}
+#else
+'in_cond.in/${re.sub("[^\w\-_]", "_", $in_cond.in.element_identifier)}.$gxy2omsext($in_cond.in.ext)'
+#end if
+#if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  -out
+  'out/output.${gxy2omsext("tabular")}'
+#end if
+#if "out_windows_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  -out_windows
+  'out_windows/output.${gxy2omsext("tabular")}'
+#end if
+#if "out_mzqc_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  -out_mzqc
+  'out_mzqc/output.${gxy2omsext("mzqc")}'
+#end if
+#if len(str($OPTIONAL_OUTPUTS).split(',')) == 0
+  | tee '$stdout'
+#end if
+
+## Postprocessing
+#if "out_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  && mv 'out/output.${gxy2omsext("tabular")}' '$out'
+#end if
+#if "out_windows_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  && mv 'out_windows/output.${gxy2omsext("tabular")}' '$out_windows'
+#end if
+#if "out_mzqc_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  && mv 'out_mzqc/output.${gxy2omsext("mzqc")}' '$out_mzqc'
+#end if
+#if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
+  && mv '@EXECUTABLE@.ctd' '$ctd_out'
+#end if]]></command>
+  <configfiles>
+    <inputs name="args_json" data_style="paths"/>
+    <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
+  </configfiles>
+  <inputs>
+    <conditional name="in_cond">
+      <param name="in_select" type="select" label="Run tool in batch mode for -in">
+        <option value="no">No: process all datasets jointly</option>
+        <option value="yes">Yes: process each dataset in an independent job</option>
+      </param>
+      <when value="no">
+        <param argument="-in" type="data" format="mzml" multiple="true" label="Input files, one per run: mzML, Thermo .raw and Bruker timsTOF .d (directory or .d.zip), as supported by this build" help=" select mzml data sets(s)"/>
+      </when>
+      <when value="yes">
+        <param argument="-in" type="data" format="mzml" label="Input files, one per run: mzML, Thermo .raw and Bruker timsTOF .d (directory or .d.zip), as supported by this build" help=" select mzml data sets(s)"/>
+      </when>
+    </conditional>
+    <param argument="-tic" type="select" label="Total ion current of a spectrum" help="'auto': the value in the file if present, otherwise the sum of intensities; 'file': only the value in the file, spectra without it count with 0 (like the original DIAuditor); 'computed': always the sum of intensities">
+      <option value="auto" selected="true">auto</option>
+      <option value="computed">computed</option>
+      <option value="file">file</option>
+      <expand macro="list_string_san" name="tic"/>
+    </param>
+    <param argument="-peak_count" type="select" label="Peaks counted per spectrum" help="'all': all data points (like the original DIAuditor); 'nonzero': data points with an intensity above zero (differs for profile data)">
+      <option value="all" selected="true">all</option>
+      <option value="nonzero">nonzero</option>
+      <expand macro="list_string_san" name="peak_count"/>
+    </param>
+    <param argument="-ion_mobility" type="select" label="Ion mobility settings that separate isolation windows with the same m/z range" help="'auto': the FAIMS compensation voltage and the ion mobility range of the window (diaPASEF frames); 'faims': only the FAIMS compensation voltage (like the original DIAuditor); 'none': windows are defined by m/z alone">
+      <option value="auto" selected="true">auto</option>
+      <option value="faims">faims</option>
+      <option value="none">none</option>
+      <expand macro="list_string_san" name="ion_mobility"/>
+    </param>
+    <expand macro="adv_opts_macro">
+      <param argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
+      <param argument="-test" type="hidden" value="False" label="Enables the test mode (needed for internal use only)" help="" optional="true">
+        <expand macro="list_string_san" name="test"/>
+      </param>
+    </expand>
+    <param name="OPTIONAL_OUTPUTS" type="select" optional="true" multiple="true" label="Optional outputs">
+      <option value="out_FLAG">out (Table with one row per run)</option>
+      <option value="out_windows_FLAG">out_windows (Table with one row per isolation window of each run)</option>
+      <option value="out_mzqc_FLAG">out_mzqc (mzQC file with the run metrics)</option>
+      <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+    </param>
+  </inputs>
+  <outputs>
+    <data name="out" label="${tool.name} on ${on_string}: out" format="tabular">
+      <filter>OPTIONAL_OUTPUTS is not None and "out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+    <data name="out_windows" label="${tool.name} on ${on_string}: out_windows" format="tabular">
+      <filter>OPTIONAL_OUTPUTS is not None and "out_windows_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+    <data name="out_mzqc" label="${tool.name} on ${on_string}: out_mzqc" format="mzqc">
+      <filter>OPTIONAL_OUTPUTS is not None and "out_mzqc_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+    <data name="stdout" format="txt" label="${tool.name} on ${on_string}: stdout">
+      <filter>OPTIONAL_OUTPUTS is None</filter>
+    </data>
+    <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
+      <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </data>
+  </outputs>
+  <tests>
+    <!-- TOPP_DIAuditor_1 -->
+    <test expect_num_outputs="4">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <conditional name="in_cond">
+        <param name="in" value="DIAuditor_1_input.mzML,OpenSwathWorkflow_1_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/DIAuditor_1_input.mzML,https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/OpenSwathWorkflow_1_input.mzML"/>
+      </conditional>
+      <output name="out" value="DIAuditor_1_output.tsv" compare="sim_size" delta_frac="0.7" ftype="tabular" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/DIAuditor_1_output.tsv"/>
+      <output name="out_windows" value="DIAuditor_1_windows_output.tsv" compare="sim_size" delta_frac="0.7" ftype="tabular" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/DIAuditor_1_windows_output.tsv"/>
+      <output name="out_mzqc" value="DIAuditor_1_output.mzQC" compare="sim_size" delta_frac="0.7" ftype="mzqc" delta="13078" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/DIAuditor_1_output.mzQC"/>
+      <param name="tic" value="auto"/>
+      <param name="peak_count" value="all"/>
+      <param name="ion_mobility" value="auto"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG,out_FLAG,out_windows_FLAG,out_mzqc_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+    <!-- TOPP_DIAuditor_2 -->
+    <test expect_num_outputs="3">
+      <section name="adv_opts">
+        <param name="force" value="false"/>
+        <param name="test" value="true"/>
+      </section>
+      <conditional name="in_cond">
+        <param name="in" value="DIAuditor_1_input.mzML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/DIAuditor_1_input.mzML"/>
+      </conditional>
+      <output name="out" value="DIAuditor_2_output.tsv" compare="sim_size" delta_frac="0.7" ftype="tabular" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/DIAuditor_2_output.tsv"/>
+      <output name="out_windows" value="DIAuditor_2_windows_output.tsv" compare="sim_size" delta_frac="0.7" ftype="tabular" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/DIAuditor_2_windows_output.tsv"/>
+      <param name="tic" value="file"/>
+      <param name="peak_count" value="nonzero"/>
+      <param name="ion_mobility" value="none"/>
+      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG,out_FLAG,out_windows_FLAG"/>
+      <output name="ctd_out" ftype="xml">
+        <assert_contents>
+          <is_valid_xml/>
+        </assert_contents>
+      </output>
+      <assert_stdout>
+        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
+      </assert_stdout>
+    </test>
+  </tests>
+  <help><![CDATA[Computes quality metrics of data-independent acquisition (DIA) runs, per run and per isolation window.
+
+
+For more information, visit https://www.openms.de/doxygen/release/3.6.0/html/TOPP_DIAuditor.html]]></help>
+  <expand macro="references"/>
+</tool>

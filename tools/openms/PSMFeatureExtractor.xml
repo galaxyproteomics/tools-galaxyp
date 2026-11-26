@@ -1,44 +1,61 @@
 <!--This is a configuration file for the integration of a tools into Galaxy (https://galaxyproject.org/). This file was automatically generated using CTDConverter.-->
 <!--Proposed Tool Section: [Identification Processing]-->
-<tool id="PSMFeatureExtractor" name="PSMFeatureExtractor" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="21.05">
+<tool id="PSMFeatureExtractor" name="PSMFeatureExtractor" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
   <description>Computes extra features for each input PSM</description>
   <macros>
     <token name="@EXECUTABLE@">PSMFeatureExtractor</token>
     <import>macros.xml</import>
   </macros>
   <expand macro="requirements"/>
+  <expand macro="required_files"/>
   <expand macro="stdio"/>
   <command detect_errors="exit_code"><![CDATA[@QUOTE_FOO@
 @EXT_FOO@
 #import re
 
 ## Preprocessing
-mkdir in_cond.in &&
-#if $in_cond.in_select == "no"
-mkdir ${' '.join(["'in_cond.in/%s'" % (i) for i, f in enumerate($in_cond.in) if f])} && 
-${' '.join(["cp '%s' 'in_cond.in/%s/%s.%s' && " % (f, i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in_cond.in) if f])}
+#if $input_kind.input_kind == 'bundle'
+mkdir -p 'in_bundle/in.idparquet' &&
+#for $e in $input_kind.in_bundle
+ln -s '$e' 'in_bundle/in.idparquet/${e.element_identifier}' &&
+#end for
 #else
-cp '$in_cond.in' 'in_cond.in/${re.sub("[^\w\-_]", "_", $in_cond.in.element_identifier)}.$gxy2omsext($in_cond.in.ext)' &&
+mkdir in &&
+cp '$in' 'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)' &&
 #end if
 mkdir out &&
 
 ## Main program call
 
+#if "out_idparquet_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+  mkdir -p out_idparquet_bundle &&
+#end if
 set -o pipefail &&
 @EXECUTABLE@ -write_ctd ./ &&
 python3 '$__tool_directory__/fill_ctd.py' '@EXECUTABLE@.ctd' '$args_json' '$hardcoded_json' &&
 @EXECUTABLE@ -ini @EXECUTABLE@.ctd
+#if $input_kind.input_kind == 'bundle'
 -in
-#if $in_cond.in_select == "no"
-${' '.join(["'in_cond.in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identifier), $gxy2omsext(f.ext)) for i, f in enumerate($in_cond.in) if f])}
+'in_bundle/in.idparquet'
 #else
-'in_cond.in/${re.sub("[^\w\-_]", "_", $in_cond.in.element_identifier)}.$gxy2omsext($in_cond.in.ext)'
+-in
+'in/${re.sub("[^\w\-_]", "_", $in.element_identifier)}.$gxy2omsext($in.ext)'
+#end if
+#if "out_idparquet_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+-out_type
+idparquet
 #end if
 -out
+#if "out_idparquet_FLAG" in str($OPTIONAL_OUTPUTS).split(',')
+'out_idparquet_bundle/out.idparquet'
+#else
 'out/output.${out_type}'
+#end if
 
 ## Postprocessing
+#if "out_idparquet_FLAG" not in str($OPTIONAL_OUTPUTS).split(',')
 && mv 'out/output.${out_type}' '$out'
+#end if
 #if "ctd_out_FLAG" in $OPTIONAL_OUTPUTS
   && mv '@EXECUTABLE@.ctd' '$ctd_out'
 #end if]]></command>
@@ -47,16 +64,16 @@ ${' '.join(["'in_cond.in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identi
     <configfile name="hardcoded_json"><![CDATA[{"log": "log.txt", "threads": "\${GALAXY_SLOTS:-1}", "no_progress": true}]]></configfile>
   </configfiles>
   <inputs>
-    <conditional name="in_cond">
-      <param name="in_select" type="select" label="Run tool in batch mode for -in">
-        <option value="no">No: process all datasets jointly</option>
-        <option value="yes">Yes: process each dataset in an independent job</option>
+    <conditional name="input_kind">
+      <param name="input_kind" type="select" label="Input kind" help="A Parquet bundle is a list collection holding the tables of one bundle directory; the element names must be the file names inside it">
+        <option value="file" selected="true">Single file</option>
+        <option value="bundle">Parquet bundle</option>
       </param>
-      <when value="no">
-        <param argument="-in" type="data" format="idxml,mzid" multiple="true" label="Input file(s)" help=" select idxml,mzid data sets(s)"/>
+      <when value="file">
+        <param argument="-in" type="data" format="idxml,mzid" label="Input file" help=" select idxml,mzid data sets(s)"/>
       </when>
-      <when value="yes">
-        <param argument="-in" type="data" format="idxml,mzid" label="Input file(s)" help=" select idxml,mzid data sets(s)"/>
+      <when value="bundle">
+        <param name="in_bundle" type="data_collection" collection_type="list" label="Input as a Parquet bundle" help="the tables of one bundle directory, one dataset per table"/>
       </when>
     </conditional>
     <param argument="-out_type" type="select" label="Output file type -- default: determined from file extension or content" help="">
@@ -69,12 +86,7 @@ ${' '.join(["'in_cond.in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identi
       <expand macro="list_string_val" name="extra"/>
       <expand macro="list_string_san" name="extra"/>
     </param>
-    <param argument="-multiple_search_engines" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Combine PSMs from different search engines by merging on scan level" help=""/>
     <expand macro="adv_opts_macro">
-      <param argument="-skip_db_check" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Manual override to skip the check if same settings for multiple search engines were applied" help="Only valid together with -multiple_search_engines flag"/>
-      <param argument="-concat" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Naive merging of PSMs from different search engines: concatenate multiple search results instead of merging on scan level" help="Only valid together with -multiple_search_engines flag"/>
-      <param argument="-impute" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Will instead of discarding all PSM not unanimously detected by all SE, impute missing values by their respective scores min/max observed" help="Only valid together with -multiple_search_engines flag"/>
-      <param argument="-limit_imputation" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Will impute missing scores with the worst numerical limit (instead of min/max observed) of the respective score" help="Only valid together with -multiple_search_engines flag"/>
       <param argument="-force" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overrides tool-specific checks" help=""/>
       <param argument="-test" type="hidden" value="False" label="Enables the test mode (needed for internal use only)" help="" optional="true">
         <expand macro="list_string_san" name="test"/>
@@ -82,13 +94,19 @@ ${' '.join(["'in_cond.in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identi
     </expand>
     <param name="OPTIONAL_OUTPUTS" type="select" optional="true" multiple="true" label="Optional outputs">
       <option value="ctd_out_FLAG">Output used ctd (ini) configuration file</option>
+      <option value="out_idparquet_FLAG">out (idparquet bundle)</option>
     </param>
   </inputs>
   <outputs>
+    <collection type="list" name="out_idparquet" label="${tool.name} on ${on_string}: out (idparquet bundle)">
+      <discover_datasets directory="out_idparquet_bundle/out.idparquet" recurse="true" format="parquet" pattern="(?P&lt;designation&gt;.*\.parquet)"/>
+      <filter>OPTIONAL_OUTPUTS is not None and "out_idparquet_FLAG" in OPTIONAL_OUTPUTS</filter>
+    </collection>
     <data name="out" label="${tool.name} on ${on_string}: out" format="idxml">
       <change_format>
         <when input="out_type" value="mzid" format="mzid"/>
       </change_format>
+      <filter>OPTIONAL_OUTPUTS is None or ("out_idparquet_FLAG" not in OPTIONAL_OUTPUTS)</filter>
     </data>
     <data name="ctd_out" format="xml" label="${tool.name} on ${on_string}: ctd">
       <filter>OPTIONAL_OUTPUTS is not None and "ctd_out_FLAG" in OPTIONAL_OUTPUTS</filter>
@@ -98,19 +116,15 @@ ${' '.join(["'in_cond.in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identi
     <!-- TOPP_PSMFeatureExtractor_1 -->
     <test expect_num_outputs="2">
       <section name="adv_opts">
-        <param name="skip_db_check" value="true"/>
-        <param name="concat" value="false"/>
-        <param name="impute" value="false"/>
-        <param name="limit_imputation" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <conditional name="in_cond">
-        <param name="in" value="MSGFPlusAdapter_1_out.idXML,XTandemAdapter_1_out.idXML"/>
+      <conditional name="input_kind">
+        <param name="input_kind" value="file"/>
+        <param name="in" value="MSGFPlusAdapter_1_out.idXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/THIRDPARTY/MSGFPlusAdapter_1_out.idXML"/>
       </conditional>
-      <output name="out" value="PSMFeatureExtractor_1_out.idXML" compare="sim_size" delta_frac="0.7" ftype="idxml"/>
+      <output name="out" value="PSMFeatureExtractor_1_out.idXML" compare="sim_size" delta_frac="0.7" ftype="idxml" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/PSMFeatureExtractor_1_out.idXML"/>
       <param name="out_type" value="idXML"/>
-      <param name="multiple_search_engines" value="true"/>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
         <assert_contents>
@@ -124,19 +138,15 @@ ${' '.join(["'in_cond.in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identi
     <!-- TOPP_PSMFeatureExtractor_2 -->
     <test expect_num_outputs="2">
       <section name="adv_opts">
-        <param name="skip_db_check" value="true"/>
-        <param name="concat" value="false"/>
-        <param name="impute" value="false"/>
-        <param name="limit_imputation" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <conditional name="in_cond">
-        <param name="in" value="MSGFPlusAdapter_1_out.idXML,XTandemAdapter_1_out.idXML"/>
+      <conditional name="input_kind">
+        <param name="input_kind" value="file"/>
+        <param name="in" value="MSGFPlusAdapter_1_out.idXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/THIRDPARTY/MSGFPlusAdapter_1_out.idXML"/>
       </conditional>
-      <output name="out" value="PSMFeatureExtractor_2_out.mzid" compare="sim_size" delta_frac="0.7" ftype="mzid"/>
+      <output name="out" value="PSMFeatureExtractor_2_out.mzid" compare="sim_size" delta_frac="0.7" ftype="mzid" delta="14119" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/PSMFeatureExtractor_2_out.mzid"/>
       <param name="out_type" value="mzid"/>
-      <param name="multiple_search_engines" value="true"/>
       <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
       <output name="ctd_out" ftype="xml">
         <assert_contents>
@@ -147,36 +157,68 @@ ${' '.join(["'in_cond.in/%s/%s.%s'"%(i, re.sub('[^\w\-_]', '_', f.element_identi
         <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
       </assert_stdout>
     </test>
-    <!-- TOPP_PSMFeatureExtractor_3 -->
-    <test expect_num_outputs="2">
+    <test expect_num_outputs="1">
       <section name="adv_opts">
-        <param name="skip_db_check" value="false"/>
-        <param name="concat" value="false"/>
-        <param name="impute" value="false"/>
-        <param name="limit_imputation" value="false"/>
         <param name="force" value="false"/>
         <param name="test" value="true"/>
       </section>
-      <conditional name="in_cond">
-        <param name="in" value="MSGFPlusAdapter_1_out.idXML"/>
+      <conditional name="input_kind">
+        <param name="input_kind" value="file"/>
+        <param name="in" value="MSGFPlusAdapter_1_out.idXML" location="https://raw.githubusercontent.com/OpenMS/OpenMS/5d5cbff4053b281763a1a79bf69e81c27967cfdf/src/tests/topp/THIRDPARTY/MSGFPlusAdapter_1_out.idXML"/>
       </conditional>
-      <output name="out" value="PSMFeatureExtractor_3_out.idXML" compare="sim_size" delta_frac="0.7" ftype="idxml"/>
       <param name="out_type" value="idXML"/>
-      <param name="multiple_search_engines" value="false"/>
-      <param name="OPTIONAL_OUTPUTS" value="ctd_out_FLAG"/>
-      <output name="ctd_out" ftype="xml">
+      <param name="OPTIONAL_OUTPUTS" value="out_idparquet_FLAG"/>
+      <output_collection name="out_idparquet" type="list" min="4" max="4">
+        <element name="protein_groups.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+        <element name="proteins.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+        <element name="psms.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+        <element name="search_params.parquet" ftype="parquet">
+          <assert_contents>
+            <has_size min="100"/>
+          </assert_contents>
+        </element>
+      </output_collection>
+    </test>
+    <!-- D30 stage 8c: a bundle *input*, i.e. the tables of one bundle
+       directory reassembled by the wrapper.  The tool has no mirror rule, so
+       a bundle goes in and a plain file comes out - and the file holds what
+       the XML path produces. -->
+    <test expect_num_outputs="1">
+      <conditional name="input_kind">
+        <param name="input_kind" value="bundle"/>
+        <param name="in_bundle">
+          <collection type="list">
+            <element name="psms.parquet" value="MSGFPlusAdapter_1_out.idparquet/psms.parquet"/>
+            <element name="proteins.parquet" value="MSGFPlusAdapter_1_out.idparquet/proteins.parquet"/>
+            <element name="protein_groups.parquet" value="MSGFPlusAdapter_1_out.idparquet/protein_groups.parquet"/>
+            <element name="search_params.parquet" value="MSGFPlusAdapter_1_out.idparquet/search_params.parquet"/>
+          </collection>
+        </param>
+      </conditional>
+      <param name="out_type" value="idXML"/>
+      <output name="out" ftype="idxml">
         <assert_contents>
-          <is_valid_xml/>
+          <has_text text="&lt;PeptideIdentification "/>
+          <has_text text="PSMFeatureExtractor"/>
         </assert_contents>
       </output>
-      <assert_stdout>
-        <has_text_matching expression="@EXECUTABLE@ took .* \(wall\), .* \(CPU\), .* \(system\), .* \(user\)(; Peak Memory Usage: 32 MB)?."/>
-      </assert_stdout>
     </test>
   </tests>
   <help><![CDATA[Computes extra features for each input PSM.
 
 
-For more information, visit https://openms.de/doxygen/release/3.1.0/html/TOPP_PSMFeatureExtractor.html]]></help>
+For more information, visit https://www.openms.de/doxygen/release/3.6.0/html/TOPP_PSMFeatureExtractor.html]]></help>
   <expand macro="references"/>
 </tool>
