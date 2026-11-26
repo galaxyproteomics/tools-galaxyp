@@ -18,15 +18,21 @@ Two kinds of corrections:
   generates from C++ type names (`std::string that is appended ...` is not
   something a Galaxy user should have to read).
 
-and one normalisation that applies to every CTD, whether or not a patch names
-it: the value list of a `restrictions` attribute is sorted.  OpenMS writes the
-enumerable values of a parameter (the enzyme select being the prominent one) in
-the order its own container produces them, and that order is not stable across
-environments: the same 3.6.0 package here wrote
-`colicin_E5,no cleavage,...,RNase_T1` in one run and
-`RNase_T1,colicin_E5,no cleavage,...` in the next, i.e. a rotation of the same
-list.  CTDConverter turns that list into the wrapper's <option> elements, so a
-regeneration would show a diff that is not a change of the generator.
+and two normalisations that apply to every CTD, whether or not a patch names
+it:
+
+* the value list of a `restrictions` attribute is sorted.  OpenMS writes the
+  enumerable values of a parameter (the enzyme select being the prominent one) in
+  the order its own container produces them, and that order is not stable across
+  environments: the same 3.6.0 package here wrote
+  `colicin_E5,no cleavage,...,RNase_T1` in one run and
+  `RNase_T1,colicin_E5,no cleavage,...` in the next, i.e. a rotation of the same
+  list.  CTDConverter turns that list into the wrapper's <option> elements, so a
+  regeneration would show a diff that is not a change of the generator.
+* the `docurl` and the descriptions cite the project's web pages with the
+  insecure `http://` scheme (2 hosts, see `HTTPS_HOSTS`).  Both redirect to
+  https, and a wrapper whose help links to http:// gets flagged in review, so
+  the scheme is normalised here instead of in 150 generated files.
 
 Usage: patch_ctds.py [CTD_DIR]   (default: ctd)
 """
@@ -39,6 +45,8 @@ import xml.etree.ElementTree as ET
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PATCHES = os.path.join(HERE, "ctd_patches.json")
+# hosts the CTDs cite over http; both serve https (checked 3.6.0)
+HTTPS_HOSTS = ("www.openms.de", "www.unimod.org")
 
 
 def items(root):
@@ -137,6 +145,23 @@ def sort_restrictions(root, tool):
     return changed
 
 
+def https_urls(root, tool):
+    """Use https for the project URLs the CTDs cite in `docurl` and descriptions."""
+    pattern = re.compile(r"http://(" + "|".join(re.escape(h) for h in HTTPS_HOSTS) + r")")
+    changed = 0
+    for item in root.iter():
+        for attribute, value in list(item.attrib.items()):
+            new = pattern.sub(r"https://\1", value)
+            if new != value:
+                sys.stderr.write(
+                    f"patch_ctds: {tool}: {item.get('name') or item.tag} "
+                    f"{attribute}: scheme https\n"
+                )
+                item.set(attribute, new)
+                changed += 1
+    return changed
+
+
 def substitute_ctd(path, rules):
     """Apply the `_substitutions` rules to one CTD file and sort its value lists."""
     tool = os.path.basename(path)[:-4]
@@ -144,6 +169,7 @@ def substitute_ctd(path, rules):
     root = tree.getroot()
     changed = substitute(root, rules, tool)
     changed += sort_restrictions(root, tool)
+    changed += https_urls(root, tool)
     if changed:
         tree.write(path, encoding="UTF-8", xml_declaration=True)
 
@@ -160,9 +186,10 @@ def main(argv):
         if tool.startswith("_"):
             continue
         failures += patch(tool, spec, ctd_dir)
-    # the substitutions and the sorted value lists are not per tool: they clean
-    # up wording upstream generates from C++ type names and an order that
-    # upstream's containers produce, in every CTD the loop above did not touch
+    # the substitutions and the normalisations are not per tool: they clean up
+    # wording upstream generates from C++ type names, an order that upstream's
+    # containers produce and insecure links, in every CTD the loop above did not
+    # touch
     for path in sorted(glob.glob(os.path.join(ctd_dir, "*.ctd"))):
         substitute_ctd(path, rules)
     return 1 if failures else 0
