@@ -13,6 +13,7 @@ from pyopenms import *
 import pandas as pd
 import numpy as np
 import argparse
+import sys
 
 
 def parse_arguments() -> Tuple[argparse.ArgumentParser, argparse.Namespace]:
@@ -153,6 +154,31 @@ def __main__():
     peptide_ids = []
     # Each peptide ID should only contain one hit in the FDR_filtered idXML
     IdXMLFile().load(args.filtered_idXML, protein_ids, peptide_ids)
+    # Fail loudly if no peptide identification carries the id_merge_index meta
+    # value. Without it, no peptide could be assigned to any input mzML file and
+    # only empty tables would be written. id_merge_index is written by OpenMS
+    # IDMerger when 'annotate_file_origin' is enabled.
+    if not any(peptide_id.metaValueExists("id_merge_index") for peptide_id in peptide_ids):
+        print(
+            "Error: no peptide identification carries the 'id_merge_index' meta value."
+            " The idXML must be created by OpenMS IDMerger with 'annotate_file_origin'"
+            " enabled, otherwise the peptide identifications cannot be assigned to the"
+            " input mzML files.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    # Get the list of mzML files that have been merged together by IDmerger previously
+    filenames = None
+    if protein_ids[0].metaValueExists("spectra_data"):
+        filenames = [filename.decode("utf-8") for filename in protein_ids[0].getMetaValue("spectra_data")]
+        if len(filenames) != len(args.input):
+            print(
+                f"Warning: the idXML references {len(filenames)} spectra data file(s), but"
+                f" {len(args.input)} mzML file(s) were provided. Peptide identifications are"
+                " matched to the mzML files by their position (id_merge_index); make sure the"
+                " mzML files are given in the same order as they were merged by IDMerger.",
+                file=sys.stderr,
+            )
     # Define empty lists that collect all the necessary information, which is comprised in DataFrames
     ions = []
     spectra_mz = []
@@ -219,7 +245,11 @@ def __main__():
 
             is_matching_ion.append(is_matching_ion_peptide)
 
-        spectra_filename.append(np.repeat(file, len(flatten(spectra_mz)) - len(flatten(spectra_filename))))
+        # Report the original file name recorded in the idXML (resolved via
+        # id_merge_index) instead of the staged input path, which is
+        # environment-dependent (e.g. dataset_<uuid>.dat in Galaxy)
+        filename = filenames[file_index] if filenames is not None else file
+        spectra_filename.append(np.repeat(filename, len(flatten(spectra_mz)) - len(flatten(spectra_filename))))
 
     # Save information of matching ions
     matching_ions = pd.DataFrame.from_records(
