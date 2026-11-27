@@ -1,0 +1,271 @@
+<tool id="pmultiqc" name="PMultiQC" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>aggregate proteomics QC results into a single interactive report</description>
+    <macros>
+        <import>macros.xml</import>
+        <import>quantms_plugin.xml</import>
+        <import>maxquant_plugin.xml</import>
+        <import>mzidentml_plugin.xml</import>
+        <import>fragpipe_plugin.xml</import>
+        <import>mhcquant_plugin.xml</import>
+        <import>qpx_plugin.xml</import>
+    </macros>
+    <expand macro="bio_tools"/>
+    <expand macro="requirements"/>
+    <version_command>multiqc --pmultiqc-version</version_command>
+    <!-- detect_errors is intentionally not "aggressive": pmultiqc logs benign lines that
+         contain "error:" (e.g. quantms INFO "... Error: Cannot cut empty array" and the
+         qpx logger named "...qpx_mass_error:"). Module exceptions are caught and reported
+         by pmultiqc itself, so exit-code checking is sufficient. -->
+    <command detect_errors="default">
+<![CDATA[
+#import re
+#import os
+
+die() { echo "$@" 1>&2 ; exit 1; } &&
+
+mkdir multiqc_WDir &&
+
+#set $at_least_one_input="F"
+#set $software_dir = os.path.join('multiqc_WDir', str($software_cond.software))
+mkdir $software_dir &&
+#if str($software_cond.software) == "quantms"
+    @QUANTMS_COMMAND@
+#elif str($software_cond.software) == "maxquant"
+    @MAXQUANT_COMMAND@
+#elif str($software_cond.software) == "mzidentml"
+    @MZIDENTML_COMMAND@
+#elif str($software_cond.software) == "fragpipe"
+    @FRAGPIPE_COMMAND@
+#elif str($software_cond.software) == "mhcquant"
+    @MHCQUANT_COMMAND@
+#elif str($software_cond.software) == "qpx"
+    @QPX_COMMAND@
+#end if
+
+#if $at_least_one_input != "T"
+    #raise Exception("At least one input required")
+#end if
+
+multiqc
+
+#if str($software_cond.software) == "mzidentml"
+    --mzid-plugin multiqc_WDir
+#else
+    --${software_cond.software}-plugin multiqc_WDir
+#end if
+--filename 'report'
+
+#if str($title)
+    --title '$title'
+#end if
+#if str($comment)
+    --comment '$comment'
+#end if
+
+$pmultiqc_options.remove_decoy
+--decoy-affix '$pmultiqc_options.decoy_affix'
+--contaminant-affix '$pmultiqc_options.contaminant_affix'
+--affix-type '$pmultiqc_options.affix_type'
+$pmultiqc_options.keep_raw
+$pmultiqc_options.disable_table
+$pmultiqc_options.disable_hoverinfo
+--quantification-method '$pmultiqc_options.quantification_method'
+#if str($pmultiqc_options.condition).strip()
+    --condition '$pmultiqc_options.condition'
+#end if
+
+    ]]></command>
+    <inputs>
+        <conditional name="software_cond">
+            <param name="software" type="select" label="Which tool was used to generate the results?" help="Software name">
+                <option value="quantms">quantms</option>
+                <option value="maxquant">MaxQuant</option>
+                <option value="mzidentml">mzIdentML</option>
+                <option value="fragpipe">FragPipe</option>
+                <option value="mhcquant">nf-core/mhcquant</option>
+                <option value="qpx">QPX</option>
+            </param>
+            <when value="quantms">
+                <expand macro="quantms_form"/>
+            </when>
+            <when value="maxquant">
+                <expand macro="maxquant_form"/>
+            </when>
+            <when value="mzidentml">
+                <expand macro="mzidentml_form"/>
+            </when>
+            <when value="fragpipe">
+                <expand macro="fragpipe_form"/>
+            </when>
+            <when value="mhcquant">
+                <expand macro="mhcquant_form"/>
+            </when>
+            <when value="qpx">
+                <expand macro="qpx_form"/>
+            </when>
+        </conditional>
+        <section name="pmultiqc_options" title="pmultiqc report options" expanded="false">
+            <param argument="--remove-decoy" type="boolean" truevalue="--remove-decoy" falsevalue="--no-remove-decoy" checked="true" label="Remove decoy peptides when counting" help="Decoy entries are identified via the decoy affix"/>
+            <param argument="--decoy-affix" type="text" value="DECOY_" label="Decoy affix" help="The decoy prefix or suffix used or to be used">
+                <sanitizer invalid_char="">
+                    <valid initial="string.letters,string.digits">
+                        <add value="_"/>
+                        <add value="-"/>
+                    </valid>
+                </sanitizer>
+                <validator type="regex" message="Only letters, digits, underscore and dash are allowed">^[a-zA-Z0-9_-]*$</validator>
+            </param>
+            <param argument="--contaminant-affix" type="text" value="CONT" label="Contaminant affix" help="The contaminant prefix or suffix">
+                <sanitizer invalid_char="">
+                    <valid initial="string.letters,string.digits">
+                        <add value="_"/>
+                        <add value="-"/>
+                    </valid>
+                </sanitizer>
+                <validator type="regex" message="Only letters, digits, underscore and dash are allowed">^[a-zA-Z0-9_-]*$</validator>
+            </param>
+            <param argument="--affix-type" type="select" label="Location of the decoy marker">
+                <option value="prefix" selected="true">prefix</option>
+                <option value="suffix">suffix</option>
+            </param>
+            <param argument="--keep-raw" type="boolean" truevalue="--keep-raw" falsevalue="" checked="false" label="Keep filenames in experimental design output as raw"/>
+            <param argument="--condition" type="text" value="" optional="true" label="Condition column(s)" help="Create conditions from provided (e.g. factor) columns of the experimental design">
+                <sanitizer invalid_char="">
+                    <valid initial="string.letters,string.digits">
+                        <add value=","/>
+                        <add value=":"/>
+                        <add value=" "/>
+                        <add value="."/>
+                        <add value="_"/>
+                        <add value="-"/>
+                        <add value="("/>
+                        <add value=")"/>
+                        <add value="["/>
+                        <add value="]"/>
+                    </valid>
+                </sanitizer>
+                <validator type="regex" message="Only letters, digits, spaces and , : . _ - ( ) [ ] are allowed">^[0-9a-zA-Z,: .()\[\]-]+$</validator>
+            </param>
+            <param argument="--quantification-method" type="select" label="Quantification method for LFQ experiments">
+                <option value="feature_intensity" selected="true">feature_intensity</option>
+                <option value="spectral_counting">spectral_counting</option>
+            </param>
+            <param argument="--disable-table" type="boolean" truevalue="--disable-table" falsevalue="" checked="false" label="Disable protein/peptide table plots" help="Disable the tables for large datasets"/>
+            <param argument="--disable-hoverinfo" type="boolean" truevalue="--disable-hoverinfo" falsevalue="" checked="false" label="Disable interactive hover tooltips in the plots"/>
+        </section>
+        <param name="title" type="text" value="" optional="true" label="Report title" help="It is printed as page header">
+            <sanitizer invalid_char="">
+                <valid initial="string.letters,string.digits">
+                    <add value=","/>
+                    <add value=":"/>
+                    <add value="-"/>
+                    <add value="_"/>
+                    <add value=" "/>
+                    <add value="."/>
+                </valid>
+            </sanitizer>
+            <validator type="regex">^[0-9a-zA-Z,: _.-]+$</validator>
+        </param>
+        <param name="comment" type="text" value="" optional="true" label="Custom comment" help="It will be printed at the top of the report">
+            <sanitizer invalid_char="">
+                <valid initial="string.letters,string.digits">
+                    <add value=","/>
+                    <add value=":"/>
+                    <add value="-"/>
+                    <add value="_"/>
+                    <add value=" "/>
+                    <add value="."/>
+                </valid>
+            </sanitizer>
+            <validator type="regex">^[0-9a-zA-Z,: _.-]+$</validator>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="html_report" format="html" from_work_dir="report.html" label="${tool.name} on ${on_string}: Webpage"/>
+        <data name="stats" format="json" from_work_dir="report_data/multiqc_data.json" label="${tool.name} on ${on_string}: Stats (JSON)"/>
+    </outputs>
+    <tests>
+        <expand macro="quantms_test"/>
+        <expand macro="maxquant_test"/>
+        <expand macro="mzidentml_test"/>
+        <expand macro="fragpipe_test"/>
+        <expand macro="mhcquant_test"/>
+        <expand macro="qpx_test"/>
+        <test expect_num_outputs="2">
+            <!-- Report title and comment are rendered -->
+            <conditional name="software_cond">
+                <param name="software" value="maxquant"/>
+                <param name="input" value="maxquant/parameters.txt,maxquant/proteinGroups.txt,maxquant/summary.txt,maxquant/evidence.txt,maxquant/msms.txt,maxquant/msmsScans.txt"/>
+            </conditional>
+            <param name="title" value="Title of the report"/>
+            <param name="comment" value="Commment for the report"/>
+            <output name="html_report">
+                <assert_contents>
+                    <has_text text="Title of the report"/>
+                    <has_text text="Commment for the report"/>
+                    <has_text text="MaxQuant"/>
+                </assert_contents>
+            </output>
+            <output name="stats">
+                <assert_contents>
+                    <has_text text="BSA_min_21"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+**What it does**
+
+`PMultiQC <https://github.com/bigbio/pmultiqc>`_ is a MultiQC plugin for comprehensive quality control
+reporting of mass spectrometry-based proteomics data. It aggregates results from proteomics
+search/quantification pipelines into a single interactive HTML report with QC metrics and visualizations.
+
+**Inputs**
+
+You need to tell the tool which software generated the results, using the **Which tool was used to
+generate the results?** dropdown. Currently supported data sources:
+
+* **quantms**: `experimental_design.tsv`, `*.mzTab` identification results, and optionally `*.mzML`
+  spectra files and `*.idXML` identification files
+* **MaxQuant**: `parameters.txt`, `proteinGroups.txt`, `summary.txt`, `evidence.txt`, `msms.txt`,
+  `msmsScans.txt`
+* **mzIdentML**: `*.mzid` files and optionally the corresponding `*.mzML` or `*.mgf` spectra files
+* **FragPipe**: `psm.tsv` and `ion.tsv` (or `combined_ion.tsv`, `combined_peptide.tsv`,
+  `combined_protein.tsv`)
+* **nf-core/mhcquant**: the pmultiqc output files of the mhcquant results folder
+  (`multiqc_general_stats.txt`, `multiqc_chromatogram.txt`, ..., `percolator_plot.txt`)
+* **QPX**: `*.psm.parquet`, `*.pg.parquet`, `*.feature.parquet`, `*.run.parquet`, `*.sample.parquet`
+
+Each report covers the results of **one** software tool; select all files of that tool in the
+corresponding input fields (multiple files are supported). pmultiqc processes only one software
+module per report (only one `--*-plugin` flag may be active per run, see the pmultiqc CLI
+reference), so results from different tools require separate reports.
+
+**Report content**
+
+The report contains an experimental design overview, a pipeline performance overview (contaminants
+score, peptide intensity, charge score, missed cleavages, ID rate over RT, MS2 oversampling, peptide
+missing values), summary tables with spectra/peptide/protein counts, identification statistics
+(spectra tracking, search engine scores, precursor charges, number of peaks per MS/MS spectrum, peak
+intensity distributions, delta mass), and peptide/protein quantification tables.
+
+**Options**
+
+The *pmultiqc report options* section exposes the pmultiqc command line options:
+
+* `--remove-decoy/--no-remove-decoy`, `--decoy-affix`, `--contaminant-affix`, `--affix-type`:
+  handling of decoy and contaminant entries during counting
+* `--condition`: create conditions from provided (e.g. factor) columns of the experimental design
+* `--keep-raw`: keep filenames in the experimental design output as raw
+* `--quantification-method`: quantification method for LFQ experiments
+  (`feature_intensity` or `spectral_counting`)
+* `--disable-table`: disable the protein/peptide table plots for large datasets
+* `--disable-hoverinfo`: disable interactive hover tooltips in the plots
+
+-----
+
+pmultiqc is developed by the `bigbio <https://github.com/bigbio>`_ community. For more information
+see the `documentation <https://pmultiqc.quantms.org/>`_.
+    ]]></help>
+    <expand macro="citations"/>
+</tool>
