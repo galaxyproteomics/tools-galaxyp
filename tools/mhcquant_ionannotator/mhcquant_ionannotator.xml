@@ -1,0 +1,114 @@
+<tool id="mhcquant_ionannotator" name="mhcquant IonAnnotator" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>Annotate MS2 spectra with theoretical fragment ions of FDR-filtered peptides</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <xrefs>
+        <xref type="bio.tools">MHCquant</xref>
+    </xrefs>
+    <expand macro="requirements">
+        <container type="docker">quay.io/biocontainers/pyopenms:3.4.1--py312h6b06db6_2</container>
+    </expand>
+    <version_command>echo @TOOL_VERSION@</version_command>
+    <command detect_errors="aggressive"><![CDATA[
+python '$__tool_directory__/get_ion_annotations.py'
+    --input
+    #for $spectrum in $spectra:
+        '$spectrum'
+    #end for
+    --filtered_idXML '$idxml'
+    --prefix 'ionannotator'
+    --precursor_charge '$precursor_charge'
+    --fragment_mass_tolerance '$fragment_mass_tolerance'
+    $use_a_ions
+    $use_c_ions
+    $use_x_ions
+    $use_z_ions
+    ]]></command>
+    <inputs>
+        <param name="spectra" argument="--input" type="data" format="mzml" multiple="true" label="Replicate mzML files of one sample" help="The mzML files of the sample, in the same order as they were merged by IDMerger"/>
+        <param name="idxml" argument="--filtered_idXML" type="data" format="idxml" label="FDR-filtered idXML" help="Contains the final peptide identifications of the sample (one hit per peptide identification)"/>
+        <param argument="--precursor_charge" type="text" value="2:3" label="Precursor charge range" help="Minimum:maximum precursor charge, e.g. 2:3; the fragment ion charge range is derived from it">
+            <validator type="regex" message="Charge range as min:max, e.g. 2:3">^\d+:\d+$</validator>
+        </param>
+        <param argument="--fragment_mass_tolerance" type="float" value="0.02" min="0.0" label="Fragment mass tolerance (Da)" help="Tolerance used for matching theoretical and experimental fragment ions"/>
+        <param argument="--use_a_ions" type="boolean" truevalue="--use_a_ions" falsevalue="" checked="false" label="Add a-ions" help="Include a-ions in the theoretical spectrum generation"/>
+        <param argument="--use_c_ions" type="boolean" truevalue="--use_c_ions" falsevalue="" checked="false" label="Add c-ions" help="Include c-ions in the theoretical spectrum generation"/>
+        <param argument="--use_x_ions" type="boolean" truevalue="--use_x_ions" falsevalue="" checked="false" label="Add x-ions" help="Include x-ions in the theoretical spectrum generation"/>
+        <param argument="--use_z_ions" type="boolean" truevalue="--use_z_ions" falsevalue="" checked="false" label="Add z-ions" help="Include z-ions in the theoretical spectrum generation"/>
+    </inputs>
+    <outputs>
+        <data name="all_peaks" format="tabular" from_work_dir="ionannotator_all_peaks.tsv" label="${tool.name} on ${on_string}: all peaks"/>
+        <data name="matching_ions" format="tabular" from_work_dir="ionannotator_matching_ions.tsv" label="${tool.name} on ${on_string}: matching ions"/>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="2">
+            <param name="spectra" value="ionannotator_rep1.mzml,ionannotator_rep2.mzml"/>
+            <param name="idxml" value="ionannotator.idxml"/>
+            <output name="all_peaks">
+                <assert_contents>
+                    <has_text text="Ion_ID"/>
+                    <has_text text="Is_matching_ion"/>
+                    <has_text text="nativeID"/>
+                    <has_text text="STETLTKKLS"/>
+                    <has_text text="AFPKAVLAPSAI"/>
+                </assert_contents>
+            </output>
+            <output name="matching_ions" file="matching_ions_default.tsv" compare="diff"/>
+        </test>
+        <test expect_num_outputs="2">
+            <param name="spectra" value="ionannotator_rep1.mzml"/>
+            <param name="idxml" value="ionannotator.idxml"/>
+            <param name="use_x_ions" value="true"/>
+            <param name="use_z_ions" value="true"/>
+            <output name="all_peaks">
+                <assert_contents>
+                    <has_text text="Ion_ID"/>
+                    <has_text text="Is_matching_ion"/>
+                    <has_text text="STETLTKKLS"/>
+                </assert_contents>
+            </output>
+            <output name="matching_ions" file="matching_ions_xz.tsv" compare="diff"/>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+**What it does**
+
+Annotates DDA MS2 spectra with the theoretical fragment ions of the FDR-filtered peptide identifications, in the spirit of the `get_ion_annotations.py` helper shipped with the nf-core/mhcquant pipeline. b- and y-ions are always considered; a-, c-, x- and z-ions can be added optionally.
+
+For every peak of every MS2 spectrum referenced by the filtered idXML, the tool reports the observed m/z and intensity and whether the peak matches (within the given fragment mass tolerance) a theoretical fragment ion of the assigned peptide sequence. This aids the manual validation of peptide-spectrum matches, a common step in immunopeptidomics workflows such as MHC ligand identification.
+
+-----
+
+**Inputs**
+
+- **Replicate mzML files of one sample**: the MS2 spectra of the sample. Provide all replicate mzML files that were merged into the idXML by IDMerger, in the same order as they were passed to IDMerger.
+- **FDR-filtered idXML**: the final peptide identifications of the sample, e.g. the output of OpenMS IDFilter at the desired peptide-level FDR. Each peptide identification must contain a single peptide hit.
+
+-----
+
+**Outputs**
+
+- **Matching ions** (`*_matching_ions.tsv`): all observed peaks that match a theoretical fragment ion of the peptide (peptide sequence, ion name, ion charge, theoretical and experimental m/z, intensity, and the corresponding peak ID in the all peaks table). Only reported when at least two matching ions were found for a spectrum.
+- **All peaks** (`*_all_peaks.tsv`): all peaks of the referenced MS2 spectra with their peptide assignment, m/z, intensity, whether they are a matching ion, the spectrum native ID, and the source mzML file.
+
+-----
+
+**Options**
+
+- **Precursor charge range**: minimum:maximum precursor charge, e.g. `2:3`. The fragment ion charges are derived from the precursor charge stored in the idXML (precursor charge minus one, at least 1).
+- **Fragment mass tolerance (Da)**: absolute tolerance for matching theoretical and experimental fragment ions (default 0.02 Da).
+- **Add a-, c-, x-, z-ions**: extend the theoretical spectrum beyond the default b/y series.
+
+-----
+
+**Credits**
+
+This tool wraps `get_ion_annotations.py`, written by Jonas Scheid (MIT license) for the nf-core/mhcquant pipeline: https://github.com/nf-core/mhcquant
+
+If you use this tool in your research, please cite MHCquant:
+
+- MHCquant: Automated and Reproducible Data Analysis for Immunopeptidomics. Genome Biology (2025). doi: `10.1186/s13059-025-03763-8`
+    ]]></help>
+    <expand macro="citations"/>
+</tool>
