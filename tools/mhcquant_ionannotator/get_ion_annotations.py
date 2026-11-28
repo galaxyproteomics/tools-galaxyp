@@ -154,11 +154,13 @@ def __main__():
     peptide_ids = []
     # Each peptide ID should only contain one hit in the FDR_filtered idXML
     IdXMLFile().load(args.filtered_idXML, protein_ids, peptide_ids)
-    # Fail loudly if no peptide identification carries the id_merge_index meta
+    # Fail loudly if any peptide identification lacks the id_merge_index meta
     # value. Without it, no peptide could be assigned to any input mzML file and
     # only empty tables would be written. id_merge_index is written by OpenMS
-    # IDMerger when 'annotate_file_origin' is enabled.
-    if not any(peptide_id.metaValueExists("id_merge_index") for peptide_id in peptide_ids):
+    # IDMerger when 'annotate_file_origin' is enabled. A partially annotated
+    # idXML (e.g. IDMerger -add_to without annotate_file_origin) would silently
+    # skip the unannotated identifications, so all of them must carry the value.
+    if not all(peptide_id.metaValueExists("id_merge_index") for peptide_id in peptide_ids):
         print(
             "Error: no peptide identification carries the 'id_merge_index' meta value."
             " The idXML must be created by OpenMS IDMerger with 'annotate_file_origin'"
