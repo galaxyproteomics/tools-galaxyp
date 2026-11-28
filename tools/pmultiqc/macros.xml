@@ -17,32 +17,55 @@
             <citation type="doi">10.1016/j.mcpro.2026.101530</citation>
         </citations>
     </xml>
-    <token name="@ESCAPE_IDENTIFIER@">
-        <![CDATA[
-        ## keep the file extension: the pmultiqc modules match their input files by name (e.g. 'parameters.txt', '*.mzTab', '*.mzid', '*.psm.parquet')
-        #set identifier = re.sub('[^\s\w\-.]', '_', str($file.element_identifier))
+    <!-- The pmultiqc modules match their input files by name (e.g. 'parameters.txt',
+         '*.mzTab', '*.mzid', '*.psm.parquet'), so inputs are staged into $software_dir
+         under the name the module expects, not under the dataset's name.
+         Each staging token reads $ln_param (the software_cond parameter to stage);
+         $ln_check/$ln_pattern ($ln_check: '', 'content' or 'suffix') and $ln_target
+         must be set by the calling command token. -->
+    <!-- Stage the files of $ln_param keeping each file's sanitized basename, so the
+         module's name globs (e.g. '*.mzTab') still match; duplicate basenames get a
+         numeric suffix. $ln_check: '' (no check), 'content' (each file must contain
+         $ln_pattern) or 'suffix' (each basename must end in $ln_pattern). -->
+    <token name="@LN_GLOB@"><![CDATA[
+        #set $val = getattr($software_cond, $ln_param)
+#if str($val) != "None":
+    #set $at_least_one_input=True
+    #set file_paths = []
+    #for $file in $val:
+        #set $base = re.sub('[^\\s\\w\\-.]', '_', str($file).rsplit('/', 1)[1])
+#if $base in $file_paths:
+            #set $base += '_' + str(len($file_paths))
+#end if
+            #set $file_paths += [$base]
+#if $ln_check == 'content':
+            grep -qF '$ln_pattern' '$file' || die "Module '$mod_name': '$ln_pattern' not found in the file '$base'" &&
+#elif $ln_check == 'suffix':
+            case "$base" in
+                *$ln_pattern)
+                    ;;
+                *)
+                    die "Module '$mod_name': expected a file ending in '$ln_pattern', got '$base'"
+                    ;;
+            esac &&
+#end if
+            ln -s '$file' '$software_dir/$base' &&
+    #end for
+#end if
     ]]></token>
-    <token name="@CHECK_LN_FILE@">
-        <![CDATA[
-        #if $file_path in $file_paths
-            #set $file_path += '_' + str(len($file_paths))
-        #end if
-        #set $file_paths += [$file_path]
-        #if $pattern != '':
-            grep -qF '$pattern' '$file' || die "Module '${software_cond.software}': '$pattern' not found in the file '$identifier'" &&
-        #end if
-        ln -s '$file' '$file_path'  &&
-    ]]></token>
-    <token name="@LN_FILES@">
-        <![CDATA[
-        #set file_paths = []
-        #if str($software_cond.input) != "None":
-            #set $at_least_one_input=True
-            #for $file in $software_cond.input:
-                @ESCAPE_IDENTIFIER@
-                #set file_path = $software_dir + '/' + $prefix + str($identifier) + $suffix
-                @CHECK_LN_FILE@
-            #end for
-        #end if
+    <!-- Stage the files of $ln_param as '$software_dir/1.<target>', '2.<target>', ... :
+         for name globs with a two-part suffix (QPX '*.psm.parquet') where a dedup
+         suffix cannot be inserted before the matching part. -->
+    <token name="@LN_NUMBERED@"><![CDATA[
+        #set $val = getattr($software_cond, $ln_param)
+#if str($val) != "None":
+    #set $at_least_one_input=True
+    #set $i = 0
+    #for $file in $val:
+        #set $i += 1
+        #set $target = $software_dir + '/' + str($i) + '.' + $ln_target
+        ln -s '$file' '$target' &&
+    #end for
+#end if
     ]]></token>
 </macros>
