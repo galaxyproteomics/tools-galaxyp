@@ -120,14 +120,17 @@ SKIP_LIST = [
 
 def get_failing_tests(cmake: List[str]) -> List[str]:
     failing_tests = []
-    re_fail = re.compile(r"set_tests_properties\(\"([^\"]+)\" PROPERTIES WILL_FAIL 1\)")
+    # WILL_FAIL may sit on a later line of the same set_tests_properties(...)
+    # call (ProteomicsLFQ pairs it with DEPENDS on the next line), so [^)]*
+    # bridges the gap; the block's closing parenthesis ends the scan.  Searched
+    # over the whole file, not line by line, for that reason.
+    # https://github.com/OpenMS/OpenMS/issues/4550
+    re_fail = re.compile(r"set_tests_properties\(\"([^\"]+)\" PROPERTIES[^)]*WILL_FAIL 1\)")
 
     for path in cmake:
         with open(path) as cmake_fh:
-            for line in cmake_fh:
-                match = re_fail.search(line)
-                if match:
-                    failing_tests.append(match.group(1))
+            for match in re_fail.finditer(cmake_fh.read()):
+                failing_tests.append(match.group(1))
     return failing_tests
 
 
@@ -143,13 +146,20 @@ def get_message_tests(cmake: List[str]) -> List[str]:
     could check; the non-zero exit code is the point of the test.
     """
     message_tests = []
-    re_msg = re.compile(r"set_tests_properties\(\"([^\"]+)\" PROPERTIES [^)]*PASS_REGULAR_EXPRESSION")
+    # whole file, not line by line: 3.6 wraps the properties onto the next line
+    #
+    #   set_tests_properties("TOPP_ProteomicsLFQ_feat_dir_requires_design" PROPERTIES
+    #                        PASS_REGULAR_EXPRESSION "requires an explicit '-design'")
+    #
+    # so a per-line search missed the test and the generator emitted a test that
+    # expects a table which is never written
+    re_msg = re.compile(
+        r"set_tests_properties\(\"([^\"]+)\" PROPERTIES[^)]*PASS_REGULAR_EXPRESSION"
+    )
     for path in cmake:
         with open(path) as cmake_fh:
-            for line in cmake_fh:
-                match = re_msg.search(line)
-                if match:
-                    message_tests.append(match.group(1))
+            for match in re_msg.finditer(cmake_fh.read()):
+                message_tests.append(match.group(1))
     return message_tests
 
 
@@ -367,6 +377,11 @@ def check_multi_inputs(xml: str, multi: Dict[str, List[str]]) -> bool:
     workflow takes one run per invocation - the generated test can only carry
     the first file and the tool would silently process half of its input.
     Returns False in that case, so that the caller skips the test.
+
+    The comparison is by basename on both sides: an upstream ITEMLIST may name
+    its files as `${DATA_DIR_SHARE}/examples/...` (ProteomicsLFQ hands every
+    fraction mzML to `-in`), so `multi_value_arguments()` returns the paths as
+    written while the emitted value carries the same basenames.
     """
     for name, files in multi.items():
         pattern = re.compile(r'<param\s+name="%s"[^>]*?/>' % re.escape(name))
@@ -377,7 +392,8 @@ def check_multi_inputs(xml: str, multi: Dict[str, List[str]]) -> bool:
         if not value:
             return False
         emitted = [os.path.basename(v) for v in value.group(1).split(",")]
-        if sorted(emitted) != sorted(files):
+        expected = [os.path.basename(f) for f in files]
+        if sorted(emitted) != sorted(expected):
             return False
     return True
 
@@ -498,13 +514,26 @@ def multi_value_arguments(line: str, tool_id: str) -> Dict[str, List[str]]:
 
 
 def chained_inputs(line: str) -> List[str]:
-    """Intermediates ("*.tmp.*") which are passed as inputs."""
+    """Intermediates ("*.tmp.*" or a checkpoint directory) which are passed as inputs."""
     tokens = line.split()
-    return [
+    chained = [
         val
         for opt, val in zip(tokens, tokens[1:])
         if opt.startswith("-in") and ".tmp." in val
     ]
+    # A combining run reads the feature checkpoint directory an earlier test
+    # wrote (`-feat_dir BSA_seam_ckpt`, the ${TESTS_TEMP_DIR} prefix is stripped
+    # before this point): it has neither spectra (`-in`) nor identifications
+    # (`-ids`) of its own and relies entirely on the state the detecting runs
+    # left behind.  Galaxy cannot express that: the wrapper turns -feat_dir into
+    # an *output* collection, so it is created empty and the tool aborts with
+    #   no feature checkpoint for 'BSA1_F1.mzML' and no identification file given
+    #   for it
+    if not any(opt.startswith(("-in", "-ids")) for opt in tokens):
+        chained += [
+            val for opt, val in zip(tokens, tokens[1:]) if opt == "-feat_dir"
+        ]
+    return chained
 
 
 # test-data.sh records the fixtures it copied from the OpenMS source tree before
@@ -546,6 +575,42 @@ def annotate(body: str, tool_id: str = "") -> str:
     stats = {"location": 0, "assert": 0}
     return remote_test_data.annotate(body, FIXTURE_URLS, EXPECTATIONS, stats,
                                      tool_id, LOCAL_FIXTURES)
+
+
+def basename_multifile_values(xml: str) -> str:
+    """Basename the value of a comma-joined (multiple) data parameter.
+
+    CTDConverter emits the files of a multiple parameter exactly as the
+    upstream command line wrote them.  For fixtures under
+    ``${DATA_DIR_SHARE}/examples/...`` (ProteomicsLFQ hands every fraction to
+    ``-in``) that leaves a directory prefix:
+    ``value="examples/FRACTIONS/BSA1_F1.mzML,examples/FRACTIONS/BSA1_F2.mzML"``.
+    planemo splits that on the commas and stages each part *as named*, so the
+    ``/`` sends the file into a sub-directory the job never looks in - every
+    file after the first is missing and the tool exits before writing its
+    outputs.  A single-file value is unaffected (planemo drops the directory
+    of a lone file), which is why only ProteomicsLFQ's batch tests broke while
+    the shipped multi-file tools - whose fixtures live in ``src/tests/topp/``
+    and are referenced by bare name - kept passing.  Rewrite each element to
+    its basename; the ``location`` attribute (one full URL per file, already
+    attached by :func:`annotate`) is untouched, so the file count is unchanged.
+    """
+    def replace(match):
+        tag = match.group(0)
+        value = re.search(r'value="([^"]*)"', tag)
+        if not value or "," not in value.group(1):
+            return tag
+        elements = value.group(1).split(",")
+        if not any("/" in element for element in elements):
+            return tag
+        location = re.search(r'location="([^"]*)"', tag)
+        if location and "," in location.group(1) \
+                and len(location.group(1).split(",")) != len(elements):
+            return tag  # do not touch a value/location whose file counts differ
+        basenames = ",".join(os.path.basename(element) for element in elements)
+        return re.sub(r'value="%s"' % re.escape(value.group(1)),
+                      'value="%s"' % basenames, tag, count=1)
+    return re.sub(r"<param\b[^>]*value=\"[^\"]*\"[^>]*/>", replace, xml)
 
 
 def is_fixture(token: str) -> bool:
@@ -741,6 +806,42 @@ def retype_ini_output_dirs(ini_model: Parameters) -> None:
             param.type = _OutPrefix
 
 
+def coerce_bool_values(model, values) -> None:
+    """Turn CLI-parsed boolean strings into real booleans, in place.
+
+    `parse_cl_args()` returns the *string* 'false' for a bool parameter given as
+    `-flag false`, and CTDopts' `_xml_node()` writes
+
+        attribs['value'] = 'true' if value else 'false'
+
+    (CTDopts/CTDopts.py, the `self.type is bool` branch).  A non-empty string is
+    truthy, so every upstream `-flag false` became value="true" in the generated
+    test: ProteomicsLFQ_biosaur2_seeds ran with targeted_only=true and
+    mass_recalibration=true where upstream passes false, which writes a
+    consensusXML 10x smaller than the reference the test compares against.
+    """
+    for param in model.get_parameters():
+        if param.type is not bool:
+            continue
+        lineage = param.get_lineage(name_only=True)
+        node = values
+        for key in lineage[:-1]:
+            if not isinstance(node, dict) or key not in node:
+                node = None
+                break
+            node = node[key]
+        if isinstance(node, dict) and lineage[-1] in node:
+            node[lineage[-1]] = _as_bool(node[lineage[-1]])
+
+
+def _as_bool(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in ("true", "1", "yes", "on")
+    return bool(value)
+
+
 def fill_ctd_clargs(ini: str, line: str, ctd_tmp: TextIO) -> None:
     cmd = shlex.split(line)
 
@@ -763,6 +864,7 @@ def fill_ctd_clargs(ini: str, line: str, ctd_tmp: TextIO) -> None:
     # get a dictionary of the ctd arguments where the values of the parameters
     # given on the command line are overwritten
     ini_values = ini_model.parse_cl_args(cl_args=cmd, ignore_required=True)
+    coerce_bool_values(ini_model, ini_values)
     ini_model.write_ctd(ctd_tmp, ini_values)
 
 
@@ -797,7 +899,8 @@ def process_test_line(
     skip_list: List[str],
     diff_pairs: Dict[str, str],
     version: str,
-    uncomparable: Optional[Set[str]] = None
+    uncomparable: Optional[Set[str]] = None,
+    message_tests: Optional[List[str]] = None
 ) -> Optional[str]:
 
     # NOT every add_test() is well formatted: 3.6 has
@@ -849,10 +952,35 @@ def process_test_line(
         return
 
     if test_id in failing_tests:
-        # WILL_FAIL or PASS_REGULAR_EXPRESSION: the test asserts that the tool
-        # refuses the input, there is no output Galaxy could compare
+        # WILL_FAIL: the test asserts that the tool refuses the input, there is
+        # no output Galaxy could compare
         sys.stderr.write(f"    skip failing {test_id} {line}\n")
         return
+
+    if test_id in (message_tests or []):
+        # PASS_REGULAR_EXPRESSION: on top of the run the test asserts a message
+        # on stdout, which Galaxy cannot check.  Whether the test is still worth
+        # emitting depends on what is left over: when one of the file outputs
+        # (-out, -out_cxml, -out_msstats) is compared by a DIFF in the same file
+        # (fraction_fwhm, feat_dir_resume, duplicate_psm, empty_fraction,
+        # CometAdapter_4) or has a size/line assertion in
+        # aux/output_expectations.tsv, that output is the part Galaxy can verify,
+        # so keep the test.  When the run only refuses an input and the sole
+        # output is a checkpoint directory (feat_dir_requires_design,
+        # requires_output) there is nothing to assert - the message is the whole
+        # test - and if nothing is asserted the output would be an uncomparable
+        # file that check 9 of check_generated.sh rejects.
+        cmd = shlex.split(line)
+        written = [val for opt, val in zip(cmd, cmd[1:]) if opt.startswith("-out")]
+        compared = [t for t in cmd if t in diff_pairs]
+        asserted = [w for w in written if w.split("/")[-1] in EXPECTATIONS]
+        if not (compared or asserted):
+            sys.stderr.write(f"    skip message-only {test_id} {line}\n")
+            return
+        sys.stderr.write(
+            f"    keep message test {test_id} "
+            f"(writes/compares {(compared or asserted)[0]})\n"
+        )
 
     if id != tool_id:
         sys.stderr.write(f"    skip {test_id} ({id} != {tool_id}) {line}\n")
@@ -1015,6 +1143,7 @@ def process_test_line(
         # point Galaxy at the upstream fixture / assert on what cannot be
         # downloaded (last: the previous steps rewrite `value=`)
         body = annotate(body, tool_id)
+        body = basename_multifile_values(body)
         if multi and not check_multi_inputs(body, multi):
             sys.stderr.write(
                 f"    skip {test_id} (more than one file for a single input "
@@ -1063,7 +1192,8 @@ re_empty_suffix = re.compile(r"\s*$")
 re_add_test = re.compile(r"add_test\(\"(TOPP|UTILS)_.*/" + args.id)
 re_diff = re.compile(r"\$\{DIFF\}.* -in1 ([^ ]+) -in2 ([^ ]+)")
 DISABLED = disabled_tests(args.cmake)
-failing_tests = get_failing_tests(args.cmake) + get_message_tests(args.cmake)
+failing_tests = get_failing_tests(args.cmake)
+message_tests = get_message_tests(args.cmake)
 tests = []
 
 # process the given CMake files and compile lists of
@@ -1113,7 +1243,7 @@ for cmake in args.cmake:
 
 for line in test_lines:
     test = process_test_line(args.id, line, failing_tests, SKIP_LIST, diff_pairs,
-                             args.version, uncomparable)
+                             args.version, uncomparable, message_tests)
     if test:
         tests.append(test)
 
