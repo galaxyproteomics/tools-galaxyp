@@ -1,0 +1,351 @@
+<tool id="ms2rescore" name="MS2Rescore" version="@TOOL_VERSION@+galaxy0" profile="25.0" license="MIT">
+    <description>rescore peptide-spectrum matches using predicted features</description>
+    <macros>
+        <token name="@TOOL_VERSION@">4.0.2</token>
+    </macros>
+    <xrefs>
+        <xref type="bio.tools">ms2rescore</xref>
+    </xrefs>
+    <requirements>
+        <requirement type="package" version="@TOOL_VERSION@">ms2rescore</requirement>
+    </requirements>
+    <required_files>
+        <include path="check_spectrum_names.py"/>
+    </required_files>
+    <version_command>python -c "from importlib.metadata import version; print(version('ms2rescore'))"</version_command>
+    <command detect_errors="exit_code"><![CDATA[
+export OMP_NUM_THREADS="\${GALAXY_SLOTS:-1}"
+    OPENBLAS_NUM_THREADS="\${GALAXY_SLOTS:-1}"
+    MKL_NUM_THREADS="\${GALAXY_SLOTS:-1}"
+    XDG_CACHE_HOME="\$PWD/.cache" &&
+mkdir -p models spectra &&
+#if $spectra.mode == 'single'
+    ln -s '$spectra.spectrum' 'spectra/input.$spectra.spectrum.ext' &&
+#elif $spectra.mode == 'multiple'
+    python '$__tool_directory__/check_spectrum_names.py' '$spectrum_names' &&
+    #for $item in $spectra.runs
+        ln -s '$item.spectrum' 'spectra/$item.run_name.$item.spectrum.ext' &&
+    #end for
+#end if
+ms2rescore
+    --config-file ms2rescore.json
+    --psm-file
+    #for $psm_file in $psm_files
+        '$psm_file'
+    #end for
+    --psm-file-type '$psm_file_type'
+    --output-path result
+    --processes "\${GALAXY_SLOTS:-1}"
+    --disable-update-check
+    ]]></command>
+    <configfiles>
+        <configfile name="spectrum_names"><![CDATA[
+#import json
+#if $spectra.mode == 'multiple'
+$json.dumps([str($item.run_name) for $item in $spectra.runs])
+#else
+[]
+#end if
+        ]]></configfile>
+        <configfile name="config" filename="ms2rescore.json"><![CDATA[
+#import json
+#set $generators = {str($name): {} for $name in $feature_generators}
+#if 'ms2pip' in $generators
+    #silent $generators['ms2pip'].update({'model': str($prediction.ms2pip_model), 'model_dir': 'models'})
+#end if
+#if 'deeplc' in $generators
+    #silent $generators['deeplc'].update({'calibration_set_size': float($prediction.calibration_fraction), 'finetune': bool($prediction.finetune)})
+#end if
+#set $settings = {'feature_generators': $generators, 'rescoring': {'train_fdr': float($rescoring.train_fdr), 'model': str($rescoring.model)}, 'max_psm_rank_input': int($advanced.max_psm_rank_input), 'max_psm_rank_output': 1, 'report_fdr': float($advanced.report_fdr), 'write_report': bool($write_report), 'write_flashlfq': bool($write_flashlfq), 'rename_to_usi': bool($advanced.rename_to_usi), 'fragmentation_model': str($prediction.fragmentation_model), 'tolerance_value': float($prediction.tolerance_value), 'tolerance_mode': str($prediction.tolerance_mode)}
+#if $spectra.mode == 'single'
+    #silent $settings.update({'spectrum_path': 'spectra/input.' + str($spectra.spectrum.ext)})
+#elif $spectra.mode == 'multiple'
+    #silent $settings.update({'spectrum_path': 'spectra'})
+#end if
+#for $key in ['id_decoy_pattern', 'psm_id_pattern', 'spectrum_id_pattern']
+    #if str($advanced[$key])
+        #silent $settings.update({$key: str($advanced[$key])})
+    #end if
+#end for
+#if $psm_file_type == 'percolator'
+    #set $reader_settings = {}
+    #for $column in ['score_column', 'retention_time_column', 'mz_column']
+        #if str($pin_reader[$column])
+            #silent $reader_settings.update({$column: str($pin_reader[$column])})
+        #end if
+    #end for
+    #silent $settings.update({'psm_reader_kwargs': $reader_settings})
+#end if
+#silent $settings.update({'modification_mapping': {str($item.original): str($item.replacement) for $item in $advanced.modification_mapping}, 'fixed_modifications': {str($item.modification): [str($site).strip() for $site in str($item.sites).split(',')] for $item in $advanced.fixed_modifications}})
+$json.dumps({'ms2rescore': $settings})
+        ]]></configfile>
+    </configfiles>
+    <inputs>
+        <param name="psm_files" argument="--psm-file" type="data" format="tabular,mzid,pepxml,tandem,idxml" multiple="true" label="Peptide-spectrum matches" help="Include all target and decoy matches without FDR filtering. Multiple files should generally only be combined for LC-fractionated runs."/>
+        <param argument="--psm-file-type" type="select" label="Identification file format">
+            <option value="tsv">PSM-utils / MS2Rescore TSV</option>
+            <option value="percolator">Percolator PIN</option>
+            <option value="mzid">mzIdentML</option>
+            <option value="pepxml">pepXML</option>
+            <option value="xtandem">X!Tandem XML</option>
+            <option value="msms">MaxQuant msms.txt</option>
+            <option value="sage">Sage TSV</option>
+            <option value="idxml">OpenMS idXML</option>
+        </param>
+        <section name="pin_reader" title="PIN reader settings" expanded="false" help="Used only for Percolator PIN input. Column names are case-insensitive.">
+            <param name="score_column" type="text" optional="true" label="Search engine score column" help="Required unless the PIN file has a column named score. For example, hyperscore or lnEValue."><sanitizer sanitize="false"/></param>
+            <param name="retention_time_column" type="text" optional="true" label="Retention time column" help="Leave empty if retention times will be read from spectra or are not needed."><sanitizer sanitize="false"/></param>
+            <param name="mz_column" type="text" optional="true" label="Precursor m/z column" help="Leave empty if precursor m/z will be read from spectra or is not needed."><sanitizer sanitize="false"/></param>
+        </section>
+        <conditional name="spectra">
+            <param name="mode" type="select" label="Spectrum input">
+                <option value="single">Single spectrum file</option>
+                <option value="multiple">Multiple spectrum files, matched by run name</option>
+                <option value="none">No spectrum file (only features already available from the PSMs)</option>
+            </param>
+            <when value="single">
+                <param name="spectrum" type="data" format="mgf,mzml" label="Spectrum file" help="Spectra for a single MS run. Spectrum identifiers must match the identification file."/>
+            </when>
+            <when value="multiple">
+                <repeat name="runs" title="MS run" min="1">
+                    <param name="run_name" type="text" label="Run name" help="Exact run name from the PSM file, without the MGF/mzML extension. Names must be unique and cannot be prefixes of one another (for example, run1 and run10), because MS2Rescore uses prefix matching.">
+                        <validator type="regex" message="Use letters, digits, dots, underscores, and hyphens; start with a letter or digit.">^[A-Za-z0-9][A-Za-z0-9_.-]*$</validator>
+                    </param>
+                    <param name="spectrum" type="data" format="mgf,mzml" label="Spectrum file"/>
+                </repeat>
+            </when>
+            <when value="none"/>
+        </conditional>
+        <param name="feature_generators" type="select" multiple="true" label="Feature generators" help="Basic features use search scores, charge, mass errors and peptide length. MS2PIP and MS2 spectrum features require spectra. DeepLC needs retention times, in the PSMs or spectrum files.">
+            <option value="basic" selected="true">Basic identification features</option>
+            <option value="ms2pip" selected="true">MS2PIP predicted fragmentation intensities</option>
+            <option value="deeplc" selected="true">DeepLC predicted retention times</option>
+            <option value="ms2" selected="true">MS2 spectrum annotation features</option>
+        </param>
+        <section name="prediction" title="Feature generation settings" expanded="false">
+            <param name="ms2pip_model" type="select" label="MS2PIP fragmentation intensity model">
+                <option value="HCD">HCD</option>
+                <option value="HCD2021">HCD2021</option>
+                <option value="CID">CID</option>
+                <option value="TMT">TMT</option>
+                <option value="iTRAQ">iTRAQ</option>
+                <option value="iTRAQphospho">iTRAQ phospho</option>
+                <option value="Immuno-HCD">Immuno-HCD</option>
+                <option value="CID-TMT">CID-TMT</option>
+                <option value="timsTOF2024">timsTOF2024</option>
+                <option value="timsTOF2023">timsTOF2023</option>
+                <option value="TTOF5600">TripleTOF 5600</option>
+            </param>
+            <param name="fragmentation_model" type="select" label="Spectrum annotation ion series">
+                <option value="cidhcd">CID/HCD (a, b, y)</option>
+                <option value="etd">ETD (c, y, z)</option>
+                <option value="ethcd">EThcD (a, b, c, y, z)</option>
+                <option value="all">All (a, b, c, x, y, z)</option>
+            </param>
+            <param name="tolerance_value" type="float" value="0.02" min="0" label="Fragment mass tolerance"/>
+            <param name="tolerance_mode" type="select" label="Fragment mass tolerance unit">
+                <option value="Da">Da</option>
+                <option value="ppm">ppm</option>
+            </param>
+            <param name="calibration_fraction" type="float" value="0.15" min="0.001" max="1" label="Fraction of target PSMs used for DeepLC calibration"/>
+            <param name="finetune" type="boolean" checked="false" label="Fine-tune DeepLC on high-confidence targets" help="Requires enough targets at 1% FDR and increases runtime."/>
+        </section>
+        <section name="rescoring" title="Rescoring settings" expanded="false">
+            <param name="model" type="select" label="Ristretto model">
+                <option value="svm">Support vector machine (SVM)</option>
+                <option value="lda">Linear discriminant analysis (LDA, faster)</option>
+            </param>
+            <param name="train_fdr" type="float" value="0.01" min="0" max="1" label="Training FDR" help="Fraction used to select training targets. Increase, for example to 0.1, if too few targets pass the default threshold."/>
+        </section>
+        <section name="advanced" title="Advanced settings" expanded="false">
+            <param name="max_psm_rank_input" type="integer" value="10" min="1" label="Maximum input PSM rank per spectrum"/>
+            <param name="report_fdr" type="float" value="0.01" min="0" max="1" label="Reporting FDR" help="Fraction used in the report and to filter FlashLFQ output. Main result tables remain unfiltered."/>
+            <param name="id_decoy_pattern" type="text" optional="true" label="Decoy protein regular expression" help="Provide a pattern such as ^DECOY_ to enable picked-protein competition. If empty, input decoy labels are used and protein-level FDR uses a plain rollup.">
+                <sanitizer sanitize="false"/>
+            </param>
+            <param name="psm_id_pattern" type="text" optional="true" label="PSM spectrum identifier regular expression" help="Optional expression with exactly one capturing group, used to extract spectrum identifiers from the PSM file.">
+                <sanitizer sanitize="false"/>
+            </param>
+            <param name="spectrum_id_pattern" type="text" optional="true" label="Spectrum identifier regular expression" help="Optional expression with exactly one capturing group, used to extract spectrum identifiers from spectrum titles.">
+                <sanitizer sanitize="false"/>
+            </param>
+            <param name="rename_to_usi" type="boolean" checked="false" label="Convert spectrum identifiers to Universal Spectrum Identifiers"/>
+            <repeat name="modification_mapping" title="Modification mapping">
+                <param name="original" type="text" label="Modification label in input"><sanitizer sanitize="false"/><validator type="empty_field"/></param>
+                <param name="replacement" type="text" label="Replacement ProForma modification" help="For example, UNIMOD:35 for oxidation."><sanitizer sanitize="false"/><validator type="empty_field"/></param>
+            </repeat>
+            <repeat name="fixed_modifications" title="Fixed modification">
+                <param name="modification" type="text" label="ProForma modification" help="For example, UNIMOD:4 for carbamidomethylation."><sanitizer sanitize="false"/><validator type="empty_field"/></param>
+                <param name="sites" type="text" label="Sites" help="Comma-separated residues or termini, for example C or N-term."><sanitizer sanitize="false"/><validator type="empty_field"/></param>
+            </repeat>
+        </section>
+        <param name="write_report" type="boolean" checked="true" label="Generate interactive HTML report"/>
+        <param name="write_flashlfq" type="boolean" checked="false" label="Export targets for FlashLFQ" help="Only targets passing the reporting FDR are exported."/>
+    </inputs>
+    <outputs>
+        <data name="psms" format="tabular" from_work_dir="result.tsv" label="${tool.name} on ${on_string}: rescored PSMs"/>
+        <collection name="identifications" type="list" label="${tool.name} on ${on_string}: identification tables">
+            <discover_datasets pattern="result\.(?P&lt;designation&gt;psms|peptidoforms|peptides|proteins)\.tsv" format="tabular" visible="false"/>
+        </collection>
+        <data name="weights" format="tabular" from_work_dir="result.weights.tsv" label="${tool.name} on ${on_string}: feature weights"/>
+        <data name="features" format="tabular" from_work_dir="result.feature_names.tsv" label="${tool.name} on ${on_string}: feature names"/>
+        <data name="configuration" format="json" from_work_dir="result.full-config.json" label="${tool.name} on ${on_string}: configuration"/>
+        <data name="log" format="txt" from_work_dir="result.log.txt" label="${tool.name} on ${on_string}: log"/>
+        <data name="report" format="html" from_work_dir="result.report.html" label="${tool.name} on ${on_string}: report">
+            <filter>write_report</filter>
+        </data>
+        <data name="flashlfq" format="tabular" from_work_dir="result.flashlfq.tsv" label="${tool.name} on ${on_string}: FlashLFQ targets">
+            <filter>write_flashlfq</filter>
+        </data>
+    </outputs>
+    <!-- Test data: CompOmics (2024), Example input files for MS2Rescore v0.1,
+         https://doi.org/10.5281/zenodo.10561462, licensed CC BY 4.0:
+         https://creativecommons.org/licenses/by/4.0/.
+         sage.tsv retains every tenth record from search/sage/results.sage.tsv;
+         sage-part1/2.tsv split those 554 records into disjoint halves.
+         qExactive01819.mzML retains their original spectra and binary arrays,
+         with updated indices/count and the outer indexedmzML wrapper removed.
+         It is not kept in test-data because of its size; the tests fetch it from
+         https://doi.org/10.5281/zenodo.24635618 (md5 38d4ee96deb76f6cb996163b2f6a06cc),
+         also licensed CC BY 4.0.
+         sage.pin converts the same PSMs to PIN without changing their values.
+    -->
+    <tests>
+        <test expect_num_outputs="8">
+            <param name="psm_files" value="sage.tsv"/>
+            <param name="psm_file_type" value="sage"/>
+            <conditional name="spectra"><param name="mode" value="none"/></conditional>
+            <param name="feature_generators" value="basic"/>
+            <section name="rescoring"><param name="train_fdr" value="0.1"/></section>
+            <section name="advanced"><param name="id_decoy_pattern" value="_REVERSED"/></section>
+            <param name="write_flashlfq" value="true"/>
+            <output name="psms"><assert_contents><has_text text="qvalue"/><has_text text="rescoring:search_engine_score"/><has_n_lines n="555"/></assert_contents></output>
+            <output_collection name="identifications" type="list" count="4">
+                <element name="peptides"><assert_contents><has_text text="qvalue"/></assert_contents></element>
+                <element name="peptidoforms"><assert_contents><has_text text="qvalue"/></assert_contents></element>
+                <element name="proteins"><assert_contents><has_text text="qvalue"/></assert_contents></element>
+                <element name="psms">
+                    <assert_contents>
+                        <has_n_lines n="555"/>
+                        <has_line_matching expression="controllerType=0 controllerNumber=1 scan=9847\tqExactive01819\tFalse\tWGDIEFPPPFGR\tWGDIEFPPPFGR\tsp\|P53396\|ACLY_HUMAN\t[^\t]+\t0\.003663[0-9]+\t0\.039[0-9]+"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output name="features"><assert_contents><has_text text="search_engine_score"/><not_has_text text="spec_pearson"/></assert_contents></output>
+            <output name="report"><assert_contents><has_text text="&lt;html"/><has_text text="MS²Rescore"/></assert_contents></output>
+            <output name="configuration"><assert_contents><has_text text="&quot;train_fdr&quot;: 0.1"/><has_text text="&quot;write_flashlfq&quot;: true"/></assert_contents></output>
+            <output name="flashlfq"><assert_contents><has_text text="Full Sequence"/><has_text text="WGDIEFPPPFGR"/><has_n_lines n="333"/><not_has_text text="_REVERSED"/></assert_contents></output>
+        </test>
+        <test expect_num_outputs="6">
+            <param name="psm_files" value="sage.tsv"/>
+            <param name="psm_file_type" value="sage"/>
+            <conditional name="spectra"><param name="mode" value="single"/><param name="spectrum" location="https://zenodo.org/records/24635618/files/qExactive01819.mzML"/></conditional>
+            <param name="feature_generators" value="basic,ms2"/>
+            <section name="rescoring"><param name="model" value="lda"/><param name="train_fdr" value="0.1"/></section>
+            <param name="write_report" value="false"/>
+            <output name="psms"><assert_contents><has_text text="rescoring:hyperscore"/><has_n_lines n="555"/></assert_contents></output>
+            <output name="features"><assert_contents><has_text text="matched_ions_pct"/></assert_contents></output>
+            <output name="configuration"><assert_contents><has_text text="&quot;model&quot;: &quot;lda&quot;"/><has_text text="&quot;write_report&quot;: false"/></assert_contents></output>
+        </test>
+        <test expect_num_outputs="6">
+            <param name="psm_files" value="sage-part1.tsv,sage-part2.tsv"/>
+            <param name="psm_file_type" value="sage"/>
+            <conditional name="spectra">
+                <param name="mode" value="multiple"/>
+                <repeat name="runs"><param name="run_name" value="qExactive01819"/><param name="spectrum" location="https://zenodo.org/records/24635618/files/qExactive01819.mzML"/></repeat>
+            </conditional>
+            <param name="feature_generators" value="basic,ms2"/>
+            <section name="rescoring"><param name="train_fdr" value="0.1"/></section>
+            <section name="advanced">
+                <param name="psm_id_pattern" value=".*scan=(\d+)"/>
+                <param name="spectrum_id_pattern" value=".*scan=(\d+)"/>
+            </section>
+            <param name="write_report" value="false"/>
+            <output name="psms"><assert_contents><has_text text="rescoring:hyperscore"/><has_text text="qExactive01819"/><has_n_lines n="555"/></assert_contents></output>
+            <output_collection name="identifications" type="list" count="4"/>
+        </test>
+        <test expect_num_outputs="7">
+            <param name="psm_files" value="sage.tsv"/>
+            <param name="psm_file_type" value="sage"/>
+            <conditional name="spectra"><param name="mode" value="single"/><param name="spectrum" location="https://zenodo.org/records/24635618/files/qExactive01819.mzML"/></conditional>
+            <section name="rescoring"><param name="train_fdr" value="0.1"/></section>
+            <section name="advanced"><param name="report_fdr" value="0.05"/><param name="id_decoy_pattern" value="_REVERSED"/></section>
+            <output name="psms"><assert_contents><has_text text="rescoring:spec_pearson"/><has_text text="rescoring:predicted_retention_time"/><has_n_lines n="555"/></assert_contents></output>
+            <output name="features"><assert_contents><has_text text="spec_pearson"/><has_text text="predicted_retention_time"/></assert_contents></output>
+            <output name="report"><assert_contents><has_text text="&lt;html"/></assert_contents></output>
+        </test>
+        <test expect_num_outputs="6">
+            <param name="psm_files" value="sage.pin" ftype="tabular"/>
+            <param name="psm_file_type" value="percolator"/>
+            <section name="pin_reader">
+                <param name="score_column" value="PSMScore"/>
+                <param name="retention_time_column" value="RT"/>
+                <param name="mz_column" value="mz"/>
+            </section>
+            <conditional name="spectra"><param name="mode" value="none"/></conditional>
+            <param name="feature_generators" value="basic"/>
+            <section name="rescoring"><param name="train_fdr" value="0.1"/></section>
+            <param name="write_report" value="false"/>
+            <output name="psms"><assert_contents><has_text text="rescoring:search_engine_score"/><has_text text="WGDIEFPPPFGR/2"/><has_n_lines n="555"/></assert_contents></output>
+            <output name="configuration"><assert_contents><has_json_property_with_value property="score_column" value="&quot;PSMScore&quot;"/></assert_contents></output>
+        </test>
+        <test expect_failure="true">
+            <param name="psm_files" value="sage.tsv"/>
+            <param name="psm_file_type" value="sage"/>
+            <conditional name="spectra">
+                <param name="mode" value="multiple"/>
+                <repeat name="runs"><param name="run_name" value="run1"/><param name="spectrum" location="https://zenodo.org/records/24635618/files/qExactive01819.mzML"/></repeat>
+                <repeat name="runs"><param name="run_name" value="run10"/><param name="spectrum" location="https://zenodo.org/records/24635618/files/qExactive01819.mzML"/></repeat>
+            </conditional>
+            <assert_stderr><has_text text="Ambiguous spectrum run names"/></assert_stderr>
+        </test>
+    </tests>
+    <help><![CDATA[
+MS2Rescore adds features from predicted fragmentation intensities (MS2PIP), predicted
+retention times (DeepLC), spectrum annotations and basic identification properties.
+Ristretto then rescores the matches and estimates false discovery rates using targets
+and decoys.
+
+Provide **all target and decoy PSMs without FDR filtering** from a search performed with
+target-decoy competition. Choose the identification format explicitly. The TSV format
+is the PSM-utils/MS2Rescore format, not an arbitrary table. PIN files may also contain
+existing rescoring features; specify their search score column in the PIN reader settings
+unless it is named ``score``. Multiple identification files should generally only be
+combined for LC-fractionated runs, because merging unrelated runs can affect FDR control.
+
+Provide the corresponding MGF or mzML spectra when using MS2PIP or MS2 spectrum features.
+For multiple spectrum files, supply every run in the PSMs and enter its exact run name, without
+file extensions. Run names must be unique and must not be prefixes of one another
+(for example, ``run1`` and ``run10``), because the upstream file lookup uses prefix
+matching. Ambiguous names are rejected before rescoring. Use the identifier regular
+expressions if PSM identifiers and spectrum
+titles use different conventions; each expression must contain exactly one capturing
+group. DeepLC requires retention times and enough target matches for calibration.
+When no spectra are provided, select features supported by data already present in the
+PSM file (for example, basic features only).
+
+Prediction models can be downloaded by the upstream libraries when first needed, so
+prediction can require an internet connection. MS2PIP models are cached in the job
+directory. Select a model appropriate for the fragmentation method and labeling chemistry.
+Modification mappings translate search-engine labels to ProForma modifications;
+fixed modifications add modifications omitted from the identification file.
+
+The main PSM output retains scores, q-values, posterior error probabilities and features
+in PSM-utils TSV format. The identification collection contains PSM, peptidoform and
+peptide tables, and a protein-group table when every PSM has protein assignments.
+These results contain targets and decoys and are **not FDR-filtered**. Only the best
+match per spectrum is retained after rescoring. The reporting FDR controls summary
+statistics and the optional FlashLFQ export of high-confidence targets; it does not
+filter the main results. The configuration, feature list, weights and log document
+the settings and feature usage. The optional HTML report provides interactive quality
+control plots.
+
+See the `MS2Rescore documentation <https://ms2rescore.readthedocs.io/en/v4.0.2/>`_
+for input formats, search-engine-specific notes and feature descriptions.
+    ]]></help>
+    <citations>
+        <citation type="doi">10.1021/acs.jproteome.3c00785</citation>
+        <citation type="doi">10.1093/nar/gkad335</citation>
+        <citation type="doi">10.1038/s41592-021-01180-0</citation>
+    </citations>
+</tool>
