@@ -207,7 +207,7 @@ fi
 ## directories of the FeatureLinker tests), and a test which *consumes* such a
 ## file cannot be expressed in Galaxy.  Remember what really exists, so
 ## get_tests.py can tell fixtures from intermediates.
-( cd test-data && find . -mindepth 1 -maxdepth 3 ! -name "." \( -type f -o -type l -o -type d \) \
+( cd test-data && find . -mindepth 1 ! -name "." \( -type f -o -type l -o -type d \) \
     | sed 's@^\./@@' | sort > "$ARTIFACTS/.upstream-fixtures.txt" ) || exit 1
 export OPENMS_UPSTREAM_FIXTURES="$ARTIFACTS/.upstream-fixtures.txt"
 
